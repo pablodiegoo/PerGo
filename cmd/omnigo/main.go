@@ -18,6 +18,8 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/pablojhp.omnigo/internal/api/handler"
+	"github.com/pablojhp.omnigo/internal/api/middleware"
+	"github.com/pablojhp.omnigo/internal/platform/audit"
 	echosrv "github.com/pablojhp.omnigo/internal/platform/echo"
 	"github.com/pablojhp.omnigo/internal/platform/postgres"
 )
@@ -63,8 +65,21 @@ func main() {
 	defer nc.Close()
 	slog.Info("connected to NATS", "url", natsURL)
 
+	// --- Audit writer ---
+	auditWriter := audit.NewWriter(pool, 5000, 2)
+	defer func() {
+		slog.Info("flushing audit buffer")
+		if err := auditWriter.Close(); err != nil {
+			slog.Error("audit writer close failed", "error", err)
+		}
+		slog.Info("audit buffer flushed")
+	}()
+
 	// --- Echo HTTP server ---
 	e := echosrv.New()
+
+	// Trace middleware runs before auth so trace_id is available for logging
+	e.Use(middleware.TraceMiddleware())
 
 	healthHandler := &handler.HealthHandler{
 		Pool: pool,

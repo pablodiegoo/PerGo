@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -18,7 +17,6 @@ import (
 	"github.com/pablojhp.omnigo/internal/platform/audit"
 	"github.com/pablojhp.omnigo/internal/platform/obs"
 	"github.com/pablojhp.omnigo/internal/platform/postgres"
-	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
 )
 
 // TestTraceMiddlewareGeneratesID verifies that the trace middleware generates
