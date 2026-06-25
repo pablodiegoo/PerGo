@@ -3,6 +3,7 @@ module github.com/pablojhp.omnigo
 go 1.26.4
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/labstack/echo/v5 v5.2.1
 	github.com/nats-io/nats.go v1.52.0
