@@ -15,28 +15,32 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/labstack/echo/v5"
 	"github.com/nats-io/nats.go"
 
 	"github.com/pablojhp.omnigo/internal/api/handler"
 	"github.com/pablojhp.omnigo/internal/api/middleware"
+	"github.com/pablojhp.omnigo/internal/config"
 	"github.com/pablojhp.omnigo/internal/platform/audit"
 	echosrv "github.com/pablojhp.omnigo/internal/platform/echo"
+	"github.com/pablojhp.omnigo/internal/platform/obs"
 	"github.com/pablojhp.omnigo/internal/platform/postgres"
+	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.omnigo/internal/platform/shutdown"
+	"github.com/pablojhp.omnigo/internal/repository"
 )
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
 	// --- Config from env vars ---
-	dsn := envOrDefault("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/omnigo?sslmode=disable")
-	natsURL := envOrDefault("NATS_URL", "nats://localhost:4222")
-	serverPort := envOrDefault("SERVER_PORT", "8080")
+	cfg := config.Load()
 
 	// --- PostgreSQL ---
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	pool, err := postgres.NewPool(ctx, dsn)
+	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("failed to create pgxpool", "error", err)
 		os.Exit(1)
@@ -57,51 +61,106 @@ func main() {
 	slog.Info("migrations applied successfully")
 
 	// --- NATS ---
-	nc, err := nats.Connect(natsURL)
+	nc, err := nats.Connect(cfg.NATSUrl)
 	if err != nil {
-		slog.Error("failed to connect to NATS", "error", err, "url", natsURL)
+		slog.Error("failed to connect to NATS", "error", err, "url", cfg.NATSUrl)
 		os.Exit(1)
 	}
 	defer nc.Close()
-	slog.Info("connected to NATS", "url", natsURL)
+	slog.Info("connected to NATS", "url", cfg.NATSUrl)
 
 	// --- Audit writer ---
 	auditWriter := audit.NewWriter(pool, 5000, 2)
-	defer func() {
+
+	// --- Debug server (pprof + expvar) ---
+	debugSrv := obs.StartDebugServer(net.JoinHostPort("127.0.0.1", cfg.DebugPort))
+	slog.Info("debug server started", "addr", debugSrv.Addr())
+
+	// --- Shutdown orchestrator ---
+	orch := shutdown.NewOrchestrator()
+
+	// Register cleanup in reverse order of startup.
+	// Shutdown order: Echo → debug → audit → NATS → pgxpool → sqlDB
+	orch.Register(func() error {
+		slog.Info("closing sql.DB")
+		return db.Close()
+	})
+	orch.Register(func() error {
+		slog.Info("closing pgxpool")
+		pool.Close()
+		return nil
+	})
+	orch.Register(func() error {
+		slog.Info("closing NATS connection")
+		nc.Close()
+		return nil
+	})
+	orch.Register(func() error {
 		slog.Info("flushing audit buffer")
-		if err := auditWriter.Close(); err != nil {
-			slog.Error("audit writer close failed", "error", err)
-		}
+		err := auditWriter.Close()
 		slog.Info("audit buffer flushed")
-	}()
+		return err
+	})
+	orch.Register(func() error {
+		slog.Info("shutting down debug server")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return debugSrv.Shutdown(ctx)
+	})
+
+	// --- Repositories ---
+	apiKeyRepo := repository.NewAPIKeyRepository(pool)
 
 	// --- Echo HTTP server ---
 	e := echosrv.New()
 
-	// Trace middleware runs before auth so trace_id is available for logging
+	// Middleware stack: RequestID → Trace → Recover → Auth (on protected routes)
 	e.Use(middleware.TraceMiddleware())
 
+	// Auth middleware — protects /api/* routes
+	e.Use(middleware.AuthMiddleware(apiKeyRepo))
+
+	// Health endpoints
 	healthHandler := &handler.HealthHandler{
 		Pool: pool,
 		NATS: &natsConn{nc: nc},
 	}
 	healthHandler.RegisterRoutes(e)
 
+	// Test route: GET /api/v1/me (returns workspace_id from auth context)
+	e.GET("/api/v1/me", func(c *echo.Context) error {
+		wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
+		if !ok {
+			return c.String(http.StatusUnauthorized, "missing workspace context")
+		}
+		return c.JSON(http.StatusOK, map[string]string{
+			"workspace_id": wsID.String(),
+		})
+	})
+
 	// Start HTTP server
 	srv := &http.Server{
-		Addr:    net.JoinHostPort("", serverPort),
+		Addr:    net.JoinHostPort("", cfg.ServerPort),
 		Handler: e,
 	}
 
+	// Register Echo shutdown in orchestrator (runs first — stops accepting new requests)
+	orch.Register(func() error {
+		slog.Info("shutting down HTTP server")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		return srv.Shutdown(ctx)
+	})
+
 	go func() {
-		slog.Info("starting server", "port", serverPort)
+		slog.Info("starting server", "port", cfg.ServerPort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("server error", "error", err)
 			os.Exit(1)
 		}
 	}()
 
-	// --- Graceful shutdown ---
+	// --- Graceful shutdown on SIGTERM/SIGINT ---
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
@@ -110,15 +169,23 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("http server shutdown error", "error", err)
+	if err := orch.Shutdown(shutdownCtx); err != nil {
+		slog.Error("shutdown error", "error", err)
 	}
 
-	cancel() // signal runServer to exit if used
+	cancel() // signal background goroutines to exit
 	slog.Info("server stopped")
 }
 
 // --- helpers ---
+
+// runServer blocks until ctx is cancelled. Used by tests to simulate server lifecycle.
+func runServer(ctx context.Context, pool *pgxpool.Pool, db *sql.DB) error {
+	_ = pool
+	_ = db
+	<-ctx.Done()
+	return nil
+}
 
 func envOrDefault(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
@@ -136,13 +203,5 @@ func (c *natsConn) Ping() error {
 	if !c.nc.IsConnected() {
 		return fmt.Errorf("nats not connected")
 	}
-	return nil
-}
-
-// runServer starts the HTTP server and blocks until ctx is cancelled.
-func runServer(ctx context.Context, pool *pgxpool.Pool, db *sql.DB) error {
-	_ = pool
-	_ = db
-	<-ctx.Done()
 	return nil
 }

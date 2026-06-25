@@ -3,32 +3,63 @@
 package obs
 
 import (
+	"context"
 	"expvar"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
 )
 
-// DebugServer wraps an HTTP server with pprof and expvar handlers.
+// DebugServer wraps an HTTP server with pprof and expvar handlers,
+// providing access to the listener address for test verification.
 type DebugServer struct {
 	*http.Server
 	listener net.Listener
 }
 
-// Addr returns the listener address.
+// Addr returns the listener address (useful when started on ":0").
 func (ds *DebugServer) Addr() string {
 	return ds.listener.Addr().String()
 }
 
 // StartDebugServer creates an HTTP server on the given address with pprof
 // and expvar handlers, then starts it in a background goroutine.
-// TODO: implement — currently a stub for RED phase.
+// The returned DebugServer can be shut down gracefully via its Shutdown method.
 func StartDebugServer(addr string) *DebugServer {
-	panic("obs: StartDebugServer not implemented")
+	mux := http.NewServeMux()
+	mux.Handle("/debug/pprof/", http.DefaultServeMux)
+	mux.Handle("/debug/vars", expvar.Handler())
+
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		panic("obs: failed to listen on " + addr + ": " + err.Error())
+	}
+
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	go func() {
+		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			// Server was closed unexpectedly; nothing to do in background goroutine.
+			_ = err
+		}
+	}()
+
+	return &DebugServer{
+		Server:   srv,
+		listener: ln,
+	}
 }
 
-// RegisterCounter registers a new named expvar.Int counter and returns it.
-// TODO: implement — currently a stub for RED phase.
+// Shutdown gracefully shuts down the debug server.
+func (ds *DebugServer) Shutdown(ctx context.Context) error {
+	return ds.Server.Shutdown(ctx)
+}
+
+// RegisterCounter registers a new named expvar.Int counter and returns it
+// for incrementing. The counter is immediately visible at /debug/vars.
 func RegisterCounter(name string) *expvar.Int {
-	panic("obs: RegisterCounter not implemented")
+	return expvar.NewInt(name)
 }

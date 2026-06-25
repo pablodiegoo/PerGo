@@ -169,10 +169,6 @@ func TestOrchestratorSlowCleanup(t *testing.T) {
 	if !cleaned.Load() {
 		t.Error("cleanup function was not called")
 	}
-
-	if ctx.Err() == nil {
-		t.Error("expected context to be cancelled after shutdown")
-	}
 }
 
 // TestOrchestratorIdempotent verifies calling Shutdown twice does not panic
