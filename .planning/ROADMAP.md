@@ -49,7 +49,12 @@ Plans:
   1. Operator can create, view, and manage multi-tenant workspaces via the admin panel (Echo + Templ + HTMX with HTMX fragment detection — interactions return fragments without full-page reloads)
   2. Operator can generate new API keys per workspace and view/revoke existing keys from the admin panel
   3. Operator can search, filter (by workspace, trace_id, time range), and export audit logs from the admin panel; audit log access is also available via API
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 02-01-PLAN.md — Admin shell foundation: templ, session auth, base layout, sidebar, dashboard, HTMX, CSS
+- [ ] 02-02-PLAN.md — Workspace and API key management: CRUD handlers, templates, modal confirmations
+- [ ] 02-03-PLAN.md — Audit log review and CSV export: filtering, pagination, CSV download
+
 **UI hint**: yes
 
 ### Phase 3: Ingest API & Queue
@@ -127,7 +132,7 @@ Note: Phase 2 and Phase 3 are independent after Phase 1 and may execute in paral
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/4 | Not started | - |
-| 2. Admin Shell | 0/TBD | Not started | - |
+| 2. Admin Shell | 0/3 | Not started | - |
 | 3. Ingest API & Queue | 0/TBD | Not started | - |
 | 4. WhatsApp Web & QR Pairing | 0/TBD | Not started | - |
 | 5. Official Channels & Smart Fallback | 0/TBD | Not started | - |
