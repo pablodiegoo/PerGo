@@ -1,0 +1,171 @@
+package pages
+
+import (
+	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.omnigo/templates/layout"
+)
+
+// AuditPage renders the full audit log page with base layout, filters, and table.
+templ AuditPage(entries []repository.AuditEntry, total int, filters repository.AuditFilters, workspaces []repository.Workspace) {
+	@layout.Base("Audit Logs", AuditPageContent(entries, total, filters, workspaces))
+}
+
+// AuditPageContent renders the audit log page content.
+templ AuditPageContent(entries []repository.AuditEntry, total int, filters repository.AuditFilters, workspaces []repository.Workspace) {
+	<div class="page-header">
+		<h1>Audit Logs</h1>
+	</div>
+	@AuditFiltersUI(filters, workspaces)
+	@AuditTable(entries, total, filters)
+}
+
+// AuditTableFragment renders just the table body and pagination for HTMX updates.
+templ AuditTableFragment(entries []repository.AuditEntry, total int, filters repository.AuditFilters) {
+	@AuditTable(entries, total, filters)
+}
+
+// AuditTable renders the audit log table with rows and pagination.
+templ AuditTable(entries []repository.AuditEntry, total int, filters repository.AuditFilters) {
+	<div id="audit-table">
+		<table class="table">
+			<thead>
+				<tr>
+					<th>Timestamp</th>
+					<th>Workspace</th>
+					<th>Trace ID</th>
+					<th>Event Type</th>
+					<th>Payload</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, entry := range entries {
+					<tr>
+						<td>{ entry.CreatedAt.Format("2006-01-02 15:04:05") }</td>
+						<td>{ entry.WorkspaceID.String()[:8] }</td>
+						<td>{ entry.TraceID }</td>
+						<td>{ entry.EventType }</td>
+						<td>{ string(entry.Payload) }</td>
+					</tr>
+				}
+				if len(entries) == 0 {
+					<tr>
+						<td colspan="5" class="empty-state">No audit entries found.</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+		@AuditPagination(total, filters.Page, filters.PageSize, filters)
+	</div>
+}
+
+// AuditFiltersUI renders the filter controls for the audit log page.
+templ AuditFiltersUI(filters repository.AuditFilters, workspaces []repository.Workspace) {
+	<div class="section audit-filters">
+		<form hx-get="/admin/audit" hx-target="#audit-table" hx-swap="innerHTML">
+			<div class="form-row">
+				<div class="form-group">
+					<label for="workspace_id">Workspace</label>
+					<select name="workspace_id" id="workspace_id" class="form-input">
+						<option value="">All Workspaces</option>
+						for _, ws := range workspaces {
+							<option value={ ws.ID.String() }>{ ws.Name }</option>
+						}
+					</select>
+				</div>
+				<div class="form-group">
+					<label for="event_type">Event Type</label>
+					<input type="text" name="event_type" id="event_type" class="form-input" placeholder="e.g. message.sent"/>
+				</div>
+				<div class="form-group">
+					<label for="trace_id">Trace ID</label>
+					<input type="text" name="trace_id" id="trace_id" class="form-input" placeholder="Exact match"/>
+				</div>
+				<div class="form-group">
+					<label for="start">Start Date</label>
+					<input type="date" name="start" id="start" class="form-input"/>
+				</div>
+				<div class="form-group">
+					<label for="end">End Date</label>
+					<input type="date" name="end" id="end" class="form-input"/>
+				</div>
+				<div class="form-group form-actions-inline">
+					<button type="submit" class="btn btn-primary">Search</button>
+					<a href={ templ.SafeURL(buildExportURL(filters)) } class="btn btn-secondary">Export CSV</a>
+				</div>
+			</div>
+		</form>
+	</div>
+}
+
+// AuditPagination renders pagination controls.
+templ AuditPagination(total int, page int, pageSize int, filters repository.AuditFilters) {
+	<div class="pagination">
+		<span class="pagination-info">
+			if pageSize > 0 {
+				Page { page } of { (total + pageSize - 1) / pageSize } ({ total } total)
+			} else {
+				Page { page } ({ total } total)
+			}
+		</span>
+		<div class="pagination-links">
+			if page > 1 {
+				<a href={ templ.SafeURL(buildPageURL(page-1, filters)) } class="btn btn-sm" hx-get={ buildPageURL(page-1, filters) } hx-target="#audit-table" hx-swap="innerHTML">Previous</a>
+			}
+			if pageSize > 0 && page < (total+pageSize-1)/pageSize {
+				<a href={ templ.SafeURL(buildPageURL(page+1, filters)) } class="btn btn-sm" hx-get={ buildPageURL(page+1, filters) } hx-target="#audit-table" hx-swap="innerHTML">Next</a>
+			}
+		</div>
+	</div>
+}
+
+func buildPageURL(page int, filters repository.AuditFilters) string {
+	url := "/admin/audit?page=" + itoa(page) + "&pageSize=" + itoa(filters.PageSize)
+	if filters.WorkspaceID != nil {
+		url += "&workspace_id=" + filters.WorkspaceID.String()
+	}
+	if filters.TraceID != "" {
+		url += "&trace_id=" + filters.TraceID
+	}
+	if filters.EventType != "" {
+		url += "&event_type=" + filters.EventType
+	}
+	if filters.Start != nil {
+		url += "&start=" + filters.Start.Format("2006-01-02")
+	}
+	if filters.End != nil {
+		url += "&end=" + filters.End.Format("2006-01-02")
+	}
+	return url
+}
+
+func buildExportURL(filters repository.AuditFilters) string {
+	url := "/admin/audit/export?"
+	if filters.WorkspaceID != nil {
+		url += "workspace_id=" + filters.WorkspaceID.String() + "&"
+	}
+	if filters.TraceID != "" {
+		url += "trace_id=" + filters.TraceID + "&"
+	}
+	if filters.EventType != "" {
+		url += "event_type=" + filters.EventType + "&"
+	}
+	if filters.Start != nil {
+		url += "start=" + filters.Start.Format("2006-01-02") + "&"
+	}
+	if filters.End != nil {
+		url += "end=" + filters.End.Format("2006-01-02") + "&"
+	}
+	return url
+}
+
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	s := ""
+	for i > 0 {
+		s = string(rune('0'+i%10)) + s
+		i /= 10
+	}
+	return s
+}
