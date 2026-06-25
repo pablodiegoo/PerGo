@@ -68,7 +68,11 @@ Plans:
   3. When a session exceeds 1,000 queued messages, `POST /messages` returns 429/422 with a `Retry-After` header (backpressure enforced before enqueue)
   4. Duplicate publishes (same `trace_id`) are deduplicated via `Nats-Msg-Id`; a `dispatched_messages` dedup set prevents duplicate delivery on redelivery
   5. Per-session rate limiting applies staggered dispatch (1-3s random delay) for unofficial WhatsApp channels via `golang.org/x/time/rate`; message TTL (`ttl_seconds`) causes expired messages to be dropped instead of sent late
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 03-01-PLAN.md — Domain types, validation, and POST /messages handler (202 + trace + structured errors)
+- [ ] 03-02-PLAN.md — JetStream durability: WorkQueue stream, publisher with dedup, worker stub, lifecycle wiring
+- [ ] 03-03-PLAN.md — Rate limiting, backpressure, retry with backoff, TTL enforcement, delivery dedup
 
 ### Phase 4: WhatsApp Web & QR Pairing
 **Goal**: Messages dispatch end-to-end through WhatsApp Web (unofficial via whatsmeow) with multi-session management, QR pairing, and ban-risk resilience — completing the first real send path
@@ -133,7 +137,7 @@ Note: Phase 2 and Phase 3 are independent after Phase 1 and may execute in paral
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/4 | Not started | - |
 | 2. Admin Shell | 0/3 | Not started | - |
-| 3. Ingest API & Queue | 0/TBD | Not started | - |
+| 3. Ingest API & Queue | 0/3 | Not started | - |
 | 4. WhatsApp Web & QR Pairing | 0/TBD | Not started | - |
 | 5. Official Channels & Smart Fallback | 0/TBD | Not started | - |
 | 6. Webhook Delivery & DLQ | 0/TBD | Not started | - |
