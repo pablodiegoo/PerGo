@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 	"github.com/nats-io/nats.go"
@@ -29,6 +30,7 @@ import (
 	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.omnigo/internal/platform/shutdown"
 	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.omnigo/templates/pages"
 )
 
 func main() {
@@ -157,6 +159,35 @@ func main() {
 		Audit:      auditQuerier,
 	}
 	adminGroup.GET("/", dashboardHandler.Index)
+
+	// Workspace management routes
+	workspaceHandler := &admin.WorkspaceHandler{Repo: wsRepo, APIKeys: apiKeyRepo}
+	adminGroup.GET("/workspaces", workspaceHandler.List)
+	adminGroup.POST("/workspaces", workspaceHandler.Create)
+	adminGroup.GET("/workspaces/new", func(c *echo.Context) error {
+		return middleware.Render(c, http.StatusOK, pages.WorkspaceCreateForm())
+	})
+	adminGroup.GET("/workspaces/:id", workspaceHandler.Detail)
+	adminGroup.GET("/workspaces/:id/confirm-delete", workspaceHandler.ConfirmDelete)
+	adminGroup.DELETE("/workspaces/:id", workspaceHandler.Delete)
+
+	// API key management routes
+	apiKeyHandler := &admin.APIKeyHandler{Repo: apiKeyRepo, Workspaces: wsRepo}
+	adminGroup.GET("/workspaces/:id/keys", apiKeyHandler.List)
+	adminGroup.POST("/workspaces/:id/keys", apiKeyHandler.Generate)
+	adminGroup.GET("/workspaces/:id/keys/new", func(c *echo.Context) error {
+		idStr, err := echo.PathParam[string](c, "id")
+		if err != nil {
+			return c.String(http.StatusBadRequest, "invalid workspace ID")
+		}
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			return c.String(http.StatusBadRequest, "invalid workspace ID")
+		}
+		return middleware.Render(c, http.StatusOK, pages.APIKeyGenerateForm(id))
+	})
+	adminGroup.GET("/workspaces/:id/keys/:key_id/confirm-revoke", apiKeyHandler.ConfirmRevoke)
+	adminGroup.DELETE("/workspaces/:id/keys/:key_id", apiKeyHandler.Revoke)
 
 	// Static files
 	e.Static("/static", "static")

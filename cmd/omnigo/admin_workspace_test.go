@@ -13,6 +13,7 @@ import (
 
 	"github.com/pablojhp.omnigo/internal/api/handler/admin"
 	mw "github.com/pablojhp.omnigo/internal/api/middleware"
+	"github.com/pablojhp.omnigo/internal/platform/postgres"
 	"github.com/pablojhp.omnigo/internal/repository"
 )
 
@@ -25,6 +26,17 @@ func setupWorkspaceRoutes(t *testing.T) *echo.Echo {
 	if pool == nil {
 		t.Skip("PostgreSQL not available, skipping integration test")
 	}
+
+	// Run migrations to ensure schema exists
+	db, err := postgres.NewSQLDB(pool)
+	if err != nil {
+		t.Fatalf("failed to create sql.DB: %v", err)
+	}
+	// Run migrations — 001 creates the tables we need; 002 may fail on
+	// dollar-quoted PL/pgSQL in embedded SQL (goose limitation), but that's
+	// fine for tests since we only need the core schema.
+	_ = postgres.RunMigrations(db)
+	db.Close()
 
 	e := echo.New()
 	e.Use(mw.HTMXMiddleware())
@@ -90,6 +102,7 @@ func loginAndGetCookie(t *testing.T, e *echo.Echo) *http.Cookie {
 }
 
 // createTestWorkspace creates a workspace directly via the repository and returns its ID.
+// Name is made unique with a UUID suffix to avoid constraint violations across test runs.
 func createTestWorkspace(t *testing.T, e *echo.Echo, name string) uuid.UUID {
 	t.Helper()
 	pool := getTestPool(t)
@@ -97,7 +110,8 @@ func createTestWorkspace(t *testing.T, e *echo.Echo, name string) uuid.UUID {
 		t.Fatal("no pool available")
 	}
 	wsRepo := repository.NewWorkspaceRepository(pool)
-	ws, err := wsRepo.Create(t.Context(), name)
+	uniqueName := fmt.Sprintf("%s-%s", name, uuid.New().String()[:8])
+	ws, err := wsRepo.Create(t.Context(), uniqueName)
 	if err != nil {
 		t.Fatalf("failed to create test workspace: %v", err)
 	}
@@ -128,8 +142,9 @@ func TestAdminWorkspaceCreate(t *testing.T) {
 	e := setupWorkspaceRoutes(t)
 	cookie := loginAndGetCookie(t, e)
 
+	uniqueName := fmt.Sprintf("Test Workspace-%s", uuid.New().String()[:8])
 	form := url.Values{}
-	form.Set("name", "Test Workspace")
+	form.Set("name", uniqueName)
 	req := httptest.NewRequest(http.MethodPost, "/admin/workspaces", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("HX-Request", "true")
@@ -141,8 +156,8 @@ func TestAdminWorkspaceCreate(t *testing.T) {
 		t.Errorf("expected 200/201, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "Test Workspace") {
-		t.Errorf("expected response to contain workspace name 'Test Workspace', got: %s", body)
+	if !strings.Contains(body, uniqueName) {
+		t.Errorf("expected response to contain workspace name '%s', got: %s", uniqueName, body)
 	}
 }
 

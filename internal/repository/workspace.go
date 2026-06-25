@@ -87,3 +87,9 @@ func (r *WorkspaceRepository) List(ctx context.Context, limit int) ([]Workspace,
 	}
 	return workspaces, rows.Err()
 }
+
+// Delete removes a workspace by ID. Associated API keys cascade-delete via foreign key.
+func (r *WorkspaceRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM workspaces WHERE id = $1`, id)
+	return err
+}

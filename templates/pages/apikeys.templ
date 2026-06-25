@@ -1,0 +1,116 @@
+package pages
+
+import (
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.omnigo/templates/components"
+)
+
+// APIKeyRow renders a single API key table row.
+templ APIKeyRow(workspaceID uuid.UUID, key repository.APIKey) {
+	<tr>
+		<td>{ key.Name }</td>
+		<td><code>{ key.KeyPrefix }</code></td>
+		<td>
+			if key.RevokedAt != nil {
+				<span class="badge badge-danger">Revoked</span>
+			} else {
+				<span class="badge badge-success">Active</span>
+			}
+		</td>
+		<td>{ key.CreatedAt.Format("2006-01-02 15:04") }</td>
+		<td>
+			if key.RevokedAt == nil {
+				<button
+					class="btn btn-danger btn-sm"
+					hx-get={ fmt.Sprintf("/admin/workspaces/%s/keys/%s/confirm-revoke", workspaceID, key.ID) }
+					hx-target="body"
+					hx-swap="beforeend"
+				>
+					Revoke
+				</button>
+			}
+		</td>
+	</tr>
+}
+
+// APIKeyListFragment renders the API key list as an HTMX fragment.
+templ APIKeyListFragment(workspaceID uuid.UUID, keys []repository.APIKey) {
+	<table class="table">
+		<thead>
+			<tr>
+				<th>Name</th>
+				<th>Prefix</th>
+				<th>Status</th>
+				<th>Created</th>
+				<th>Actions</th>
+			</tr>
+		</thead>
+		<tbody id="api-key-list-body">
+			for _, k := range keys {
+				@APIKeyRow(workspaceID, k)
+			}
+			if len(keys) == 0 {
+				<tr>
+					<td colspan="5" class="empty-state">No API keys yet.</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}
+
+// APIKeyGenerateForm renders the generate API key form.
+templ APIKeyGenerateForm(workspaceID uuid.UUID) {
+	<div class="section">
+		<h2>Generate API Key</h2>
+		<form
+			hx-post={ fmt.Sprintf("/admin/workspaces/%s/keys", workspaceID) }
+			hx-target="#api-key-list-body"
+			hx-swap="afterbegin"
+		>
+			<div class="form-group">
+				<label for="key-name">Key Name</label>
+				<input type="text" id="key-name" name="name" required class="form-input"/>
+			</div>
+			<div class="form-actions">
+				<button type="submit" class="btn btn-primary">Generate</button>
+				<button
+					type="button"
+					class="btn btn-secondary"
+					onclick="this.closest('.section').remove()"
+				>
+					Cancel
+				</button>
+			</div>
+		</form>
+	</div>
+}
+
+// APIKeyRevealed displays a newly generated API key (shown ONCE only).
+templ APIKeyRevealed(keyPlaintext string, prefix string, name string) {
+	<div class="alert alert-warning">
+		<h3>API Key Generated</h3>
+		<p>Your API key <strong>{ name }</strong> has been generated. <strong>Copy it now — it will not be shown again.</strong></p>
+		<div class="key-display">
+			<code class="api-key-plaintext">{ keyPlaintext }</code>
+			<button
+				class="btn btn-secondary btn-sm"
+				onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent).then(() => this.textContent = 'Copied!')"
+			>
+				Copy
+			</button>
+		</div>
+		<p class="key-prefix">Prefix: <code>{ prefix }</code></p>
+	</div>
+}
+
+// APIKeyRevokeConfirm renders a revoke confirmation modal for an API key.
+templ APIKeyRevokeConfirm(workspaceID uuid.UUID, key repository.APIKey) {
+	@components.ConfirmModal(
+		"Revoke API Key",
+		fmt.Sprintf("Are you sure you want to revoke API key '%s'? This action cannot be undone.", key.Name),
+		fmt.Sprintf("/admin/workspaces/%s/keys/%s", workspaceID, key.ID),
+	)
+}
