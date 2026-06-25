@@ -33,7 +33,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. Every HTTP request carries a Trace-ID propagated through context, structured slog logs, and audit log rows — a single request's trace can be followed end-to-end across all three surfaces
   4. Credentials and session tokens stored in PostgreSQL are AES-256-GCM encrypted with per-row nonces and `key_id`/`key_version` columns for rotation; API keys are SHA-256 hashed with cleartext prefix for lookup
   5. Every database query is scoped to `workspace_id` via enforced tenant-context convention (context carries workspace, queries extract it); the `audit_logs` table is range-partitioned by `created_at` and written via a buffered batch writer (bounded channel + background workers via `pgx.CopyFrom`)
-**Plans**: TBD
+**Plans:** 4 plans
+Plans:
+- [ ] 01-01-PLAN.md — Server bootstrap: scaffold, Docker Compose, Echo v5, pgxpool, goose migrations, health endpoints
+- [ ] 01-02-PLAN.md — Identity & auth: workspace/API key CRUD, SHA-256 hashing, AES-256-GCM encryption, tenant context, auth middleware
+- [ ] 01-03-PLAN.md — Audit logging: trace middleware, slog integration, partitioned audit_logs, buffered batch writer
+- [ ] 01-04-PLAN.md — Observability & shutdown: pprof, expvar, graceful shutdown orchestrator
 
 ### Phase 2: Admin Shell
 **Goal**: Operators can manage workspaces, API keys, and review audit logs through a server-rendered admin panel built on Echo + Templ + HTMX
@@ -121,7 +126,7 @@ Note: Phase 2 and Phase 3 are independent after Phase 1 and may execute in paral
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
+| 1. Foundation | 0/4 | Not started | - |
 | 2. Admin Shell | 0/TBD | Not started | - |
 | 3. Ingest API & Queue | 0/TBD | Not started | - |
 | 4. WhatsApp Web & QR Pairing | 0/TBD | Not started | - |
