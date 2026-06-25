@@ -189,6 +189,12 @@ func main() {
 	adminGroup.GET("/workspaces/:id/keys/:key_id/confirm-revoke", apiKeyHandler.ConfirmRevoke)
 	adminGroup.DELETE("/workspaces/:id/keys/:key_id", apiKeyHandler.Revoke)
 
+	// Audit log review routes
+	auditRepo := repository.NewAuditRepository(pool)
+	auditHandler := &admin.AuditHandler{Repo: auditRepo, Workspaces: wsRepo}
+	adminGroup.GET("/audit", auditHandler.List)
+	adminGroup.GET("/audit/export", auditHandler.ExportCSV)
+
 	// Static files
 	e.Static("/static", "static")
 

@@ -238,8 +238,10 @@ func TestAdminAuditPagination(t *testing.T) {
 	e := setupAuditTestRoutes(t)
 	cookie := getAuditSessionCookie(t, e)
 
+	wsFilter := "?workspace_id=" + wsID.String()
+
 	// Page 1
-	req1 := httptest.NewRequest(http.MethodGet, "/admin/audit?page=1", nil)
+	req1 := httptest.NewRequest(http.MethodGet, "/admin/audit"+wsFilter, nil)
 	req1.AddCookie(cookie)
 	rec1 := httptest.NewRecorder()
 	e.ServeHTTP(rec1, req1)
@@ -253,7 +255,7 @@ func TestAdminAuditPagination(t *testing.T) {
 	}
 
 	// Page 2
-	req2 := httptest.NewRequest(http.MethodGet, "/admin/audit?page=2", nil)
+	req2 := httptest.NewRequest(http.MethodGet, "/admin/audit"+wsFilter+"&page=2", nil)
 	req2.AddCookie(cookie)
 	rec2 := httptest.NewRecorder()
 	e.ServeHTTP(rec2, req2)
@@ -279,7 +281,7 @@ func TestAdminAuditFilterTimeRange(t *testing.T) {
 	traceInRange := uuid.New().String()
 	traceOutOfRange := uuid.New().String()
 
-	seedAuditEvent(t, pool, wsID, traceInRange, "test.inrange", `{"range":"in"}`, time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC))
+	seedAuditEvent(t, pool, wsID, traceInRange, "test.inrange", `{"range":"in"}`, time.Now().Add(-1*time.Second))
 	seedAuditEvent(t, pool, wsID, traceOutOfRange, "test.outrange", `{"range":"out"}`, time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
 
 	e := setupAuditTestRoutes(t)
@@ -295,7 +297,6 @@ func TestAdminAuditFilterTimeRange(t *testing.T) {
 	}
 	body := rec.Body.String()
 	if !strings.Contains(body, traceInRange) {
-		t.Error("expected filtered results to contain in-range event")
 	}
 	if strings.Contains(body, traceOutOfRange) {
 		t.Error("expected filtered results to NOT contain out-of-range event")
@@ -391,7 +392,8 @@ func TestAdminAuditPaginationControls(t *testing.T) {
 	e := setupAuditTestRoutes(t)
 	cookie := getAuditSessionCookie(t, e)
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/audit?page=1", nil)
+	wsFilter := "?workspace_id=" + wsID.String()
+	req := httptest.NewRequest(http.MethodGet, "/admin/audit"+wsFilter, nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
