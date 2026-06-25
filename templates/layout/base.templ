@@ -1,0 +1,22 @@
+package layout
+
+templ Base(title string, content templ.Component) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ title } - OmniGo Admin</title>
+			<link rel="stylesheet" href="/static/css/admin.css"/>
+			<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"></script>
+		</head>
+		<body>
+			<div class="layout">
+				@Sidebar()
+				<main class="content">
+					@content
+				</main>
+			</div>
+		</body>
+	</html>
+}

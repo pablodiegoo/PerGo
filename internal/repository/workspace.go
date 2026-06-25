@@ -52,3 +52,38 @@ func (r *WorkspaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*Works
 	}
 	return &ws, nil
 }
+
+// Count returns the total number of workspaces.
+func (r *WorkspaceRepository) Count(ctx context.Context) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM workspaces`).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// List returns all workspaces ordered by created_at descending.
+func (r *WorkspaceRepository) List(ctx context.Context, limit int) ([]Workspace, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, name, created_at, updated_at FROM workspaces ORDER BY created_at DESC LIMIT $1`,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var workspaces []Workspace
+	for rows.Next() {
+		var ws Workspace
+		if err := rows.Scan(&ws.ID, &ws.Name, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
+			return nil, err
+		}
+		workspaces = append(workspaces, ws)
+	}
+	return workspaces, rows.Err()
+}

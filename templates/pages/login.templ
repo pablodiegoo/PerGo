@@ -1,0 +1,22 @@
+package pages
+
+templ Login(errorMsg string) {
+	<div class="login-container">
+		<div class="login-card">
+			<h1>OmniGo Admin</h1>
+			<p>Sign in to the operator console</p>
+			if errorMsg != "" {
+				<div class="alert alert-error">
+					{ errorMsg }
+				</div>
+			}
+			<form method="POST" action="/admin/login">
+				<div class="form-group">
+					<label for="password">Password</label>
+					<input type="password" id="password" name="password" required autocomplete="current-password"/>
+				</div>
+				<button type="submit" class="btn btn-primary">Sign In</button>
+			</form>
+		</div>
+	</div>
+}

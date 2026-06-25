@@ -1,0 +1,25 @@
+package layout
+
+templ Sidebar() {
+	<nav class="sidebar">
+		<div class="sidebar-header">
+			<h2>OmniGo</h2>
+		</div>
+		<ul class="sidebar-nav">
+			<li>
+				<a href="/admin/" class="nav-item">Dashboard</a>
+			</li>
+			<li>
+				<a href="/admin/workspaces" class="nav-item">Workspaces</a>
+			</li>
+			<li>
+				<a href="/admin/audit" class="nav-item">Audit Logs</a>
+			</li>
+		</ul>
+		<div class="sidebar-footer">
+			<form method="POST" action="/admin/logout">
+				<button type="submit" class="nav-item logout-btn">Logout</button>
+			</form>
+		</div>
+	</nav>
+}

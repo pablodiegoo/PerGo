@@ -1,0 +1,31 @@
+package pages
+
+import "fmt"
+
+templ Dashboard(workspaceCount int, recentAuditCount int) {
+	<div class="dashboard">
+		<h1>Dashboard</h1>
+		<div class="stats-grid">
+			<div class="stat-card">
+				<div class="stat-value">{ fmt.Sprintf("%d", workspaceCount) }</div>
+				<div class="stat-label">Workspaces</div>
+			</div>
+			<div class="stat-card">
+				<div class="stat-value">{ fmt.Sprintf("%d", recentAuditCount) }</div>
+				<div class="stat-label">Recent Audit Entries</div>
+			</div>
+			<div class="stat-card">
+				<div class="stat-value status-ok">Healthy</div>
+				<div class="stat-label">System Health</div>
+			</div>
+		</div>
+		<div class="section">
+			<h2>Recent Activity</h2>
+			if recentAuditCount == 0 {
+				<p class="empty-state">No recent audit entries.</p>
+			} else {
+				<p>{ fmt.Sprintf("%d audit entries in the log.", recentAuditCount) }</p>
+			}
+		</div>
+	</div>
+}

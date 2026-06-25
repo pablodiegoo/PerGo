@@ -3,51 +3,89 @@ package main
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
+	"github.com/pablojhp.omnigo/internal/api/handler/admin"
 	mw "github.com/pablojhp.omnigo/internal/api/middleware"
+	"github.com/pablojhp.omnigo/internal/platform/audit"
+	"github.com/pablojhp.omnigo/internal/platform/postgres"
+	"github.com/pablojhp.omnigo/internal/repository"
 )
 
-// stubAdminRoutes sets up a minimal Echo instance with session middleware and
-// admin routes for testing. The handlers will fail (RED phase) until Task 2
-// implements the real versions.
-func stubAdminRoutes(t *testing.T) *echo.Echo {
+// setupTestRoutes creates a real Echo instance with admin routes wired up.
+func setupTestRoutes(t *testing.T) *echo.Echo {
 	t.Helper()
 	t.Setenv("OMNIGO_ADMIN_PASSWORD", "testpass123")
 
 	e := echo.New()
-
-	// HTMX detection middleware
 	e.Use(mw.HTMXMiddleware())
 
-	admin := e.Group("/admin")
-	admin.Use(mw.SessionAuthMiddleware())
+	// Public admin routes (no session auth)
+	adminPublic := e.Group("/admin")
+	adminPublic.GET("/login", func(c *echo.Context) error {
+		return admin.LoginPage(c, false)
+	})
+	adminPublic.POST("/login", func(c *echo.Context) error {
+		// Use a nil wsRepo for login tests — password check doesn't need DB
+		return admin.LoginPost(c, nil)
+	})
+	adminPublic.POST("/logout", func(c *echo.Context) error {
+		return admin.Logout(c)
+	})
 
-	// Stub login handler — always fails (RED phase)
-	admin.GET("/login", func(c *echo.Context) error {
-		return c.String(http.StatusNotImplemented, "login not implemented")
-	})
-	admin.POST("/login", func(c *echo.Context) error {
-		return c.String(http.StatusNotImplemented, "login post not implemented")
-	})
-	admin.POST("/logout", func(c *echo.Context) error {
-		return c.String(http.StatusNotImplemented, "logout not implemented")
-	})
+	// Protected admin routes (session auth required)
+	adminGroup := e.Group("/admin")
+	adminGroup.Use(mw.SessionAuthMiddleware())
 
-	// Stub dashboard handler — always fails (RED phase)
-	admin.GET("/", func(c *echo.Context) error {
-		return c.String(http.StatusNotImplemented, "dashboard not implemented")
-	})
+	// Dashboard handler with optional DB dependencies
+	pool := getTestPool(t)
+	var dashboardHandler *admin.DashboardHandler
+	if pool != nil {
+		dashboardHandler = &admin.DashboardHandler{
+			Pool:       pool,
+			Workspaces: repository.NewWorkspaceRepository(pool),
+			Audit:      audit.NewQuerier(pool),
+		}
+	} else {
+		// No DB available — use a handler that returns minimal HTML
+		dashboardHandler = &admin.DashboardHandler{
+			Workspaces: nil,
+			Audit:      nil,
+		}
+	}
+	adminGroup.GET("/", dashboardHandler.Index)
+
+	// Static files
+	staticDir := "../../static"
+	if _, err := os.Stat(staticDir); err == nil {
+		e.Static("/static", staticDir)
+	}
 
 	return e
 }
 
+func getTestPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	dsn := testDSN()
+	pool, err := postgres.NewPool(t.Context(), dsn)
+	if err != nil {
+		return nil
+	}
+	if err := pool.Ping(t.Context()); err != nil {
+		pool.Close()
+		return nil
+	}
+	return pool
+}
+
 // Test 1: GET /admin/ without session cookie returns 302 redirect to /admin/login
 func TestAdminRedirectUnauthenticated(t *testing.T) {
-	e := stubAdminRoutes(t)
+	e := setupTestRoutes(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/", nil)
 	rec := httptest.NewRecorder()
@@ -64,7 +102,7 @@ func TestAdminRedirectUnauthenticated(t *testing.T) {
 
 // Test 2: GET /admin/login returns 200 with login form containing password input
 func TestAdminLoginPage(t *testing.T) {
-	e := stubAdminRoutes(t)
+	e := setupTestRoutes(t)
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/login", nil)
 	rec := httptest.NewRecorder()
@@ -84,7 +122,7 @@ func TestAdminLoginPage(t *testing.T) {
 
 // Test 3: POST /admin/login with correct password returns 302 redirect to /admin/ with session cookie set
 func TestAdminLoginSuccess(t *testing.T) {
-	e := stubAdminRoutes(t)
+	e := setupTestRoutes(t)
 
 	form := strings.NewReader("password=testpass123")
 	req := httptest.NewRequest(http.MethodPost, "/admin/login", form)
@@ -122,7 +160,7 @@ func TestAdminLoginSuccess(t *testing.T) {
 
 // Test 4: POST /admin/login with wrong password returns 401 with error message
 func TestAdminLoginWrongPassword(t *testing.T) {
-	e := stubAdminRoutes(t)
+	e := setupTestRoutes(t)
 
 	form := strings.NewReader("password=wrongpassword")
 	req := httptest.NewRequest(http.MethodPost, "/admin/login", form)
@@ -141,7 +179,7 @@ func TestAdminLoginWrongPassword(t *testing.T) {
 
 // Test 5: GET /admin/ with valid session cookie returns 200 with sidebar navigation
 func TestAdminDashboardAuthenticated(t *testing.T) {
-	e := stubAdminRoutes(t)
+	e := setupTestRoutes(t)
 
 	// First, log in to get a session cookie
 	form := strings.NewReader("password=testpass123")
@@ -183,7 +221,7 @@ func TestAdminDashboardAuthenticated(t *testing.T) {
 
 // Test 6: GET /admin/ with valid session returns dashboard content (workspace count, recent audit section)
 func TestAdminDashboardContent(t *testing.T) {
-	e := stubAdminRoutes(t)
+	e := setupTestRoutes(t)
 
 	// Log in to get session cookie
 	form := strings.NewReader("password=testpass123")
@@ -224,7 +262,7 @@ func TestAdminDashboardContent(t *testing.T) {
 
 // Test 7: GET /admin/ with HX-Request header returns HTML fragment (no full page layout)
 func TestAdminHTMXFragment(t *testing.T) {
-	e := stubAdminRoutes(t)
+	e := setupTestRoutes(t)
 
 	// Log in to get session cookie
 	form := strings.NewReader("password=testpass123")

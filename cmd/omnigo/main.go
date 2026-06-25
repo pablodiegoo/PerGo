@@ -19,6 +19,7 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/pablojhp.omnigo/internal/api/handler"
+	"github.com/pablojhp.omnigo/internal/api/handler/admin"
 	"github.com/pablojhp.omnigo/internal/api/middleware"
 	"github.com/pablojhp.omnigo/internal/config"
 	"github.com/pablojhp.omnigo/internal/platform/audit"
@@ -126,6 +127,39 @@ func main() {
 		NATS: &natsConn{nc: nc},
 	}
 	healthHandler.RegisterRoutes(e)
+
+	// --- Admin panel routes ---
+	// Repositories for admin dashboard
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	auditQuerier := audit.NewQuerier(pool)
+
+	// Public admin routes (no session auth required)
+	adminPublic := e.Group("/admin")
+	adminPublic.GET("/login", func(c *echo.Context) error {
+		return admin.LoginPage(c, false)
+	})
+	adminPublic.POST("/login", func(c *echo.Context) error {
+		return admin.LoginPost(c, wsRepo)
+	})
+	adminPublic.POST("/logout", func(c *echo.Context) error {
+		return admin.Logout(c)
+	})
+
+	// Protected admin routes (session auth required)
+	adminGroup := e.Group("/admin")
+	adminGroup.Use(middleware.HTMXMiddleware())
+	adminGroup.Use(middleware.SessionAuthMiddleware())
+
+	// Admin dashboard
+	dashboardHandler := &admin.DashboardHandler{
+		Pool:       pool,
+		Workspaces: wsRepo,
+		Audit:      auditQuerier,
+	}
+	adminGroup.GET("/", dashboardHandler.Index)
+
+	// Static files
+	e.Static("/static", "static")
 
 	// Test route: GET /api/v1/me (returns workspace_id from auth context)
 	e.GET("/api/v1/me", func(c *echo.Context) error {
