@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
@@ -15,9 +16,9 @@ import (
 )
 
 // Publisher defines the interface for publishing messages to a queue.
-// Phase 2 will implement this with JetStream.
+// JetStream implementation provides dedup via Nats-Msg-Id = traceID.
 type Publisher interface {
-	Publish(ctx context.Context, subject string, data []byte) error
+	Publish(ctx context.Context, subject string, data []byte, traceID string) error
 }
 
 // MessageHandler holds dependencies for the POST /messages endpoint.
@@ -61,6 +62,25 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 
 	// Queue status
 	queuedAt := time.Now().UTC()
+
+	// Publish to JetStream (if publisher is wired)
+	if h.Publisher != nil {
+		payload, err := json.Marshal(req)
+		if err != nil {
+			slog.Error("failed to marshal message", "error", err, "trace_id", traceID)
+			return c.JSON(http.StatusInternalServerError, domain.ErrorResponse{
+				Code:    "internal_error",
+				Message: "failed to process message",
+			})
+		}
+		if err := h.Publisher.Publish(c.Request().Context(), "messages.outbound", payload, traceID); err != nil {
+			slog.Error("failed to publish message", "error", err, "trace_id", traceID)
+			return c.JSON(http.StatusInternalServerError, domain.ErrorResponse{
+				Code:    "publish_failed",
+				Message: "failed to enqueue message",
+			})
+		}
+	}
 
 	// Log the ingestion event
 	slog.Info("message ingested",

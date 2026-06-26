@@ -28,6 +28,7 @@ import (
 	"github.com/pablojhp.omnigo/internal/platform/obs"
 	"github.com/pablojhp.omnigo/internal/platform/postgres"
 	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.omnigo/internal/platform/queue"
 	"github.com/pablojhp.omnigo/internal/platform/shutdown"
 	"github.com/pablojhp.omnigo/internal/repository"
 	"github.com/pablojhp.omnigo/templates/pages"
@@ -72,6 +73,23 @@ func main() {
 	defer nc.Close()
 	slog.Info("connected to NATS", "url", cfg.NATSUrl)
 
+	// --- JetStream ---
+	stream, err := queue.EnsureStream(ctx, nc)
+	if err != nil {
+		slog.Error("failed to create JetStream stream", "error", err)
+		os.Exit(1)
+	}
+	publisher := queue.NewJetStreamPublisher(nc)
+
+	// --- Worker (reads from JetStream, logs dispatched messages) ---
+	consumer, err := stream.Consumer(ctx, "worker-1")
+	if err != nil {
+		slog.Error("failed to create JetStream consumer", "error", err)
+		os.Exit(1)
+	}
+	worker := queue.NewWorker(ctx, consumer)
+	slog.Info("message worker started", "consumer", "worker-1")
+
 	// --- Audit writer ---
 	auditWriter := audit.NewWriter(pool, 5000, 2)
 
@@ -83,7 +101,7 @@ func main() {
 	orch := shutdown.NewOrchestrator()
 
 	// Register cleanup in reverse order of startup.
-	// Shutdown order: Echo → debug → audit → NATS → pgxpool → sqlDB
+	// Shutdown order: Echo → debug → audit → worker → NATS → pgxpool → sqlDB
 	orch.Register(func() error {
 		slog.Info("closing sql.DB")
 		return db.Close()
@@ -96,6 +114,12 @@ func main() {
 	orch.Register(func() error {
 		slog.Info("closing NATS connection")
 		nc.Close()
+		return nil
+	})
+	// Worker shutdown runs before NATS close — drains the consumer
+	orch.Register(func() error {
+		slog.Info("stopping message worker")
+		worker.Stop()
 		return nil
 	})
 	orch.Register(func() error {
@@ -129,6 +153,12 @@ func main() {
 		NATS: &natsConn{nc: nc},
 	}
 	healthHandler.RegisterRoutes(e)
+
+	// --- Message handler (POST /messages) ---
+	messageHandler := &handler.MessageHandler{
+		Publisher: publisher,
+	}
+	messageHandler.RegisterRoutes(e)
 
 	// --- Admin panel routes ---
 	// Repositories for admin dashboard
