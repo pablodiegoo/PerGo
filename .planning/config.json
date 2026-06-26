@@ -1,26 +1,17 @@
 {
-  "runtime": "opencode",
-  "model_profile": "budget",
+  "runtime": "pi",
+  "model_profile": "adaptive",
   "model_profile_overrides": {
-    "opencode": {
-      "opus": "opencode-go/glm-5.2",
-      "sonnet": "opencode-go/mimo-v2.5",
-      "haiku": "opencode-go/deepseek-v4-flash"
-    },
-    "gsd-planner": "opencode-go/glm-5.2",
-    "gsd-roadmapper": "opencode-go/glm-5.2",
-    "gsd-pattern-mapper": "opencode-go/mimo-v2.5",
-    "gsd-phase-researcher": "opencode-go/mimo-v2.5",
-    "gsd-project-researcher": "opencode-go/mimo-v2.5",
-    "gsd-codebase-mapper": "opencode-go/mimo-v2.5",
-    "gsd-ui-researcher": "opencode-go/mimo-v2.5",
-    "gsd-executor": "opencode-go/mimo-v2.5",
-    "gsd-debugger": "opencode-go/mimo-v2.5",
-    "gsd-doc-writer": "opencode-go/mimo-v2.5",
-    "gsd-verifier": "opencode-go/deepseek-v4-flash",
-    "gsd-plan-checker": "opencode-go/deepseek-v4-flash",
-    "gsd-nyquist-auditor": "opencode-go/deepseek-v4-flash",
-    "gsd-ui-checker": "opencode-go/deepseek-v4-flash"
+    "pi": {
+      "opus": "zai/glm-5.2",
+      "sonnet": "zai/glm-5-turbo",
+      "haiku": "opencode-go/mimo-v2.5"
+    }
+  },
+  "model_overrides": {
+    "gsd-executor": "zai/glm-5.1",
+    "gsd-plan-checker": "opencode-go/minimax-v3",
+    "gsd-nyquist-auditor": "opencode-go/minimax-v3"
   },
   "commit_docs": true,
   "parallelization": true,
