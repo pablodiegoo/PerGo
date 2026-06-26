@@ -9,23 +9,32 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/google/uuid"
 	"github.com/pablojhp.omnigo/internal/channel"
 	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.omnigo/internal/repository"
 )
+
+// WindowChecker defines the interface for checking if a customer service window is open.
+type WindowChecker interface {
+	IsWindowOpen(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string) (bool, error)
+}
 
 // WABAAdapter implements channel.Dispatcher for WhatsApp Cloud (WABA) REST API.
 type WABAAdapter struct {
 	credentialsRepo *repository.CredentialsRepository
 	client          *http.Client
 	baseURL         string
+	windowChecker   WindowChecker
 }
 
 // WABAConfig represents the WABA credentials JSON payload.
 type WABAConfig struct {
 	PhoneNumberID string `json:"phone_number_id"`
 	Token         string `json:"token"`
+	WABAAccountID string `json:"waba_account_id"`
 }
+
 
 type wabaMessageRequest struct {
 	MessagingProduct string        `json:"messaging_product"`
@@ -73,7 +82,7 @@ type MetaErrorResponse struct {
 }
 
 // NewWABAAdapter creates a new WABAAdapter.
-func NewWABAAdapter(credentialsRepo *repository.CredentialsRepository, client *http.Client) *WABAAdapter {
+func NewWABAAdapter(credentialsRepo *repository.CredentialsRepository, client *http.Client, windowChecker WindowChecker) *WABAAdapter {
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -81,6 +90,7 @@ func NewWABAAdapter(credentialsRepo *repository.CredentialsRepository, client *h
 		credentialsRepo: credentialsRepo,
 		client:          client,
 		baseURL:         "https://graph.facebook.com/v18.0",
+		windowChecker:   windowChecker,
 	}
 }
 
@@ -122,6 +132,18 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 	templateName := m.TemplateName
 	if templateName == "" && m.Metadata != nil {
 		templateName = m.Metadata["template_name"]
+	}
+
+	if templateName == "" {
+		if a.windowChecker != nil {
+			open, err := a.windowChecker.IsWindowOpen(ctx, workspaceID, m.To, "whatsapp_cloud")
+			if err != nil {
+				return err
+			}
+			if !open {
+				return channel.NewTerminalError(errors.New("customer service window expired"))
+			}
+		}
 	}
 
 	if templateName != "" {

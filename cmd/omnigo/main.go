@@ -109,9 +109,11 @@ func main() {
 		os.Exit(1)
 	}
 	credentialsRepo := repository.NewCredentialsRepository(pool, encryptor)
+	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
+	windowChecker := session.NewWindowChecker(recipientSessionRepo)
 
 	// --- REST Adapters ---
-	wabaAdapter := whatsapp.NewWABAAdapter(credentialsRepo, nil)
+	wabaAdapter := whatsapp.NewWABAAdapter(credentialsRepo, nil, windowChecker)
 	telegramAdapter := telegram.NewTelegramAdapter(credentialsRepo, nil)
 
 	// --- Worker (reads from JetStream, dispatches with retry/TTL/dedup) ---

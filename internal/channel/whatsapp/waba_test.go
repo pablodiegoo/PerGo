@@ -127,7 +127,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil)
+		adapter := NewWABAAdapter(credsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -166,7 +166,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil)
+		adapter := NewWABAAdapter(credsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -210,7 +210,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil)
+		adapter := NewWABAAdapter(credsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -240,7 +240,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil)
+		adapter := NewWABAAdapter(credsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
 		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
@@ -259,7 +259,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil)
+		adapter := NewWABAAdapter(credsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
 		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
@@ -278,7 +278,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil)
+		adapter := NewWABAAdapter(credsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
 		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
@@ -289,4 +289,46 @@ func TestWABADispatch(t *testing.T) {
 			t.Errorf("expected error to be transient, got terminal: %v", err)
 		}
 	})
+
+	t.Run("Local Window Checker - Expired/Missing", func(t *testing.T) {
+		mockChecker := &mockWABAWindowChecker{open: false}
+		adapter := NewWABAAdapter(credsRepo, nil, mockChecker)
+
+		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !channel.IsTerminal(err) {
+			t.Fatalf("expected terminal error, got: %v", err)
+		}
+		if err.Error() != "customer service window expired" {
+			t.Errorf("expected error message 'customer service window expired', got: %v", err)
+		}
+	})
+
+	t.Run("Local Window Checker - Open", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.HBgL..."}]}`))
+		}))
+		defer server.Close()
+
+		mockChecker := &mockWABAWindowChecker{open: true}
+		adapter := NewWABAAdapter(credsRepo, nil, mockChecker)
+		adapter.SetBaseURL(server.URL)
+
+		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
+		if err != nil {
+			t.Fatalf("expected nil error, got: %v", err)
+		}
+	})
+}
+
+type mockWABAWindowChecker struct {
+	open bool
+	err  error
+}
+
+func (m *mockWABAWindowChecker) IsWindowOpen(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channelName string) (bool, error) {
+	return m.open, m.err
 }
