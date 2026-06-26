@@ -6,6 +6,11 @@
       "opus": "zai/glm-5.2",
       "sonnet": "opencode-go/minimax-v3",
       "haiku": "opencode-go/mimo-v2.5"
+    },
+    "antigravity": {
+      "opus": "claude-opus-4-8",
+      "sonnet": "gemini-3.5-flash",
+      "haiku": "gemini-2.5-flash-lite"
     }
   },
   "model_overrides": {
