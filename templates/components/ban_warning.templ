@@ -1,0 +1,13 @@
+package components
+
+// BanWarning renders the WhatsApp Web unofficial API warning banner.
+// Displayed prominently during QR pairing to inform operators of risks.
+templ BanWarning() {
+	<div class="ban-warning">
+		<span class="ban-warning-icon">⚠️</span>
+		<span class="ban-warning-text">
+			<strong>WhatsApp Web is unofficial</strong> — pairing business numbers risks account suspension.
+			Use test numbers only.
+		</span>
+	</div>
+}

@@ -1,0 +1,144 @@
+package pages
+
+import (
+	"github.com/pablojhp.omnigo/internal/session"
+	"github.com/pablojhp.omnigo/templates/components"
+	"github.com/pablojhp.omnigo/templates/layout"
+)
+
+// DeviceListPage renders the full device management page with layout.
+templ DeviceListPage(devices []*session.Device) {
+	@layout.Base("Devices", DeviceListContent(devices))
+}
+
+// DeviceListContent renders the device list content (HTMX fragment or full page body).
+templ DeviceListContent(devices []*session.Device) {
+	<div class="page-header">
+		<h1>Devices</h1>
+		<button
+			class="btn btn-primary"
+			hx-get="/admin/devices/pair-form"
+			hx-target="#pair-form-area"
+			hx-swap="innerHTML"
+		>
+			Link Device
+		</button>
+	</div>
+	<div id="pair-form-area"></div>
+	<div class="section">
+		<h2>Active Devices</h2>
+		<table class="table" id="device-table">
+			<thead>
+				<tr>
+					<th>JID</th>
+					<th>Phone</th>
+					<th>Status</th>
+					<th>Workspace</th>
+					<th>Actions</th>
+				</tr>
+			</thead>
+			<tbody id="device-list-body">
+				for _, d := range devices {
+					@components.DeviceCard(d)
+				}
+				if len(devices) == 0 {
+					<tr>
+						<td colspan="5" class="empty-state">No devices linked. Click "Link Device" to pair a WhatsApp account.</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+}
+
+// PairForm renders the QR pairing initiation form.
+// Triggered by the "Link Device" button via HTMX.
+templ PairForm() {
+	<div class="pair-form card">
+		<h3>Link WhatsApp Device</h3>
+		@components.BanWarning()
+		<form
+			hx-post="/admin/devices/pair"
+			hx-target="#qr-area"
+			hx-swap="innerHTML"
+		>
+			<div class="form-group">
+				<label for="phone">Phone Number</label>
+				<input
+					id="phone"
+					name="phone"
+					type="tel"
+					class="form-control"
+					placeholder="+5511999999999"
+					required
+				/>
+			</div>
+			<button type="submit" class="btn btn-primary">Start Pairing</button>
+		</form>
+		<div id="qr-area" class="qr-area"></div>
+	</div>
+}
+
+// QRFragment renders the current QR code state as an HTMX-refreshable fragment.
+// code: raw QR code string (empty if not yet available)
+// phone: phone number being paired
+// status: "pending", "paired", "error"
+// message: human-readable status message
+templ QRFragment(code string, phone string, status string, message string) {
+	<div class="qr-fragment" id="qr-area">
+		@components.BanWarning()
+		<p class="qr-status">{ message }</p>
+		switch status {
+			case "pending":
+				if code != "" {
+					<div class="qr-container">
+						<p class="qr-hint">Scan this code with WhatsApp on your phone:</p>
+						<div
+							class="qr-code-raw"
+							data-qr={ code }
+							aria-label="QR Code"
+						>
+							<p class="qr-code-text"><code>{ code }</code></p>
+						</div>
+					</div>
+				} else {
+					<div class="qr-loading">
+						<div class="spinner"></div>
+						<p>Generating QR code...</p>
+					</div>
+				}
+				<div
+					hx-get={ "/admin/devices/qr?phone=" + phone }
+					hx-trigger="every 5s"
+					hx-target="#qr-area"
+					hx-swap="outerHTML"
+				></div>
+			case "paired":
+				<div class="qr-success">
+					<p class="success-icon">✅</p>
+					<p>Device paired successfully!</p>
+					<button
+						class="btn btn-primary"
+						hx-get="/admin/devices"
+						hx-target="main"
+						hx-swap="innerHTML"
+					>
+						View Devices
+					</button>
+				</div>
+			case "error":
+				<div class="qr-error">
+					<p class="error-icon">❌</p>
+					<p>Pairing failed. Please try again.</p>
+					<button
+						class="btn btn-secondary"
+						hx-get="/admin/devices/pair-form"
+						hx-target="#pair-form-area"
+						hx-swap="innerHTML"
+					>
+						Try Again
+					</button>
+				</div>
+		}
+	</div>
+}
