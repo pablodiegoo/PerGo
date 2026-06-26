@@ -32,6 +32,7 @@ import (
 	"github.com/pablojhp.omnigo/internal/platform/queue"
 	"github.com/pablojhp.omnigo/internal/platform/shutdown"
 	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.omnigo/internal/session"
 	"github.com/pablojhp.omnigo/templates/pages"
 )
 
@@ -93,7 +94,10 @@ func main() {
 	queueDepth := middleware.NewQueueDepthTracker()
 
 	// --- Worker (reads from JetStream, dispatches with retry/TTL/dedup) ---
-	dispatcherRegistry := channel.NewRegistry(nil) // populated by session manager in Phase 4
+	sessionRegistry := session.NewActiveSession()
+	dispatcherRegistry := channel.NewRegistry(nil) // populated by session manager
+	deviceRepo := session.NewDeviceRepository(pool)
+	sessionManager := session.NewManager(db, deviceRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000")
 	worker := queue.NewWorker(ctx, consumer, 5, 60*time.Second, dispatcherRegistry)
 	slog.Info("message worker started", "consumer", "worker-1")
 	slog.Info("rate limiter configured", "rps", 10, "burst", 10)
@@ -129,6 +133,12 @@ func main() {
 	orch.Register(func() error {
 		slog.Info("stopping message worker")
 		worker.Stop()
+		return nil
+	})
+	// Session manager stops all device sessions before worker drains
+	orch.Register(func() error {
+		slog.Info("stopping all WhatsApp sessions")
+		sessionManager.StopAll()
 		return nil
 	})
 	orch.Register(func() error {
