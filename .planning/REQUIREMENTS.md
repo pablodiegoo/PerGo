@@ -9,11 +9,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### API
 
-- [ ] **API-01**: Unified `POST /messages` endpoint accepts standard JSON payload, validates fields, generates Trace-ID, returns `202 Accepted` with trace header
-- [ ] **API-02**: Payload validation returns structured `400` error responses with field-level error details
-- [ ] **API-03**: Formal message status enum (queued, sent, delivered, read, failed) with defined state transitions (terminal vs retriable vs fallback-triggering)
-- [ ] **API-04**: Public REST error response format with numeric error code catalog (`code`, `message`, `more_info`) for programmatic consumer branching
-- [ ] **API-05**: Message TTL / validity period via `ttl_seconds` field — queued messages expire instead of sending late
+- [x] **API-01**: Unified `POST /messages` endpoint accepts standard JSON payload, validates fields, generates Trace-ID, returns `202 Accepted` with trace header
+- [x] **API-02**: Payload validation returns structured `400` error responses with field-level error details
+- [x] **API-03**: Formal message status enum (queued, sent, delivered, read, failed) with defined state transitions (terminal vs retriable vs fallback-triggering)
+- [x] **API-04**: Public REST error response format with numeric error code catalog (`code`, `message`, `more_info`) for programmatic consumer branching
+- [x] **API-05**: Message TTL / validity period via `ttl_seconds` field — queued messages expire instead of sending late
 
 ### Authentication
 
@@ -169,11 +169,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| API-01 | Phase 3 | Pending |
-| API-02 | Phase 3 | Pending |
-| API-03 | Phase 3 | Pending |
-| API-04 | Phase 3 | Pending |
-| API-05 | Phase 3 | Pending |
+| API-01 | Phase 3 | Complete |
+| API-02 | Phase 3 | Complete |
+| API-03 | Phase 3 | Complete |
+| API-04 | Phase 3 | Complete |
+| API-05 | Phase 3 | Complete |
 | AUTH-01 | Phase 1 | Pending |
 | AUTH-02 | Phase 1 | Pending |
 | AUTH-03 | Phase 1 | Pending |
@@ -237,6 +237,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-07 | Phase 4 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 66 total
 - Mapped to phases: 66
 - Unmapped: 0
