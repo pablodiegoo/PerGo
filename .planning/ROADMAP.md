@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 2: Admin Shell** - Server-rendered admin panel for workspace, key, and audit management
 - [x] **Phase 3: Ingest API & Queue** - Unified POST /messages endpoint with JetStream durability, backpressure, dedup, and rate limiting (completed 2026-06-26)
 - [x] **Phase 4: WhatsApp Web & QR Pairing** - Unofficial WhatsApp Web channel via whatsmeow with multi-session, QR pairing, and ban-risk resilience (completed 2026-06-26)
-- [ ] **Phase 5: Official Channels & Smart Fallback** - WABA and Telegram adapters with template management, 24h window, and ordered fallback pipeline
+- [x] **Phase 5: Official Channels & Smart Fallback** - WABA and Telegram adapters with template management, 24h window, and ordered fallback pipeline (completed 2026-06-26)
 - [ ] **Phase 6: Webhook Delivery & DLQ** - Durable, HMAC-signed webhook delivery with retries and dead-letter queue
 - [ ] **Phase 7: Media & Inbound** - Channel-agnostic media support and inbound message ingestion with webhook forwarding
 
@@ -170,7 +170,7 @@ Note: Phase 2 and Phase 3 are independent after Phase 1 and may execute in paral
 | 2. Admin Shell | 0/3 | Not started | - |
 | 3. Ingest API & Queue | 3/3 | Complete    | 2026-06-26 |
 | 4. WhatsApp Web & QR Pairing | 3/3 | Complete    | 2026-06-26 |
-| 5. Official Channels & Smart Fallback | 0/TBD | Not started | - |
+| 5. Official Channels & Smart Fallback | 4/4 | Complete    | 2026-06-26 |
 | 6. Webhook Delivery & DLQ | 0/TBD | Not started | - |
 | 7. Media & Inbound | 0/TBD | Not started | - |
 

@@ -41,15 +41,15 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### WhatsApp Cloud (WABA)
 
-- [ ] **WABA-01**: WhatsApp Cloud API (WABA) REST adapter implementing the `Dispatcher` interface
-- [ ] **WABA-02**: Template management CRUD (create, list, submit for Meta approval, track approval status)
-- [ ] **WABA-03**: Template-based message sending (`template_name`, `language`, `components` fields in payload)
-- [ ] **WABA-04**: 24-hour customer service window awareness (track window per recipient, enforce template-only outside window, trigger fallback when window expired)
+- [x] **WABA-01**: WhatsApp Cloud API (WABA) REST adapter implementing the `Dispatcher` interface
+- [x] **WABA-02**: Template management CRUD (create, list, submit for Meta approval, track approval status)
+- [x] **WABA-03**: Template-based message sending (`template_name`, `language`, `components` fields in payload)
+- [x] **WABA-04**: 24-hour customer service window awareness (track window per recipient, enforce template-only outside window, trigger fallback when window expired)
 
 ### Telegram
 
-- [ ] **TGRAM-01**: Telegram Bot API adapter implementing the `Dispatcher` interface
-- [ ] **TGRAM-02**: Telegram inbound webhook setup (`setWebhook` with `secret_token` authentication)
+- [x] **TGRAM-01**: Telegram Bot API adapter implementing the `Dispatcher` interface
+- [x] **TGRAM-02**: Telegram inbound webhook setup (`setWebhook` with `secret_token` authentication)
 
 ### Media
 
@@ -65,9 +65,9 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Fallback
 
-- [ ] **FALL-01**: Ordered `fallback_channels` array with iterative dispatch (try primary, on failure try next)
-- [ ] **FALL-02**: Terminal-error classification (`ErrTerminal` typed errors advance fallback immediately without retry)
-- [ ] **FALL-03**: Fallback-aware dedup (prevent redelivery via fallback channel if already delivered by primary)
+- [x] **FALL-01**: Ordered `fallback_channels` array with iterative dispatch (try primary, on failure try next)
+- [x] **FALL-02**: Terminal-error classification (`ErrTerminal` typed errors advance fallback immediately without retry)
+- [x] **FALL-03**: Fallback-aware dedup (prevent redelivery via fallback channel if already delivered by primary)
 
 ### Webhooks
 
@@ -189,21 +189,21 @@ Which phases cover which requirements. Updated during roadmap creation.
 | WAWEB-05 | Phase 4 | Complete |
 | WAWEB-06 | Phase 4 | Complete |
 | WAWEB-07 | Phase 4 | Complete |
-| WABA-01 | Phase 5 | Pending |
-| WABA-02 | Phase 5 | Pending |
-| WABA-03 | Phase 5 | Pending |
-| WABA-04 | Phase 5 | Pending |
-| TGRAM-01 | Phase 5 | Pending |
-| TGRAM-02 | Phase 5 | Pending |
+| WABA-01 | Phase 5 | Complete |
+| WABA-02 | Phase 5 | Complete |
+| WABA-03 | Phase 5 | Complete |
+| WABA-04 | Phase 5 | Complete |
+| TGRAM-01 | Phase 5 | Complete |
+| TGRAM-02 | Phase 5 | Complete |
 | MEDIA-01 | Phase 7 | Pending |
 | MEDIA-02 | Phase 7 | Pending |
 | MEDIA-03 | Phase 7 | Pending |
 | INBD-01 | Phase 7 | Pending |
 | INBD-02 | Phase 7 | Pending |
 | INBD-03 | Phase 7 | Pending |
-| FALL-01 | Phase 5 | Pending |
-| FALL-02 | Phase 5 | Pending |
-| FALL-03 | Phase 5 | Pending |
+| FALL-01 | Phase 5 | Complete |
+| FALL-02 | Phase 5 | Complete |
+| FALL-03 | Phase 5 | Complete |
 | WHOOK-01 | Phase 6 | Pending |
 | WHOOK-02 | Phase 6 | Pending |
 | WHOOK-03 | Phase 6 | Pending |
