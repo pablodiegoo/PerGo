@@ -4,12 +4,12 @@
   "model_profile_overrides": {
     "pi": {
       "opus": "zai/glm-5.2",
-      "sonnet": "zai/glm-5-turbo",
+      "sonnet": "opencode-go/minimax-v3",
       "haiku": "opencode-go/mimo-v2.5"
     }
   },
   "model_overrides": {
-    "gsd-executor": "zai/glm-5.1",
+    "gsd-executor": "opencode-go/mimo-v2.5",
     "gsd-plan-checker": "opencode-go/minimax-v3",
     "gsd-nyquist-auditor": "opencode-go/minimax-v3"
   },
