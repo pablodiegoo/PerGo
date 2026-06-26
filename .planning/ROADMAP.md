@@ -80,12 +80,12 @@ Plans:
   4. Duplicate publishes (same `trace_id`) are deduplicated via `Nats-Msg-Id`; a `dispatched_messages` dedup set prevents duplicate delivery on redelivery
   5. Per-session rate limiting applies staggered dispatch (1-3s random delay) for unofficial WhatsApp channels via `golang.org/x/time/rate`; message TTL (`ttl_seconds`) causes expired messages to be dropped instead of sent late
 
-**Plans:** 1/3 plans executed
+**Plans:** 3/3 plans executed
 Plans:
 
 - [x] 03-01-PLAN.md — Domain types, validation, and POST /messages handler (202 + trace + structured errors)
-- [ ] 03-02-PLAN.md — JetStream durability: WorkQueue stream, publisher with dedup, worker stub, lifecycle wiring
-- [ ] 03-03-PLAN.md — Rate limiting, backpressure, retry with backoff, TTL enforcement, delivery dedup
+- [x] 03-02-PLAN.md — JetStream durability: WorkQueue stream, publisher with dedup, worker stub, lifecycle wiring
+- [x] 03-03-PLAN.md — Rate limiting, backpressure, retry with backoff, TTL enforcement, delivery dedup
 
 ### Phase 4: WhatsApp Web & QR Pairing
 
