@@ -3,6 +3,7 @@
 package domain
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,14 +29,31 @@ var ValidChannels = map[string]bool{
 
 // CreateMessageRequest is the JSON payload for POST /messages.
 type CreateMessageRequest struct {
-	To           string              `json:"to"`
-	Channel      string              `json:"channel"`
-	Body         string              `json:"body"`
-	Metadata     map[string]string   `json:"metadata,omitempty"`
-	TTLSeconds   *int                `json:"ttl_seconds,omitempty"`
-	TemplateName string              `json:"template_name,omitempty"`
-	Language     string              `json:"language,omitempty"`
-	Components   []TemplateComponent `json:"components,omitempty"`
+	To               string              `json:"to"`
+	Channel          string              `json:"channel"`
+	Body             string              `json:"body"`
+	Metadata         map[string]string   `json:"metadata,omitempty"`
+	TTLSeconds       *int                `json:"ttl_seconds,omitempty"`
+	TemplateName     string              `json:"template_name,omitempty"`
+	Language         string              `json:"language,omitempty"`
+	Components       []TemplateComponent `json:"components,omitempty"`
+	FallbackChannels []string            `json:"fallback_channels,omitempty"`
+}
+
+// QueueMessage wraps the published payload for JetStream queues.
+type QueueMessage struct {
+	WorkspaceID      uuid.UUID           `json:"workspace_id"`
+	TraceID          string              `json:"trace_id"`
+	To               string              `json:"to"`
+	Channel          string              `json:"channel"`
+	Body             string              `json:"body"`
+	Metadata         map[string]string   `json:"metadata,omitempty"`
+	TTLSeconds       *int                `json:"ttl_seconds,omitempty"`
+	QueuedAt         time.Time           `json:"queued_at"`
+	FallbackChannels []string            `json:"fallback_channels,omitempty"`
+	TemplateName     string              `json:"template_name,omitempty"`
+	Language         string              `json:"language,omitempty"`
+	Components       []TemplateComponent `json:"components,omitempty"`
 }
 
 // TemplateComponent represents a template component payload.
@@ -115,6 +133,27 @@ func ValidateMessage(req *CreateMessageRequest) *ErrorResponse {
 				Message: "is required when template_name is specified",
 			})
 		}
+	}
+
+	// Validate fallback channels
+	seen := make(map[string]bool)
+	if req.Channel != "" {
+		seen[req.Channel] = true
+	}
+	for i, fb := range req.FallbackChannels {
+		if !ValidChannels[fb] {
+			details = append(details, FieldError{
+				Field:   fmt.Sprintf("fallback_channels[%d]", i),
+				Message: "unsupported channel: must be one of: whatsapp, whatsapp_cloud, telegram",
+			})
+		}
+		if seen[fb] {
+			details = append(details, FieldError{
+				Field:   fmt.Sprintf("fallback_channels[%d]", i),
+				Message: "duplicate channel entry",
+			})
+		}
+		seen[fb] = true
 	}
 
 	if len(details) > 0 {

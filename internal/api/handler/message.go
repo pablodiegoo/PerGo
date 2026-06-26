@@ -80,7 +80,21 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 
 	// Publish to JetStream (if publisher is wired)
 	if h.Publisher != nil {
-		payload, err := json.Marshal(req)
+		qMsg := domain.QueueMessage{
+			WorkspaceID:      workspaceID,
+			TraceID:          traceID,
+			To:               req.To,
+			Channel:          req.Channel,
+			Body:             req.Body,
+			Metadata:         req.Metadata,
+			TTLSeconds:       req.TTLSeconds,
+			QueuedAt:         queuedAt,
+			FallbackChannels: req.FallbackChannels,
+			TemplateName:     req.TemplateName,
+			Language:         req.Language,
+			Components:       req.Components,
+		}
+		payload, err := json.Marshal(qMsg)
 		if err != nil {
 			slog.Error("failed to marshal message", "error", err, "trace_id", traceID)
 			return c.JSON(http.StatusInternalServerError, domain.ErrorResponse{

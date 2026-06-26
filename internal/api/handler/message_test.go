@@ -397,3 +397,117 @@ func TestCreateMessageRateLimited(t *testing.T) {
 		t.Errorf("error code = %q, want %q", errResp.Code, "rate_limited")
 	}
 }
+
+type mockPublisher struct {
+	subject string
+	data    []byte
+	traceID string
+	err     error
+}
+
+func (m *mockPublisher) Publish(ctx context.Context, subject string, data []byte, traceID string) error {
+	m.subject = subject
+	m.data = data
+	m.traceID = traceID
+	return m.err
+}
+
+func TestCreateMessageWithFallbackChannels(t *testing.T) {
+	e := echo.New()
+	pub := &mockPublisher{}
+	h := &MessageHandler{Publisher: pub}
+	h.RegisterRoutes(e)
+
+	traceID := uuid.New().String()
+	wsID := uuid.New()
+
+	body := `{"to":"+1234567890","channel":"whatsapp","body":"Hello","fallback_channels":["whatsapp_cloud","telegram"]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(testContext(traceID, wsID))
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify the published payload is QueueMessage and contains all fields
+	var qMsg domain.QueueMessage
+	if err := json.Unmarshal(pub.data, &qMsg); err != nil {
+		t.Fatalf("failed to unmarshal published data: %v", err)
+	}
+
+	if qMsg.WorkspaceID != wsID {
+		t.Errorf("expected WorkspaceID %s, got %s", wsID, qMsg.WorkspaceID)
+	}
+	if qMsg.TraceID != traceID {
+		t.Errorf("expected TraceID %s, got %s", traceID, qMsg.TraceID)
+	}
+	if qMsg.Channel != "whatsapp" {
+		t.Errorf("expected Channel whatsapp, got %s", qMsg.Channel)
+	}
+	if len(qMsg.FallbackChannels) != 2 || qMsg.FallbackChannels[0] != "whatsapp_cloud" || qMsg.FallbackChannels[1] != "telegram" {
+		t.Errorf("expected FallbackChannels [whatsapp_cloud, telegram], got %v", qMsg.FallbackChannels)
+	}
+}
+
+func TestCreateMessageInvalidFallbackChannels(t *testing.T) {
+	e := echo.New()
+	h := &MessageHandler{}
+	h.RegisterRoutes(e)
+
+	tests := []struct {
+		name          string
+		body          string
+		expectedField string
+	}{
+		{
+			name:          "unsupported fallback channel",
+			body:          `{"to":"+1234567890","channel":"whatsapp","body":"Hello","fallback_channels":["sms"]}`,
+			expectedField: "fallback_channels[0]",
+		},
+		{
+			name:          "duplicate fallback channel",
+			body:          `{"to":"+1234567890","channel":"whatsapp","body":"Hello","fallback_channels":["telegram","telegram"]}`,
+			expectedField: "fallback_channels[1]",
+		},
+		{
+			name:          "fallback channel same as primary",
+			body:          `{"to":"+1234567890","channel":"whatsapp","body":"Hello","fallback_channels":["whatsapp"]}`,
+			expectedField: "fallback_channels[0]",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			req = req.WithContext(testContext(uuid.New().String(), uuid.New()))
+			rec := httptest.NewRecorder()
+
+			e.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+
+			var resp domain.ErrorResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("unmarshal response: %v", err)
+			}
+
+			found := false
+			for _, d := range resp.Details {
+				if d.Field == tc.expectedField {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("expected field error for %q, got details: %+v", tc.expectedField, resp.Details)
+			}
+		})
+	}
+}
