@@ -13,13 +13,29 @@ import (
 // MessagePayload is the channel-layer message contract, separate from the
 // API's CreateMessageRequest. It carries all fields needed for dispatch.
 type MessagePayload struct {
-	MessageID string
-	TraceID   string
-	To        string
-	Channel   string
-	Body      string
-	Metadata  map[string]string
+	MessageID    string
+	TraceID      string
+	To           string
+	Channel      string
+	Body         string
+	Metadata     map[string]string
+	TemplateName string
+	Language     string
+	Components   []TemplateComponent
 }
+
+// TemplateComponent represents a template component inside MessagePayload.
+type TemplateComponent struct {
+	Type       string              `json:"type"`
+	Parameters []TemplateParameter `json:"parameters"`
+}
+
+// TemplateParameter represents a template parameter inside MessagePayload.
+type TemplateParameter struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+}
+
 
 // Dispatcher sends a message through a specific channel adapter.
 // Implementations must be safe for concurrent use.

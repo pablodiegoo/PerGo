@@ -199,3 +199,61 @@ func TestErrorResponseJSON(t *testing.T) {
 		t.Errorf("details = %+v, want [{Field:to Message:is required}]", decoded.Details)
 	}
 }
+
+func TestValidateMessageTemplateValid(t *testing.T) {
+	req := &CreateMessageRequest{
+		To:           "+1234567890",
+		Channel:      "whatsapp_cloud",
+		TemplateName: "welcome_template",
+		Language:     "en",
+	}
+	if err := ValidateMessage(req); err != nil {
+		t.Errorf("expected nil error for valid template request, got %+v", err)
+	}
+}
+
+func TestValidateMessageTemplateInvalidChannel(t *testing.T) {
+	req := &CreateMessageRequest{
+		To:           "+1234567890",
+		Channel:      "whatsapp",
+		TemplateName: "welcome_template",
+		Language:     "en",
+	}
+	err := ValidateMessage(req)
+	if err == nil {
+		t.Fatal("expected error for template on non-whatsapp_cloud channel, got nil")
+	}
+	found := false
+	for _, d := range err.Details {
+		if d.Field == "template_name" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected field error for 'template_name', got %+v", err.Details)
+	}
+}
+
+func TestValidateMessageTemplateMissingLanguage(t *testing.T) {
+	req := &CreateMessageRequest{
+		To:           "+1234567890",
+		Channel:      "whatsapp_cloud",
+		TemplateName: "welcome_template",
+	}
+	err := ValidateMessage(req)
+	if err == nil {
+		t.Fatal("expected error for template missing language, got nil")
+	}
+	found := false
+	for _, d := range err.Details {
+		if d.Field == "language" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected field error for 'language', got %+v", err.Details)
+	}
+}
+

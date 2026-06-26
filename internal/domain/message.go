@@ -28,11 +28,26 @@ var ValidChannels = map[string]bool{
 
 // CreateMessageRequest is the JSON payload for POST /messages.
 type CreateMessageRequest struct {
-	To         string            `json:"to"`
-	Channel    string            `json:"channel"`
-	Body       string            `json:"body"`
-	Metadata   map[string]string `json:"metadata,omitempty"`
-	TTLSeconds *int              `json:"ttl_seconds,omitempty"`
+	To           string              `json:"to"`
+	Channel      string              `json:"channel"`
+	Body         string              `json:"body"`
+	Metadata     map[string]string   `json:"metadata,omitempty"`
+	TTLSeconds   *int                `json:"ttl_seconds,omitempty"`
+	TemplateName string              `json:"template_name,omitempty"`
+	Language     string              `json:"language,omitempty"`
+	Components   []TemplateComponent `json:"components,omitempty"`
+}
+
+// TemplateComponent represents a template component payload.
+type TemplateComponent struct {
+	Type       string              `json:"type"` // "header", "body", "buttons", etc.
+	Parameters []TemplateParameter `json:"parameters"`
+}
+
+// TemplateParameter represents a template parameter payload.
+type TemplateParameter struct {
+	Type string `json:"type"` // "text", etc.
+	Text string `json:"text,omitempty"`
 }
 
 // CreateMessageResponse is returned on successful enqueue (HTTP 202).
@@ -87,6 +102,21 @@ func ValidateMessage(req *CreateMessageRequest) *ErrorResponse {
 		})
 	}
 
+	if req.TemplateName != "" {
+		if req.Channel != "whatsapp_cloud" {
+			details = append(details, FieldError{
+				Field:   "template_name",
+				Message: "templates are only supported for whatsapp_cloud channel",
+			})
+		}
+		if req.Language == "" {
+			details = append(details, FieldError{
+				Field:   "language",
+				Message: "is required when template_name is specified",
+			})
+		}
+	}
+
 	if len(details) > 0 {
 		return &ErrorResponse{
 			Code:    "invalid_payload",
@@ -97,3 +127,4 @@ func ValidateMessage(req *CreateMessageRequest) *ErrorResponse {
 
 	return nil
 }
+

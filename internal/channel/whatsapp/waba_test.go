@@ -185,6 +185,54 @@ func TestWABADispatch(t *testing.T) {
 		}
 	})
 
+	t.Run("Success Template Message New Struct", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			var req wabaMessageRequest
+			_ = json.Unmarshal(bodyBytes, &req)
+
+			if req.Type != "template" || req.Template == nil {
+				t.Errorf("expected template message, got %+v", req)
+				return
+			}
+			if req.Template.Name != "welcome_test_new" || req.Template.Language.Code != "en_US" {
+				t.Errorf("unexpected template attributes: %+v", req.Template)
+			}
+			if len(req.Template.Components) != 1 || len(req.Template.Components[0].Parameters) != 1 {
+				t.Errorf("unexpected components or parameters: %+v", req.Template.Components)
+			}
+			if req.Template.Components[0].Parameters[0].Text != "Alice" {
+				t.Errorf("unexpected parameter content: %+v", req.Template.Components[0].Parameters)
+			}
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.HBgL..."}]}`))
+		}))
+		defer server.Close()
+
+		adapter := NewWABAAdapter(credsRepo, nil)
+		adapter.SetBaseURL(server.URL)
+
+		payload := &channel.MessagePayload{
+			To:           "+5511999999999",
+			TemplateName: "welcome_test_new",
+			Language:     "en_US",
+			Components: []channel.TemplateComponent{
+				{
+					Type: "body",
+					Parameters: []channel.TemplateParameter{
+						{Type: "text", Text: "Alice"},
+					},
+				},
+			},
+		}
+
+		err := adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on template dispatch, got: %v", err)
+		}
+	})
+
 	t.Run("Terminal Error - Number Not on WhatsApp (131030)", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)

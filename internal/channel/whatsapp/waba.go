@@ -119,8 +119,16 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 		To:               m.To,
 	}
 
-	if templateName, ok := m.Metadata["template_name"]; ok && templateName != "" {
-		langCode := m.Metadata["template_language"]
+	templateName := m.TemplateName
+	if templateName == "" && m.Metadata != nil {
+		templateName = m.Metadata["template_name"]
+	}
+
+	if templateName != "" {
+		langCode := m.Language
+		if langCode == "" && m.Metadata != nil {
+			langCode = m.Metadata["template_language"]
+		}
 		if langCode == "" {
 			langCode = "en_US"
 		}
@@ -131,25 +139,43 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 			},
 		}
 
-		var params []wabaParameter
-		for i := 1; ; i++ {
-			paramKey := fmt.Sprintf("param%d", i)
-			val, ok := m.Metadata[paramKey]
-			if !ok {
-				break
+		if len(m.Components) > 0 {
+			tmpl.Components = make([]wabaComponent, len(m.Components))
+			for i, comp := range m.Components {
+				tmpl.Components[i] = wabaComponent{
+					Type: comp.Type,
+				}
+				if len(comp.Parameters) > 0 {
+					tmpl.Components[i].Parameters = make([]wabaParameter, len(comp.Parameters))
+					for j, param := range comp.Parameters {
+						tmpl.Components[i].Parameters[j] = wabaParameter{
+							Type: param.Type,
+							Text: param.Text,
+						}
+					}
+				}
 			}
-			params = append(params, wabaParameter{
-				Type: "text",
-				Text: val,
-			})
-		}
+		} else if m.Metadata != nil {
+			var params []wabaParameter
+			for i := 1; ; i++ {
+				paramKey := fmt.Sprintf("param%d", i)
+				val, ok := m.Metadata[paramKey]
+				if !ok {
+					break
+				}
+				params = append(params, wabaParameter{
+					Type: "text",
+					Text: val,
+				})
+			}
 
-		if len(params) > 0 {
-			tmpl.Components = []wabaComponent{
-				{
-					Type:       "body",
-					Parameters: params,
-				},
+			if len(params) > 0 {
+				tmpl.Components = []wabaComponent{
+					{
+						Type:       "body",
+						Parameters: params,
+					},
+				}
 			}
 		}
 
@@ -162,6 +188,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 			Body:       m.Body,
 		}
 	}
+
 
 	bodyBytes, err := json.Marshal(reqPayload)
 	if err != nil {
