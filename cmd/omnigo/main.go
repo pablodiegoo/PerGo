@@ -87,8 +87,15 @@ func main() {
 		slog.Error("failed to create JetStream consumer", "error", err)
 		os.Exit(1)
 	}
-	worker := queue.NewWorker(ctx, consumer)
+	// --- Rate limiter (per-workspace token bucket) ---
+	rateLimiter := middleware.NewRateLimiter(10, 10) // 10 req/s, burst 10
+	queueDepth := middleware.NewQueueDepthTracker()
+
+	// --- Worker (reads from JetStream, dispatches with retry/TTL/dedup) ---
+	worker := queue.NewWorker(ctx, consumer, 5, 60*time.Second)
 	slog.Info("message worker started", "consumer", "worker-1")
+	slog.Info("rate limiter configured", "rps", 10, "burst", 10)
+	slog.Info("queue depth limit", "max", 1000)
 
 	// --- Audit writer ---
 	auditWriter := audit.NewWriter(pool, 5000, 2)
@@ -156,9 +163,10 @@ func main() {
 
 	// --- Message handler (POST /messages) ---
 	messageHandler := &handler.MessageHandler{
-		Publisher: publisher,
+		Publisher:  publisher,
+		QueueDepth: queueDepth,
 	}
-	messageHandler.RegisterRoutes(e)
+	messageHandler.RegisterRoutes(e, middleware.RateLimiterMiddleware(rateLimiter))
 
 	// --- Admin panel routes ---
 	// Repositories for admin dashboard

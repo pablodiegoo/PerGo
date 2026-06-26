@@ -23,22 +23,37 @@ type Publisher interface {
 
 // MessageHandler holds dependencies for the POST /messages endpoint.
 type MessageHandler struct {
-	Publisher Publisher
+	Publisher  Publisher
+	QueueDepth *middleware.QueueDepthTracker
 }
 
 // RegisterRoutes wires the message endpoints onto the Echo router.
-func (h *MessageHandler) RegisterRoutes(e *echo.Echo) {
-	e.POST("/api/v1/messages", h.Create)
+// Optional middlewares are applied before the handler.
+func (h *MessageHandler) RegisterRoutes(e *echo.Echo, middlewares ...echo.MiddlewareFunc) {
+	e.POST("/api/v1/messages", h.Create, middlewares...)
 }
 
-// Create handles POST /messages — validates the payload, generates a message ID,
-// and returns 202 Accepted with trace correlation.
+// Create handles POST /messages — validates the payload, checks backpressure,
+// generates a message ID, publishes to JetStream, and returns 202 Accepted
+// with trace correlation.
 func (h *MessageHandler) Create(c *echo.Context) error {
 	// Extract trace_id from context (set by trace middleware)
 	traceID, _ := middleware.TraceIDFrom(c.Request().Context())
 
 	// Extract workspace_id from context (set by auth middleware)
 	workspaceID, _ := tenant.WorkspaceIDFrom(c.Request().Context())
+
+	// --- Backpressure: check queue depth BEFORE publish ---
+	if h.QueueDepth != nil && workspaceID != (uuid.UUID{}) {
+		if h.QueueDepth.Exceeds(workspaceID, 1000) {
+			c.Response().Header().Set("Retry-After", "5")
+			return c.JSON(http.StatusTooManyRequests, domain.ErrorResponse{
+				Code:    "queue_full",
+				Message: "per-session message queue limit exceeded",
+				MoreInfo: "https://docs.omnigo.dev/errors/queue_full",
+			})
+		}
+	}
 
 	// Bind JSON body to request struct
 	var req domain.CreateMessageRequest
@@ -80,6 +95,11 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 				Message: "failed to enqueue message",
 			})
 		}
+	}
+
+	// --- Backpressure: increment queue depth after successful publish ---
+	if h.QueueDepth != nil && workspaceID != (uuid.UUID{}) {
+		h.QueueDepth.Increment(workspaceID)
 	}
 
 	// Log the ingestion event
