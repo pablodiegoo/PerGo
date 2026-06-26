@@ -1,0 +1,38 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-06-26T01:31:56.542Z",
+  "phase": "3",
+  "phase_name": "Ingest API & Queue",
+  "phase_dir": ".planning/phases/03-ingest-api-queue",
+  "plan": "03-03",
+  "task": 1,
+  "total_tasks": 2,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": 1, "name": "03-01: Domain types, validation, POST /messages handler", "status": "done", "commit": "d423eb7"},
+    {"id": 2, "name": "03-02: JetStream durability layer (WorkQueue, publisher, worker stub)", "status": "done", "commit": "efee816"},
+    {"id": 3, "name": "03-03 Task 1: Rate limiter + queue depth tracker + backpressure", "status": "in_progress", "progress": "RED tests committed (ac0a6de), partial GREEN implementation committed (7888cda) — rate limiter, queue depth tracker, backpressure wired. Worker retry/TTL/dedup tasks NOT started."}
+  ],
+  "remaining_tasks": [
+    {"id": 4, "name": "03-03 Task 1: Complete rate limiter implementation (if incomplete) + verify", "status": "in_progress"},
+    {"id": 5, "name": "03-03 Task 2: Worker retry with exponential backoff, TTL enforcement, delivery dedup", "status": "not_started"},
+    {"id": 6, "name": "03-03: Write SUMMARY.md", "status": "not_started"},
+    {"id": 7, "name": "Phase 3 verification (03-VERIFICATION.md)", "status": "not_started"},
+    {"id": 8, "name": "Phase 4-7 execution", "status": "not_started"}
+  ],
+  "blockers": [],
+  "async_jobs": [],
+  "human_actions_pending": [],
+  "decisions": [
+    {"decision": "Staggered dispatch (1-3s random delay) deferred to Phase 4", "rationale": "ROADMAP SC#5 specifies staggered dispatch for WhatsApp Web ban-risk mitigation — it's a channel-dispatch concern, not ingest-API. Token bucket rate limiter controls throughput at API layer.", "phase": "3"},
+    {"decision": "JetStream WorkQueuePolicy with MaxMsgs=1000, DiscardNew, 24h MaxAge", "rationale": "Provides durable at-least-once delivery + backpressure at protocol level", "phase": "3"},
+    {"decision": "Rate limit returns HTTP 429 (not 409)", "rationale": "429 Too Many Requests is semantically correct for rate limiting", "phase": "3"}
+  ],
+  "uncommitted_files": [
+    ".planning/REQUIREMENTS.md",
+    ".planning/config.json",
+    "internal/api/handler/message_test.go"
+  ],
+  "next_action": "Execute /gsd-resume-work to continue Phase 3 Plan 03-03. The executor was aborted mid-task — verify what was committed (7888cda) and complete the remaining worker retry/TTL/dedup task, then write SUMMARY.md.",
+  "context_notes": "Autonomous execution paused by user request. Phase 3 is 2/3 plans complete. Plan 03-03 was partially executed (RED+partial GREEN committed) but the executor was aborted before SUMMARY.md was written. The config.json model overrides are set correctly but opencode's task tool doesn't support per-agent model selection — all subagents inherit session model."
+}

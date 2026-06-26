@@ -260,3 +260,140 @@ func TestCreateMessageMissingAuth(t *testing.T) {
 		t.Errorf("expected 202 without auth middleware, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+// --- Queue depth tests ---
+
+func TestCreateMessageQueueFull(t *testing.T) {
+	e := echo.New()
+	qdt := middleware.NewQueueDepthTracker()
+	h := &MessageHandler{QueueDepth: qdt}
+	h.RegisterRoutes(e)
+
+	wsID := uuid.New()
+
+	// Fill queue to 1000
+	for i := 0; i < 1000; i++ {
+		qdt.Increment(wsID)
+	}
+
+	traceID := uuid.New().String()
+	body := `{"to":"+1234567890","channel":"whatsapp","body":"Hello"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(testContext(traceID, wsID))
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("expected 429, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var errResp domain.ErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("unmarshal error response: %v", err)
+	}
+	if errResp.Code != "queue_full" {
+		t.Errorf("error code = %q, want %q", errResp.Code, "queue_full")
+	}
+
+	retryAfter := rec.Header().Get("Retry-After")
+	if retryAfter != "5" {
+		t.Errorf("Retry-After = %q, want %q", retryAfter, "5")
+	}
+}
+
+func TestCreateMessageQueueNotFull(t *testing.T) {
+	e := echo.New()
+	qdt := middleware.NewQueueDepthTracker()
+	h := &MessageHandler{QueueDepth: qdt}
+	h.RegisterRoutes(e)
+
+	wsID := uuid.New()
+	// Only 999 messages — should be allowed
+	for i := 0; i < 999; i++ {
+		qdt.Increment(wsID)
+	}
+
+	traceID := uuid.New().String()
+	body := `{"to":"+1234567890","channel":"whatsapp","body":"Hello"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(testContext(traceID, wsID))
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Errorf("expected 202 when queue not full, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateMessageQueueDepthIncremented(t *testing.T) {
+	e := echo.New()
+	qdt := middleware.NewQueueDepthTracker()
+	h := &MessageHandler{QueueDepth: qdt}
+	h.RegisterRoutes(e)
+
+	wsID := uuid.New()
+
+	traceID := uuid.New().String()
+	body := `{"to":"+1234567890","channel":"whatsapp","body":"Hello"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(testContext(traceID, wsID))
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", rec.Code)
+	}
+
+	// Queue depth should be incremented after successful publish
+	if d := qdt.Depth(wsID); d != 1 {
+		t.Errorf("queue depth = %d, want 1 after successful publish", d)
+	}
+}
+
+func TestCreateMessageRateLimited(t *testing.T) {
+	e := echo.New()
+	rl := middleware.NewRateLimiter(2, 1) // 2 req/s, burst 1
+	qdt := middleware.NewQueueDepthTracker()
+	h := &MessageHandler{QueueDepth: qdt}
+	h.RegisterRoutes(e, middleware.RateLimiterMiddleware(rl))
+
+	wsID := uuid.New()
+
+	body := `{"to":"+1234567890","channel":"whatsapp","body":"Hello"}`
+
+	// First request — allowed
+	req1 := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+	req1.Header.Set("Content-Type", "application/json")
+	req1 = req1.WithContext(testContext(uuid.New().String(), wsID))
+	rec1 := httptest.NewRecorder()
+	e.ServeHTTP(rec1, req1)
+
+	if rec1.Code != http.StatusAccepted {
+		t.Errorf("first request: expected 202, got %d", rec1.Code)
+	}
+
+	// Second request — burst exhausted
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+	req2.Header.Set("Content-Type", "application/json")
+	req2 = req2.WithContext(testContext(uuid.New().String(), wsID))
+	rec2 := httptest.NewRecorder()
+	e.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Errorf("second request: expected 429, got %d: %s", rec2.Code, rec2.Body.String())
+	}
+
+	var errResp domain.ErrorResponse
+	if err := json.Unmarshal(rec2.Body.Bytes(), &errResp); err != nil {
+		t.Fatalf("unmarshal error response: %v", err)
+	}
+	if errResp.Code != "rate_limited" {
+		t.Errorf("error code = %q, want %q", errResp.Code, "rate_limited")
+	}
+}
