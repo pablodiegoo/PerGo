@@ -121,6 +121,18 @@ func (wc *WhatsAppClient) Run(ctx context.Context) error {
 }
 
 // GetQRChannel returns the QR code channel for pairing a new device.
+// Must be called BEFORE Connect() per whatsmeow API contract.
 func (wc *WhatsAppClient) GetQRChannel(ctx context.Context) (<-chan whatsmeow.QRChannelItem, error) {
 	return wc.client.GetQRChannel(ctx)
+}
+
+// Connect connects the client to WhatsApp WebSocket. For pairing flows,
+// call GetQRChannel first, then Connect.
+func (wc *WhatsAppClient) Connect() error {
+	return wc.client.Connect()
+}
+
+// Disconnect disconnects from the WhatsApp WebSocket.
+func (wc *WhatsAppClient) Disconnect() {
+	wc.client.Disconnect()
 }

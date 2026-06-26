@@ -95,3 +95,18 @@ func (r *ActiveSession) ForEach(fn func(*Session)) {
 		fn(s)
 	}
 }
+
+// DisconnectByJID cancels a session by JID string and removes it from the registry.
+// No-op if the JID is not found.
+func (r *ActiveSession) DisconnectByJID(jid string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	s, ok := r.sessions[jid]
+	if !ok {
+		return
+	}
+	if s.Cancel != nil {
+		s.Cancel()
+	}
+	delete(r.sessions, jid)
+}
