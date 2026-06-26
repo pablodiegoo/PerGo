@@ -180,9 +180,13 @@ func main() {
 
 	// --- Repositories ---
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
+	wabaTemplateRepo := repository.NewWABATemplateRepository(pool)
+
+	wabaTemplateHandler := admin.NewWABATemplateHandler(wabaTemplateRepo, credentialsRepo)
 
 	// --- Echo HTTP server ---
 	e := echosrv.New()
+
 
 	// Middleware stack: RequestID → Trace → Recover → Auth (on protected routes)
 	e.Use(middleware.TraceMiddleware())
@@ -291,8 +295,16 @@ func main() {
 	}
 	adminGroup.GET("/telemetry", telemetryHandler.Index)
 
+	// WABA template routes
+	adminGroup.GET("/workspaces/:workspace_id/templates", wabaTemplateHandler.List)
+	adminGroup.POST("/workspaces/:workspace_id/templates", wabaTemplateHandler.Create)
+	adminGroup.GET("/workspaces/:workspace_id/templates/new", wabaTemplateHandler.NewForm)
+	adminGroup.POST("/workspaces/:workspace_id/templates/:template_id/sync", wabaTemplateHandler.Sync)
+	adminGroup.DELETE("/workspaces/:workspace_id/templates/:template_id", wabaTemplateHandler.Delete)
+
 	// Static files
 	e.Static("/static", "static")
+
 
 	// Test route: GET /api/v1/me (returns workspace_id from auth context)
 	e.GET("/api/v1/me", func(c *echo.Context) error {
