@@ -245,6 +245,28 @@ func main() {
 	adminGroup.GET("/audit", auditHandler.List)
 	adminGroup.GET("/audit/export", auditHandler.ExportCSV)
 
+	// Device management routes (WhatsApp Web pairing & session control)
+	deviceHandler := &admin.DeviceHandler{
+		Repo:     deviceRepo,
+		Sessions: sessionRegistry,
+		Manager:  sessionManager,
+	}
+	adminGroup.GET("/devices", deviceHandler.List)
+	adminGroup.GET("/devices/pair-form", deviceHandler.PairForm)
+	adminGroup.POST("/devices/pair", deviceHandler.StartPairing)
+	adminGroup.GET("/devices/qr", deviceHandler.GetQR)
+	adminGroup.DELETE("/devices/:jid", deviceHandler.Disconnect)
+
+	// Telemetry page (system health: sessions, NATS, uptime)
+	telemetryHandler := &admin.TelemetryHandler{
+		Manager:    sessionManager,
+		Sessions:   sessionRegistry,
+		QueueDepth: queueDepth,
+		NC:         &natsConn{nc: nc},
+		StartTime:  time.Now(),
+	}
+	adminGroup.GET("/telemetry", telemetryHandler.Index)
+
 	// Static files
 	e.Static("/static", "static")
 
@@ -326,3 +348,10 @@ func (c *natsConn) Ping() error {
 	}
 	return nil
 }
+
+// IsConnected returns true if the NATS connection is active.
+// Satisfies admin.NATSStatus for the TelemetryHandler.
+func (c *natsConn) IsConnected() bool {
+	return c.nc.IsConnected()
+}
+
