@@ -6,7 +6,7 @@
 *.dylib
 
 # Compiled binaries
-omnigo
+/omnigo
 omnigo.test
 
 # Test binary, built with `go test -c`

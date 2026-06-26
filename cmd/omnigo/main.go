@@ -23,8 +23,11 @@ import (
 	"github.com/pablojhp.omnigo/internal/api/handler/admin"
 	"github.com/pablojhp.omnigo/internal/api/middleware"
 	"github.com/pablojhp.omnigo/internal/channel"
+	"github.com/pablojhp.omnigo/internal/channel/telegram"
+	"github.com/pablojhp.omnigo/internal/channel/whatsapp"
 	"github.com/pablojhp.omnigo/internal/config"
 	"github.com/pablojhp.omnigo/internal/platform/audit"
+	"github.com/pablojhp.omnigo/internal/platform/crypto"
 	echosrv "github.com/pablojhp.omnigo/internal/platform/echo"
 	"github.com/pablojhp.omnigo/internal/platform/obs"
 	"github.com/pablojhp.omnigo/internal/platform/postgres"
@@ -93,9 +96,30 @@ func main() {
 	rateLimiter := middleware.NewRateLimiter(10, 10) // 10 req/s, burst 10
 	queueDepth := middleware.NewQueueDepthTracker()
 
+	// --- Cryptography Encryptor & Credentials Repository ---
+	kek := cfg.KEKBytes
+	if len(kek) != 32 {
+		slog.Warn("OMNIGO_KEK_BASE64 is not set or not 32 bytes; using a default development key. DO NOT USE IN PRODUCTION.")
+		kek = make([]byte, 32)
+		copy(kek, []byte("dev-development-key-32-bytes-kek"))
+	}
+	encryptor, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		slog.Error("failed to initialize encryptor", "error", err)
+		os.Exit(1)
+	}
+	credentialsRepo := repository.NewCredentialsRepository(pool, encryptor)
+
+	// --- REST Adapters ---
+	wabaAdapter := whatsapp.NewWABAAdapter(credentialsRepo, nil)
+	telegramAdapter := telegram.NewTelegramAdapter(credentialsRepo, nil)
+
 	// --- Worker (reads from JetStream, dispatches with retry/TTL/dedup) ---
 	sessionRegistry := session.NewActiveSession()
 	dispatcherRegistry := channel.NewRegistry(nil) // populated by session manager
+	dispatcherRegistry.Register("whatsapp_cloud", wabaAdapter)
+	dispatcherRegistry.Register("telegram", telegramAdapter)
+
 	deviceRepo := session.NewDeviceRepository(pool)
 	sessionManager := session.NewManager(db, deviceRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000")
 	worker := queue.NewWorker(ctx, consumer, 5, 60*time.Second, dispatcherRegistry)
