@@ -1,10 +1,23 @@
 package queue
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
+
+	"github.com/pablojhp.omnigo/internal/channel"
+	"github.com/pablojhp.omnigo/internal/domain"
+	"github.com/pablojhp.omnigo/internal/platform/postgres"
+	"github.com/pablojhp.omnigo/internal/repository"
 )
 
 func TestRetryAttemptParsing(t *testing.T) {
@@ -184,4 +197,296 @@ func TestDeliveryDedup(t *testing.T) {
 	if loaded {
 		t.Error("different trace ID should NOT be loaded")
 	}
+}
+
+func getTestPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+
+	dsn := os.Getenv("OMNIGO_DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@localhost:5432/omnigo?sslmode=disable"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Skipf("PostgreSQL not available at %s: %v", dsn, err)
+	}
+
+	err = pool.Ping(ctx)
+	if err != nil {
+		pool.Close()
+		t.Skipf("PostgreSQL ping failed at %s: %v", dsn, err)
+	}
+
+	_, err = postgres.NewSQLDB(pool)
+	if err != nil {
+		pool.Close()
+		t.Fatalf("failed to initialize db: %v", err)
+	}
+	t.Cleanup(func() {
+		pool.Close()
+	})
+	return pool
+}
+
+type mockMsg struct {
+	data     []byte
+	headers  nats.Header
+	acked    bool
+	nacked   bool
+	nakDelay time.Duration
+}
+
+func (m *mockMsg) Metadata() (*jetstream.MsgMetadata, error) { return nil, nil }
+func (m *mockMsg) Data() []byte                              { return m.data }
+func (m *mockMsg) Headers() nats.Header                      { return m.headers }
+func (m *mockMsg) Subject() string                           { return "messages.outbound" }
+func (m *mockMsg) Reply() string                             { return "" }
+func (m *mockMsg) Ack() error                                { m.acked = true; return nil }
+func (m *mockMsg) DoubleAck(ctx context.Context) error       { return nil }
+func (m *mockMsg) Nak() error                                { m.nacked = true; return nil }
+func (m *mockMsg) NakWithDelay(d time.Duration) error        { m.nacked = true; m.nakDelay = d; return nil }
+func (m *mockMsg) InProgress() error                         { return nil }
+func (m *mockMsg) Term() error                               { return nil }
+func (m *mockMsg) TermWithReason(reason string) error        { return nil }
+
+type mockDispatcher struct {
+	err         error
+	calledCount int
+	calledWith  []string
+}
+
+func (m *mockDispatcher) Dispatch(ctx context.Context, p *channel.MessagePayload) error {
+	m.calledCount++
+	m.calledWith = append(m.calledWith, p.Channel)
+	return m.err
+}
+
+func TestWorkerFallbackLoop(t *testing.T) {
+	pool := getTestPool(t)
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "worker_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	t.Run("Terminal error triggers fallback immediately", func(t *testing.T) {
+		traceID := uuid.New().String()
+		qMsg := domain.QueueMessage{
+			WorkspaceID:      ws.ID,
+			TraceID:          traceID,
+			To:               "+123",
+			Channel:          "whatsapp",
+			Body:             "test terminal",
+			FallbackChannels: []string{"whatsapp_cloud", "telegram"},
+		}
+		data, _ := json.Marshal(qMsg)
+
+		msg := &mockMsg{
+			data:    data,
+			headers: nats.Header{"Nats-Msg-Id": []string{traceID}},
+		}
+
+		registry := channel.NewRegistry(nil)
+		disp1 := &mockDispatcher{err: channel.NewTerminalError(errors.New("banned"))}
+		disp2 := &mockDispatcher{err: nil}
+		registry.Register("whatsapp", disp1)
+		registry.Register("whatsapp_cloud", disp2)
+
+		w := &Worker{
+			dispatchers:  registry,
+			dispatchRepo: dispatchRepo,
+			maxRetries:   5,
+			maxBackoff:   60 * time.Second,
+		}
+
+		w.processMessage(ctx, msg)
+
+		if !msg.acked {
+			t.Error("expected message to be acked")
+		}
+
+		if disp1.calledCount != 1 {
+			t.Errorf("expected disp1 called once, got %d", disp1.calledCount)
+		}
+		if disp2.calledCount != 1 {
+			t.Errorf("expected disp2 called once, got %d", disp2.calledCount)
+		}
+
+		d, err := dispatchRepo.GetByTraceID(ctx, traceID)
+		if err != nil {
+			t.Fatalf("failed to get dispatch from DB: %v", err)
+		}
+		if d.Status != "sent" {
+			t.Errorf("expected DB status 'sent', got %s", d.Status)
+		}
+		if d.CurrentChannel != "whatsapp_cloud" {
+			t.Errorf("expected DB current channel 'whatsapp_cloud', got %s", d.CurrentChannel)
+		}
+		if d.FallbackIndex != 1 {
+			t.Errorf("expected DB fallback index 1, got %d", d.FallbackIndex)
+		}
+	})
+
+	t.Run("Transient error triggers NATS retry and does not advance fallback", func(t *testing.T) {
+		traceID := uuid.New().String()
+		qMsg := domain.QueueMessage{
+			WorkspaceID:      ws.ID,
+			TraceID:          traceID,
+			To:               "+123",
+			Channel:          "whatsapp",
+			Body:             "test transient",
+			FallbackChannels: []string{"whatsapp_cloud"},
+		}
+		data, _ := json.Marshal(qMsg)
+
+		msg := &mockMsg{
+			data:    data,
+			headers: nats.Header{"Nats-Msg-Id": []string{traceID}},
+		}
+
+		registry := channel.NewRegistry(nil)
+		disp1 := &mockDispatcher{err: errors.New("network timeout")}
+		registry.Register("whatsapp", disp1)
+
+		w := &Worker{
+			dispatchers:  registry,
+			dispatchRepo: dispatchRepo,
+			maxRetries:   5,
+			maxBackoff:   60 * time.Second,
+		}
+
+		w.processMessage(ctx, msg)
+
+		if msg.acked {
+			t.Error("expected message NOT to be acked")
+		}
+		if !msg.nacked {
+			t.Error("expected message to be nacked")
+		}
+
+		if disp1.calledCount != 1 {
+			t.Errorf("expected disp1 called once, got %d", disp1.calledCount)
+		}
+
+		d, err := dispatchRepo.GetByTraceID(ctx, traceID)
+		if err != nil {
+			t.Fatalf("failed to get dispatch from DB: %v", err)
+		}
+		if d.Status != "failed_transient" {
+			t.Errorf("expected DB status 'failed_transient', got %s", d.Status)
+		}
+		if d.CurrentChannel != "whatsapp" {
+			t.Errorf("expected DB current channel 'whatsapp', got %s", d.CurrentChannel)
+		}
+		if d.FallbackIndex != 0 {
+			t.Errorf("expected DB fallback index 0, got %d", d.FallbackIndex)
+		}
+	})
+
+	t.Run("Redelivery of a successfully sent message skips dispatch", func(t *testing.T) {
+		traceID := uuid.New().String()
+		d, err := dispatchRepo.GetOrCreateDispatch(ctx, ws.ID, traceID, "whatsapp")
+		if err != nil {
+			t.Fatalf("failed to create dispatch: %v", err)
+		}
+		err = dispatchRepo.UpdateDispatchStatus(ctx, d.ID, "sent", "whatsapp", 0, nil)
+		if err != nil {
+			t.Fatalf("failed to update status: %v", err)
+		}
+
+		qMsg := domain.QueueMessage{
+			WorkspaceID: ws.ID,
+			TraceID:     traceID,
+			To:          "+123",
+			Channel:     "whatsapp",
+			Body:        "test redelivery",
+		}
+		data, _ := json.Marshal(qMsg)
+
+		msg := &mockMsg{
+			data:    data,
+			headers: nats.Header{"Nats-Msg-Id": []string{traceID}},
+		}
+
+		registry := channel.NewRegistry(nil)
+		disp1 := &mockDispatcher{err: nil}
+		registry.Register("whatsapp", disp1)
+
+		w := &Worker{
+			dispatchers:  registry,
+			dispatchRepo: dispatchRepo,
+			maxRetries:   5,
+			maxBackoff:   60 * time.Second,
+		}
+
+		w.processMessage(ctx, msg)
+
+		if !msg.acked {
+			t.Error("expected message to be acked")
+		}
+
+		if disp1.calledCount != 0 {
+			t.Errorf("expected dispatcher NOT to be called, got %d", disp1.calledCount)
+		}
+	})
+
+	t.Run("Exhaustion of all fallback channels marks failed permanently", func(t *testing.T) {
+		traceID := uuid.New().String()
+		qMsg := domain.QueueMessage{
+			WorkspaceID:      ws.ID,
+			TraceID:          traceID,
+			To:               "+123",
+			Channel:          "whatsapp",
+			Body:             "test exhaustion",
+			FallbackChannels: []string{"telegram"},
+		}
+		data, _ := json.Marshal(qMsg)
+
+		msg := &mockMsg{
+			data:    data,
+			headers: nats.Header{"Nats-Msg-Id": []string{traceID}},
+		}
+
+		registry := channel.NewRegistry(nil)
+		disp1 := &mockDispatcher{err: channel.NewTerminalError(errors.New("terminal 1"))}
+		disp2 := &mockDispatcher{err: channel.NewTerminalError(errors.New("terminal 2"))}
+		registry.Register("whatsapp", disp1)
+		registry.Register("telegram", disp2)
+
+		w := &Worker{
+			dispatchers:  registry,
+			dispatchRepo: dispatchRepo,
+			maxRetries:   5,
+			maxBackoff:   60 * time.Second,
+		}
+
+		w.processMessage(ctx, msg)
+
+		if !msg.acked {
+			t.Error("expected message to be acked (stop retries)")
+		}
+
+		d, err := dispatchRepo.GetByTraceID(ctx, traceID)
+		if err != nil {
+			t.Fatalf("failed to get dispatch from DB: %v", err)
+		}
+		if d.Status != "failed" {
+			t.Errorf("expected DB status 'failed', got %s", d.Status)
+		}
+		if d.CurrentChannel != "telegram" {
+			t.Errorf("expected DB current channel 'telegram', got %s", d.CurrentChannel)
+		}
+		if d.FallbackIndex != 1 {
+			t.Errorf("expected DB fallback index 1, got %d", d.FallbackIndex)
+		}
+	})
 }

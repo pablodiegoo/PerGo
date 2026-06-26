@@ -301,8 +301,8 @@ func TestWABADispatch(t *testing.T) {
 		if !channel.IsTerminal(err) {
 			t.Fatalf("expected terminal error, got: %v", err)
 		}
-		if err.Error() != "customer service window expired" {
-			t.Errorf("expected error message 'customer service window expired', got: %v", err)
+		if err.Error() != "terminal: customer service window expired" {
+			t.Errorf("expected error message 'terminal: customer service window expired', got: %v", err)
 		}
 	})
 

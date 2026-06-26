@@ -124,7 +124,8 @@ func main() {
 
 	deviceRepo := session.NewDeviceRepository(pool)
 	sessionManager := session.NewManager(db, deviceRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", recipientSessionRepo)
-	worker := queue.NewWorker(ctx, consumer, 5, 60*time.Second, dispatcherRegistry)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+	worker := queue.NewWorker(ctx, consumer, 5, 60*time.Second, dispatcherRegistry, dispatchRepo)
 	slog.Info("message worker started", "consumer", "worker-1")
 	slog.Info("rate limiter configured", "rps", 10, "burst", 10)
 	slog.Info("queue depth limit", "max", 1000)

@@ -12,6 +12,8 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/pablojhp.omnigo/internal/channel"
+	"github.com/pablojhp.omnigo/internal/domain"
+	"github.com/pablojhp.omnigo/internal/repository"
 )
 
 const (
@@ -36,6 +38,9 @@ type Worker struct {
 	// are logged and acked (no-op).
 	dispatchers *channel.Registry
 
+	// dispatchRepo manages database status tracking and fallbacks.
+	dispatchRepo *repository.MessageDispatchRepository
+
 	// dispatched tracks message IDs already processed (in-memory dedup).
 	dispatched sync.Map // message_id string → struct{}
 }
@@ -43,7 +48,7 @@ type Worker struct {
 // NewWorker starts a goroutine that reads messages from consumer and processes them.
 // The goroutine stops when ctx is cancelled. Call Stop() to initiate shutdown.
 // dispatchers may be nil for log-only mode (useful in tests).
-func NewWorker(ctx context.Context, consumer jetstream.Consumer, maxRetries int, maxBackoff time.Duration, dispatchers *channel.Registry) *Worker {
+func NewWorker(ctx context.Context, consumer jetstream.Consumer, maxRetries int, maxBackoff time.Duration, dispatchers *channel.Registry, dispatchRepo *repository.MessageDispatchRepository) *Worker {
 	if maxRetries <= 0 {
 		maxRetries = defaultMaxRetries
 	}
@@ -53,11 +58,13 @@ func NewWorker(ctx context.Context, consumer jetstream.Consumer, maxRetries int,
 
 	ctx, cancel := context.WithCancel(ctx)
 	w := &Worker{
-		consumer:   consumer,
-		cancel:     cancel,
-		done:       make(chan struct{}),
-		maxRetries: maxRetries,
-		maxBackoff: maxBackoff,
+		consumer:     consumer,
+		cancel:       cancel,
+		done:         make(chan struct{}),
+		maxRetries:   maxRetries,
+		maxBackoff:   maxBackoff,
+		dispatchers:  dispatchers,
+		dispatchRepo: dispatchRepo,
 	}
 
 	go w.run(ctx)
@@ -100,11 +107,21 @@ func (w *Worker) run(ctx context.Context) {
 
 // processMessage handles a single message: dedup check, TTL check, dispatch.
 func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
-	// Extract trace_id from Nats-Msg-Id header
-	traceID := ""
-	if headers := msg.Headers(); headers != nil {
-		traceID = headers.Get("Nats-Msg-Id")
+	// Parse payload as domain.QueueMessage
+	var qMsg domain.QueueMessage
+	if err := json.Unmarshal(msg.Data(), &qMsg); err != nil {
+		slog.Error("worker: failed to unmarshal payload", "error", err)
+		_ = msg.Ack()
+		return
 	}
+
+	traceID := qMsg.TraceID
+	if traceID == "" {
+		if headers := msg.Headers(); headers != nil {
+			traceID = headers.Get("Nats-Msg-Id")
+		}
+	}
+	workspaceID := qMsg.WorkspaceID
 
 	// Extract retry attempt from header
 	attempt := w.retryAttempt(msg)
@@ -115,10 +132,31 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 		preview = preview[:100] + "..."
 	}
 
-	// --- Delivery dedup: skip if already processed ---
+	// --- Database State Check / Idempotency ---
+	var dispatch *repository.MessageDispatch
+	if w.dispatchRepo != nil && traceID != "" {
+		var err error
+		dispatch, err = w.dispatchRepo.GetOrCreateDispatch(ctx, workspaceID, traceID, qMsg.Channel)
+		if err != nil {
+			slog.Error("worker: failed to get/create dispatch state", "error", err, "trace_id", traceID)
+			w.handleFailure(msg, traceID, attempt)
+			return
+		}
+
+		if dispatch.Status == "sent" {
+			slog.Info("worker: duplicate delivery prevented (status already sent)",
+				"trace_id", traceID,
+				"subject", msg.Subject(),
+			)
+			_ = msg.Ack()
+			return
+		}
+	}
+
+	// --- In-memory dedup fast path ---
 	if traceID != "" {
 		if _, loaded := w.dispatched.LoadOrStore(traceID, struct{}{}); loaded {
-			slog.Info("worker: duplicate delivery prevented",
+			slog.Info("worker: duplicate delivery prevented (in-memory)",
 				"trace_id", traceID,
 				"subject", msg.Subject(),
 			)
@@ -134,64 +172,141 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 			"subject", msg.Subject(),
 			"payload_preview", preview,
 		)
+		if w.dispatchRepo != nil && dispatch != nil {
+			errMsg := "message expired (TTL)"
+			_ = w.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "failed", dispatch.CurrentChannel, dispatch.FallbackIndex, &errMsg)
+		}
 		_ = msg.Ack()
 		return
 	}
 
-	// --- Dispatch ---
-	slog.Info("worker: dispatching message",
-		"trace_id", traceID,
-		"subject", msg.Subject(),
-		"attempt", attempt,
-	)
+	// --- Fallback Loop ---
+	startIndex := 0
+	if dispatch != nil {
+		startIndex = dispatch.FallbackIndex
+	}
 
-	dispatchErr := w.dispatch(ctx, msg)
-
-	if dispatchErr != nil {
-		w.handleFailure(msg, traceID, attempt)
+	allChannels := append([]string{qMsg.Channel}, qMsg.FallbackChannels...)
+	if startIndex < 0 || startIndex >= len(allChannels) {
+		slog.Error("worker: fallback index out of bounds", "index", startIndex, "channels_count", len(allChannels), "trace_id", traceID)
+		_ = msg.Ack()
 		return
 	}
 
-	if err := msg.Ack(); err != nil {
-		slog.Error("worker: failed to ack message", "error", err, "trace_id", traceID)
+	var finalErr error
+	var lastChannel string
+	currentIndex := startIndex
+
+	for i := startIndex; i < len(allChannels); i++ {
+		channelName := allChannels[i]
+		lastChannel = channelName
+		currentIndex = i
+
+		// Update DB status to 'sending'
+		if w.dispatchRepo != nil && dispatch != nil {
+			err := w.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "sending", channelName, i, nil)
+			if err != nil {
+				slog.Error("worker: failed to update status to sending", "error", err, "trace_id", traceID)
+				w.handleFailure(msg, traceID, attempt)
+				return
+			}
+		}
+
+		slog.Info("worker: attempting dispatch", "channel", channelName, "trace_id", traceID, "index", i, "attempt", attempt)
+		err := w.dispatchToChannel(ctx, channelName, &qMsg)
+		if err == nil {
+			// Success! Update DB status to 'sent'
+			if w.dispatchRepo != nil && dispatch != nil {
+				_ = w.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "sent", channelName, i, nil)
+			}
+			slog.Info("worker: message dispatched successfully", "channel", channelName, "trace_id", traceID)
+			_ = msg.Ack()
+			return
+		}
+
+		finalErr = err
+		if channel.IsTerminal(err) {
+			slog.Warn("worker: terminal error on channel, triggering fallback",
+				"channel", channelName,
+				"error", err,
+				"trace_id", traceID,
+			)
+			// Loop continues to next fallback channel
+			continue
+		} else {
+			// Transient error! Update DB status to 'failed_transient' and NAK with delay (trigger JetStream retry)
+			errMsg := err.Error()
+			if w.dispatchRepo != nil && dispatch != nil {
+				_ = w.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "failed_transient", channelName, i, &errMsg)
+			}
+			slog.Warn("worker: transient error on channel, triggering NATS retry",
+				"channel", channelName,
+				"error", err,
+				"trace_id", traceID,
+			)
+			w.handleFailure(msg, traceID, attempt)
+			return
+		}
 	}
+
+	// Tried all channels and they all failed terminally
+	errMsg := "all channels failed: " + finalErr.Error()
+	if w.dispatchRepo != nil && dispatch != nil {
+		_ = w.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "failed", lastChannel, currentIndex, &errMsg)
+	}
+	slog.Error("worker: all fallback channels exhausted (terminal failure)", "error", finalErr, "trace_id", traceID)
+	_ = msg.Ack()
 }
 
-// dispatch looks up the channel dispatcher from the payload and sends.
-// Returns nil if no dispatchers are registered or channel is unknown
-// (the message is effectively acked as a no-op — useful for testing).
-func (w *Worker) dispatch(ctx context.Context, msg jetstream.Msg) error {
+// dispatchToChannel looks up the channel dispatcher and sends.
+func (w *Worker) dispatchToChannel(ctx context.Context, channelName string, qMsg *domain.QueueMessage) error {
 	if w.dispatchers == nil {
 		return nil // no-op mode
 	}
 
-	// Extract channel from payload
-	var payload struct {
-		Channel string `json:"channel"`
-		To      string `json:"to"`
-		Body    string `json:"body"`
-		TraceID string `json:"trace_id"`
-	}
-	if err := json.Unmarshal(msg.Data(), &payload); err != nil {
-		return fmt.Errorf("worker: unmarshal payload: %w", err)
-	}
-
-	dispatcher, ok := w.dispatchers.Get(payload.Channel)
+	dispatcher, ok := w.dispatchers.Get(channelName)
 	if !ok {
 		slog.Warn("worker: no dispatcher for channel, skipping",
-			"channel", payload.Channel,
-			"trace_id", payload.TraceID,
+			"channel", channelName,
+			"trace_id", qMsg.TraceID,
 		)
-		return nil // not an error — channel may not be configured yet
+		return nil // not an error
 	}
 
 	return dispatcher.Dispatch(ctx, &channel.MessagePayload{
-		MessageID: msg.Headers().Get("Nats-Msg-Id"),
-		TraceID:  payload.TraceID,
-		To:       payload.To,
-		Channel:  payload.Channel,
-		Body:     payload.Body,
+		MessageID:    qMsg.TraceID,
+		TraceID:      qMsg.TraceID,
+		To:           qMsg.To,
+		Channel:      channelName,
+		Body:         qMsg.Body,
+		Metadata:     qMsg.Metadata,
+		TemplateName: qMsg.TemplateName,
+		Language:     qMsg.Language,
+		Components:   convertTemplateComponents(qMsg.Components),
 	})
+}
+
+func convertTemplateComponents(components []domain.TemplateComponent) []channel.TemplateComponent {
+	if components == nil {
+		return nil
+	}
+	res := make([]channel.TemplateComponent, len(components))
+	for i, c := range components {
+		res[i] = channel.TemplateComponent{
+			Type: c.Type,
+		}
+		if c.Parameters != nil {
+			params := make([]channel.TemplateParameter, len(c.Parameters))
+			for j, p := range c.Parameters {
+				params[j] = channel.TemplateParameter{
+					Type: p.Type,
+					Text: p.Text,
+				}
+			}
+			res[i].Parameters = params
+		}
+	}
+	return res
 }
 
 // handleFailure NAKs the message with exponential backoff or marks as terminal failure.
