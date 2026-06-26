@@ -1,0 +1,83 @@
+// Package queue provides JetStream-backed durable message queue primitives.
+package queue
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"time"
+
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
+)
+
+const (
+	// StreamName is the JetStream stream that holds outbound messages.
+	StreamName = "MESSAGES"
+
+	// StreamSubject is the wildcard subject the stream listens on.
+	StreamSubject = "messages.>"
+
+	// MaxQueueDepth is the per-stream message limit that triggers backpressure.
+	MaxQueueDepth = 1000
+)
+
+// EnsureStream creates or updates a WorkQueuePolicy stream named "MESSAGES".
+// The stream persists to file storage and discards new messages when full.
+// Safe to call multiple times — CreateOrUpdateStream is idempotent.
+func EnsureStream(ctx context.Context, nc *nats.Conn) (jetstream.Stream, error) {
+	js, err := jetstream.New(nc)
+	if err != nil {
+		return nil, fmt.Errorf("jetstream.New: %w", err)
+	}
+
+	stream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:      StreamName,
+		Subjects:  []string{StreamSubject},
+		Retention: jetstream.WorkQueuePolicy,
+		MaxMsgs:   MaxQueueDepth,
+		Discard:   jetstream.DiscardNew,
+		Storage:   jetstream.FileStorage,
+		MaxAge:    24 * time.Hour,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create stream %s: %w", StreamName, err)
+	}
+
+	slog.Info("jetstream stream ready", "stream", StreamName)
+	return stream, nil
+}
+
+// JetStreamPublisher publishes messages to the JetStream "messages.outbound"
+// subject. Each publish carries a Nats-Msg-Id header set to the caller's
+// trace_id for publish-side idempotency (dedup).
+type JetStreamPublisher struct {
+	js jetstream.JetStream
+}
+
+// NewJetStreamPublisher wraps a JetStream instance for publishing.
+func NewJetStreamPublisher(nc *nats.Conn) *JetStreamPublisher {
+	js, err := jetstream.New(nc)
+	if err != nil {
+		// This should never fail if nc is connected and JetStream-enabled.
+		slog.Error("failed to create jetstream instance for publisher", "error", err)
+	}
+	return &JetStreamPublisher{js: js}
+}
+
+// Publish sends data to the given subject with a Nats-Msg-Id header set to
+// traceID for dedup. Returns an error if the stream is full (DiscardNew) or
+// the connection is broken.
+func (p *JetStreamPublisher) Publish(ctx context.Context, subject string, data []byte, traceID string) error {
+	msg := nats.NewMsg(subject)
+	msg.Data = data
+	if traceID != "" {
+		msg.Header.Set("Nats-Msg-Id", traceID)
+	}
+
+	_, err := p.js.PublishMsg(ctx, msg)
+	if err != nil {
+		return fmt.Errorf("publish to %s: %w", subject, err)
+	}
+	return nil
+}
