@@ -31,13 +31,13 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### WhatsApp Web
 
-- [ ] **WAWEB-01**: WhatsApp Web adapter via whatsmeow implementing the `Dispatcher` interface
-- [ ] **WAWEB-02**: Multi-session connection manager (in-memory `sync.RWMutex` registry, per-device goroutines)
-- [ ] **WAWEB-03**: QR code pairing via admin panel with dynamically refreshed QR display
-- [ ] **WAWEB-04**: Persistent session store in PostgreSQL (device identity survives server restart, auto-reconnect)
-- [ ] **WAWEB-05**: Reconnect on restart with backoff and storm protection (semaphore + jitter over `GetAllDevices`)
-- [ ] **WAWEB-06**: WhatsApp Web version auto-refresh (`SetWAVersion` on "client outdated" events)
-- [ ] **WAWEB-07**: Terminal session handling for `LoggedOut` / forced `403` events (mark session dead, alert operator, stop retry)
+- [x] **WAWEB-01**: WhatsApp Web adapter via whatsmeow implementing the `Dispatcher` interface
+- [x] **WAWEB-02**: Multi-session connection manager (in-memory `sync.RWMutex` registry, per-device goroutines)
+- [x] **WAWEB-03**: QR code pairing via admin panel with dynamically refreshed QR display
+- [x] **WAWEB-04**: Persistent session store in PostgreSQL (device identity survives server restart, auto-reconnect)
+- [x] **WAWEB-05**: Reconnect on restart with backoff and storm protection (semaphore + jitter over `GetAllDevices`)
+- [x] **WAWEB-06**: WhatsApp Web version auto-refresh (`SetWAVersion` on "client outdated" events)
+- [x] **WAWEB-07**: Terminal session handling for `LoggedOut` / forced `403` events (mark session dead, alert operator, stop retry)
 
 ### WhatsApp Cloud (WABA)
 
@@ -88,17 +88,17 @@ Requirements for initial release. Each maps to roadmap phases.
 
 - [ ] **ADMIN-01**: Server-rendered admin panel (Echo + Templ + HTMX, HTMX fragment detection)
 - [ ] **ADMIN-02**: Multi-tenant workspace management (create, isolate, manage scoped API keys)
-- [ ] **ADMIN-03**: Connection telemetry display (real-time session status, queue depths, channel health)
-- [ ] **ADMIN-04**: QR code pairing interface (dynamically refreshed QR for WhatsApp Web device linking)
+- [x] **ADMIN-03**: Connection telemetry display (real-time session status, queue depths, channel health)
+- [x] **ADMIN-04**: QR code pairing interface (dynamically refreshed QR for WhatsApp Web device linking)
 - [ ] **ADMIN-05**: Audit log review interface (searchable, filterable, exportable)
-- [ ] **ADMIN-06**: Ban-risk warning displayed on QR pairing UI (operators must not pair business-critical numbers unknowingly)
+- [x] **ADMIN-06**: Ban-risk warning displayed on QR pairing UI (operators must not pair business-critical numbers unknowingly)
 
 ### Security
 
 - [ ] **SEC-01**: AES-256-GCM encryption at rest for session tokens and channel credentials (per-row nonce)
 - [ ] **SEC-02**: SHA-256 hashing for API keys (prefix stored cleartext for lookup, secret hashed)
 - [ ] **SEC-03**: Multi-tenant data isolation with enforced tenant-context convention (every query scoped to `workspace_id`, RLS or equivalent guard against cross-tenant leaks)
-- [ ] **SEC-04**: whatsmeow device key encryption (custom store wrapper or `pgcrypto` — bridge the plaintext storage gap in whatsmeow's internal `whatsmeow_device` table)
+- [x] **SEC-04**: whatsmeow device key encryption (custom store wrapper or `pgcrypto` — bridge the plaintext storage gap in whatsmeow's internal `whatsmeow_device` table)
 - [ ] **SEC-05**: Key management with `key_id`/`key_version` columns for encryption key rotation
 
 ### Observability
@@ -116,7 +116,7 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **INFRA-04**: Docker Compose deployment topology (omnigo + postgres + nats)
 - [ ] **INFRA-05**: Graceful shutdown (drain JetStream consumers, flush audit buffer, close connections, stop HTTP listener)
 - [ ] **INFRA-06**: Makefile with run, test, lint, `templ generate`, migrate targets
-- [ ] **INFRA-07**: whatsmeow pseudo-version pinning (dated commit-hash, not `@latest`) with documented upgrade ritual
+- [x] **INFRA-07**: whatsmeow pseudo-version pinning (dated commit-hash, not `@latest`) with documented upgrade ritual
 
 ## v2 Requirements
 
@@ -182,13 +182,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | QUEUE-03 | Phase 3 | Complete |
 | QUEUE-04 | Phase 3 | Complete |
 | QUEUE-05 | Phase 3 | Complete |
-| WAWEB-01 | Phase 4 | Pending |
-| WAWEB-02 | Phase 4 | Pending |
-| WAWEB-03 | Phase 4 | Pending |
-| WAWEB-04 | Phase 4 | Pending |
-| WAWEB-05 | Phase 4 | Pending |
-| WAWEB-06 | Phase 4 | Pending |
-| WAWEB-07 | Phase 4 | Pending |
+| WAWEB-01 | Phase 4 | Complete |
+| WAWEB-02 | Phase 4 | Complete |
+| WAWEB-03 | Phase 4 | Complete |
+| WAWEB-04 | Phase 4 | Complete |
+| WAWEB-05 | Phase 4 | Complete |
+| WAWEB-06 | Phase 4 | Complete |
+| WAWEB-07 | Phase 4 | Complete |
 | WABA-01 | Phase 5 | Pending |
 | WABA-02 | Phase 5 | Pending |
 | WABA-03 | Phase 5 | Pending |
@@ -215,14 +215,14 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUDIT-04 | Phase 2 | Pending |
 | ADMIN-01 | Phase 2 | Pending |
 | ADMIN-02 | Phase 2 | Pending |
-| ADMIN-03 | Phase 4 | Pending |
-| ADMIN-04 | Phase 4 | Pending |
+| ADMIN-03 | Phase 4 | Complete |
+| ADMIN-04 | Phase 4 | Complete |
 | ADMIN-05 | Phase 2 | Pending |
-| ADMIN-06 | Phase 4 | Pending |
+| ADMIN-06 | Phase 4 | Complete |
 | SEC-01 | Phase 1 | Pending |
 | SEC-02 | Phase 1 | Pending |
 | SEC-03 | Phase 1 | Pending |
-| SEC-04 | Phase 4 | Pending |
+| SEC-04 | Phase 4 | Complete |
 | SEC-05 | Phase 1 | Pending |
 | OBS-01 | Phase 1 | Pending |
 | OBS-02 | Phase 1 | Pending |
@@ -234,7 +234,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | INFRA-04 | Phase 1 | Pending |
 | INFRA-05 | Phase 1 | Pending |
 | INFRA-06 | Phase 1 | Pending |
-| INFRA-07 | Phase 4 | Pending |
+| INFRA-07 | Phase 4 | Complete |
 
 **Coverage:**
 

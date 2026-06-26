@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [ ] **Phase 1: Foundation** - Server, schema, identity, crypto, audit, observability — the expensive-to-retrofit decisions locked in
 - [ ] **Phase 2: Admin Shell** - Server-rendered admin panel for workspace, key, and audit management
 - [x] **Phase 3: Ingest API & Queue** - Unified POST /messages endpoint with JetStream durability, backpressure, dedup, and rate limiting (completed 2026-06-26)
-- [ ] **Phase 4: WhatsApp Web & QR Pairing** - Unofficial WhatsApp Web channel via whatsmeow with multi-session, QR pairing, and ban-risk resilience
+- [x] **Phase 4: WhatsApp Web & QR Pairing** - Unofficial WhatsApp Web channel via whatsmeow with multi-session, QR pairing, and ban-risk resilience (completed 2026-06-26)
 - [ ] **Phase 5: Official Channels & Smart Fallback** - WABA and Telegram adapters with template management, 24h window, and ordered fallback pipeline
 - [ ] **Phase 6: Webhook Delivery & DLQ** - Durable, HMAC-signed webhook delivery with retries and dead-letter queue
 - [ ] **Phase 7: Media & Inbound** - Channel-agnostic media support and inbound message ingestion with webhook forwarding
@@ -101,12 +101,12 @@ Plans:
   4. When WhatsApp forces logout (`LoggedOut` / 403), the session is marked terminal, the operator is alerted, and no retry loop occurs; the message triggers fallback (if configured) rather than hanging
   5. whatsmeow device keys are encrypted at rest (custom store wrapper or `pgcrypto` bridging the plaintext storage gap); whatsmeow is pinned to a dated pseudo-version (not `@latest`) with a documented upgrade ritual; operators can view real-time session status, queue depths, and channel health on the admin telemetry panel
 
-**Plans:** 1/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 
 - [x] 04-01-PLAN.md — Dispatcher interface, Registry, WhatsAppAdapter with staggered dispatch, Worker wiring
-- [ ] 04-02-PLAN.md — Session manager, device repository, startup reconnect, lifecycle events
-- [ ] 04-03-PLAN.md — QR pairing UI, device management page, telemetry dashboard
+- [x] 04-02-PLAN.md — Session manager, device repository, startup reconnect, lifecycle events
+- [x] 04-03-PLAN.md — QR pairing UI, device management page, telemetry dashboard
 
 **UI hint**: yes
 
@@ -169,7 +169,7 @@ Note: Phase 2 and Phase 3 are independent after Phase 1 and may execute in paral
 | 1. Foundation | 0/4 | Not started | - |
 | 2. Admin Shell | 0/3 | Not started | - |
 | 3. Ingest API & Queue | 3/3 | Complete    | 2026-06-26 |
-| 4. WhatsApp Web & QR Pairing | 1/3 | In Progress|  |
+| 4. WhatsApp Web & QR Pairing | 3/3 | Complete    | 2026-06-26 |
 | 5. Official Channels & Smart Fallback | 0/TBD | Not started | - |
 | 6. Webhook Delivery & DLQ | 0/TBD | Not started | - |
 | 7. Media & Inbound | 0/TBD | Not started | - |
