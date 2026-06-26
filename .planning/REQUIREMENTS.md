@@ -24,10 +24,10 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Queue
 
 - [x] **QUEUE-01**: NATS JetStream work-queue stream for outbound message durability (at-least-once, single consumer per subject)
-- [ ] **QUEUE-02**: Backpressure: 1,000-message per-session limit enforced before enqueue with HTTP 429/422 + `Retry-After` header
+- [x] **QUEUE-02**: Backpressure: 1,000-message per-session limit enforced before enqueue with HTTP 429/422 + `Retry-After` header
 - [x] **QUEUE-03**: Dedup mechanism: `Nats-Msg-Id = trace_id` for publish-side idempotency + `dispatched_messages` dedup set to prevent duplicate delivery on redelivery
-- [ ] **QUEUE-04**: Per-session rate limiting with staggered dispatch (1-3s random delay) for unofficial WhatsApp channels via `golang.org/x/time/rate`
-- [ ] **QUEUE-05**: Automatic retries with exponential backoff (JetStream `MaxDeliver` + `AckWait`/`MaxBackoff`, NAK-with-delay)
+- [x] **QUEUE-04**: Per-session rate limiting with staggered dispatch (1-3s random delay) for unofficial WhatsApp channels via `golang.org/x/time/rate`
+- [x] **QUEUE-05**: Automatic retries with exponential backoff (JetStream `MaxDeliver` + `AckWait`/`MaxBackoff`, NAK-with-delay)
 
 ### WhatsApp Web
 
@@ -178,10 +178,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUTH-02 | Phase 1 | Pending |
 | AUTH-03 | Phase 1 | Pending |
 | QUEUE-01 | Phase 3 | Complete |
-| QUEUE-02 | Phase 3 | Pending |
+| QUEUE-02 | Phase 3 | Complete |
 | QUEUE-03 | Phase 3 | Complete |
-| QUEUE-04 | Phase 3 | Pending |
-| QUEUE-05 | Phase 3 | Pending |
+| QUEUE-04 | Phase 3 | Complete |
+| QUEUE-05 | Phase 3 | Complete |
 | WAWEB-01 | Phase 4 | Pending |
 | WAWEB-02 | Phase 4 | Pending |
 | WAWEB-03 | Phase 4 | Pending |

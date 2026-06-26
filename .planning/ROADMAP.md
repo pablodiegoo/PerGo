@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 1: Foundation** - Server, schema, identity, crypto, audit, observability — the expensive-to-retrofit decisions locked in
 - [ ] **Phase 2: Admin Shell** - Server-rendered admin panel for workspace, key, and audit management
-- [ ] **Phase 3: Ingest API & Queue** - Unified POST /messages endpoint with JetStream durability, backpressure, dedup, and rate limiting
+- [x] **Phase 3: Ingest API & Queue** - Unified POST /messages endpoint with JetStream durability, backpressure, dedup, and rate limiting (completed 2026-06-26)
 - [ ] **Phase 4: WhatsApp Web & QR Pairing** - Unofficial WhatsApp Web channel via whatsmeow with multi-session, QR pairing, and ban-risk resilience
 - [ ] **Phase 5: Official Channels & Smart Fallback** - WABA and Telegram adapters with template management, 24h window, and ordered fallback pipeline
 - [ ] **Phase 6: Webhook Delivery & DLQ** - Durable, HMAC-signed webhook delivery with retries and dead-letter queue
@@ -80,7 +80,7 @@ Plans:
   4. Duplicate publishes (same `trace_id`) are deduplicated via `Nats-Msg-Id`; a `dispatched_messages` dedup set prevents duplicate delivery on redelivery
   5. Per-session rate limiting applies staggered dispatch (1-3s random delay) for unofficial WhatsApp channels via `golang.org/x/time/rate`; message TTL (`ttl_seconds`) causes expired messages to be dropped instead of sent late
 
-**Plans:** 3/3 plans executed
+**Plans:** 3/3 plans complete
 Plans:
 
 - [x] 03-01-PLAN.md — Domain types, validation, and POST /messages handler (202 + trace + structured errors)
@@ -162,7 +162,7 @@ Note: Phase 2 and Phase 3 are independent after Phase 1 and may execute in paral
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/4 | Not started | - |
 | 2. Admin Shell | 0/3 | Not started | - |
-| 3. Ingest API & Queue | 1/3 | In Progress|  |
+| 3. Ingest API & Queue | 3/3 | Complete    | 2026-06-26 |
 | 4. WhatsApp Web & QR Pairing | 0/TBD | Not started | - |
 | 5. Official Channels & Smart Fallback | 0/TBD | Not started | - |
 | 6. Webhook Delivery & DLQ | 0/TBD | Not started | - |
