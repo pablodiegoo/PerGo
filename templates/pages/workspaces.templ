@@ -106,8 +106,12 @@ templ WorkspaceDetailPage(ws repository.Workspace, keys []repository.APIKey) {
 templ WorkspaceDetailContent(ws repository.Workspace, keys []repository.APIKey) {
 	<div class="page-header">
 		<h1>{ ws.Name }</h1>
-		<a href="/admin/workspaces" class="btn btn-secondary">Back to Workspaces</a>
+		<div class="header-actions">
+			<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/templates", ws.ID)) } class="btn btn-primary">Manage WABA Templates</a>
+			<a href="/admin/workspaces" class="btn btn-secondary">Back to Workspaces</a>
+		</div>
 	</div>
+
 	<div class="section">
 		<h2>Details</h2>
 		<dl class="detail-list">
