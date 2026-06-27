@@ -156,6 +156,7 @@ func main() {
 		slog.Error("failed to start webhook worker", "error", err)
 		os.Exit(1)
 	}
+	webhookWorker.SetWorkspaceRepository(wsRepo)
 
 	slog.Info("rate limiter configured", "rps", 10, "burst", 10)
 	slog.Info("queue depth limit", "max", 1000)

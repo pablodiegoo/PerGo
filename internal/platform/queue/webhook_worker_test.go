@@ -108,6 +108,7 @@ func TestWebhookWorker_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start webhook worker: %v", err)
 	}
+	worker.SetWorkspaceRepository(wsRepo)
 	defer worker.Stop()
 
 	// 6. Publish outbound webhook event
@@ -229,6 +230,7 @@ func TestWebhookWorker_TerminalErrorDLQ(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start worker: %v", err)
 	}
+	worker.SetWorkspaceRepository(wsRepo)
 	defer worker.Stop()
 
 	traceID := "trace-terminal-888"
@@ -293,4 +295,121 @@ func TestEnsureWebhookStream(t *testing.T) {
 	if info.Config.Retention != jetstream.LimitsPolicy {
 		t.Errorf("expected retention LimitsPolicy, got %v", info.Config.Retention)
 	}
+}
+
+func TestWebhookWorker_Inbound(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Delete streams to ensure clean test state
+	js, err := jetstream.New(nc)
+	if err == nil {
+		_ = js.DeleteStream(ctx, "INBOUND")
+		_ = js.DeleteStream(ctx, "WEBHOOKS")
+	}
+
+	// 1. Setup repository
+	kek := make([]byte, 32)
+	enc, _ := crypto.NewEncryptor(kek)
+	dlqRepo := repository.NewWebhookDLQRepository(pool, enc)
+	wsRepo := repository.NewWorkspaceRepository(pool)
+
+	// Create workspace with PII Opt-In false
+	ws, err := wsRepo.Create(ctx, "inbound_redact_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	// 2. Setup mock webhook endpoint
+	var receivedPayload []byte
+	var mu sync.Mutex
+	received := make(chan struct{}, 1)
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		receivedPayload, _ = io.ReadAll(r.Body)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+		received <- struct{}{}
+	}))
+	defer testServer.Close()
+
+	_ = dlqRepo.SaveConfig(ctx, ws.ID, testServer.URL, []byte("signing-secret"))
+
+	worker, err := NewWebhookWorker(ctx, nc, dlqRepo)
+	if err != nil {
+		t.Fatalf("failed to start worker: %v", err)
+	}
+	worker.SetWorkspaceRepository(wsRepo)
+
+	// 3. Publish inbound event with PII details (location & contacts)
+	traceID := "trace-inbound-111"
+	event := struct {
+		Event       string `json:"event"`
+		TraceID     string `json:"trace_id"`
+		MessageID   string `json:"message_id"`
+		Channel     string `json:"channel"`
+		Timestamp   string `json:"timestamp"`
+		WorkspaceID string `json:"workspace_id"`
+		From        string `json:"from"`
+		Body        string `json:"body,omitempty"`
+		Location    any    `json:"location,omitempty"`
+		Contacts    any    `json:"contacts,omitempty"`
+	}{
+		Event:       "inbound_message",
+		TraceID:     traceID,
+		MessageID:   "msg-999",
+		Channel:     "whatsapp",
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+		WorkspaceID: ws.ID.String(),
+		From:        "5511999999999",
+		Body:        "Hi",
+		Location:    map[string]any{"latitude": -23.5},
+		Contacts:    []any{map[string]any{"name": "Alice"}},
+	}
+
+	eventData, _ := json.Marshal(event)
+	publisher := NewJetStreamPublisher(nc)
+	err = publisher.Publish(ctx, "inbound.events."+ws.ID.String(), eventData, traceID)
+	if err != nil {
+		t.Fatalf("publish error: %v", err)
+	}
+
+	// 4. Wait for delivery
+	select {
+	case <-received:
+	case <-time.After(5 * time.Second):
+		t.Fatal("webhook was not delivered")
+	}
+
+	mu.Lock()
+	payload := receivedPayload
+	mu.Unlock()
+
+	// 5. Assert redaction (From hashed, Location & Contacts stripped)
+	var result struct {
+		From     string `json:"from"`
+		Location any    `json:"location"`
+		Contacts any    `json:"contacts"`
+	}
+	_ = json.Unmarshal(payload, &result)
+
+	if result.From == "5511999999999" {
+		t.Error("expected sender 'from' field to be hashed, but got plain value")
+	}
+	if len(result.From) != 64 {
+		t.Errorf("expected 64-char hex hash value for from, got %q", result.From)
+	}
+	if result.Location != nil {
+		t.Errorf("expected Location field to be stripped, got %v", result.Location)
+	}
+	if result.Contacts != nil {
+		t.Errorf("expected Contacts field to be stripped, got %v", result.Contacts)
+	}
+
+	worker.Stop()
 }

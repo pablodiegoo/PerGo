@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,13 +32,16 @@ type WebhookEvent struct {
 }
 
 type WebhookWorker struct {
-	nc       *nats.Conn
-	js       jetstream.JetStream
-	consumer jetstream.Consumer
-	dlqRepo  *repository.WebhookDLQRepository
-	client   *http.Client
-	cancel   context.CancelFunc
-	done     chan struct{}
+	nc              *nats.Conn
+	js              jetstream.JetStream
+	consumer        jetstream.Consumer
+	inboundConsumer jetstream.Consumer
+	dlqRepo         *repository.WebhookDLQRepository
+	wsRepo          *repository.WorkspaceRepository
+	client          *http.Client
+	cancel          context.CancelFunc
+	wg              sync.WaitGroup
+	done            chan struct{}
 }
 
 func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dlqRepo *repository.WebhookDLQRepository) (*WebhookWorker, error) {
@@ -66,54 +70,88 @@ func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dlqRepo *repository.We
 		return nil, fmt.Errorf("create webhook consumer: %w", err)
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	w := &WebhookWorker{
-		nc:       nc,
-		js:       js,
-		consumer: consumer,
-		dlqRepo:  dlqRepo,
-		client:   &http.Client{Timeout: 10 * time.Second},
-		cancel:   cancel,
-		done:     make(chan struct{}),
+	// Ensure INBOUND stream exists
+	inboundStream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:      "INBOUND",
+		Subjects:  []string{"inbound.events.>"},
+		Retention: jetstream.LimitsPolicy,
+		MaxMsgs:   10000,
+		Storage:   jetstream.FileStorage,
+		MaxAge:    7 * 24 * time.Hour,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ensure inbound stream: %w", err)
 	}
 
-	go w.run(ctx)
+	// Create inbound consumer
+	inboundConsumer, err := inboundStream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
+		Durable:       "inbound-webhooks-consumer",
+		Description:   "Inbound webhook delivery worker consumer",
+		DeliverPolicy: jetstream.DeliverAllPolicy,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		AckWait:       15 * time.Second,
+		MaxDeliver:    10,
+		FilterSubject: "inbound.events.>",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create inbound webhook consumer: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	w := &WebhookWorker{
+		nc:              nc,
+		js:              js,
+		consumer:        consumer,
+		inboundConsumer: inboundConsumer,
+		dlqRepo:         dlqRepo,
+		client:          &http.Client{Timeout: 10 * time.Second},
+		cancel:          cancel,
+		done:            make(chan struct{}),
+	}
+
+	w.wg.Add(2)
+	go w.run(ctx, w.consumer, "outbound")
+	go w.run(ctx, w.inboundConsumer, "inbound")
 	return w, nil
 }
 
 func (w *WebhookWorker) Stop() {
 	w.cancel()
-	<-w.done
+	w.wg.Wait()
 }
 
-func (w *WebhookWorker) run(ctx context.Context) {
-	defer close(w.done)
-	slog.Info("webhook worker started")
+func (w *WebhookWorker) run(ctx context.Context, cons jetstream.Consumer, mode string) {
+	defer w.wg.Done()
+	slog.Info("webhook worker thread started", "mode", mode)
 
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("webhook worker stopping")
+			slog.Info("webhook worker thread stopping", "mode", mode)
 			return
 		default:
-			msgs, err := w.consumer.Fetch(1, jetstream.FetchMaxWait(5*time.Second))
+			msgs, err := cons.Fetch(1, jetstream.FetchMaxWait(5*time.Second))
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 					continue
 				}
-				slog.Error("webhook worker: fetch error", "error", err)
+				slog.Error("webhook worker: fetch error", "error", err, "mode", mode)
 				time.Sleep(1 * time.Second)
 				continue
 			}
 
 			for msg := range msgs.Messages() {
-				w.processEvent(ctx, msg)
+				w.processEvent(ctx, msg, mode)
 			}
 		}
 	}
 }
 
-func (w *WebhookWorker) processEvent(ctx context.Context, msg jetstream.Msg) {
+func (w *WebhookWorker) SetWorkspaceRepository(repo *repository.WorkspaceRepository) {
+	w.wsRepo = repo
+}
+
+func (w *WebhookWorker) processEvent(ctx context.Context, msg jetstream.Msg, mode string) {
 	var evt WebhookEvent
 	if err := json.Unmarshal(msg.Data(), &evt); err != nil {
 		slog.Error("webhook worker: failed to unmarshal event", "error", err)
@@ -142,8 +180,48 @@ func (w *WebhookWorker) processEvent(ctx context.Context, msg jetstream.Msg) {
 		return
 	}
 
+	payloadBytes := msg.Data()
+
+	// Inbound PII redaction logic
+	if mode == "inbound" {
+		var wsOptIn bool
+		if w.wsRepo != nil {
+			if ws, err := w.wsRepo.GetByID(ctx, workspaceID); err == nil && ws != nil {
+				wsOptIn = ws.PIIOptIn
+			}
+		}
+
+		if !wsOptIn {
+			var inboundPayload struct {
+				Event       string `json:"event"`
+				TraceID     string `json:"trace_id"`
+				MessageID   string `json:"message_id"`
+				Channel     string `json:"channel"`
+				Timestamp   string `json:"timestamp"`
+				WorkspaceID string `json:"workspace_id"`
+				From        string `json:"from"`
+				Body        string `json:"body,omitempty"`
+				Media       any    `json:"media,omitempty"`
+				Location    any    `json:"location,omitempty"`
+				Contacts    any    `json:"contacts,omitempty"`
+			}
+			if err := json.Unmarshal(msg.Data(), &inboundPayload); err == nil {
+				// Hash from field
+				hasher := sha256.New()
+				hasher.Write([]byte(inboundPayload.From))
+				inboundPayload.From = hex.EncodeToString(hasher.Sum(nil))
+
+				// Strip location and contacts
+				inboundPayload.Location = nil
+				inboundPayload.Contacts = nil
+
+				payloadBytes, _ = json.Marshal(inboundPayload)
+			}
+		}
+	}
+
 	// 2. Dispatch Webhook
-	err = w.dispatch(ctx, cfg.URL, cfg.Secret, msg.Data())
+	err = w.dispatch(ctx, cfg.URL, cfg.Secret, payloadBytes, evt.TraceID)
 	if err != nil {
 		slog.Warn("webhook worker: dispatch failed", "error", err, "url", cfg.URL, "trace_id", evt.TraceID)
 		w.handleRetry(msg, err, &evt, cfg.URL)
@@ -154,7 +232,7 @@ func (w *WebhookWorker) processEvent(ctx context.Context, msg jetstream.Msg) {
 	_ = msg.Ack()
 }
 
-func (w *WebhookWorker) dispatch(ctx context.Context, url string, secret []byte, payload []byte) error {
+func (w *WebhookWorker) dispatch(ctx context.Context, url string, secret []byte, payload []byte, traceID string) error {
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	signature := SignPayload(payload, secret, timestamp)
 
@@ -165,6 +243,9 @@ func (w *WebhookWorker) dispatch(ctx context.Context, url string, secret []byte,
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-OmniGo-Signature", signature)
+	if traceID != "" {
+		req.Header.Set("X-Trace-ID", traceID)
+	}
 
 	resp, err := w.client.Do(req)
 	if err != nil {
