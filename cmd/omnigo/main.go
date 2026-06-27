@@ -34,6 +34,7 @@ import (
 	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.omnigo/internal/platform/queue"
 	"github.com/pablojhp.omnigo/internal/platform/shutdown"
+	"github.com/pablojhp.omnigo/internal/platform/storage"
 	"github.com/pablojhp.omnigo/internal/repository"
 	"github.com/pablojhp.omnigo/internal/session"
 	"github.com/pablojhp.omnigo/templates/pages"
@@ -218,12 +219,30 @@ func main() {
 	}
 	healthHandler.RegisterRoutes(e)
 
+	// --- S3 Storage Client ---
+	s3Client, err := storage.NewS3Client(
+		cfg.S3Endpoint,
+		cfg.S3Region,
+		cfg.S3AccessKey,
+		cfg.S3SecretKey,
+		cfg.S3Bucket,
+		cfg.S3UsePathStyle,
+	)
+	if err != nil {
+		slog.Error("failed to initialize S3 client", "error", err)
+		os.Exit(1)
+	}
+
 	// --- Message handler (POST /messages) ---
 	messageHandler := &handler.MessageHandler{
 		Publisher:  publisher,
 		QueueDepth: queueDepth,
 	}
 	messageHandler.RegisterRoutes(e, middleware.RateLimiterMiddleware(rateLimiter))
+
+	// --- Media proxy handler (GET /media/:workspace_id/:hash) ---
+	mediaHandler := handler.NewMediaHandler(s3Client)
+	e.GET("/media/:workspace_id/:hash", mediaHandler.Handle)
 
 	// --- Telegram Inbound Webhook handler ---
 	telegramWebhookHandler := handler.NewTelegramWebhookHandler(credentialsRepo, recipientSessionRepo)
