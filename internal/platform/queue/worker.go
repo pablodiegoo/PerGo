@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/pablojhp.omnigo/internal/channel"
@@ -41,6 +42,9 @@ type Worker struct {
 	// dispatchRepo manages database status tracking and fallbacks.
 	dispatchRepo *repository.MessageDispatchRepository
 
+	// publisher is used to publish status updates to webhooks.events.
+	publisher *JetStreamPublisher
+
 	// dispatched tracks message IDs already processed (in-memory dedup).
 	dispatched sync.Map // message_id string → struct{}
 }
@@ -48,7 +52,7 @@ type Worker struct {
 // NewWorker starts a goroutine that reads messages from consumer and processes them.
 // The goroutine stops when ctx is cancelled. Call Stop() to initiate shutdown.
 // dispatchers may be nil for log-only mode (useful in tests).
-func NewWorker(ctx context.Context, consumer jetstream.Consumer, maxRetries int, maxBackoff time.Duration, dispatchers *channel.Registry, dispatchRepo *repository.MessageDispatchRepository) *Worker {
+func NewWorker(ctx context.Context, consumer jetstream.Consumer, maxRetries int, maxBackoff time.Duration, dispatchers *channel.Registry, dispatchRepo *repository.MessageDispatchRepository, publisher *JetStreamPublisher) *Worker {
 	if maxRetries <= 0 {
 		maxRetries = defaultMaxRetries
 	}
@@ -65,6 +69,7 @@ func NewWorker(ctx context.Context, consumer jetstream.Consumer, maxRetries int,
 		maxBackoff:   maxBackoff,
 		dispatchers:  dispatchers,
 		dispatchRepo: dispatchRepo,
+		publisher:    publisher,
 	}
 
 	go w.run(ctx)
@@ -151,6 +156,11 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 			_ = msg.Ack()
 			return
 		}
+
+		// If it was just created (status "queued"), publish the "queued" status webhook event
+		if dispatch.Status == "queued" {
+			w.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "queued", qMsg.Channel, nil)
+		}
 	}
 
 	// --- In-memory dedup fast path ---
@@ -175,6 +185,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 		if w.dispatchRepo != nil && dispatch != nil {
 			errMsg := "message expired (TTL)"
 			_ = w.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "failed", dispatch.CurrentChannel, dispatch.FallbackIndex, &errMsg)
+			w.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "failed", dispatch.CurrentChannel, &errMsg)
 		}
 		_ = msg.Ack()
 		return
@@ -210,6 +221,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 				w.handleFailure(msg, traceID, attempt)
 				return
 			}
+			w.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "sending", channelName, nil)
 		}
 
 		slog.Info("worker: attempting dispatch", "channel", channelName, "trace_id", traceID, "index", i, "attempt", attempt)
@@ -218,6 +230,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 			// Success! Update DB status to 'sent'
 			if w.dispatchRepo != nil && dispatch != nil {
 				_ = w.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "sent", channelName, i, nil)
+				w.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "sent", channelName, nil)
 			}
 			slog.Info("worker: message dispatched successfully", "channel", channelName, "trace_id", traceID)
 			_ = msg.Ack()
@@ -238,6 +251,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 			errMsg := err.Error()
 			if w.dispatchRepo != nil && dispatch != nil {
 				_ = w.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "failed_transient", channelName, i, &errMsg)
+				w.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "failed_transient", channelName, &errMsg)
 			}
 			slog.Warn("worker: transient error on channel, triggering NATS retry",
 				"channel", channelName,
@@ -253,6 +267,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 	errMsg := "all channels failed: " + finalErr.Error()
 	if w.dispatchRepo != nil && dispatch != nil {
 		_ = w.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "failed", lastChannel, currentIndex, &errMsg)
+		w.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "failed", lastChannel, &errMsg)
 	}
 	slog.Error("worker: all fallback channels exhausted (terminal failure)", "error", finalErr, "trace_id", traceID)
 	_ = msg.Ack()
@@ -397,4 +412,43 @@ func (w *Worker) isExpired(msg jetstream.Msg) bool {
 func (w *Worker) Stop() {
 	w.cancel()
 	<-w.done
+}
+
+// publishWebhookEvent creates and publishes a status event to NATS.
+func (w *Worker) publishWebhookEvent(ctx context.Context, workspaceID uuid.UUID, traceID string, dispatchID uuid.UUID, event string, channelName string, errMsg *string) {
+	if w.publisher == nil {
+		return
+	}
+
+	evt := struct {
+		Event       string `json:"event"`
+		TraceID     string `json:"trace_id"`
+		MessageID   string `json:"message_id"`
+		Channel     string `json:"channel"`
+		Timestamp   string `json:"timestamp"`
+		WorkspaceID string `json:"workspace_id"`
+		Error       string `json:"error,omitempty"`
+	}{
+		Event:       event,
+		TraceID:     traceID,
+		MessageID:   dispatchID.String(),
+		Channel:     channelName,
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+		WorkspaceID: workspaceID.String(),
+	}
+	if errMsg != nil {
+		evt.Error = *errMsg
+	}
+
+	payload, err := json.Marshal(evt)
+	if err != nil {
+		slog.Error("worker: failed to marshal webhook event", "error", err, "trace_id", traceID)
+		return
+	}
+
+	// Publish to subject: webhooks.events
+	err = w.publisher.Publish(ctx, "webhooks.events", payload, traceID)
+	if err != nil {
+		slog.Error("worker: failed to publish webhook event to NATS", "error", err, "trace_id", traceID)
+	}
 }

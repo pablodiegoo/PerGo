@@ -48,6 +48,30 @@ func EnsureStream(ctx context.Context, nc *nats.Conn) (jetstream.Stream, error) 
 	return stream, nil
 }
 
+// EnsureWebhookStream creates or updates a LimitsPolicy stream named "WEBHOOKS".
+// Safe to call multiple times.
+func EnsureWebhookStream(ctx context.Context, nc *nats.Conn) (jetstream.Stream, error) {
+	js, err := jetstream.New(nc)
+	if err != nil {
+		return nil, fmt.Errorf("jetstream.New: %w", err)
+	}
+
+	stream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:      "WEBHOOKS",
+		Subjects:  []string{"webhooks.>"},
+		Retention: jetstream.LimitsPolicy,
+		MaxMsgs:   10000,
+		Storage:   jetstream.FileStorage,
+		MaxAge:    7 * 24 * time.Hour,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create stream WEBHOOKS: %w", err)
+	}
+
+	slog.Info("jetstream webhook stream ready", "stream", "WEBHOOKS")
+	return stream, nil
+}
+
 // JetStreamPublisher publishes messages to the JetStream "messages.outbound"
 // subject. Each publish carries a Nats-Msg-Id header set to the caller's
 // trace_id for publish-side idempotency (dedup).
