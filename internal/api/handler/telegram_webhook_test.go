@@ -17,6 +17,7 @@ import (
 
 	"github.com/pablojhp.omnigo/internal/platform/crypto"
 	"github.com/pablojhp.omnigo/internal/platform/postgres"
+	"github.com/pablojhp.omnigo/internal/platform/storage"
 	"github.com/pablojhp.omnigo/internal/repository"
 )
 
@@ -95,7 +96,8 @@ func TestTelegramWebhookHandler(t *testing.T) {
 
 	// Setup Echo
 	e := echo.New()
-	h := NewTelegramWebhookHandler(credsRepo, sessRepo)
+	dedupRepo := repository.NewInboundDedupRepository(pool)
+	h := NewTelegramWebhookHandler(wsRepo, credsRepo, sessRepo, dedupRepo, nil, nil, nil)
 
 	t.Run("Missing Secret Token Header -> 403", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/telegram/%s", ws.ID), strings.NewReader(`{}`))
@@ -163,6 +165,46 @@ func TestTelegramWebhookHandler(t *testing.T) {
 		}
 		if time.Since(sess.LastInboundAt) > 10*time.Second {
 			t.Errorf("expected LastInboundAt to be recent, got: %v", sess.LastInboundAt)
+		}
+	})
+
+	t.Run("Valid Secret Token Header, Photo Inbound with PII disabled -> 200", func(t *testing.T) {
+		body := `{"update_id":1001,"message":{"message_id":1000,"chat":{"id":987654321},"text":"Caption text","photo":[{"file_id":"photo_id_abc","file_size":5000}],"location":{"latitude":-23.5,"longitude":-46.6}}}`
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/telegram/%s", ws.ID), strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Telegram-Bot-Api-Secret-Token", "my-secret-telegram-webhook-token")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/webhooks/telegram/:workspace_id")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+		})
+
+		// S3 Client Setup
+		s3Client, err := storage.NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "omnigo-bucket", true)
+		if err != nil {
+			t.Fatalf("failed to init S3: %v", err)
+		}
+
+		// Configure mock Telegram getFile & download server
+		tgMockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "getFile") {
+				_, _ = w.Write([]byte(`{"ok":true,"result":{"file_path":"photos/file_0.jpg"}}`))
+			} else if strings.Contains(r.URL.Path, "photos/file_0.jpg") {
+				_, _ = w.Write([]byte{0xff, 0xd8, 0xff, 0xe0}) // JPEG header
+			}
+		}))
+		defer tgMockServer.Close()
+
+		h.s3Client = s3Client
+		h.telegramBaseURL = tgMockServer.URL
+
+		err = h.Handle(c)
+		if err != nil {
+			t.Fatalf("Handle returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("got status %d, want 200", rec.Code)
 		}
 	})
 }
