@@ -71,11 +71,11 @@ Requirements for initial release. Each maps to roadmap phases.
 
 ### Webhooks
 
-- [ ] **WHOOK-01**: Outbound webhook delivery via dedicated JetStream consumer (durable, retried, not fire-and-forget)
-- [ ] **WHOOK-02**: Webhook HMAC request signing (authenticated delivery — consumer can verify sender identity)
-- [ ] **WHOOK-03**: Formal webhook payload schema (status events, trace_id, message_id, channel, timestamp)
-- [ ] **WHOOK-04**: Webhook dead-letter queue for permanently failed deliveries (surfaced on admin console)
-- [ ] **WHOOK-05**: Webhook retry policy with exponential backoff (`MaxDeliver: 10`, `AckWait` 1s to 10m)
+- [x] **WHOOK-01**: Outbound webhook delivery via dedicated JetStream consumer (durable, retried, not fire-and-forget)
+- [x] **WHOOK-02**: Webhook HMAC request signing (authenticated delivery — consumer can verify sender identity)
+- [x] **WHOOK-03**: Formal webhook payload schema (status events, trace_id, message_id, channel, timestamp)
+- [x] **WHOOK-04**: Webhook dead-letter queue for permanently failed deliveries (surfaced on admin console)
+- [x] **WHOOK-05**: Webhook retry policy with exponential backoff (`MaxDeliver: 10`, `AckWait` 1s to 10m)
 
 ### Audit
 
@@ -204,11 +204,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | FALL-01 | Phase 5 | Complete |
 | FALL-02 | Phase 5 | Complete |
 | FALL-03 | Phase 5 | Complete |
-| WHOOK-01 | Phase 6 | Pending |
-| WHOOK-02 | Phase 6 | Pending |
-| WHOOK-03 | Phase 6 | Pending |
-| WHOOK-04 | Phase 6 | Pending |
-| WHOOK-05 | Phase 6 | Pending |
+| WHOOK-01 | Phase 6 | Complete |
+| WHOOK-02 | Phase 6 | Complete |
+| WHOOK-03 | Phase 6 | Complete |
+| WHOOK-04 | Phase 6 | Complete |
+| WHOOK-05 | Phase 6 | Complete |
 | AUDIT-01 | Phase 1 | Pending |
 | AUDIT-02 | Phase 1 | Pending |
 | AUDIT-03 | Phase 1 | Pending |
