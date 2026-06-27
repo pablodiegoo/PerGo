@@ -15,6 +15,7 @@ import (
 
 	"github.com/pablojhp.omnigo/internal/api/handler/admin"
 	mw "github.com/pablojhp.omnigo/internal/api/middleware"
+	"github.com/pablojhp.omnigo/internal/platform/postgres"
 	"github.com/pablojhp.omnigo/internal/repository"
 )
 
@@ -52,11 +53,18 @@ func setupAuditTestRoutes(t *testing.T) *echo.Echo {
 	adminGroup := e.Group("/admin")
 	adminGroup.Use(mw.SessionAuthMiddleware())
 
-	// Audit routes
 	pool := getTestPool(t)
 	if pool == nil {
 		t.Skip("skipping: no PostgreSQL available")
 	}
+
+	// Run migrations to ensure schema exists
+	db, err := postgres.NewSQLDB(pool)
+	if err != nil {
+		t.Fatalf("failed to create sql.DB: %v", err)
+	}
+	_ = postgres.RunMigrations(db)
+	db.Close()
 
 	auditRepo := repository.NewAuditRepository(pool)
 	wsRepo := repository.NewWorkspaceRepository(pool)

@@ -80,6 +80,20 @@ func getTestPool(t *testing.T) *pgxpool.Pool {
 		pool.Close()
 		return nil
 	}
+
+	// Run migrations to ensure schema is up to date
+	db, err := postgres.NewSQLDB(pool)
+	if err != nil {
+		pool.Close()
+		t.Fatalf("failed to wrap pool as sql.DB: %v", err)
+	}
+	defer db.Close()
+
+	if err := postgres.RunMigrations(db); err != nil {
+		pool.Close()
+		t.Fatalf("failed to run migrations: %v", err)
+	}
+
 	return pool
 }
 

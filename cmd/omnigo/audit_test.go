@@ -106,7 +106,6 @@ func TestAuditEventWritten(t *testing.T) {
 	traceID := uuid.New().String()
 
 	writer := audit.NewWriter(pool, 100, 1)
-	defer writer.Close()
 
 	event := audit.Event{
 		WorkspaceID: wsID,
@@ -120,8 +119,10 @@ func TestAuditEventWritten(t *testing.T) {
 		t.Fatalf("Write event: %v", err)
 	}
 
-	// Wait for batch flush
-	time.Sleep(100 * time.Millisecond)
+	// Close the writer to force a flush/drain
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close writer: %v", err)
+	}
 
 	// Query audit_logs for the event
 	var count int
@@ -307,7 +308,6 @@ func TestAuditNoDedup(t *testing.T) {
 	traceID := uuid.New().String()
 
 	writer := audit.NewWriter(pool, 100, 1)
-	defer writer.Close()
 
 	// Send two events with same trace_id
 	for i := 0; i < 2; i++ {
@@ -323,8 +323,10 @@ func TestAuditNoDedup(t *testing.T) {
 		}
 	}
 
-	// Wait for flush
-	time.Sleep(100 * time.Millisecond)
+	// Close the writer to force a flush/drain
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close writer: %v", err)
+	}
 
 	var count int
 	err := pool.QueryRow(context.Background(),

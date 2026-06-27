@@ -16,6 +16,7 @@ import (
 	"github.com/pablojhp.omnigo/internal/api/handler/admin"
 	mw "github.com/pablojhp.omnigo/internal/api/middleware"
 	"github.com/pablojhp.omnigo/internal/platform/crypto"
+	"github.com/pablojhp.omnigo/internal/platform/postgres"
 	"github.com/pablojhp.omnigo/internal/platform/queue"
 	"github.com/pablojhp.omnigo/internal/repository"
 )
@@ -41,6 +42,14 @@ func setupWebhookRoutes(t *testing.T) (*echo.Echo, *repository.WebhookDLQReposit
 	if pool == nil {
 		t.Skip("PostgreSQL not available, skipping integration test")
 	}
+
+	// Run migrations to ensure schema exists
+	db, err := postgres.NewSQLDB(pool)
+	if err != nil {
+		t.Fatalf("failed to create sql.DB: %v", err)
+	}
+	_ = postgres.RunMigrations(db)
+	db.Close()
 
 	e := echo.New()
 	e.Use(mw.HTMXMiddleware())
@@ -148,7 +157,7 @@ func TestAdminWebhookDLQHandlers(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200 OK, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "Webspaces Webhooks Config") {
+	if !strings.Contains(rec.Body.String(), "Workspaces Webhooks Config") {
 		t.Error("expected workspaces header in body")
 	}
 
