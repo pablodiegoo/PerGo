@@ -1,0 +1,4 @@
+.agents/** linguist-vendored
+.opencode/** linguist-vendored
+.planning/** linguist-vendored
+docs/** linguist-documentation

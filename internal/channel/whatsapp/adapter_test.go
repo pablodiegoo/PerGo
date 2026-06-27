@@ -53,7 +53,7 @@ func TestStaggerBounds(t *testing.T) {
 }
 
 func TestNewWhatsAppAdapter(t *testing.T) {
-	a := NewWhatsAppAdapter(nil)
+	a := NewWhatsAppAdapter(nil, nil)
 	if a == nil {
 		t.Error("expected adapter")
 	}
