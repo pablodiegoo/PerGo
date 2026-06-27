@@ -13,6 +13,7 @@ import (
 type Workspace struct {
 	ID        uuid.UUID
 	Name      string
+	PIIOptIn  bool
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -31,9 +32,9 @@ func NewWorkspaceRepository(pool *pgxpool.Pool) *WorkspaceRepository {
 func (r *WorkspaceRepository) Create(ctx context.Context, name string) (*Workspace, error) {
 	var ws Workspace
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO workspaces (name) VALUES ($1) RETURNING id, name, created_at, updated_at`,
+		`INSERT INTO workspaces (name) VALUES ($1) RETURNING id, name, pii_opt_in, created_at, updated_at`,
 		name,
-	).Scan(&ws.ID, &ws.Name, &ws.CreatedAt, &ws.UpdatedAt)
+	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -44,9 +45,9 @@ func (r *WorkspaceRepository) Create(ctx context.Context, name string) (*Workspa
 func (r *WorkspaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*Workspace, error) {
 	var ws Workspace
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, name, created_at, updated_at FROM workspaces WHERE id = $1`,
+		`SELECT id, name, pii_opt_in, created_at, updated_at FROM workspaces WHERE id = $1`,
 		id,
-	).Scan(&ws.ID, &ws.Name, &ws.CreatedAt, &ws.UpdatedAt)
+	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +70,7 @@ func (r *WorkspaceRepository) List(ctx context.Context, limit int) ([]Workspace,
 		limit = 50
 	}
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, name, created_at, updated_at FROM workspaces ORDER BY created_at DESC LIMIT $1`,
+		`SELECT id, name, pii_opt_in, created_at, updated_at FROM workspaces ORDER BY created_at DESC LIMIT $1`,
 		limit,
 	)
 	if err != nil {
@@ -80,7 +81,7 @@ func (r *WorkspaceRepository) List(ctx context.Context, limit int) ([]Workspace,
 	var workspaces []Workspace
 	for rows.Next() {
 		var ws Workspace
-		if err := rows.Scan(&ws.ID, &ws.Name, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
+		if err := rows.Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
 			return nil, err
 		}
 		workspaces = append(workspaces, ws)
