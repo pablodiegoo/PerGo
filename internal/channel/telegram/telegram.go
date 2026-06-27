@@ -7,10 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"strings"
 
 	"github.com/pablojhp.omnigo/internal/channel"
 	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.omnigo/internal/platform/storage"
 	"github.com/pablojhp.omnigo/internal/repository"
 )
 
@@ -19,6 +22,7 @@ type TelegramAdapter struct {
 	credentialsRepo *repository.CredentialsRepository
 	client          *http.Client
 	baseURL         string
+	s3Client        *storage.S3Client
 }
 
 // TelegramConfig represents the Telegram credentials JSON structure.
@@ -39,7 +43,7 @@ type TelegramErrorResponse struct {
 }
 
 // NewTelegramAdapter creates a new TelegramAdapter.
-func NewTelegramAdapter(credentialsRepo *repository.CredentialsRepository, client *http.Client) *TelegramAdapter {
+func NewTelegramAdapter(credentialsRepo *repository.CredentialsRepository, client *http.Client, s3Client *storage.S3Client) *TelegramAdapter {
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -47,6 +51,7 @@ func NewTelegramAdapter(credentialsRepo *repository.CredentialsRepository, clien
 		credentialsRepo: credentialsRepo,
 		client:          client,
 		baseURL:         "https://api.telegram.org",
+		s3Client:        s3Client,
 	}
 }
 
@@ -79,6 +84,86 @@ func (a *TelegramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 		return channel.NewTerminalError(errors.New("missing bot token in credentials"))
 	}
 
+	if m.Media != nil {
+		if a.s3Client == nil {
+			return channel.NewTerminalError(fmt.Errorf("telegram: media storage client not configured"))
+		}
+
+		parts := strings.Split(m.Media.MediaURL, "/")
+		if len(parts) < 3 {
+			return channel.NewTerminalError(fmt.Errorf("telegram: invalid media URL format: %s", m.Media.MediaURL))
+		}
+		workspaceIDStr := parts[len(parts)-2]
+		hashWithExt := parts[len(parts)-1]
+		key := workspaceIDStr + "/" + hashWithExt
+
+		bodyRC, _, err := a.s3Client.Download(ctx, key)
+		if err != nil {
+			return fmt.Errorf("telegram media download from S3 failed: %w", err)
+		}
+		defer bodyRC.Close()
+
+		var bodyBuf bytes.Buffer
+		writer := multipart.NewWriter(&bodyBuf)
+
+		// Set chat_id
+		if err := writer.WriteField("chat_id", m.To); err != nil {
+			return err
+		}
+
+		// Set caption
+		if m.Media.Caption != "" {
+			if err := writer.WriteField("caption", m.Media.Caption); err != nil {
+				return err
+			}
+		}
+
+		var fieldName string
+		var endpoint string
+		switch m.Media.MediaType {
+		case "image":
+			fieldName = "photo"
+			endpoint = "sendPhoto"
+		case "document":
+			fieldName = "document"
+			endpoint = "sendDocument"
+		case "audio":
+			fieldName = "audio"
+			endpoint = "sendAudio"
+		case "video":
+			fieldName = "video"
+			endpoint = "sendVideo"
+		default:
+			return channel.NewTerminalError(fmt.Errorf("telegram: unsupported media type %s", m.Media.MediaType))
+		}
+
+		filename := m.Media.Filename
+		if filename == "" {
+			filename = "file"
+		}
+		part, err := writer.CreateFormFile(fieldName, filename)
+		if err != nil {
+			return err
+		}
+
+		if _, err := io.Copy(part, bodyRC); err != nil {
+			return err
+		}
+
+		if err := writer.Close(); err != nil {
+			return err
+		}
+
+		url := fmt.Sprintf("%s/bot%s/%s", a.baseURL, config.Token, endpoint)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &bodyBuf)
+		if err != nil {
+			return channel.NewTerminalError(fmt.Errorf("create HTTP request: %w", err))
+		}
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+
+		return a.executeRequest(req)
+	}
+
 	reqPayload := telegramMessageRequest{
 		ChatID: m.To,
 		Text:   m.Body,
@@ -96,7 +181,10 @@ func (a *TelegramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	return a.executeRequest(req)
+}
 
+func (a *TelegramAdapter) executeRequest(req *http.Request) error {
 	resp, err := a.client.Do(req)
 	if err != nil {
 		return err
@@ -110,7 +198,6 @@ func (a *TelegramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 	respBytes, _ := io.ReadAll(resp.Body)
 	var errorResp TelegramErrorResponse
 	if err := json.Unmarshal(respBytes, &errorResp); err != nil {
-		// Fallback status code classification
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
 			return channel.NewTerminalError(fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(respBytes)))
 		}

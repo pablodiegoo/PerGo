@@ -3,15 +3,18 @@ package whatsapp
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/rand/v2"
 	"strings"
 	"time"
 
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 
 	"github.com/pablojhp.omnigo/internal/channel"
+	"github.com/pablojhp.omnigo/internal/platform/storage"
 )
 
 // minStagger and maxStagger define the random delay range for
@@ -25,19 +28,21 @@ const (
 // It adds staggered dispatch (1-3s random delay) before each send to
 // minimize account suspension risk.
 type WhatsAppAdapter struct {
-	client *WhatsAppClient
-	log    *slog.Logger
+	client   *WhatsAppClient
+	log      *slog.Logger
+	s3Client *storage.S3Client
 }
 
 // NewWhatsAppAdapter creates a dispatcher backed by the given WhatsApp client.
-func NewWhatsAppAdapter(client *WhatsAppClient) *WhatsAppAdapter {
+func NewWhatsAppAdapter(client *WhatsAppClient, s3Client *storage.S3Client) *WhatsAppAdapter {
 	return &WhatsAppAdapter{
-		client: client,
-		log:    slog.With("component", "whatsapp-adapter"),
+		client:   client,
+		log:      slog.With("component", "whatsapp-adapter"),
+		s3Client: s3Client,
 	}
 }
 
-// Dispatch sends a text message via WhatsApp Web with staggered delay.
+// Dispatch sends a text or media message via WhatsApp Web with staggered delay.
 // The recipient in payload.To should be a phone number (digits only or
 // with country code). It's converted to a JID with @s.whatsapp.net suffix.
 //
@@ -68,11 +73,115 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 		"stagger", stagger,
 	)
 
-	// Send text message via whatsmeow
-	body := m.Body
-	_, err := a.client.Client().SendMessage(ctx, recipientJID, &waE2E.Message{
-		Conversation: &body,
-	})
+	var msg waE2E.Message
+
+	if m.Media != nil {
+		if a.s3Client == nil {
+			return channel.NewTerminalError(fmt.Errorf("whatsapp: media storage client not configured"))
+		}
+
+		// Rewrite internal proxy URL to key format: {workspace_id}/{hash}.{ext}
+		// m.Media.MediaURL looks like: /media/{workspace_id}/{hash}.{ext}
+		parts := strings.Split(m.Media.MediaURL, "/")
+		if len(parts) < 3 {
+			return channel.NewTerminalError(fmt.Errorf("whatsapp: invalid media URL format: %s", m.Media.MediaURL))
+		}
+		workspaceIDStr := parts[len(parts)-2]
+		hashWithExt := parts[len(parts)-1]
+		key := workspaceIDStr + "/" + hashWithExt
+
+		bodyRC, contentType, err := a.s3Client.Download(ctx, key)
+		if err != nil {
+			return fmt.Errorf("whatsapp media download from S3 failed: %w", err)
+		}
+		defer bodyRC.Close()
+
+		dataBytes, err := io.ReadAll(bodyRC)
+		if err != nil {
+			return fmt.Errorf("whatsapp media read failed: %w", err)
+		}
+
+		var uploadType whatsmeow.MediaType
+		switch m.Media.MediaType {
+		case "image":
+			uploadType = whatsmeow.MediaImage
+		case "document":
+			uploadType = whatsmeow.MediaDocument
+		case "audio":
+			uploadType = whatsmeow.MediaAudio
+		case "video":
+			uploadType = whatsmeow.MediaVideo
+		default:
+			return channel.NewTerminalError(fmt.Errorf("whatsapp: unsupported media type %s", m.Media.MediaType))
+		}
+
+		resp, err := a.client.Client().Upload(ctx, dataBytes, uploadType)
+		if err != nil {
+			return fmt.Errorf("whatsapp upload to CDN failed: %w", err)
+		}
+
+		var caption *string
+		if m.Media.Caption != "" {
+			caption = &m.Media.Caption
+		}
+
+		switch m.Media.MediaType {
+		case "image":
+			msg.ImageMessage = &waE2E.ImageMessage{
+				URL:           &resp.URL,
+				DirectPath:    &resp.DirectPath,
+				MediaKey:      resp.MediaKey,
+				Mimetype:      &contentType,
+				FileLength:    &resp.FileLength,
+				FileSHA256:    resp.FileSHA256,
+				FileEncSHA256: resp.FileEncSHA256,
+				Caption:       caption,
+			}
+		case "document":
+			filename := m.Media.Filename
+			if filename == "" {
+				filename = "document"
+			}
+			msg.DocumentMessage = &waE2E.DocumentMessage{
+				URL:           &resp.URL,
+				DirectPath:    &resp.DirectPath,
+				MediaKey:      resp.MediaKey,
+				Mimetype:      &contentType,
+				FileLength:    &resp.FileLength,
+				FileSHA256:    resp.FileSHA256,
+				FileEncSHA256: resp.FileEncSHA256,
+				Title:         &filename,
+				FileName:      &filename,
+				Caption:       caption,
+			}
+		case "audio":
+			msg.AudioMessage = &waE2E.AudioMessage{
+				URL:           &resp.URL,
+				DirectPath:    &resp.DirectPath,
+				MediaKey:      resp.MediaKey,
+				Mimetype:      &contentType,
+				FileLength:    &resp.FileLength,
+				FileSHA256:    resp.FileSHA256,
+				FileEncSHA256: resp.FileEncSHA256,
+			}
+		case "video":
+			msg.VideoMessage = &waE2E.VideoMessage{
+				URL:           &resp.URL,
+				DirectPath:    &resp.DirectPath,
+				MediaKey:      resp.MediaKey,
+				Mimetype:      &contentType,
+				FileLength:    &resp.FileLength,
+				FileSHA256:    resp.FileSHA256,
+				FileEncSHA256: resp.FileEncSHA256,
+				Caption:       caption,
+			}
+		}
+	} else {
+		body := m.Body
+		msg.Conversation = &body
+	}
+
+	_, err := a.client.Client().SendMessage(ctx, recipientJID, &msg)
 	if err != nil {
 		a.log.Error("whatsapp: send failed",
 			"error", err,

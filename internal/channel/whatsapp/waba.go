@@ -211,19 +211,158 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 		}
 	}
 
+	if m.Media != nil {
+		reqPayload.Type = m.Media.MediaType
+		switch m.Media.MediaType {
+		case "image":
+			type wabaImage struct {
+				Link    string  `json:"link"`
+				Caption *string `json:"caption,omitempty"`
+			}
+			type wabaImageRequest struct {
+				MessagingProduct string     `json:"messaging_product"`
+				RecipientType    string     `json:"recipient_type"`
+				To               string     `json:"to"`
+				Type             string     `json:"type"`
+				Image            *wabaImage `json:"image,omitempty"`
+			}
+			var caption *string
+			if m.Media.Caption != "" {
+				caption = &m.Media.Caption
+			}
+			imgReq := wabaImageRequest{
+				MessagingProduct: "whatsapp",
+				RecipientType:    "individual",
+				To:               m.To,
+				Type:             "image",
+				Image: &wabaImage{
+					Link:    m.Media.MediaURL,
+					Caption: caption,
+				},
+			}
+			bodyBytes, err := json.Marshal(imgReq)
+			if err != nil {
+				return channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
+			}
+			return a.sendRequest(ctx, config.PhoneNumberID, config.Token, bodyBytes)
+
+		case "document":
+			type wabaDocument struct {
+				Link     string  `json:"link"`
+				Caption  *string `json:"caption,omitempty"`
+				Filename *string `json:"filename,omitempty"`
+			}
+			type wabaDocumentRequest struct {
+				MessagingProduct string        `json:"messaging_product"`
+				RecipientType    string        `json:"recipient_type"`
+				To               string        `json:"to"`
+				Type             string        `json:"type"`
+				Document         *wabaDocument `json:"document,omitempty"`
+			}
+			var caption *string
+			if m.Media.Caption != "" {
+				caption = &m.Media.Caption
+			}
+			var filename *string
+			if m.Media.Filename != "" {
+				filename = &m.Media.Filename
+			}
+			docReq := wabaDocumentRequest{
+				MessagingProduct: "whatsapp",
+				RecipientType:    "individual",
+				To:               m.To,
+				Type:             "document",
+				Document: &wabaDocument{
+					Link:     m.Media.MediaURL,
+					Caption:  caption,
+					Filename: filename,
+				},
+			}
+			bodyBytes, err := json.Marshal(docReq)
+			if err != nil {
+				return channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
+			}
+			return a.sendRequest(ctx, config.PhoneNumberID, config.Token, bodyBytes)
+
+		case "audio":
+			type wabaAudio struct {
+				Link string `json:"link"`
+			}
+			type wabaAudioRequest struct {
+				MessagingProduct string     `json:"messaging_product"`
+				RecipientType    string     `json:"recipient_type"`
+				To               string     `json:"to"`
+				Type             string     `json:"type"`
+				Audio            *wabaAudio `json:"audio,omitempty"`
+			}
+			audReq := wabaAudioRequest{
+				MessagingProduct: "whatsapp",
+				RecipientType:    "individual",
+				To:               m.To,
+				Type:             "audio",
+				Audio: &wabaAudio{
+					Link: m.Media.MediaURL,
+				},
+			}
+			bodyBytes, err := json.Marshal(audReq)
+			if err != nil {
+				return channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
+			}
+			return a.sendRequest(ctx, config.PhoneNumberID, config.Token, bodyBytes)
+
+		case "video":
+			type wabaVideo struct {
+				Link    string  `json:"link"`
+				Caption *string `json:"caption,omitempty"`
+			}
+			type wabaVideoRequest struct {
+				MessagingProduct string     `json:"messaging_product"`
+				RecipientType    string     `json:"recipient_type"`
+				To               string     `json:"to"`
+				Type             string     `json:"type"`
+				Video            *wabaVideo `json:"video,omitempty"`
+			}
+			var caption *string
+			if m.Media.Caption != "" {
+				caption = &m.Media.Caption
+			}
+			vidReq := wabaVideoRequest{
+				MessagingProduct: "whatsapp",
+				RecipientType:    "individual",
+				To:               m.To,
+				Type:             "video",
+				Video: &wabaVideo{
+					Link:    m.Media.MediaURL,
+					Caption: caption,
+				},
+			}
+			bodyBytes, err := json.Marshal(vidReq)
+			if err != nil {
+				return channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
+			}
+			return a.sendRequest(ctx, config.PhoneNumberID, config.Token, bodyBytes)
+
+		default:
+			return channel.NewTerminalError(fmt.Errorf("unsupported media type: %s", m.Media.MediaType))
+		}
+	}
 
 	bodyBytes, err := json.Marshal(reqPayload)
 	if err != nil {
 		return channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
 	}
 
-	url := fmt.Sprintf("%s/%s/messages", a.baseURL, config.PhoneNumberID)
+	return a.sendRequest(ctx, config.PhoneNumberID, config.Token, bodyBytes)
+}
+
+func (a *WABAAdapter) sendRequest(ctx context.Context, phoneNumberID, token string, bodyBytes []byte) error {
+	url := fmt.Sprintf("%s/%s/messages", a.baseURL, phoneNumberID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return channel.NewTerminalError(fmt.Errorf("create HTTP request: %w", err))
 	}
 
-	req.Header.Set("Authorization", "Bearer "+config.Token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.client.Do(req)

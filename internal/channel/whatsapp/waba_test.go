@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pablojhp.omnigo/internal/channel"
+	"github.com/pablojhp.omnigo/internal/domain"
 	"github.com/pablojhp.omnigo/internal/platform/crypto"
 	"github.com/pablojhp.omnigo/internal/platform/postgres"
 	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
@@ -320,6 +321,61 @@ func TestWABADispatch(t *testing.T) {
 		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
 		if err != nil {
 			t.Fatalf("expected nil error, got: %v", err)
+		}
+	})
+
+	t.Run("Success Send Media (WABA)", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Verify endpoint path
+			if r.URL.Path != "/12345_phone_id/messages" {
+				t.Errorf("path = %q, want /12345_phone_id/messages", r.URL.Path)
+			}
+
+			// Verify payload has image block and URL
+			bodyBytes, _ := io.ReadAll(r.Body)
+			var payload struct {
+				Type  string `json:"type"`
+				Image *struct {
+					Link    string  `json:"link"`
+					Caption *string `json:"caption,omitempty"`
+				} `json:"image"`
+			}
+			if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+				t.Fatalf("unmarshal request payload: %v", err)
+			}
+
+			if payload.Type != "image" || payload.Image == nil {
+				t.Fatalf("expected image message, got: %s", string(bodyBytes))
+			}
+
+			if payload.Image.Link != "/media/workspace123/hash123.png" {
+				t.Errorf("expected link /media/workspace123/hash123.png, got %s", payload.Image.Link)
+			}
+
+			if payload.Image.Caption == nil || *payload.Image.Caption != "Test Caption" {
+				t.Errorf("expected caption Test Caption, got %v", payload.Image.Caption)
+			}
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.HBgL..."}]}`))
+		}))
+		defer server.Close()
+
+		adapter := NewWABAAdapter(credsRepo, nil, nil)
+		adapter.SetBaseURL(server.URL)
+
+		payload := &channel.MessagePayload{
+			To: "+5511999999999",
+			Media: &domain.Media{
+				MediaURL:  "/media/workspace123/hash123.png",
+				MediaType: "image",
+				Caption:   "Test Caption",
+			},
+		}
+
+		err := adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on success, got: %v", err)
 		}
 	})
 }

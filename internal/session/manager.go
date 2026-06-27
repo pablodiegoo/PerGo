@@ -15,6 +15,7 @@ import (
 
 	"github.com/pablojhp.omnigo/internal/channel"
 	whatsapp "github.com/pablojhp.omnigo/internal/channel/whatsapp"
+	"github.com/pablojhp.omnigo/internal/platform/storage"
 	"github.com/pablojhp.omnigo/internal/repository"
 )
 
@@ -39,11 +40,12 @@ type Manager struct {
 	dispatchers         *channel.Registry
 	waVersion           string
 	recipientSessionRepo *repository.RecipientSessionRepository
+	s3Client            *storage.S3Client
 	mu                  sync.Mutex
 }
 
 // NewManager creates a session manager.
-func NewManager(db *sql.DB, repo *DeviceRepository, registry *ActiveSession, dispatchers *channel.Registry, waVersion string, recipientSessionRepo *repository.RecipientSessionRepository) *Manager {
+func NewManager(db *sql.DB, repo *DeviceRepository, registry *ActiveSession, dispatchers *channel.Registry, waVersion string, recipientSessionRepo *repository.RecipientSessionRepository, s3Client *storage.S3Client) *Manager {
 	return &Manager{
 		db:                  db,
 		repo:                repo,
@@ -51,6 +53,7 @@ func NewManager(db *sql.DB, repo *DeviceRepository, registry *ActiveSession, dis
 		dispatchers:         dispatchers,
 		waVersion:           waVersion,
 		recipientSessionRepo: recipientSessionRepo,
+		s3Client:            s3Client,
 	}
 }
 
@@ -149,7 +152,7 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *Device) error {
 
 	// Register session and dispatcher atomically
 	m.registry.Add(sess)
-	adapter := whatsapp.NewWhatsAppAdapter(wc)
+	adapter := whatsapp.NewWhatsAppAdapter(wc, m.s3Client)
 	m.dispatchers.Register("whatsapp", adapter)
 
 	// Register event handler to update recipient_sessions on incoming messages

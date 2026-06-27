@@ -109,13 +109,28 @@ func main() {
 		slog.Error("failed to initialize encryptor", "error", err)
 		os.Exit(1)
 	}
+
+	// --- S3 Storage Client ---
+	s3Client, err := storage.NewS3Client(
+		cfg.S3Endpoint,
+		cfg.S3Region,
+		cfg.S3AccessKey,
+		cfg.S3SecretKey,
+		cfg.S3Bucket,
+		cfg.S3UsePathStyle,
+	)
+	if err != nil {
+		slog.Error("failed to initialize S3 client", "error", err)
+		os.Exit(1)
+	}
+
 	credentialsRepo := repository.NewCredentialsRepository(pool, encryptor)
 	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
 	windowChecker := session.NewWindowChecker(recipientSessionRepo)
 
 	// --- REST Adapters ---
 	wabaAdapter := whatsapp.NewWABAAdapter(credentialsRepo, nil, windowChecker)
-	telegramAdapter := telegram.NewTelegramAdapter(credentialsRepo, nil)
+	telegramAdapter := telegram.NewTelegramAdapter(credentialsRepo, nil, s3Client)
 
 	// --- Worker (reads from JetStream, dispatches with retry/TTL/dedup) ---
 	sessionRegistry := session.NewActiveSession()
@@ -124,7 +139,7 @@ func main() {
 	dispatcherRegistry.Register("telegram", telegramAdapter)
 
 	deviceRepo := session.NewDeviceRepository(pool)
-	sessionManager := session.NewManager(db, deviceRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", recipientSessionRepo)
+	sessionManager := session.NewManager(db, deviceRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", recipientSessionRepo, s3Client)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	worker := queue.NewWorker(ctx, consumer, 5, 60*time.Second, dispatcherRegistry, dispatchRepo, publisher)
 	slog.Info("message worker started", "consumer", "worker-1")
@@ -219,24 +234,11 @@ func main() {
 	}
 	healthHandler.RegisterRoutes(e)
 
-	// --- S3 Storage Client ---
-	s3Client, err := storage.NewS3Client(
-		cfg.S3Endpoint,
-		cfg.S3Region,
-		cfg.S3AccessKey,
-		cfg.S3SecretKey,
-		cfg.S3Bucket,
-		cfg.S3UsePathStyle,
-	)
-	if err != nil {
-		slog.Error("failed to initialize S3 client", "error", err)
-		os.Exit(1)
-	}
-
 	// --- Message handler (POST /messages) ---
 	messageHandler := &handler.MessageHandler{
 		Publisher:  publisher,
 		QueueDepth: queueDepth,
+		S3Client:   s3Client,
 	}
 	messageHandler.RegisterRoutes(e, middleware.RateLimiterMiddleware(rateLimiter))
 

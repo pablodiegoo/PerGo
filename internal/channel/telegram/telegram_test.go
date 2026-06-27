@@ -13,9 +13,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pablojhp.omnigo/internal/channel"
+	"github.com/pablojhp.omnigo/internal/domain"
 	"github.com/pablojhp.omnigo/internal/platform/crypto"
 	"github.com/pablojhp.omnigo/internal/platform/postgres"
 	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.omnigo/internal/platform/storage"
 	"github.com/pablojhp.omnigo/internal/repository"
 )
 
@@ -119,7 +121,7 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(credsRepo, nil)
+		adapter := NewTelegramAdapter(credsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -140,7 +142,7 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(credsRepo, nil)
+		adapter := NewTelegramAdapter(credsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
 		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "invalid_chat", Body: "hi"})
@@ -159,7 +161,7 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(credsRepo, nil)
+		adapter := NewTelegramAdapter(credsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
 		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "blocked_chat", Body: "hi"})
@@ -178,7 +180,7 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(credsRepo, nil)
+		adapter := NewTelegramAdapter(credsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
 		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "987654321", Body: "hi"})
@@ -187,6 +189,79 @@ func TestTelegramDispatch(t *testing.T) {
 		}
 		if channel.IsTerminal(err) {
 			t.Errorf("expected error to be transient, got terminal: %v", err)
+		}
+	})
+
+	t.Run("Success Send Media (Telegram)", func(t *testing.T) {
+		// Setup S3 Client and upload mock file
+		s3Client, err := storage.NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "omnigo-bucket", true)
+		if err != nil {
+			t.Fatalf("failed to init s3 client: %v", err)
+		}
+
+		key := ws.ID.String() + "/hash123.png"
+		fileData := []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}
+		err = s3Client.Upload(context.Background(), key, fileData, "image/png")
+		if err != nil {
+			t.Fatalf("failed to upload mock file to S3: %v", err)
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Verify endpoint path
+			if r.URL.Path != "/bot123456:ABC-DEF_test_token/sendPhoto" {
+				t.Errorf("path = %q, want /bot123456:ABC-DEF_test_token/sendPhoto", r.URL.Path)
+			}
+
+			// Verify multipart payload has photo block, caption and chat_id
+			err := r.ParseMultipartForm(10 << 20)
+			if err != nil {
+				t.Fatalf("failed to parse multipart form: %v", err)
+			}
+
+			if r.FormValue("chat_id") != "987654321" {
+				t.Errorf("expected chat_id 987654321, got %s", r.FormValue("chat_id"))
+			}
+
+			if r.FormValue("caption") != "Test Caption" {
+				t.Errorf("expected caption Test Caption, got %s", r.FormValue("caption"))
+			}
+
+			file, header, err := r.FormFile("photo")
+			if err != nil {
+				t.Fatalf("failed to read photo file from multipart form: %v", err)
+			}
+			defer file.Close()
+
+			if header.Filename != "custom_filename.png" {
+				t.Errorf("expected filename custom_filename.png, got %s", header.Filename)
+			}
+
+			uploadedData, _ := io.ReadAll(file)
+			if string(uploadedData) != string(fileData) {
+				t.Errorf("expected uploaded data %s, got %s", string(fileData), string(uploadedData))
+			}
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":12345}}`))
+		}))
+		defer server.Close()
+
+		adapter := NewTelegramAdapter(credsRepo, nil, s3Client)
+		adapter.SetBaseURL(server.URL)
+
+		payload := &channel.MessagePayload{
+			To: "987654321",
+			Media: &domain.Media{
+				MediaURL:  "/media/" + ws.ID.String() + "/hash123.png",
+				MediaType: "image",
+				Caption:   "Test Caption",
+				Filename:  "custom_filename.png",
+			},
+		}
+
+		err = adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on success, got: %v", err)
 		}
 	})
 }
