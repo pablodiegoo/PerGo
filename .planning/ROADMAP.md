@@ -177,3 +177,14 @@ Note: Phase 2 and Phase 3 are independent after Phase 1 and may execute in paral
 ---
 *Roadmap created: 2026-06-25*
 *Granularity: standard | Mode: mvp | Phase convention: sequential*
+
+### Phase 07.1: Close gap: v1.0 audit gaps (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 7
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 07.1 to break down)

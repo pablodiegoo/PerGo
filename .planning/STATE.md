@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 7
-current_phase_name: Media & Inbound
+current_phase: 07.1
+current_phase_name: "Close gap: v1.0 audit gaps"
 status: completed
 stopped_at: Completed 07-UAT.md
-last_updated: "2026-06-27T03:22:00.000Z"
+last_updated: "2026-06-27T15:25:01.927Z"
 last_activity: 2026-06-27
 last_activity_desc: Phase 7 complete, UAT verification complete
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 7
   total_plans: 22
   completed_plans: 22
-  percent: 100
+  percent: 88
 ---
 
 # Project State
@@ -87,6 +87,10 @@ Recent decisions affecting current work:
 - [Research flag]: Phase 4 — WhatsApp ban-risk + whatsmeow version drift surface needs phase-specific research during planning (whatsmeow issue #810 still open)
 - [Research flag]: Phase 5 — WABA template + 24h window specifics need primary-source verification against Meta docs (Facebook docs blocked during research)
 - [Research flag]: Phase 6 — Webhook HMAC signing scheme choice (HMAC-SHA1 a la Twilio vs secret_token header a la Telegram) needs brief design pass
+
+### Roadmap Evolution
+
+- Phase 07.1 inserted after Phase 7: Close gap: v1.0 audit gaps (URGENT)
 
 ## Deferred Items
 
