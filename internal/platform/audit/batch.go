@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -109,10 +110,10 @@ func (w *BatchWriter) flush(events []Event) {
 	_, err = conn.Conn().CopyFrom(
 		context.Background(),
 		pgx.Identifier{"audit_logs"},
-		[]string{"workspace_id", "trace_id", "event_type", "payload", "created_at"},
+		[]string{"id", "workspace_id", "trace_id", "event_type", "payload", "created_at"},
 		pgx.CopyFromSlice(len(events), func(i int) ([]any, error) {
 			e := events[i]
-			return []any{e.WorkspaceID, e.TraceID, e.EventType, e.Payload, e.CreatedAt}, nil
+			return []any{uuid.New(), e.WorkspaceID, e.TraceID, e.EventType, e.Payload, e.CreatedAt}, nil
 		}),
 	)
 	if err != nil {

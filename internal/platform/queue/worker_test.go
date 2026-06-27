@@ -490,3 +490,38 @@ func TestWorkerFallbackLoop(t *testing.T) {
 		}
 	})
 }
+
+type mockQueueDepthTracker struct {
+	decrements map[uuid.UUID]int
+}
+
+func (m *mockQueueDepthTracker) Decrement(workspaceID uuid.UUID) {
+	if m.decrements == nil {
+		m.decrements = make(map[uuid.UUID]int)
+	}
+	m.decrements[workspaceID]++
+}
+
+func TestWorker_QueueDepthDecrement(t *testing.T) {
+	tracker := &mockQueueDepthTracker{}
+	w := &Worker{
+		queueDepth: tracker,
+	}
+
+	wsID := uuid.New()
+
+	// 1. Success path
+	msg1 := &mockMsg{}
+	w.ackMessage(msg1, wsID)
+	if tracker.decrements[wsID] != 1 {
+		t.Errorf("expected 1 decrement, got %d", tracker.decrements[wsID])
+	}
+
+	// 2. Terminal failure path
+	msg2 := &mockMsg{}
+	w.handleFailure(msg2, wsID, "trace-123", 5) // attempt 5 >= maxRetries (0)
+	if tracker.decrements[wsID] != 2 {
+		t.Errorf("expected 2 decrements, got %d", tracker.decrements[wsID])
+	}
+}
+

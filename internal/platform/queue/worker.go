@@ -23,6 +23,11 @@ const (
 	defaultBaseBackoff = 1 * time.Second
 )
 
+// QueueDepthTracker defines the interface needed to decrement queue depth.
+type QueueDepthTracker interface {
+	Decrement(workspaceID uuid.UUID)
+}
+
 // Worker reads messages from a JetStream consumer and dispatches them.
 // It supports retry with exponential backoff, TTL enforcement, and
 // delivery deduplication.
@@ -45,6 +50,9 @@ type Worker struct {
 	// publisher is used to publish status updates to webhooks.events.
 	publisher *JetStreamPublisher
 
+	// queueDepth tracks workspace-scoped queue depth.
+	queueDepth QueueDepthTracker
+
 	// dispatched tracks message IDs already processed (in-memory dedup).
 	dispatched sync.Map // message_id string → struct{}
 }
@@ -52,7 +60,7 @@ type Worker struct {
 // NewWorker starts a goroutine that reads messages from consumer and processes them.
 // The goroutine stops when ctx is cancelled. Call Stop() to initiate shutdown.
 // dispatchers may be nil for log-only mode (useful in tests).
-func NewWorker(ctx context.Context, consumer jetstream.Consumer, maxRetries int, maxBackoff time.Duration, dispatchers *channel.Registry, dispatchRepo *repository.MessageDispatchRepository, publisher *JetStreamPublisher) *Worker {
+func NewWorker(ctx context.Context, consumer jetstream.Consumer, maxRetries int, maxBackoff time.Duration, dispatchers *channel.Registry, dispatchRepo *repository.MessageDispatchRepository, publisher *JetStreamPublisher, queueDepth QueueDepthTracker) *Worker {
 	if maxRetries <= 0 {
 		maxRetries = defaultMaxRetries
 	}
@@ -70,6 +78,7 @@ func NewWorker(ctx context.Context, consumer jetstream.Consumer, maxRetries int,
 		dispatchers:  dispatchers,
 		dispatchRepo: dispatchRepo,
 		publisher:    publisher,
+		queueDepth:   queueDepth,
 	}
 
 	go w.run(ctx)
@@ -110,6 +119,14 @@ func (w *Worker) run(ctx context.Context) {
 	}
 }
 
+// ackMessage ACKs the JetStream message and decrements the workspace queue depth.
+func (w *Worker) ackMessage(msg jetstream.Msg, workspaceID uuid.UUID) {
+	_ = msg.Ack()
+	if w.queueDepth != nil && workspaceID != (uuid.UUID{}) {
+		w.queueDepth.Decrement(workspaceID)
+	}
+}
+
 // processMessage handles a single message: dedup check, TTL check, dispatch.
 func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 	// Parse payload as domain.QueueMessage
@@ -144,7 +161,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 		dispatch, err = w.dispatchRepo.GetOrCreateDispatch(ctx, workspaceID, traceID, qMsg.Channel)
 		if err != nil {
 			slog.Error("worker: failed to get/create dispatch state", "error", err, "trace_id", traceID)
-			w.handleFailure(msg, traceID, attempt)
+			w.handleFailure(msg, workspaceID, traceID, attempt)
 			return
 		}
 
@@ -187,7 +204,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 			_ = w.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "failed", dispatch.CurrentChannel, dispatch.FallbackIndex, &errMsg)
 			w.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "failed", dispatch.CurrentChannel, &errMsg)
 		}
-		_ = msg.Ack()
+		w.ackMessage(msg, workspaceID)
 		return
 	}
 
@@ -200,7 +217,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 	allChannels := append([]string{qMsg.Channel}, qMsg.FallbackChannels...)
 	if startIndex < 0 || startIndex >= len(allChannels) {
 		slog.Error("worker: fallback index out of bounds", "index", startIndex, "channels_count", len(allChannels), "trace_id", traceID)
-		_ = msg.Ack()
+		w.ackMessage(msg, workspaceID)
 		return
 	}
 
@@ -218,7 +235,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 			err := w.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "sending", channelName, i, nil)
 			if err != nil {
 				slog.Error("worker: failed to update status to sending", "error", err, "trace_id", traceID)
-				w.handleFailure(msg, traceID, attempt)
+				w.handleFailure(msg, workspaceID, traceID, attempt)
 				return
 			}
 			w.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "sending", channelName, nil)
@@ -233,7 +250,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 				w.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "sent", channelName, nil)
 			}
 			slog.Info("worker: message dispatched successfully", "channel", channelName, "trace_id", traceID)
-			_ = msg.Ack()
+			w.ackMessage(msg, workspaceID)
 			return
 		}
 
@@ -258,7 +275,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 				"error", err,
 				"trace_id", traceID,
 			)
-			w.handleFailure(msg, traceID, attempt)
+			w.handleFailure(msg, workspaceID, traceID, attempt)
 			return
 		}
 	}
@@ -270,7 +287,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 		w.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "failed", lastChannel, &errMsg)
 	}
 	slog.Error("worker: all fallback channels exhausted (terminal failure)", "error", finalErr, "trace_id", traceID)
-	_ = msg.Ack()
+	w.ackMessage(msg, workspaceID)
 }
 
 // dispatchToChannel looks up the channel dispatcher and sends.
@@ -326,7 +343,7 @@ func convertTemplateComponents(components []domain.TemplateComponent) []channel.
 }
 
 // handleFailure NAKs the message with exponential backoff or marks as terminal failure.
-func (w *Worker) handleFailure(msg jetstream.Msg, traceID string, attempt int) {
+func (w *Worker) handleFailure(msg jetstream.Msg, workspaceID uuid.UUID, traceID string, attempt int) {
 	if attempt >= w.maxRetries {
 		// Terminal failure — ack and log
 		slog.Error("worker: terminal failure after max retries",
@@ -335,7 +352,7 @@ func (w *Worker) handleFailure(msg jetstream.Msg, traceID string, attempt int) {
 			"attempts", attempt,
 			"max_retries", w.maxRetries,
 		)
-		_ = msg.Ack()
+		w.ackMessage(msg, workspaceID)
 		return
 	}
 
@@ -359,7 +376,7 @@ func (w *Worker) handleFailure(msg jetstream.Msg, traceID string, attempt int) {
 			"trace_id", traceID,
 		)
 		// If NAK fails, ack to prevent infinite loop
-		_ = msg.Ack()
+		w.ackMessage(msg, workspaceID)
 	}
 }
 

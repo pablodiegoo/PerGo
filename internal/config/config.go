@@ -20,6 +20,7 @@ type Config struct {
 	S3SecretKey    string
 	S3Region       string
 	S3UsePathStyle bool
+	ExternalURL    string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -36,6 +37,7 @@ func Load() *Config {
 		S3SecretKey:    envOrDefault("OMNIGO_S3_SECRET_KEY", envOrDefault("S3_SECRET_KEY", "")),
 		S3Region:       envOrDefault("OMNIGO_S3_REGION", envOrDefault("S3_REGION", "us-east-1")),
 		S3UsePathStyle: os.Getenv("OMNIGO_S3_USE_PATH_STYLE") == "true" || os.Getenv("S3_USE_PATH_STYLE") == "true",
+		ExternalURL:    envOrDefault("OMNIGO_EXTERNAL_URL", "http://localhost:8080"),
 	}
 
 	if cfg.KEKBase64 != "" {

@@ -115,6 +115,14 @@ func (r *DeviceRepository) UpdateStatus(ctx context.Context, id uuid.UUID, statu
 		connectedSince = t
 	}
 
+	if status == DeviceStatusDisconnected {
+		_, err := r.pool.Exec(ctx, `
+			UPDATE devices SET status = $2, connected_since = COALESCE($3, connected_since), updated_at = NOW()
+			WHERE id = $1 AND status != 'terminal'
+		`, id, status, connectedSince)
+		return err
+	}
+
 	_, err := r.pool.Exec(ctx, `
 		UPDATE devices SET status = $2, connected_since = COALESCE($3, connected_since), updated_at = NOW()
 		WHERE id = $1

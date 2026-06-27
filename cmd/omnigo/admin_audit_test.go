@@ -24,8 +24,8 @@ func seedAuditEvent(t *testing.T, pool *pgxpool.Pool,
 	wsID uuid.UUID, traceID, eventType string, payload string, createdAt time.Time) {
 	t.Helper()
 	_, err := pool.Exec(context.Background(),
-		`INSERT INTO audit_logs (workspace_id, trace_id, event_type, payload, created_at) VALUES ($1, $2, $3, $4::jsonb, $5)`,
-		wsID, traceID, eventType, payload, createdAt,
+		`INSERT INTO audit_logs (id, workspace_id, trace_id, event_type, payload, created_at) VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
+		uuid.New(), wsID, traceID, eventType, payload, createdAt,
 	)
 	if err != nil {
 		t.Fatalf("seed audit event: %v", err)

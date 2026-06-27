@@ -128,7 +128,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil)
+		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -167,7 +167,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil)
+		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -211,7 +211,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil)
+		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -241,7 +241,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil)
+		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
@@ -260,7 +260,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil)
+		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
@@ -279,7 +279,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil)
+		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
@@ -293,7 +293,7 @@ func TestWABADispatch(t *testing.T) {
 
 	t.Run("Local Window Checker - Expired/Missing", func(t *testing.T) {
 		mockChecker := &mockWABAWindowChecker{open: false}
-		adapter := NewWABAAdapter(credsRepo, nil, mockChecker)
+		adapter := NewWABAAdapter(credsRepo, nil, mockChecker, "")
 
 		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
 		if err == nil {
@@ -315,7 +315,7 @@ func TestWABADispatch(t *testing.T) {
 		defer server.Close()
 
 		mockChecker := &mockWABAWindowChecker{open: true}
-		adapter := NewWABAAdapter(credsRepo, nil, mockChecker)
+		adapter := NewWABAAdapter(credsRepo, nil, mockChecker, "")
 		adapter.SetBaseURL(server.URL)
 
 		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
@@ -361,7 +361,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil)
+		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -387,4 +387,60 @@ type mockWABAWindowChecker struct {
 
 func (m *mockWABAWindowChecker) IsWindowOpen(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channelName string) (bool, error) {
 	return m.open, m.err
+}
+
+func TestWABA_MediaExternalURL(t *testing.T) {
+	pool := getTestPool(t)
+	kek := make([]byte, 32)
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	credsRepo := repository.NewCredentialsRepository(pool, enc)
+	wsID := uuid.New()
+	tenantCtx := tenant.WithWorkspaceID(context.Background(), wsID)
+	
+	creds := WABAConfig{
+		PhoneNumberID: "12345",
+		Token:         "token_123",
+		WABAAccountID: "waba_123",
+	}
+	credsJSON, _ := json.Marshal(creds)
+	err = credsRepo.Save(tenantCtx, wsID, "whatsapp_cloud", credsJSON)
+	if err != nil {
+		t.Fatalf("failed to save credentials: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Image struct {
+				Link string `json:"link"`
+			} `json:"image"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+
+		if payload.Image.Link != "https://example.com/media/workspace123/hash123.png" {
+			t.Errorf("expected link https://example.com/media/workspace123/hash123.png, got %s", payload.Image.Link)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.HBgL..."}]}`))
+	}))
+	defer server.Close()
+
+	adapter := NewWABAAdapter(credsRepo, nil, nil, "https://example.com")
+	adapter.SetBaseURL(server.URL)
+
+	payload := &channel.MessagePayload{
+		To: "+5511999999999",
+		Media: &domain.Media{
+			MediaURL:  "/media/workspace123/hash123.png",
+			MediaType: "image",
+		},
+	}
+
+	err = adapter.Dispatch(tenantCtx, payload)
+	if err != nil {
+		t.Fatalf("expected nil error on success, got: %v", err)
+	}
 }

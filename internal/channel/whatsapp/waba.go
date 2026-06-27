@@ -26,6 +26,7 @@ type WABAAdapter struct {
 	client          *http.Client
 	baseURL         string
 	windowChecker   WindowChecker
+	externalBaseURL string
 }
 
 // WABAConfig represents the WABA credentials JSON payload.
@@ -82,7 +83,7 @@ type MetaErrorResponse struct {
 }
 
 // NewWABAAdapter creates a new WABAAdapter.
-func NewWABAAdapter(credentialsRepo *repository.CredentialsRepository, client *http.Client, windowChecker WindowChecker) *WABAAdapter {
+func NewWABAAdapter(credentialsRepo *repository.CredentialsRepository, client *http.Client, windowChecker WindowChecker, externalBaseURL string) *WABAAdapter {
 	if client == nil {
 		client = http.DefaultClient
 	}
@@ -91,6 +92,7 @@ func NewWABAAdapter(credentialsRepo *repository.CredentialsRepository, client *h
 		client:          client,
 		baseURL:         "https://graph.facebook.com/v18.0",
 		windowChecker:   windowChecker,
+		externalBaseURL: externalBaseURL,
 	}
 }
 
@@ -212,6 +214,15 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 	}
 
 	if m.Media != nil {
+		mediaURL := m.Media.MediaURL
+		if len(mediaURL) > 0 && mediaURL[0] == '/' && a.externalBaseURL != "" {
+			base := a.externalBaseURL
+			if len(base) > 0 && base[len(base)-1] == '/' {
+				base = base[:len(base)-1]
+			}
+			mediaURL = base + mediaURL
+		}
+
 		reqPayload.Type = m.Media.MediaType
 		switch m.Media.MediaType {
 		case "image":
@@ -236,7 +247,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 				To:               m.To,
 				Type:             "image",
 				Image: &wabaImage{
-					Link:    m.Media.MediaURL,
+					Link:    mediaURL,
 					Caption: caption,
 				},
 			}
@@ -273,7 +284,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 				To:               m.To,
 				Type:             "document",
 				Document: &wabaDocument{
-					Link:     m.Media.MediaURL,
+					Link:     mediaURL,
 					Caption:  caption,
 					Filename: filename,
 				},
@@ -301,7 +312,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 				To:               m.To,
 				Type:             "audio",
 				Audio: &wabaAudio{
-					Link: m.Media.MediaURL,
+					Link: mediaURL,
 				},
 			}
 			bodyBytes, err := json.Marshal(audReq)
@@ -332,7 +343,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 				To:               m.To,
 				Type:             "video",
 				Video: &wabaVideo{
-					Link:    m.Media.MediaURL,
+					Link:    mediaURL,
 					Caption: caption,
 				},
 			}

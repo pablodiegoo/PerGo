@@ -94,7 +94,16 @@ func (wc *WhatsAppClient) setupEventHandlers() {
 				"jid", wc.jid.String(),
 			)
 		case *waEvents.ClientOutdated:
-			wc.log.Warn("whatsapp: client outdated")
+			wc.log.Warn("whatsapp: client outdated, auto-updating WA version and reconnecting")
+			curVer := store.GetWAVersion()
+			curVer[2]++ // increment patch
+			store.SetWAVersion(curVer)
+			go func() {
+				wc.client.Disconnect()
+				if err := wc.client.Connect(); err != nil {
+					wc.log.Error("whatsapp: failed to reconnect after client outdated update", "error", err)
+				}
+			}()
 		case *waEvents.Connected:
 			wc.log.Info("whatsapp: connected",
 				"jid", wc.jid.String(),

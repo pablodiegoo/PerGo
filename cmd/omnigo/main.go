@@ -129,7 +129,7 @@ func main() {
 	windowChecker := session.NewWindowChecker(recipientSessionRepo)
 
 	// --- REST Adapters ---
-	wabaAdapter := whatsapp.NewWABAAdapter(credentialsRepo, nil, windowChecker)
+	wabaAdapter := whatsapp.NewWABAAdapter(credentialsRepo, nil, windowChecker, cfg.ExternalURL)
 	telegramAdapter := telegram.NewTelegramAdapter(credentialsRepo, nil, s3Client)
 
 	// --- Worker (reads from JetStream, dispatches with retry/TTL/dedup) ---
@@ -146,7 +146,7 @@ func main() {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	sessionManager := session.NewManager(db, deviceRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", recipientSessionRepo, s3Client, dedupRepo, publisher, auditWriter, wsRepo)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
-	worker := queue.NewWorker(ctx, consumer, 5, 60*time.Second, dispatcherRegistry, dispatchRepo, publisher)
+	worker := queue.NewWorker(ctx, consumer, 5, 60*time.Second, dispatcherRegistry, dispatchRepo, publisher, queueDepth)
 	slog.Info("message worker started", "consumer", "worker-1")
 
 	// --- Webhook Worker ---

@@ -184,6 +184,10 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *Device) error {
 	// Register event handler to update recipient_sessions on incoming messages
 	wc.Client().AddEventHandler(func(evt interface{}) {
 		switch v := evt.(type) {
+		case *waEvents.LoggedOut:
+			slog.Warn("session manager: whatsmeow logged out event received, marking device terminal", "device_id", d.ID)
+			_ = m.repo.UpdateStatus(context.Background(), d.ID, DeviceStatusTerminal)
+			cancel()
 		case *waEvents.Message:
 			if v.Info.IsFromMe {
 				return
