@@ -41,4 +41,10 @@ require (
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
+	github.com/aws/aws-sdk-go-v2 v0.0.0 // indirect
+	github.com/aws/aws-sdk-go-v2/service/s3 v0.0.0 // indirect
 )
+
+replace github.com/aws/aws-sdk-go-v2 => ./internal/mocks/aws-sdk-go-v2
+
+replace github.com/aws/aws-sdk-go-v2/service/s3 => ./internal/mocks/aws-sdk-go-v2-s3
