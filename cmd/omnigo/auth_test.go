@@ -24,7 +24,8 @@ func TestCreateWorkspace(t *testing.T) {
 	defer pool.Close()
 
 	repo := repository.NewWorkspaceRepository(pool)
-	ws, err := repo.Create(context.Background(), "test-workspace")
+	wsName := "test-workspace-" + uuid.New().String()[:8]
+	ws, err := repo.Create(context.Background(), wsName)
 	if err != nil {
 		t.Fatalf("Create workspace: %v", err)
 	}
@@ -32,8 +33,8 @@ func TestCreateWorkspace(t *testing.T) {
 	if ws.ID == uuid.Nil {
 		t.Error("expected non-nil workspace ID")
 	}
-	if ws.Name != "test-workspace" {
-		t.Errorf("expected name 'test-workspace', got %q", ws.Name)
+	if ws.Name != wsName {
+		t.Errorf("expected name %q, got %q", wsName, ws.Name)
 	}
 	if ws.CreatedAt.IsZero() {
 		t.Error("expected CreatedAt to be set")
@@ -49,7 +50,7 @@ func TestCreateAPIKey(t *testing.T) {
 	defer pool.Close()
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
-	ws, err := wsRepo.Create(context.Background(), "test-apikey-ws")
+	ws, err := wsRepo.Create(context.Background(), "test-apikey-ws-"+uuid.New().String()[:8])
 	if err != nil {
 		t.Fatalf("Create workspace: %v", err)
 	}
@@ -97,7 +98,7 @@ func TestAuthMiddlewareValid(t *testing.T) {
 	defer pool.Close()
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
-	ws, err := wsRepo.Create(context.Background(), "test-auth-valid")
+	ws, err := wsRepo.Create(context.Background(), "test-auth-valid-"+uuid.New().String()[:8])
 	if err != nil {
 		t.Fatalf("Create workspace: %v", err)
 	}
@@ -203,7 +204,7 @@ func TestAuthMiddlewareRevoked(t *testing.T) {
 	defer pool.Close()
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
-	ws, err := wsRepo.Create(context.Background(), "test-auth-revoked")
+	ws, err := wsRepo.Create(context.Background(), "test-auth-revoked-"+uuid.New().String()[:8])
 	if err != nil {
 		t.Fatalf("Create workspace: %v", err)
 	}
@@ -244,7 +245,7 @@ func TestAuthMiddlewareCacheHit(t *testing.T) {
 	defer pool.Close()
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
-	ws, err := wsRepo.Create(context.Background(), "test-auth-cache")
+	ws, err := wsRepo.Create(context.Background(), "test-auth-cache-"+uuid.New().String()[:8])
 	if err != nil {
 		t.Fatalf("Create workspace: %v", err)
 	}
