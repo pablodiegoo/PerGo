@@ -37,7 +37,7 @@ func SessionAuthMiddleware() echo.MiddlewareFunc {
 			}
 
 			// Verify the cookie signature
-			if !verifySessionCookie(cookie.Value, secret) {
+			if !VerifySessionCookie(cookie.Value, secret) {
 				return c.Redirect(http.StatusFound, "/admin/login")
 			}
 
@@ -101,8 +101,8 @@ func signSessionCookie(payload string, secret []byte) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." + sig
 }
 
-// verifySessionCookie verifies the HMAC signature of a session cookie.
-func verifySessionCookie(value string, secret []byte) bool {
+// VerifySessionCookie verifies the HMAC signature of a session cookie.
+func VerifySessionCookie(value string, secret []byte) bool {
 	parts := strings.SplitN(value, ".", 2)
 	if len(parts) != 2 {
 		return false
