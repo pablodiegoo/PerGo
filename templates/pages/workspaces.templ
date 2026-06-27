@@ -108,6 +108,7 @@ templ WorkspaceDetailContent(ws repository.Workspace, keys []repository.APIKey) 
 		<h1>{ ws.Name }</h1>
 		<div class="header-actions">
 			<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/templates", ws.ID)) } class="btn btn-primary">Manage WABA Templates</a>
+			<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/webhooks", ws.ID)) } class="btn btn-primary">Configure Webhooks</a>
 			<a href="/admin/workspaces" class="btn btn-secondary">Back to Workspaces</a>
 		</div>
 	</div>

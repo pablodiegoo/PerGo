@@ -201,3 +201,38 @@ func (r *WebhookDLQRepository) GetDLQBadgeCount(ctx context.Context, workspaceID
 	).Scan(&count)
 	return count, err
 }
+
+// ListAllDLQ lists all DLQ items across all workspaces.
+func (r *WebhookDLQRepository) ListAllDLQ(ctx context.Context, limit, offset int) ([]*WebhookDLQ, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, workspace_id, trace_id, message_id, event_type, payload, webhook_url, last_attempt_at, failure_reason, attempts, created_at, updated_at
+		 FROM webhook_dlqs 
+		 ORDER BY created_at DESC
+		 LIMIT $1 OFFSET $2`,
+		limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []*WebhookDLQ
+	for rows.Next() {
+		var item WebhookDLQ
+		err := rows.Scan(
+			&item.ID, &item.WorkspaceID, &item.TraceID, &item.MessageID, &item.EventType,
+			&item.Payload, &item.WebhookURL, &item.LastAttemptAt, &item.FailureReason,
+			&item.Attempts, &item.CreatedAt, &item.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, &item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}

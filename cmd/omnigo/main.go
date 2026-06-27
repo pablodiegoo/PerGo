@@ -125,8 +125,17 @@ func main() {
 	deviceRepo := session.NewDeviceRepository(pool)
 	sessionManager := session.NewManager(db, deviceRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", recipientSessionRepo)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
-	worker := queue.NewWorker(ctx, consumer, 5, 60*time.Second, dispatcherRegistry, dispatchRepo)
+	worker := queue.NewWorker(ctx, consumer, 5, 60*time.Second, dispatcherRegistry, dispatchRepo, publisher)
 	slog.Info("message worker started", "consumer", "worker-1")
+
+	// --- Webhook Worker ---
+	webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
+	webhookWorker, err := queue.NewWebhookWorker(ctx, nc, webhookDLQRepo)
+	if err != nil {
+		slog.Error("failed to start webhook worker", "error", err)
+		os.Exit(1)
+	}
+
 	slog.Info("rate limiter configured", "rps", 10, "burst", 10)
 	slog.Info("queue depth limit", "max", 1000)
 
@@ -157,6 +166,11 @@ func main() {
 		return nil
 	})
 	// Worker shutdown runs before NATS close — drains the consumer
+	orch.Register(func() error {
+		slog.Info("stopping webhook worker")
+		webhookWorker.Stop()
+		return nil
+	})
 	orch.Register(func() error {
 		slog.Info("stopping message worker")
 		worker.Stop()
@@ -308,6 +322,18 @@ func main() {
 	adminGroup.GET("/workspaces/:workspace_id/templates/new", wabaTemplateHandler.NewForm)
 	adminGroup.POST("/workspaces/:workspace_id/templates/:template_id/sync", wabaTemplateHandler.Sync)
 	adminGroup.DELETE("/workspaces/:workspace_id/templates/:template_id", wabaTemplateHandler.Delete)
+
+	// Webhooks & DLQ routes
+	webhookHandler := admin.NewWebhookDLQHandler(webhookDLQRepo, wsRepo, publisher)
+	adminGroup.GET("/webhooks", webhookHandler.GlobalPage)
+	adminGroup.GET("/webhooks/dlq/badge", webhookHandler.GetBadgeCount)
+	adminGroup.GET("/webhooks/dlq/:dlq_id/details", webhookHandler.GetDetails)
+	adminGroup.POST("/webhooks/dlq/:dlq_id/retry", webhookHandler.RetryDLQ)
+	adminGroup.DELETE("/webhooks/dlq/:dlq_id", webhookHandler.DeleteDLQ)
+
+	adminGroup.GET("/workspaces/:workspace_id/webhooks", webhookHandler.Page)
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/config", webhookHandler.SaveConfig)
+	adminGroup.DELETE("/workspaces/:workspace_id/webhooks/config", webhookHandler.DeleteConfig)
 
 	// Static files
 	e.Static("/static", "static")

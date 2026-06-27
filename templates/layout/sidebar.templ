@@ -21,6 +21,12 @@ templ Sidebar() {
 			<li>
 				<a href="/admin/audit" class="nav-item">Audit Logs</a>
 			</li>
+			<li>
+				<a href="/admin/webhooks" class="nav-item">
+					<span>Webhooks & DLQ</span>
+					<span id="sidebar-dlq-badge" hx-get="/admin/webhooks/dlq/badge" hx-trigger="load, every 10s" hx-swap="outerHTML"></span>
+				</a>
+			</li>
 		</ul>
 		<div class="sidebar-footer">
 			<form method="POST" action="/admin/logout">

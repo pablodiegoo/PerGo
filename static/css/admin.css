@@ -101,3 +101,34 @@ body { font-family: var(--font-sans); color: var(--color-text); background: var(
 .section { background: var(--color-surface); padding: var(--spacing-lg); border-radius: var(--radius); box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 .section h2 { font-size: 1.125rem; margin-bottom: var(--spacing-md); }
 .empty-state { color: var(--color-text-muted); font-style: italic; }
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 0.25em 0.6em;
+  font-size: 75%;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  vertical-align: baseline;
+  border-radius: 0.25rem;
+}
+.badge-danger {
+  color: #fff;
+  background-color: var(--color-error);
+}
+.badge-success {
+  color: #fff;
+  background-color: var(--color-success);
+}
+.badge-secondary {
+  color: #fff;
+  background-color: var(--color-text-muted);
+}
+
+.sidebar-nav li a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}

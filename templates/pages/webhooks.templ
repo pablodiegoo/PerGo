@@ -1,0 +1,228 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.omnigo/templates/layout"
+)
+
+templ WebhooksPage(workspaces []repository.Workspace, dlqItems []*repository.WebhookDLQ) {
+	@layout.Base("Webhooks & DLQ", WebhooksContent(workspaces, dlqItems))
+}
+
+templ WebhooksContent(workspaces []repository.Workspace, dlqItems []*repository.WebhookDLQ) {
+	<div class="page-header">
+		<h1>Webhooks & DLQ</h1>
+	</div>
+
+	<div class="section" style="margin-bottom: var(--spacing-xl);">
+		<h2>Workspaces Webhooks Config</h2>
+		<table class="table">
+			<thead>
+				<tr>
+					<th>Workspace</th>
+					<th>Actions</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, ws := range workspaces {
+					<tr>
+						<td>{ ws.Name }</td>
+						<td>
+							<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/webhooks", ws.ID)) } class="btn btn-primary btn-sm">Configure</a>
+						</td>
+					</tr>
+				}
+				if len(workspaces) == 0 {
+					<tr>
+						<td colspan="2" class="empty-state">No workspaces found.</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+
+	<div class="section">
+		<h2>Dead-Letter Queue (DLQ)</h2>
+		@DLQTable(dlqItems, true)
+	</div>
+}
+
+templ WorkspaceWebhooksPage(ws repository.Workspace, config *repository.WebhookConfig, dlqItems []*repository.WebhookDLQ) {
+	@layout.Base(fmt.Sprintf("%s - Webhooks", ws.Name), WorkspaceWebhooksContent(ws, config, dlqItems))
+}
+
+templ WorkspaceWebhooksContent(ws repository.Workspace, config *repository.WebhookConfig, dlqItems []*repository.WebhookDLQ) {
+	<div class="page-header">
+		<h1>Webhooks: { ws.Name }</h1>
+		<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", ws.ID)) } class="btn btn-secondary">Back to Workspace</a>
+	</div>
+
+	<div class="section" style="margin-bottom: var(--spacing-xl);">
+		<h2>Webhook Configuration</h2>
+		<form
+			hx-post={ fmt.Sprintf("/admin/workspaces/%s/webhooks/config", ws.ID) }
+			hx-swap="none"
+		>
+			<div class="form-group">
+				<label for="url">Webhook URL</label>
+				if config != nil {
+					<input type="url" id="url" name="url" value={ config.URL } required class="form-input" placeholder="https://yourdomain.com/webhooks"/>
+				} else {
+					<input type="url" id="url" name="url" required class="form-input" placeholder="https://yourdomain.com/webhooks"/>
+				}
+			</div>
+			<div class="form-group">
+				<label for="secret">Signing Secret</label>
+				if config != nil {
+					<input type="password" id="secret" name="secret" value="********" required class="form-input" placeholder="Enter signing secret"/>
+				} else {
+					<input type="password" id="secret" name="secret" required class="form-input" placeholder="Enter signing secret"/>
+				}
+				<small class="form-text text-muted" style="color: var(--color-text-muted); font-size: 0.8rem; display: block; margin-top: 0.25rem;">
+					Used to compute HMAC-SHA256 signature in X-OmniGo-Signature header.
+				</small>
+			</div>
+			<div class="form-actions">
+				<button type="submit" class="btn btn-primary">Save Configuration</button>
+				if config != nil {
+					<button
+						type="button"
+						class="btn btn-danger"
+						hx-delete={ fmt.Sprintf("/admin/workspaces/%s/webhooks/config", ws.ID) }
+						hx-confirm="Are you sure you want to delete this webhook configuration?"
+						hx-target="body"
+						hx-swap="none"
+					>
+						Delete Configuration
+					</button>
+				}
+			</div>
+		</form>
+	</div>
+
+	<div class="section">
+		<h2>Workspace Dead-Letter Queue (DLQ)</h2>
+		@DLQTable(dlqItems, false)
+	</div>
+}
+
+templ DLQTable(items []*repository.WebhookDLQ, showWorkspace bool) {
+	<div id="dlq-table-container">
+		<table class="table">
+			<thead>
+				<tr>
+					if showWorkspace {
+						<th>Workspace ID</th>
+					}
+					<th>Trace ID</th>
+					<th>Message ID</th>
+					<th>Event</th>
+					<th>Attempts</th>
+					<th>Last Attempt</th>
+					<th>Actions</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, item := range items {
+					<tr id={ fmt.Sprintf("dlq-row-%s", item.ID) }>
+						if showWorkspace {
+							<td>{ item.WorkspaceID.String() }</td>
+						}
+						<td><code>{ item.TraceID }</code></td>
+						<td><code>{ item.MessageID }</code></td>
+						<td><span class="badge badge-secondary">{ item.EventType }</span></td>
+						<td>{ fmt.Sprintf("%d", item.Attempts) }</td>
+						<td>{ item.LastAttemptAt.Format("2006-01-02 15:04:05") }</td>
+						<td>
+							<div style="display: flex; gap: var(--spacing-sm);">
+								<button
+									class="btn btn-primary btn-sm"
+									hx-get={ fmt.Sprintf("/admin/webhooks/dlq/%s/details", item.ID) }
+									hx-target="body"
+									hx-swap="beforeend"
+								>
+									Details
+								</button>
+								<button
+									class="btn btn-success btn-sm"
+									hx-post={ fmt.Sprintf("/admin/webhooks/dlq/%s/retry", item.ID) }
+									hx-target={ fmt.Sprintf("#dlq-row-%s", item.ID) }
+									hx-swap="outerHTML"
+								>
+									Retry Delivery
+								</button>
+								<button
+									class="btn btn-danger btn-sm"
+									hx-delete={ fmt.Sprintf("/admin/webhooks/dlq/%s", item.ID) }
+									hx-confirm="Delete Webhook Log: Are you sure you want to permanently delete this dead-lettered webhook log? This action cannot be undone."
+									hx-target={ fmt.Sprintf("#dlq-row-%s", item.ID) }
+									hx-swap="delete"
+								>
+									Delete
+								</button>
+							</div>
+						</td>
+					</tr>
+				}
+				if len(items) == 0 {
+					<tr>
+						<td colspan={ fmt.Sprintf("%d", map[bool]int{true: 7, false: 6}[showWorkspace]) } class="empty-state" style="text-align: center; padding: var(--spacing-lg);">
+							<div style="font-weight: 600; margin-bottom: var(--spacing-xs);">No dead-lettered webhooks</div>
+							<div style="font-size: 0.875rem; color: var(--color-text-muted);">Webhook delivery is running smoothly. Any permanently failed deliveries will appear here.</div>
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+}
+
+templ DLQDetailModal(item *repository.WebhookDLQ) {
+	<div class="modal-backdrop" onclick="this.remove()" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+		<div class="modal-card" onclick="event.stopPropagation()" style="background: var(--color-surface); padding: var(--spacing-lg); border-radius: var(--radius); width: 100%; max-width: 600px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-height: 90vh; overflow-y: auto;">
+			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md); border-bottom: 1px solid var(--color-border); padding-bottom: var(--spacing-sm);">
+				<h3 style="margin: 0; font-size: 1.25rem;">Dead-Letter Log Details</h3>
+				<button class="btn btn-secondary btn-sm" onclick="this.closest('.modal-backdrop').remove()">Close</button>
+			</div>
+			
+			<div style="display: grid; grid-template-columns: 120px 1fr; gap: var(--spacing-sm); font-size: 0.875rem; margin-bottom: var(--spacing-md);">
+				<strong>ID:</strong> <span>{ item.ID.String() }</span>
+				<strong>Workspace ID:</strong> <span>{ item.WorkspaceID.String() }</span>
+				<strong>Trace ID:</strong> <span>{ item.TraceID }</span>
+				<strong>Message ID:</strong> <span>{ item.MessageID }</span>
+				<strong>Event Type:</strong> <span><span class="badge badge-secondary">{ item.EventType }</span></span>
+				<strong>Webhook URL:</strong> <span><code>{ item.WebhookURL }</code></span>
+				<strong>Attempts:</strong> <span>{ fmt.Sprintf("%d", item.Attempts) }</span>
+				<strong>Last Attempt:</strong> <span>{ item.LastAttemptAt.Format("2006-01-02 15:04:05") }</span>
+				<strong>Created At:</strong> <span>{ item.CreatedAt.Format("2006-01-02 15:04:05") }</span>
+			</div>
+
+			if item.FailureReason != nil {
+				<div style="margin-bottom: var(--spacing-md);">
+					<strong>Failure Reason:</strong>
+					<div class="alert alert-error" style="margin-top: var(--spacing-xs); margin-bottom: 0; font-family: monospace; white-space: pre-wrap;">
+						{ *item.FailureReason }
+					</div>
+				</div>
+			}
+
+			<div>
+				<strong>Payload:</strong>
+				<pre style="background: var(--color-bg); padding: var(--spacing-md); border-radius: var(--radius); overflow-x: auto; font-family: monospace; font-size: 0.8rem; margin-top: var(--spacing-xs); max-height: 250px;">
+					{ string(item.Payload) }
+				</pre>
+			</div>
+		</div>
+	</div>
+}
+
+templ DLQBadgeFragment(count int) {
+	<span id="sidebar-dlq-badge" class={ "badge", templ.KV("badge-danger", count > 0), templ.KV("badge-secondary", count == 0) }>
+		if count > 0 {
+			{ fmt.Sprintf("%d", count) }
+		} else {
+			0
+		}
+	</span>
+}

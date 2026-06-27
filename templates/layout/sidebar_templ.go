@@ -29,7 +29,7 @@ func Sidebar() templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<nav class=\"sidebar\"><div class=\"sidebar-header\"><h2>OmniGo</h2></div><ul class=\"sidebar-nav\"><li><a href=\"/admin/\" class=\"nav-item\">Dashboard</a></li><li><a href=\"/admin/workspaces\" class=\"nav-item\">Workspaces</a></li><li><a href=\"/admin/devices\" class=\"nav-item\">Devices</a></li><li><a href=\"/admin/telemetry\" class=\"nav-item\">Telemetry</a></li><li><a href=\"/admin/audit\" class=\"nav-item\">Audit Logs</a></li></ul><div class=\"sidebar-footer\"><form method=\"POST\" action=\"/admin/logout\"><button type=\"submit\" class=\"nav-item logout-btn\">Logout</button></form></div></nav>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<nav class=\"sidebar\"><div class=\"sidebar-header\"><h2>OmniGo</h2></div><ul class=\"sidebar-nav\"><li><a href=\"/admin/\" class=\"nav-item\">Dashboard</a></li><li><a href=\"/admin/workspaces\" class=\"nav-item\">Workspaces</a></li><li><a href=\"/admin/devices\" class=\"nav-item\">Devices</a></li><li><a href=\"/admin/telemetry\" class=\"nav-item\">Telemetry</a></li><li><a href=\"/admin/audit\" class=\"nav-item\">Audit Logs</a></li><li><a href=\"/admin/webhooks\" class=\"nav-item\"><span>Webhooks & DLQ</span> <span id=\"sidebar-dlq-badge\" hx-get=\"/admin/webhooks/dlq/badge\" hx-trigger=\"load, every 10s\" hx-swap=\"outerHTML\"></span></a></li></ul><div class=\"sidebar-footer\"><form method=\"POST\" action=\"/admin/logout\"><button type=\"submit\" class=\"nav-item logout-btn\">Logout</button></form></div></nav>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

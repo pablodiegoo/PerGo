@@ -13,11 +13,11 @@
       "haiku": "gemini-3.5-flash-low"
     }
   },
-  // "model_overrides": {
-  //   "gsd-executor": "opencode-go/mimo-v2.5",
-  //   "gsd-plan-checker": "opencode-go/minimax-v3",
-  //   "gsd-nyquist-auditor": "opencode-go/minimax-v3"
-  // },
+  "model_overrides_commented": {
+    "gsd-executor": "opencode-go/mimo-v2.5",
+    "gsd-plan-checker": "opencode-go/minimax-v3",
+    "gsd-nyquist-auditor": "opencode-go/minimax-v3"
+  },
   "commit_docs": true,
   "parallelization": true,
   "search_gitignored": false,
