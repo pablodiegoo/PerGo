@@ -1,0 +1,296 @@
+package queue
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/nats-io/nats.go/jetstream"
+
+	"github.com/pablojhp.omnigo/internal/platform/crypto"
+	"github.com/pablojhp.omnigo/internal/repository"
+)
+
+func TestSignPayload(t *testing.T) {
+	payload := []byte(`{"hello":"world"}`)
+	secret := []byte("secret")
+	timestamp := "1700000000"
+
+	// Sign payload
+	signatureHeader := SignPayload(payload, secret, timestamp)
+
+	// Verify prefix matches expected format
+	expectedPrefix := "t=1700000000,v1="
+	if !strings.HasPrefix(signatureHeader, expectedPrefix) {
+		t.Fatalf("expected signature header to start with %q, got %q", expectedPrefix, signatureHeader)
+	}
+
+	// Verify exact signature against manually computed value
+	// Signed content: 1700000000.{"hello":"world"}
+	expectedSigHex := "654f06c856baf080af3fa272934823257a542d35cf1f88099338f850a60601a4"
+	expectedHeader := expectedPrefix + expectedSigHex
+	if signatureHeader != expectedHeader {
+		t.Errorf("SignPayload = %q, want %q", signatureHeader, expectedHeader)
+	}
+}
+func TestWebhookWorker_Integration(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Delete stream to ensure clean test state
+	js, err := jetstream.New(nc)
+	if err == nil {
+		_ = js.DeleteStream(ctx, "WEBHOOKS")
+	}
+
+	// 1. Setup repository
+	kek := make([]byte, 32)
+	for i := range kek {
+		kek[i] = byte(i)
+	}
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	dlqRepo := repository.NewWebhookDLQRepository(pool, enc)
+
+	// 2. Setup workspaces
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "webhook_worker_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	// 3. Setup mock HTTP Webhook Target
+	var receivedPayload []byte
+	var receivedHeaders http.Header
+	var mu sync.Mutex
+	receivedCount := 0
+
+	var serverURL string
+	var serverHandler http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		receivedCount++
+		receivedHeaders = r.Header
+		var err error
+		receivedPayload, err = io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("failed to read request body: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}
+
+	testServer := httptest.NewServer(serverHandler)
+	defer testServer.Close()
+	serverURL = testServer.URL
+
+	// 4. Save Webhook Config for Workspace
+	webhookSecret := []byte("my-webhook-signing-secret")
+	err = dlqRepo.SaveConfig(ctx, ws.ID, serverURL, webhookSecret)
+	if err != nil {
+		t.Fatalf("failed to save webhook config: %v", err)
+	}
+
+	// 5. Instantiate and Start WebhookWorker
+	worker, err := NewWebhookWorker(ctx, nc, dlqRepo)
+	if err != nil {
+		t.Fatalf("failed to start webhook worker: %v", err)
+	}
+	defer worker.Stop()
+
+	// 6. Publish outbound webhook event
+	traceID := "trace-webhook-999"
+	messageID := uuid.New().String()
+	event := WebhookEvent{
+		Event:       "sent",
+		TraceID:     traceID,
+		MessageID:   messageID,
+		Channel:     "whatsapp",
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+		WorkspaceID: ws.ID.String(),
+	}
+
+	eventData, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("failed to marshal event: %v", err)
+	}
+
+	publisher := NewJetStreamPublisher(nc)
+	err = publisher.Publish(ctx, "webhooks.events", eventData, traceID)
+	if err != nil {
+		t.Fatalf("failed to publish webhook event: %v", err)
+	}
+
+	// 7. Wait for delivery to mock server
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		count := receivedCount
+		mu.Unlock()
+		if count > 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	mu.Lock()
+	count := receivedCount
+	payloadBytes := receivedPayload
+	headers := receivedHeaders
+	mu.Unlock()
+
+	if count == 0 {
+		t.Fatal("webhook was not delivered to mock server within timeout")
+	}
+
+	// 8. Verify payload
+	var receivedEvent WebhookEvent
+	err = json.Unmarshal(payloadBytes, &receivedEvent)
+	if err != nil {
+		t.Fatalf("failed to unmarshal received event: %v", err)
+	}
+	if receivedEvent.TraceID != traceID || receivedEvent.Event != "sent" || receivedEvent.MessageID != messageID {
+		t.Errorf("received event fields do not match: %+v", receivedEvent)
+	}
+
+	// 9. Verify Signature headers
+	sigHeader := headers.Get("X-OmniGo-Signature")
+	if sigHeader == "" {
+		t.Error("missing X-OmniGo-Signature header in delivered webhook")
+	} else {
+		// Format: t=timestamp,v1=sig
+		parts := strings.Split(sigHeader, ",")
+		if len(parts) != 2 || !strings.HasPrefix(parts[0], "t=") || !strings.HasPrefix(parts[1], "v1=") {
+			t.Errorf("invalid format for X-OmniGo-Signature: %q", sigHeader)
+		} else {
+			ts := strings.TrimPrefix(parts[0], "t=")
+			computedSig := SignPayload(payloadBytes, webhookSecret, ts)
+			if sigHeader != computedSig {
+				t.Errorf("received signature does not match computed: %q vs %q", sigHeader, computedSig)
+			}
+		}
+	}
+}
+
+func TestWebhookWorker_TerminalErrorDLQ(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Delete stream to ensure clean test state
+	js, err := jetstream.New(nc)
+	if err == nil {
+		_ = js.DeleteStream(ctx, "WEBHOOKS")
+	}
+
+	kek := make([]byte, 32)
+	for i := range kek {
+		kek[i] = byte(i)
+	}
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	dlqRepo := repository.NewWebhookDLQRepository(pool, enc)
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "webhook_worker_ws_terminal_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	// Mock server that returns a terminal 404 Not Found error
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer testServer.Close()
+
+	err = dlqRepo.SaveConfig(ctx, ws.ID, testServer.URL, []byte("sec"))
+	if err != nil {
+		t.Fatalf("failed to save config: %v", err)
+	}
+
+	worker, err := NewWebhookWorker(ctx, nc, dlqRepo)
+	if err != nil {
+		t.Fatalf("failed to start worker: %v", err)
+	}
+	defer worker.Stop()
+
+	traceID := "trace-terminal-888"
+	messageID := uuid.New().String()
+	event := WebhookEvent{
+		Event:       "failed",
+		TraceID:     traceID,
+		MessageID:   messageID,
+		Channel:     "whatsapp",
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+		WorkspaceID: ws.ID.String(),
+	}
+
+	eventData, _ := json.Marshal(event)
+	publisher := NewJetStreamPublisher(nc)
+	err = publisher.Publish(ctx, "webhooks.events", eventData, traceID)
+	if err != nil {
+		t.Fatalf("failed to publish event: %v", err)
+	}
+
+	// Wait and check DLQ table
+	deadline := time.Now().Add(5 * time.Second)
+	var dlqItems []*repository.WebhookDLQ
+	for time.Now().Before(deadline) {
+		dlqItems, err = dlqRepo.ListDLQ(ctx, ws.ID, 10, 0)
+		if err == nil && len(dlqItems) > 0 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if len(dlqItems) == 0 {
+		t.Fatal("expected failed event to be written directly to the DLQ")
+	}
+
+	item := dlqItems[0]
+	if item.TraceID != traceID || item.MessageID != messageID {
+		t.Errorf("DLQ item fields mismatch: trace=%s, msg=%s", item.TraceID, item.MessageID)
+	}
+	if item.FailureReason == nil || !strings.Contains(*item.FailureReason, "404") {
+		t.Errorf("expected fail reason to contain 404, got %v", item.FailureReason)
+	}
+}
+
+func TestEnsureWebhookStream(t *testing.T) {
+	nc := connectNATS(t)
+	ctx := context.Background()
+
+	stream, err := EnsureWebhookStream(ctx, nc)
+	if err != nil {
+		t.Fatalf("EnsureWebhookStream failed: %v", err)
+	}
+
+	info, err := stream.Info(ctx)
+	if err != nil {
+		t.Fatalf("stream.Info failed: %v", err)
+	}
+
+	if info.Config.Name != "WEBHOOKS" {
+		t.Errorf("expected stream name WEBHOOKS, got %q", info.Config.Name)
+	}
+	if info.Config.Retention != jetstream.LimitsPolicy {
+		t.Errorf("expected retention LimitsPolicy, got %v", info.Config.Retention)
+	}
+}
