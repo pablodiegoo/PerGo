@@ -160,6 +160,11 @@ func main() {
 
 	slog.Info("rate limiter configured", "rps", 10, "burst", 10)
 	slog.Info("queue depth limit", "max", 1000)
+	if cfg.AdminPassword == "omnigo-dev-2026" {
+		slog.Warn("admin panel running with default password 'omnigo-dev-2026'. Change OMNIGO_ADMIN_PASSWORD in production.")
+	} else {
+		slog.Info("admin panel password configured from environment")
+	}
 
 	// --- Debug server (pprof + expvar) ---
 	debugSrv, err := obs.StartDebugServer(net.JoinHostPort("127.0.0.1", cfg.DebugPort))
