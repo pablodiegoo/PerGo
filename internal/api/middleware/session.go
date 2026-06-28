@@ -27,23 +27,39 @@ var (
 // SessionAuthMiddleware returns an Echo middleware that checks for an
 // authenticated session cookie and redirects to /admin/login if not authenticated.
 // The session is a signed cookie containing "authenticated=true".
+//
+// For HTMX requests (HX-Request: true), it responds with an HX-Redirect header
+// instead of a standard 302 redirect to prevent HTMX from injecting the full
+// login page HTML into the DOM (which would cause infinite rendering loops via
+// hx-trigger="load" attributes in the injected page's sidebar).
 func SessionAuthMiddleware() echo.MiddlewareFunc {
 	secret := getSessionSecret()
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			cookie, err := c.Cookie(sessionCookieName)
 			if err != nil || cookie.Value == "" {
-				return c.Redirect(http.StatusFound, "/admin/login")
+				return redirectOrHTMX(c, "/admin/login")
 			}
 
 			// Verify the cookie signature
 			if !VerifySessionCookie(cookie.Value, secret) {
-				return c.Redirect(http.StatusFound, "/admin/login")
+				return redirectOrHTMX(c, "/admin/login")
 			}
 
 			return next(c)
 		}
 	}
+}
+
+// redirectOrHTMX performs a standard redirect for normal requests, but for HTMX
+// requests it sets the HX-Redirect response header and returns 401, instructing
+// the HTMX client to perform a full-page navigation instead of injecting HTML.
+func redirectOrHTMX(c *echo.Context, target string) error {
+	if c.Request().Header.Get("HX-Request") == "true" {
+		c.Response().Header().Set("HX-Redirect", target)
+		return c.NoContent(http.StatusUnauthorized)
+	}
+	return c.Redirect(http.StatusFound, target)
 }
 
 // SetSessionCookie sets a signed session cookie on the response.
