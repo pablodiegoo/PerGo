@@ -101,7 +101,7 @@ func PlaygroundContent(workspaces []repository.Workspace) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</select></div><div class=\"form-group\"><label for=\"channel\">Channel</label> <select name=\"channel\" id=\"channel\" class=\"form-select\" required><option value=\"whatsapp_cloud\">WhatsApp Cloud (WABA)</option> <option value=\"telegram\">Telegram Bot</option> <option value=\"whatsapp\">WhatsApp Web (QR Code)</option></select></div><div class=\"form-group\"><label for=\"to\">Recipient (Destination)</label> <input type=\"text\" name=\"to\" id=\"to\" placeholder=\"ex: 5511999999999 or telegram chat_id\" required></div><div class=\"form-group\"><label for=\"body\">Message Body</label> <textarea name=\"body\" id=\"body\" rows=\"4\" style=\"width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius); resize: vertical;\" placeholder=\"Hello from the OmniGo testing playground!\" required></textarea></div><button type=\"submit\" class=\"btn btn-primary\" style=\"width: 100%;\">Enqueue Outbound Message</button></form></div><!-- Right Panel: Live Logs --><div class=\"playground-panel\" hx-ext=\"ws\" ws-connect=\"/admin/playground/ws\"><h2><span>⚡</span> Live Activity Stream</h2><div class=\"ws-status-bar ws-connected\" id=\"ws-status-container\"><div class=\"ws-indicator\"></div><span id=\"ws-status-text\">Connected to NATS Broker via WebSocket</span></div><div class=\"event-list\" id=\"playground-events\"><div class=\"empty-state\" id=\"playground-empty\">No events received yet. Send a test message or trigger an inbound webhook to see activity.</div></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</select></div><div class=\"form-group\"><label for=\"channel\">Channel</label> <select name=\"channel\" id=\"channel\" class=\"form-select\" required><option value=\"whatsapp_cloud\">WhatsApp Cloud (WABA)</option> <option value=\"telegram\">Telegram Bot</option> <option value=\"whatsapp\">WhatsApp Web (QR Code)</option></select></div><div class=\"form-group\"><label for=\"to\">Recipient (Destination)</label> <input type=\"text\" name=\"to\" id=\"to\" placeholder=\"ex: 5511999999999 or telegram chat_id\" required></div><div class=\"form-group\" id=\"body-field-container\"><label for=\"body\">Message Body</label> <textarea name=\"body\" id=\"body\" rows=\"4\" style=\"width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius); resize: vertical;\" placeholder=\"Hello from the OmniGo testing playground!\" required></textarea></div><div id=\"waba-template-fields\" style=\"display: none; border-top: 1px solid var(--color-border); padding-top: var(--spacing-md); margin-top: var(--spacing-md);\"><h3 style=\"font-size: 1rem; font-weight: 600; margin-bottom: var(--spacing-sm); color: var(--color-text);\">WABA Template Options (Optional)</h3><div class=\"form-group\"><label for=\"template_name\">Template Name</label> <input type=\"text\" name=\"template_name\" id=\"template_name\" placeholder=\"ex: hello_world\" class=\"form-input\" style=\"width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius);\"></div><div class=\"form-group\"><label for=\"template_language\">Language Code</label> <input type=\"text\" name=\"template_language\" id=\"template_language\" placeholder=\"ex: en_US\" class=\"form-input\" style=\"width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius);\"></div><div class=\"form-group\"><label for=\"template_components\">Template Parameters (JSON Array)</label> <textarea name=\"template_components\" id=\"template_components\" rows=\"3\" style=\"width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius); resize: vertical; font-family: monospace;\" placeholder='[{\"type\":\"body\",\"parameters\":[{\"type\":\"text\",\"text\":\"John\"}]}]'></textarea></div></div><button type=\"submit\" class=\"btn btn-primary\" style=\"width: 100%;\">Enqueue Outbound Message</button></form></div><script>\n\t\t\t(function() {\n\t\t\t\tfunction initPlayground() {\n\t\t\t\t\tconst channelSelect = document.getElementById(\"channel\");\n\t\t\t\t\tconst wabaFields = document.getElementById(\"waba-template-fields\");\n\t\t\t\t\tconst bodyTextarea = document.getElementById(\"body\");\n\t\t\t\t\tif (!channelSelect || !wabaFields || !bodyTextarea) return;\n\n\t\t\t\t\tfunction updateFields() {\n\t\t\t\t\t\tif (channelSelect.value === \"whatsapp_cloud\") {\n\t\t\t\t\t\t\twabaFields.style.display = \"block\";\n\t\t\t\t\t\t\tbodyTextarea.required = false;\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\twabaFields.style.display = \"none\";\n\t\t\t\t\t\t\tbodyTextarea.required = true;\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tchannelSelect.removeEventListener(\"change\", updateFields);\n\t\t\t\t\tchannelSelect.addEventListener(\"change\", updateFields);\n\t\t\t\t\tupdateFields();\n\t\t\t\t}\n\n\t\t\t\tinitPlayground();\n\t\t\t\tdocument.body.addEventListener(\"htmx:load\", initPlayground);\n\t\t\t})();\n\t\t</script><!-- Right Panel: Live Logs --><div class=\"playground-panel\" hx-ext=\"ws\" ws-connect=\"/admin/playground/ws\"><h2><span>⚡</span> Live Activity Stream</h2><div class=\"ws-status-bar ws-connected\" id=\"ws-status-container\"><div class=\"ws-indicator\"></div><span id=\"ws-status-text\">Connected to NATS Broker via WebSocket</span></div><div class=\"event-list\" id=\"playground-events\"><div class=\"empty-state\" id=\"playground-empty\">No events received yet. Send a test message or trigger an inbound webhook to see activity.</div></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -182,7 +182,7 @@ func PlaygroundEventRow(eventType string, badgeClass string, title string, timeS
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(eventType)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 228, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 278, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -195,7 +195,7 @@ func PlaygroundEventRow(eventType string, badgeClass string, title string, timeS
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(timeStr)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 229, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 279, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {
@@ -208,7 +208,7 @@ func PlaygroundEventRow(eventType string, badgeClass string, title string, timeS
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 231, Col: 18}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 281, Col: 18}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 		if templ_7745c5c3_Err != nil {
@@ -221,7 +221,7 @@ func PlaygroundEventRow(eventType string, badgeClass string, title string, timeS
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(details)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 232, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 282, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {

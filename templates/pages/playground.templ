@@ -181,7 +181,7 @@ templ PlaygroundContent(workspaces []repository.Workspace) {
 					/>
 				</div>
 
-				<div class="form-group">
+				<div class="form-group" id="body-field-container">
 					<label for="body">Message Body</label>
 					<textarea
 						name="body"
@@ -193,11 +193,61 @@ templ PlaygroundContent(workspaces []repository.Workspace) {
 					></textarea>
 				</div>
 
+				<div id="waba-template-fields" style="display: none; border-top: 1px solid var(--color-border); padding-top: var(--spacing-md); margin-top: var(--spacing-md);">
+					<h3 style="font-size: 1rem; font-weight: 600; margin-bottom: var(--spacing-sm); color: var(--color-text);">WABA Template Options (Optional)</h3>
+					<div class="form-group">
+						<label for="template_name">Template Name</label>
+						<input type="text" name="template_name" id="template_name" placeholder="ex: hello_world" class="form-input" style="width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius);"/>
+					</div>
+					<div class="form-group">
+						<label for="template_language">Language Code</label>
+						<input type="text" name="template_language" id="template_language" placeholder="ex: en_US" class="form-input" style="width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius);"/>
+					</div>
+					<div class="form-group">
+						<label for="template_components">Template Parameters (JSON Array)</label>
+						<textarea
+							name="template_components"
+							id="template_components"
+							rows="3"
+							style="width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius); resize: vertical; font-family: monospace;"
+							placeholder='[{"type":"body","parameters":[{"type":"text","text":"John"}]}]'
+						></textarea>
+					</div>
+				</div>
+
 				<button type="submit" class="btn btn-primary" style="width: 100%;">
 					Enqueue Outbound Message
 				</button>
 			</form>
 		</div>
+
+		<script>
+			(function() {
+				function initPlayground() {
+					const channelSelect = document.getElementById("channel");
+					const wabaFields = document.getElementById("waba-template-fields");
+					const bodyTextarea = document.getElementById("body");
+					if (!channelSelect || !wabaFields || !bodyTextarea) return;
+
+					function updateFields() {
+						if (channelSelect.value === "whatsapp_cloud") {
+							wabaFields.style.display = "block";
+							bodyTextarea.required = false;
+						} else {
+							wabaFields.style.display = "none";
+							bodyTextarea.required = true;
+						}
+					}
+
+					channelSelect.removeEventListener("change", updateFields);
+					channelSelect.addEventListener("change", updateFields);
+					updateFields();
+				}
+
+				initPlayground();
+				document.body.addEventListener("htmx:load", initPlayground);
+			})();
+		</script>
 
 		<!-- Right Panel: Live Logs -->
 		<div class="playground-panel" hx-ext="ws" ws-connect="/admin/playground/ws">

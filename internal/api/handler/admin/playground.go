@@ -69,14 +69,37 @@ func (h *PlaygroundHandler) Send(c *echo.Context) error {
 		QueuedAt:    time.Now().UTC(),
 	}
 
+	if channel == "whatsapp_cloud" {
+		templateName := c.FormValue("template_name")
+		templateLanguage := c.FormValue("template_language")
+		templateComponentsRaw := c.FormValue("template_components")
+
+		if templateName != "" {
+			qMsg.TemplateName = templateName
+			if templateLanguage != "" {
+				qMsg.Language = templateLanguage
+			} else {
+				qMsg.Language = "en_US"
+			}
+
+			if templateComponentsRaw != "" {
+				var components []domain.TemplateComponent
+				if err := json.Unmarshal([]byte(templateComponentsRaw), &components); err != nil {
+					return c.HTML(http.StatusOK, fmt.Sprintf(`<div class="alert alert-error" style="background: #fef2f2; color: var(--color-error); border: 1px solid #fecaca; padding: var(--spacing-md); border-radius: var(--radius); margin-bottom: var(--spacing-md);"><strong>Error:</strong> Invalid Template Parameters JSON: %v</div>`, err))
+				}
+				qMsg.Components = components
+			}
+		}
+	}
+
 	payload, err := json.Marshal(qMsg)
 	if err != nil {
-		return c.HTML(http.StatusOK, fmt.Sprintf(`<div class="alert alert-error">Failed to marshal message: %v</div>`, err))
+		return c.HTML(http.StatusOK, fmt.Sprintf(`<div class="alert alert-error" style="background: #fef2f2; color: var(--color-error); border: 1px solid #fecaca; padding: var(--spacing-md); border-radius: var(--radius); margin-bottom: var(--spacing-md);"><strong>Error:</strong> Failed to marshal message: %v</div>`, err))
 	}
 
 	err = h.publisher.Publish(c.Request().Context(), "messages.outbound", payload, traceID)
 	if err != nil {
-		return c.HTML(http.StatusOK, fmt.Sprintf(`<div class="alert alert-error">Failed to publish to NATS: %v</div>`, err))
+		return c.HTML(http.StatusOK, fmt.Sprintf(`<div class="alert alert-error" style="background: #fef2f2; color: var(--color-error); border: 1px solid #fecaca; padding: var(--spacing-md); border-radius: var(--radius); margin-bottom: var(--spacing-md);"><strong>Error:</strong> Failed to publish to NATS: %v</div>`, err))
 	}
 
 	return c.HTML(http.StatusOK, fmt.Sprintf(`
