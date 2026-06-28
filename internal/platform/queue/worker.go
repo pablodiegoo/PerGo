@@ -14,6 +14,7 @@ import (
 
 	"github.com/pablojhp.omnigo/internal/channel"
 	"github.com/pablojhp.omnigo/internal/domain"
+	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.omnigo/internal/repository"
 )
 
@@ -159,6 +160,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 		}
 	}
 	workspaceID := qMsg.WorkspaceID
+	ctx = tenant.WithWorkspaceID(ctx, workspaceID)
 
 	// Extract retry attempt from header
 	attempt := w.retryAttempt(msg)
