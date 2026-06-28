@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -172,6 +173,13 @@ func (h *WorkspaceHandler) SaveCredentials(c *echo.Context) error {
 		tg = pages.TelegramConfig{
 			Token: c.FormValue("token"),
 		}
+		// Validate Telegram token synchronously
+		err = h.validateTelegramToken(c.Request().Context(), tg.Token)
+		if err != nil {
+			slog.Warn("Telegram token validation failed", "error", err, "workspace_id", workspaceID)
+			tg.Token = "" // Clear token to render the form again
+			return mw.Render(c, http.StatusOK, pages.TelegramCredentialsCard(idStr, tg, err.Error()))
+		}
 		payload, err = json.Marshal(tg)
 	}
 	if err != nil {
@@ -187,6 +195,47 @@ func (h *WorkspaceHandler) SaveCredentials(c *echo.Context) error {
 	} else {
 		return mw.Render(c, http.StatusOK, pages.TelegramCredentialsCard(idStr, tg, ""))
 	}
+}
+
+func (h *WorkspaceHandler) validateTelegramToken(ctx context.Context, token string) error {
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/getMe", token)
+	client := &http.Client{Timeout: 5 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create Telegram API request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to connect to Telegram API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return errors.New("Telegram token is unauthorized/invalid")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Telegram API returned HTTP status %d", resp.StatusCode)
+	}
+
+	type tgResponse struct {
+		Ok     bool `json:"ok"`
+		Result struct {
+			Username string `json:"username"`
+		} `json:"result"`
+	}
+	var tgResp tgResponse
+	dec := json.NewDecoder(resp.Body)
+	if err := dec.Decode(&tgResp); err != nil {
+		return fmt.Errorf("failed to parse Telegram response: %w", err)
+	}
+
+	if !tgResp.Ok {
+		return errors.New("Telegram API returned OK=false")
+	}
+
+	slog.Info("Telegram bot token validated successfully", "username", tgResp.Result.Username)
+	return nil
 }
 
 func (h *WorkspaceHandler) syncTemplatesFromMeta(ctx context.Context, workspaceID uuid.UUID, config pages.WABAConfig) error {
