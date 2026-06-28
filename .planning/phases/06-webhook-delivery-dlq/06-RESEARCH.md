@@ -11,7 +11,7 @@
 
 #### Webhook HMAC Signing Scheme
 - Cryptographic algorithm: HMAC-SHA256.
-- Format and Header: Hex-encoded signature sent in a custom header `X-OmniGo-Signature`.
+- Format and Header: Hex-encoded signature sent in a custom header `X-PerGo-Signature`.
 - Replay Prevention: Include a timestamp `t=timestamp` in both the header and the signed payload; client validates within a 5-minute threshold.
 - Secret Storage: AES-256-GCM encrypted in the PostgreSQL database per workspace using the workspace encryption key, with in-memory caching.
 
@@ -199,7 +199,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/pablojhp.omnigo/internal/domain"
+	"github.com/pablojhp.pergo/internal/domain"
 )
 
 type WebhookEvent struct {
@@ -227,7 +227,7 @@ func SendWebhook(ctx context.Context, url string, secret []byte, event *WebhookE
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-OmniGo-Signature", signature)
+	req.Header.Set("X-PerGo-Signature", signature)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)

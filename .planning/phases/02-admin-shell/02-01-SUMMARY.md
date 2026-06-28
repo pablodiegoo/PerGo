@@ -13,7 +13,7 @@ provides:
   - "Session-based admin auth middleware with HMAC-signed cookies"
   - "HTMX fragment detection middleware with templ Render helper"
   - "Base HTML layout with sidebar navigation (templ compile-time templates)"
-  - "Login page with password validation via OMNIGO_ADMIN_PASSWORD env var"
+  - "Login page with password validation via PERGO_ADMIN_PASSWORD env var"
   - "Dashboard page showing workspace count and recent audit activity"
   - "Admin CSS with custom properties for theming"
   - "Workspace repository List/Count methods for dashboard"
@@ -37,7 +37,7 @@ key-files:
     - templates/pages/dashboard.templ
     - static/css/admin.css
   modified:
-    - cmd/omnigo/main.go
+    - cmd/pergo/main.go
     - internal/repository/workspace.go
     - go.mod
 
@@ -62,7 +62,7 @@ coverage:
     requirement: ADMIN-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_test.go#TestAdminRedirectUnauthenticated"
+        ref: "cmd/pergo/admin_test.go#TestAdminRedirectUnauthenticated"
         status: pass
     human_judgment: false
   - id: D2
@@ -70,7 +70,7 @@ coverage:
     requirement: ADMIN-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_test.go#TestAdminLoginPage"
+        ref: "cmd/pergo/admin_test.go#TestAdminLoginPage"
         status: pass
     human_judgment: false
   - id: D3
@@ -78,7 +78,7 @@ coverage:
     requirement: ADMIN-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_test.go#TestAdminLoginSuccess"
+        ref: "cmd/pergo/admin_test.go#TestAdminLoginSuccess"
         status: pass
     human_judgment: false
   - id: D4
@@ -86,7 +86,7 @@ coverage:
     requirement: ADMIN-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_test.go#TestAdminLoginWrongPassword"
+        ref: "cmd/pergo/admin_test.go#TestAdminLoginWrongPassword"
         status: pass
     human_judgment: false
   - id: D5
@@ -94,7 +94,7 @@ coverage:
     requirement: ADMIN-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_test.go#TestAdminDashboardAuthenticated"
+        ref: "cmd/pergo/admin_test.go#TestAdminDashboardAuthenticated"
         status: pass
     human_judgment: false
   - id: D6
@@ -102,7 +102,7 @@ coverage:
     requirement: ADMIN-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_test.go#TestAdminDashboardContent"
+        ref: "cmd/pergo/admin_test.go#TestAdminDashboardContent"
         status: pass
     human_judgment: false
   - id: D7
@@ -110,7 +110,7 @@ coverage:
     requirement: ADMIN-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_test.go#TestAdminHTMXFragment"
+        ref: "cmd/pergo/admin_test.go#TestAdminHTMXFragment"
         status: pass
     human_judgment: false
 
@@ -135,7 +135,7 @@ status: complete
 - Session-based admin auth with HMAC-signed cookies (HttpOnly, SameSite=Lax)
 - Templ compile-time templates: base layout, sidebar navigation, login page, dashboard
 - HTMX fragment detection via HX-Request header — dashboard returns fragments for snappy interactions
-- Login/logout flow: password validation against OMNIGO_ADMIN_PASSWORD env var
+- Login/logout flow: password validation against PERGO_ADMIN_PASSWORD env var
 - Dashboard page showing workspace count and recent audit activity
 - Minimal CSS with custom properties — sidebar layout, responsive, no framework
 - Workspace repository extended with List/Count methods
@@ -161,7 +161,7 @@ _TDD tasks may have multiple commits (test → feat → refactor)_
 - `templates/pages/login.templ` - Login form with password input
 - `templates/pages/dashboard.templ` - Dashboard with stats grid and activity section
 - `static/css/admin.css` - Minimal CSS with custom properties for theming
-- `cmd/omnigo/main.go` - Wired admin routes (public + protected groups)
+- `cmd/pergo/main.go` - Wired admin routes (public + protected groups)
 - `internal/repository/workspace.go` - Added List/Count methods
 - `go.mod` / `go.sum` - Added a-h/templ dependency
 
@@ -187,7 +187,7 @@ _TDD tasks may have multiple commits (test → feat → refactor)_
 - **Found during:** Task 2 (GREEN phase — login page returning 302 redirect loop)
 - **Issue:** Session auth middleware applied to entire /admin group caused redirect loop for /admin/login
 - **Fix:** Split admin routes into public (login/logout) and protected (dashboard) groups
-- **Files modified:** cmd/omnigo/main.go, cmd/omnigo/admin_test.go
+- **Files modified:** cmd/pergo/main.go, cmd/pergo/admin_test.go
 - **Verification:** Login page accessible without session, dashboard requires session
 - **Committed in:** 73fee8e
 
@@ -203,7 +203,7 @@ _TDD tasks may have multiple commits (test → feat → refactor)_
 - **Found during:** Task 2 (GREEN phase — test stubs returning 501 instead of real behavior)
 - **Issue:** RED phase test stubs were not replaced with real handler implementations
 - **Fix:** Updated admin_test.go to use real LoginPage, LoginPost, Logout, and DashboardHandler
-- **Files modified:** cmd/omnigo/admin_test.go
+- **Files modified:** cmd/pergo/admin_test.go
 - **Verification:** All 7 tests pass with real implementations
 - **Committed in:** 73fee8e
 

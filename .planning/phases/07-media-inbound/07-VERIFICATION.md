@@ -34,9 +34,9 @@ human_verification: []
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| [message.go](file:///home/pablo/Coding/OmniGo/internal/domain/message.go) | Message models with media support | ✓ VERIFIED | Implements media fields and validation |
-| [s3.go](file:///home/pablo/Coding/OmniGo/internal/platform/storage/s3.go) | Media storage client with limits | ✓ VERIFIED | Downloads, validates size (25MB), and uploads to local/MinIO storage |
-| [telegram.go](file:///home/pablo/Coding/OmniGo/internal/channel/telegram/telegram.go) | Telegram media adapter | ✓ VERIFIED | Dispatches media to Bot API |
-| [waba.go](file:///home/pablo/Coding/OmniGo/internal/channel/whatsapp/waba.go) | WABA media adapter | ✓ VERIFIED | Passes absolute media URLs to Meta API |
-| [whatsapp.go](file:///home/pablo/Coding/OmniGo/internal/channel/whatsapp/whatsapp.go) | WhatsApp Web media adapter | ✓ VERIFIED | Downloads and dispatches whatsmeow media |
-| [webhook_worker.go](file:///home/pablo/Coding/OmniGo/internal/platform/queue/webhook_worker.go) | Inbound WebhookWorker | ✓ VERIFIED | Integrates dual-pull queue processor |
+| [message.go](file:///home/pablo/Coding/PerGo/internal/domain/message.go) | Message models with media support | ✓ VERIFIED | Implements media fields and validation |
+| [s3.go](file:///home/pablo/Coding/PerGo/internal/platform/storage/s3.go) | Media storage client with limits | ✓ VERIFIED | Downloads, validates size (25MB), and uploads to local/MinIO storage |
+| [telegram.go](file:///home/pablo/Coding/PerGo/internal/channel/telegram/telegram.go) | Telegram media adapter | ✓ VERIFIED | Dispatches media to Bot API |
+| [waba.go](file:///home/pablo/Coding/PerGo/internal/channel/whatsapp/waba.go) | WABA media adapter | ✓ VERIFIED | Passes absolute media URLs to Meta API |
+| [whatsapp.go](file:///home/pablo/Coding/PerGo/internal/channel/whatsapp/whatsapp.go) | WhatsApp Web media adapter | ✓ VERIFIED | Downloads and dispatches whatsmeow media |
+| [webhook_worker.go](file:///home/pablo/Coding/PerGo/internal/platform/queue/webhook_worker.go) | Inbound WebhookWorker | ✓ VERIFIED | Integrates dual-pull queue processor |

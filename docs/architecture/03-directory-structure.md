@@ -5,9 +5,9 @@ its own, depends only on `internal/platform` for infrastructure, and
 exposes a small surface via constructor functions.
 
 ```
-omnigo/
+pergo/
 ├── cmd/
-│   └── omnigo/
+│   └── pergo/
 │       └── main.go                 # wire deps, start HTTP + workers
 ├── internal/
 │   ├── platform/                   # cross-cutting infra, no business logic
@@ -82,7 +82,7 @@ omnigo/
 │   └── *.sql
 ├── deploy/
 │   ├── docker/
-│   └── compose.yaml                # omnigo + postgres + nats
+│   └── compose.yaml                # pergo + postgres + nats
 ├── go.mod
 ├── Makefile                        # run, test, lint, templ generate, migrate
 └── AGENTS.md
@@ -120,5 +120,5 @@ cmd       ──► everything (composition root)
 - **Adapters are siblings, not a hierarchy.** `whatsappweb`, `whatsappcloud`,
   `telegram` share an interface but no base struct — no `BaseAdapter`
   Java-ism.
-- **`cmd/omnigo` is the sole composition root.** No `internal/app`
+- **`cmd/pergo` is the sole composition root.** No `internal/app`
   "god package"; `main.go` is allowed to be 150 lines of wiring.

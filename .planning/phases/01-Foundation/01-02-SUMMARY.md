@@ -30,7 +30,7 @@ key-files:
     - internal/repository/apikey.go
     - internal/api/middleware/auth.go
     - internal/config/config.go
-    - cmd/omnigo/auth_test.go
+    - cmd/pergo/auth_test.go
   modified: []
 
 key-decisions:
@@ -54,7 +54,7 @@ coverage:
     requirement: AUTH-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/auth_test.go#TestCreateWorkspace"
+        ref: "cmd/pergo/auth_test.go#TestCreateWorkspace"
         status: pass
     human_judgment: false
   - id: D2
@@ -62,7 +62,7 @@ coverage:
     requirement: AUTH-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/auth_test.go#TestCreateAPIKey"
+        ref: "cmd/pergo/auth_test.go#TestCreateAPIKey"
         status: pass
     human_judgment: false
   - id: D3
@@ -70,7 +70,7 @@ coverage:
     requirement: AUTH-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/auth_test.go#TestAuthMiddlewareValid"
+        ref: "cmd/pergo/auth_test.go#TestAuthMiddlewareValid"
         status: pass
     human_judgment: false
   - id: D4
@@ -78,7 +78,7 @@ coverage:
     requirement: AUTH-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/auth_test.go#TestAuthMiddlewareMissing"
+        ref: "cmd/pergo/auth_test.go#TestAuthMiddlewareMissing"
         status: pass
     human_judgment: false
   - id: D5
@@ -86,7 +86,7 @@ coverage:
     requirement: AUTH-02
     verification:
       - kind: integration
-        ref: "cmd/omnigo/auth_test.go#TestAuthMiddlewareInvalid"
+        ref: "cmd/pergo/auth_test.go#TestAuthMiddlewareInvalid"
         status: pass
     human_judgment: false
   - id: D6
@@ -94,7 +94,7 @@ coverage:
     requirement: AUTH-02
     verification:
       - kind: integration
-        ref: "cmd/omnigo/auth_test.go#TestAuthMiddlewareRevoked"
+        ref: "cmd/pergo/auth_test.go#TestAuthMiddlewareRevoked"
         status: pass
     human_judgment: false
   - id: D7
@@ -102,7 +102,7 @@ coverage:
     requirement: AUTH-03
     verification:
       - kind: integration
-        ref: "cmd/omnigo/auth_test.go#TestAuthMiddlewareCacheHit"
+        ref: "cmd/pergo/auth_test.go#TestAuthMiddlewareCacheHit"
         status: pass
     human_judgment: false
   - id: D8
@@ -110,7 +110,7 @@ coverage:
     requirement: SEC-01
     verification:
       - kind: unit
-        ref: "cmd/omnigo/auth_test.go#TestEncryptDecryptRoundTrip"
+        ref: "cmd/pergo/auth_test.go#TestEncryptDecryptRoundTrip"
         status: pass
     human_judgment: false
   - id: D9
@@ -118,7 +118,7 @@ coverage:
     requirement: SEC-03
     verification:
       - kind: unit
-        ref: "cmd/omnigo/auth_test.go#TestTenantContext"
+        ref: "cmd/pergo/auth_test.go#TestTenantContext"
         status: pass
     human_judgment: false
   - id: D10
@@ -126,7 +126,7 @@ coverage:
     requirement: SEC-02
     verification:
       - kind: unit
-        ref: "cmd/omnigo/auth_test.go#TestHashAPIKeyRoundTrip"
+        ref: "cmd/pergo/auth_test.go#TestHashAPIKeyRoundTrip"
         status: pass
     human_judgment: false
 
@@ -170,7 +170,7 @@ Each task was committed atomically:
 - `internal/repository/apikey.go` - API key CRUD with in-memory TTL cache
 - `internal/api/middleware/auth.go` - Echo v5 auth middleware for Bearer token validation
 - `internal/config/config.go` - 12-factor env-var configuration loading
-- `cmd/omnigo/auth_test.go` - 10 integration/unit tests covering full identity and auth flow
+- `cmd/pergo/auth_test.go` - 10 integration/unit tests covering full identity and auth flow
 - `go.mod` / `go.sum` - Added google/uuid dependency
 
 ## Decisions Made

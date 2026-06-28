@@ -11,10 +11,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
-	"github.com/pablojhp.omnigo/internal/api/middleware"
-	"github.com/pablojhp.omnigo/internal/domain"
-	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
-	"github.com/pablojhp.omnigo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/platform/storage"
 )
 
 // Publisher defines the interface for publishing messages to a queue.
@@ -53,7 +53,7 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 			return c.JSON(http.StatusTooManyRequests, domain.ErrorResponse{
 				Code:    "queue_full",
 				Message: "per-session message queue limit exceeded",
-				MoreInfo: "https://docs.omnigo.dev/errors/queue_full",
+				MoreInfo: "https://docs.pergo.dev/errors/queue_full",
 			})
 		}
 	}

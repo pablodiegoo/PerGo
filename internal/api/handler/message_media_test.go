@@ -11,8 +11,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
-	"github.com/pablojhp.omnigo/internal/domain"
-	"github.com/pablojhp.omnigo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/storage"
 )
 
 // mockPublisher is already defined in message_test.go, but this test file is in the same package,
@@ -21,7 +21,7 @@ import (
 func TestMessageHandler_CreateWithMedia(t *testing.T) {
 	// Initialize S3 Mock storage client
 	// (Since we replaces the sdk with our local mock in-memory client, it's safe to run in sandbox)
-	s3Client, err := storage.NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "omnigo-bucket", true)
+	s3Client, err := storage.NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "pergo-bucket", true)
 	if err != nil {
 		t.Fatalf("failed to init s3 client: %v", err)
 	}

@@ -12,7 +12,7 @@ provides:
   - "pgxpool.Pool + stdlib bridge for dual-access PostgreSQL"
   - "Goose embedded migrations for workspaces, api_keys, devices, audit_logs"
   - "Health (/healthz) and readiness (/readyz) endpoints"
-  - "Docker Compose topology: postgres + nats + omnigo"
+  - "Docker Compose topology: postgres + nats + pergo"
   - "Makefile with run, test, lint, migrate targets"
   - "Graceful shutdown on SIGINT/SIGTERM"
 affects: [02-Admin-Shell, 03-Ingest-API, 04-WhatsApp-Web]
@@ -23,8 +23,8 @@ tech-stack:
 
 key-files:
   created:
-    - cmd/omnigo/main.go
-    - cmd/omnigo/main_test.go
+    - cmd/pergo/main.go
+    - cmd/pergo/main_test.go
     - internal/platform/echo/echo.go
     - internal/api/handler/health.go
     - internal/platform/postgres/pool.go
@@ -36,7 +36,7 @@ key-files:
 
 key-decisions:
   - "Echo v5 over net/http+chi — native slog integration, handler ergonomics"
-  - "pgxpool + stdlib bridge — single PG driver serves both OmniGo queries and goose/whatsmeow"
+  - "pgxpool + stdlib bridge — single PG driver serves both PerGo queries and goose/whatsmeow"
   - "Goose embedded migrations via go:embed — no external binary needed at runtime"
   - "NATS ping via IsConnected() for Phase 1 — JetStream readiness deferred to Phase 3"
   - "Migrations directory inside postgres package for go:embed compatibility"
@@ -50,11 +50,11 @@ requirements-completed: [INFRA-01, INFRA-02, INFRA-03, INFRA-04, INFRA-06]
 
 coverage:
   - id: D1
-    description: "Server boots via cmd/omnigo, Echo v5 responds on /healthz with HTTP 200"
+    description: "Server boots via cmd/pergo, Echo v5 responds on /healthz with HTTP 200"
     requirement: INFRA-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/main_test.go#TestServerBootHealthz"
+        ref: "cmd/pergo/main_test.go#TestServerBootHealthz"
         status: pass
     human_judgment: false
   - id: D2
@@ -62,7 +62,7 @@ coverage:
     requirement: INFRA-02
     verification:
       - kind: integration
-        ref: "cmd/omnigo/main_test.go#TestServerBootReadyz"
+        ref: "cmd/pergo/main_test.go#TestServerBootReadyz"
         status: pass
     human_judgment: false
   - id: D3
@@ -70,7 +70,7 @@ coverage:
     requirement: OBS-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/main_test.go#TestServerBootReadyzDown"
+        ref: "cmd/pergo/main_test.go#TestServerBootReadyzDown"
         status: pass
     human_judgment: false
   - id: D4
@@ -78,11 +78,11 @@ coverage:
     requirement: INFRA-05
     verification:
       - kind: integration
-        ref: "cmd/omnigo/main_test.go#TestGracefulShutdown"
+        ref: "cmd/pergo/main_test.go#TestGracefulShutdown"
         status: pass
     human_judgment: false
   - id: D5
-    description: "Docker Compose brings up postgres + nats + omnigo with a single command"
+    description: "Docker Compose brings up postgres + nats + pergo with a single command"
     requirement: INFRA-04
     verification:
       - kind: automated_ui
@@ -129,7 +129,7 @@ status: complete
 - Health handler: /healthz (liveness, always 200) and /readyz (pgx + NATS ping)
 - pgxpool.Pool constructor + stdlib bridge for dual-access PostgreSQL model
 - Goose embedded migrations creating workspaces, api_keys, devices, audit_logs tables
-- Docker Compose topology: postgres:16-alpine, nats:2.10-alpine, omnigo service with health conditions
+- Docker Compose topology: postgres:16-alpine, nats:2.10-alpine, pergo service with health conditions
 - Makefile with run, test, lint, migrate, docker-up, docker-down targets
 - Graceful shutdown on SIGINT/SIGTERM with 30s timeout
 - Integration tests covering healthz, readiness, readiness-down, and graceful shutdown
@@ -144,8 +144,8 @@ Each task was committed atomically:
 _TDD tasks may have multiple commits (test -> feat -> refactor)_
 
 ## Files Created/Modified
-- `cmd/omnigo/main.go` - Composition root: env config, pgxpool, NATS, Echo, graceful shutdown
-- `cmd/omnigo/main_test.go` - Integration tests for server boot and health checks
+- `cmd/pergo/main.go` - Composition root: env config, pgxpool, NATS, Echo, graceful shutdown
+- `cmd/pergo/main_test.go` - Integration tests for server boot and health checks
 - `internal/platform/echo/echo.go` - Echo v5 constructor with recover + request ID middleware
 - `internal/api/handler/health.go` - HealthHandler with /healthz and /readyz endpoints
 - `internal/platform/postgres/pool.go` - pgxpool.Pool + stdlib bridge constructors
@@ -157,7 +157,7 @@ _TDD tasks may have multiple commits (test -> feat -> refactor)_
 
 ## Decisions Made
 - **Echo v5 over net/http+chi:** Native slog integration, handler ergonomics, middleware parity with future admin stack
-- **pgxpool + stdlib bridge:** Single PG driver serves OmniGo queries (pgxpool) and third-party libs (goose, future whatsmeow via stdlib)
+- **pgxpool + stdlib bridge:** Single PG driver serves PerGo queries (pgxpool) and third-party libs (goose, future whatsmeow via stdlib)
 - **Migrations inside postgres package:** Required for `go:embed` to find SQL files relative to package directory
 - **NATSConn interface:** Decouples health handler from nats.go import — test mocks satisfy the interface
 - **NATS ping via IsConnected():** Sufficient for Phase 1 connectivity check; JetStream readiness deferred to Phase 3
@@ -178,7 +178,7 @@ _TDD tasks may have multiple commits (test -> feat -> refactor)_
 - **Found during:** Task 2 (GREEN phase verification)
 - **Issue:** `pgxpool.New()` doesn't validate connection eagerly — tests ran against unavailable PostgreSQL instead of skipping
 - **Fix:** Added `pool.Ping()` check after pool creation in all tests that require PostgreSQL
-- **Files modified:** cmd/omnigo/main_test.go
+- **Files modified:** cmd/pergo/main_test.go
 - **Verification:** Tests skip gracefully when PostgreSQL unavailable
 - **Committed in:** faa1e44
 

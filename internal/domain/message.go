@@ -1,5 +1,5 @@
 // Package domain defines the core message types, validation rules, and
-// error contracts for the OmniGo message ingestion API.
+// error contracts for the PerGo message ingestion API.
 package domain
 
 import (

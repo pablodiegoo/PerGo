@@ -1,4 +1,4 @@
-// Package obs provides observability utilities for OmniGo, including
+// Package obs provides observability utilities for PerGo, including
 // structured logging, pprof debug server, and expvar metrics.
 package obs
 

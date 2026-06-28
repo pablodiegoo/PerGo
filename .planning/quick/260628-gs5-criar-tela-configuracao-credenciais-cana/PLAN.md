@@ -10,12 +10,12 @@ Implement a user interface in the Workspace Detail page to allow operators to co
 
 ### Task 1: Update workspace handler dependencies
 - Add `Credentials` of type `*repository.CredentialsRepository` to `admin.WorkspaceHandler` in `internal/api/handler/admin/workspace.go`.
-- Wire `credentialsRepo` when constructing `workspaceHandler` in `cmd/omnigo/main.go`.
+- Wire `credentialsRepo` when constructing `workspaceHandler` in `cmd/pergo/main.go`.
 
 ### Task 2: Implement save/delete credentials handlers
 - Implement `WorkspaceHandler.SaveCredentials` to handle `POST /admin/workspaces/:id/credentials/:channel`.
 - Implement `WorkspaceHandler.DeleteCredentials` to handle `DELETE /admin/workspaces/:id/credentials/:channel`.
-- Register the routes in `cmd/omnigo/main.go`.
+- Register the routes in `cmd/pergo/main.go`.
 
 ### Task 3: Load credentials in WorkspaceHandler.Detail
 - In `WorkspaceHandler.Detail`, load the current config for `whatsapp_cloud` and `telegram` using `Credentials.Get`.

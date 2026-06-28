@@ -26,7 +26,7 @@ key-files:
     - internal/platform/queue/jetstream_test.go
     - internal/platform/queue/worker.go
   modified:
-    - cmd/omnigo/main.go
+    - cmd/pergo/main.go
     - internal/api/handler/message.go
 
 key-decisions:
@@ -136,7 +136,7 @@ Each task was committed atomically:
 - `internal/platform/queue/jetstream.go` - EnsureStream (WorkQueuePolicy), JetStreamPublisher with dedup
 - `internal/platform/queue/jetstream_test.go` - 4 integration tests: stream creation, idempotency, publish-consume, dedup
 - `internal/platform/queue/worker.go` - Worker stub using push-based Messages() channel
-- `cmd/omnigo/main.go` - JetStream init, publisher injection, worker creation, shutdown registration
+- `cmd/pergo/main.go` - JetStream init, publisher injection, worker creation, shutdown registration
 - `internal/api/handler/message.go` - Publisher interface updated with traceID, handler calls Publish
 
 ## Decisions Made

@@ -1,4 +1,4 @@
-// Package middleware provides Echo v5 middleware functions for the OmniGo API.
+// Package middleware provides Echo v5 middleware functions for the PerGo API.
 package middleware
 
 import (
@@ -7,9 +7,9 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	"github.com/pablojhp.omnigo/internal/platform/crypto"
-	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
-	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // AuthMiddleware returns an Echo middleware that validates API keys from the

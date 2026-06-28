@@ -10,8 +10,8 @@ import (
 	"github.com/labstack/echo/v5"
 	"golang.org/x/time/rate"
 
-	"github.com/pablojhp.omnigo/internal/domain"
-	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 )
 
 // RateLimiter provides per-workspace token-bucket rate limiting.
@@ -64,7 +64,7 @@ func RateLimiterMiddleware(rl *RateLimiter) echo.MiddlewareFunc {
 				return c.JSON(http.StatusTooManyRequests, domain.ErrorResponse{
 					Code:    "rate_limited",
 					Message: "too many requests, slow down",
-					MoreInfo: "https://docs.omnigo.dev/errors/rate_limited",
+					MoreInfo: "https://docs.pergo.dev/errors/rate_limited",
 				})
 			}
 

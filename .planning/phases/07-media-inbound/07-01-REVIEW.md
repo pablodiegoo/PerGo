@@ -8,7 +8,7 @@
 
 **1. [scope_sanity] Plan 01 has 11 tasks and 25 files modified - exceeds context budget**
 - Plan: "07-01"
-- Fix: Split the phase into multiple plans (07-01, 07-02, 07-03, 07-04) aligned with the waves in [07-VALIDATION.md](file:///home/pablo/Coding/OmniGo/.planning/phases/07-media-inbound/07-VALIDATION.md) (Wave 1: media validation and storage, Wave 2: outbound adapters, Wave 3: inbound webhooks and dedup, Wave 4: webhook worker and auditing).
+- Fix: Split the phase into multiple plans (07-01, 07-02, 07-03, 07-04) aligned with the waves in [07-VALIDATION.md](file:///home/pablo/Coding/PerGo/.planning/phases/07-media-inbound/07-VALIDATION.md) (Wave 1: media validation and storage, Wave 2: outbound adapters, Wave 3: inbound webhooks and dedup, Wave 4: webhook worker and auditing).
 
 **2. [verification_derivation] Missing 'Artifacts this phase produces' section**
 - Plan: "07-01"
@@ -16,13 +16,13 @@
 
 **3. [requirement_coverage] Discrepancy between validation waves and plan tasks**
 - Plan: "07-01"
-- Fix: Group tasks into plans matching the distinct waves from the validation strategy in [07-VALIDATION.md](file:///home/pablo/Coding/OmniGo/.planning/phases/07-media-inbound/07-VALIDATION.md) instead of cramming everything into wave 1.
+- Fix: Group tasks into plans matching the distinct waves from the validation strategy in [07-VALIDATION.md](file:///home/pablo/Coding/PerGo/.planning/phases/07-media-inbound/07-VALIDATION.md) instead of cramming everything into wave 1.
 
 ### Warnings (should fix)
 
 **1. [verification_derivation] Missing SPEC edge cases in must_haves.truths**
 - Plan: "07-01"
-- Fix: Add truths for covered SPEC edge cases from [07-SPEC.md](file:///home/pablo/Coding/OmniGo/.planning/phases/07-media-inbound/07-SPEC.md): WABA status objects ignored (R4), empty text with media/location/contacts forwarded normally (R4), audit logs for non-empty events only (R6), dedup key provider-specific (R7), and media without caption delivers no caption text (R8).
+- Fix: Add truths for covered SPEC edge cases from [07-SPEC.md](file:///home/pablo/Coding/PerGo/.planning/phases/07-media-inbound/07-SPEC.md): WABA status objects ignored (R4), empty text with media/location/contacts forwarded normally (R4), audit logs for non-empty events only (R6), dedup key provider-specific (R7), and media without caption delivers no caption text (R8).
 
 **2. [task_completeness] Discrepancy in files_modified frontmatter metadata**
 - Plan: "07-01"

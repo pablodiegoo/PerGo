@@ -11,9 +11,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
-	"github.com/pablojhp.omnigo/internal/api/middleware"
-	"github.com/pablojhp.omnigo/internal/domain"
-	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 )
 
 // testContext returns a context with trace_id and workspace_id injected.

@@ -1,4 +1,4 @@
-# Graph Report - OmniGo  (2026-06-27)
+# Graph Report - PerGo  (2026-06-27)
 
 ## Corpus Check
 - 1213 files · ~1,778,889 words
@@ -684,15 +684,15 @@
 
 ## Surprising Connections (you probably didn't know these)
 - `seedAuditEvent()` --calls--> `New()`  [INFERRED]
-  cmd/omnigo/admin_audit_test.go → internal/platform/echo/echo.go
+  cmd/pergo/admin_audit_test.go → internal/platform/echo/echo.go
 - `setupAuditTestRoutes()` --calls--> `LoginPost()`  [INFERRED]
-  cmd/omnigo/admin_audit_test.go → internal/api/handler/admin/login.go
+  cmd/pergo/admin_audit_test.go → internal/api/handler/admin/login.go
 - `setupAuditTestRoutes()` --calls--> `Logout()`  [INFERRED]
-  cmd/omnigo/admin_audit_test.go → internal/api/handler/admin/login.go
+  cmd/pergo/admin_audit_test.go → internal/api/handler/admin/login.go
 - `setupAuditTestRoutes()` --calls--> `HTMXMiddleware()`  [INFERRED]
-  cmd/omnigo/admin_audit_test.go → internal/api/middleware/htmx.go
+  cmd/pergo/admin_audit_test.go → internal/api/middleware/htmx.go
 - `setupAuditTestRoutes()` --calls--> `SessionAuthMiddleware()`  [INFERRED]
-  cmd/omnigo/admin_audit_test.go → internal/api/middleware/session.go
+  cmd/pergo/admin_audit_test.go → internal/api/middleware/session.go
 
 ## Import Cycles
 - None detected.
@@ -1377,7 +1377,7 @@ Nodes (12): 10. Present Final Status, 11. Commit (if configured), 12. Update Sta
 
 ### Community 169 - "Community 169"
 Cohesion: 0.15
-Nodes (12): Active, Business Context, Constraints, Context, Core Value, Evolution, Key Decisions, OmniGo (+4 more)
+Nodes (12): Active, Business Context, Constraints, Context, Core Value, Evolution, Key Decisions, PerGo (+4 more)
 
 ### Community 170 - "Community 170"
 Cohesion: 0.14
@@ -1505,7 +1505,7 @@ Nodes (11): 10. Summary & Refresh Diff, 1. Initialize, 2. Consent Gate (ACTV-06)
 
 ### Community 201 - "Community 201"
 Cohesion: 0.17
-Nodes (11): 1. Run Dependencies (Postgres & NATS), 2. Environment Variables, 3. Running Locally, 4. Running via Docker, Core Value, Getting Started, OmniGo, Prerequisites (+3 more)
+Nodes (11): 1. Run Dependencies (Postgres & NATS), 2. Environment Variables, 3. Running Locally, 4. Running via Docker, Core Value, Getting Started, PerGo, Prerequisites (+3 more)
 
 ### Community 202 - "Community 202"
 Cohesion: 0.18
@@ -2109,7 +2109,7 @@ Nodes (7): Common Pitfalls, Pitfall 1: Partition by `workspace_id` instead of `c
 
 ### Community 352 - "Community 352"
 Cohesion: 0.29
-Nodes (6): Architectural Decisions, Capability Proven End-to-End, Out of Scope (Deferred to Later Slices), Stack Touched in Phase 1, Subsequent Slice Plan, Walking Skeleton — OmniGo
+Nodes (6): Architectural Decisions, Capability Proven End-to-End, Out of Scope (Deferred to Later Slices), Stack Touched in Phase 1, Subsequent Slice Plan, Walking Skeleton — PerGo
 
 ### Community 353 - "Community 353"
 Cohesion: 0.29
@@ -2301,7 +2301,7 @@ Nodes (6): Docs & Output, Execution, Features, Misc, Model & Pipeline, Planning
 
 ### Community 400 - "Community 400"
 Cohesion: 0.29
-Nodes (6): /home/pablo/Coding/OmniGo/.opencode/gsd-core/*, permission, external_directory, read, /home/pablo/Coding/OmniGo/.opencode/gsd-core/*, $schema
+Nodes (6): /home/pablo/Coding/PerGo/.opencode/gsd-core/*, permission, external_directory, read, /home/pablo/Coding/PerGo/.opencode/gsd-core/*, $schema
 
 ### Community 401 - "Community 401"
 Cohesion: 0.29
@@ -2673,7 +2673,7 @@ Nodes (3): Phase 7 UAT Verification: Media & Inbound, Test Execution Details, Ve
 
 ### Community 493 - "Community 493"
 Cohesion: 0.18
-Nodes (10): Community Hubs (Navigation), Corpus Check, God Nodes (most connected - your core abstractions), Graph Freshness, Graph Report - OmniGo  (2026-06-27), Import Cycles, Knowledge Gaps, Suggested Questions (+2 more)
+Nodes (10): Community Hubs (Navigation), Corpus Check, God Nodes (most connected - your core abstractions), Graph Freshness, Graph Report - PerGo  (2026-06-27), Import Cycles, Knowledge Gaps, Suggested Questions (+2 more)
 
 ### Community 494 - "Community 494"
 Cohesion: 0.67
@@ -2737,7 +2737,7 @@ Nodes (3): 3. Directory Structure, Package dependency rules (enforced by `goimpo
 
 ### Community 509 - "Community 509"
 Cohesion: 0.50
-Nodes (3): Guiding principles, OmniGo — Architectural Implementation Plan (Golang), Sections
+Nodes (3): Guiding principles, PerGo — Architectural Implementation Plan (Golang), Sections
 
 ### Community 510 - "Community 510"
 Cohesion: 0.50

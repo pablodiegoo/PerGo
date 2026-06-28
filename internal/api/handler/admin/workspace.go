@@ -14,9 +14,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
-	mw "github.com/pablojhp.omnigo/internal/api/middleware"
-	"github.com/pablojhp.omnigo/internal/repository"
-	"github.com/pablojhp.omnigo/templates/pages"
+	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/pages"
 )
 
 // WorkspaceHandler holds dependencies for workspace admin operations.
@@ -195,7 +195,7 @@ func (h *WorkspaceHandler) SaveCredentials(c *echo.Context) error {
 			}
 		} else {
 			// Generate a predictable fallback secret token for local non-HTTPS development
-			secretToken = "omnigo_secret_token_" + idStr
+			secretToken = "pergo_secret_token_" + idStr
 		}
 
 		type storedTelegramConfig struct {

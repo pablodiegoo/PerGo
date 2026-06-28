@@ -14,11 +14,11 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
-	"github.com/pablojhp.omnigo/internal/platform/audit"
-	"github.com/pablojhp.omnigo/internal/platform/crypto"
-	"github.com/pablojhp.omnigo/internal/platform/queue"
-	"github.com/pablojhp.omnigo/internal/platform/storage"
-	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.pergo/internal/platform/audit"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/queue"
+	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 func connectNATS(t *testing.T) *nats.Conn {
@@ -52,7 +52,7 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 	}
 
 	// Setup S3 Client
-	s3Client, err := storage.NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "omnigo-bucket", true)
+	s3Client, err := storage.NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "pergo-bucket", true)
 	if err != nil {
 		t.Fatalf("failed to init S3: %v", err)
 	}

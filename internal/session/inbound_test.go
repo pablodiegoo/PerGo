@@ -8,8 +8,8 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/pablojhp.omnigo/internal/platform/queue"
-	"github.com/pablojhp.omnigo/internal/session"
+	"github.com/pablojhp.pergo/internal/platform/queue"
+	"github.com/pablojhp.pergo/internal/session"
 )
 
 func connectNATS(t *testing.T) *nats.Conn {

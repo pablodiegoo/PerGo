@@ -8,7 +8,7 @@
 
 ## Feature Landscape
 
-This research maps the CPaaS feature ecosystem against OmniGo's existing PRD scope (sections 5 & 7) and architecture docs. Each feature is tagged with **PRD coverage**: `[COVERED]`, `[PARTIAL]`, `[GAP]`, or `[EXCLUDED]`.
+This research maps the CPaaS feature ecosystem against PerGo's existing PRD scope (sections 5 & 7) and architecture docs. Each feature is tagged with **PRD coverage**: `[COVERED]`, `[PARTIAL]`, `[GAP]`, or `[EXCLUDED]`.
 
 ### Table Stakes (Users Expect These)
 
@@ -34,7 +34,7 @@ Features users assume exist. Missing these = product feels incomplete. A backend
 | Health & readiness endpoints | Orchestrator (k8s/docker) probes | LOW | `[COVERED]` | Arch 05: `/healthz` (liveness), `/readyz` (pgx ping + nats ping). |
 | Media message support (image/document/audio) | WhatsApp/Telegram are media-rich; text-only feels broken | HIGH | `[GAP]` | **PRD §7 says "text, media, and structured template payloads" are in scope, but §5 specifies NO media handling.** Twilio: `MediaUrl[]` (up to 10, 5MB), Media subresource. WhatsApp: media via URL or upload ID. Telegram: `sendPhoto`/`sendDocument`/`InputMedia`. **Significant spec gap** — the unified payload needs a media abstraction and the workers need upload/download paths. |
 | Message templating (channel-native templates) | WABA REQUIRES pre-approved templates for business-initiated messages outside the 24h window | HIGH | `[GAP]` | PRD mentions "structured template payloads" in §7 but §5 has no template CRUD, no template storage, no `template_name`+`language`+`components` field, no Meta approval workflow integration. **This is WABA-blocking** — you cannot send business-initiated WABA messages without templates. Major gap. |
-| Inbound message ingestion (mobile-originated / replies) | 2-way conversation is table-stakes for "messaging"; even transactional flows get replies (STOP, OPT-OUT, "yes") | HIGH | `[GAP]` | PRD is outbound-only (`POST /messages`). No `POST /inbound` or provider→OmniGo inbound webhook receiver. Telegram has `getUpdates`/`setWebhook`; WABA has inbound webhooks; WhatsApp Web receives events via whatsmeow event handlers. **Likely a deliberate MVP-scope decision, but must be flagged** — without it OmniGo cannot do opt-out/compliance or reply tracking. Recommend v1.x. |
+| Inbound message ingestion (mobile-originated / replies) | 2-way conversation is table-stakes for "messaging"; even transactional flows get replies (STOP, OPT-OUT, "yes") | HIGH | `[GAP]` | PRD is outbound-only (`POST /messages`). No `POST /inbound` or provider→PerGo inbound webhook receiver. Telegram has `getUpdates`/`setWebhook`; WABA has inbound webhooks; WhatsApp Web receives events via whatsmeow event handlers. **Likely a deliberate MVP-scope decision, but must be flagged** — without it PerGo cannot do opt-out/compliance or reply tracking. Recommend v1.x. |
 | Idempotency on send (prevent duplicate delivery) | At-least-once queues + retries = risk of sending a message twice to a human | MEDIUM | `[PARTIAL]` | Arch 01 names the challenge: "deduplicated by `trace_id` before dispatch" OR idempotent at provider boundary. **Gap: no explicit idempotency-key field on `POST /messages`, no dedup store specified.** Twilio has no first-class idempotency key either, but recommends caller-supplied. Recommend an optional `Idempotency-Key` header. |
 | Per-destination / per-number rate limiting | WhatsApp bans senders that blast one number; per-session limits aren't enough | MEDIUM | `[GAP]` | PRD rate-limits per *session* (per paired device), not per *recipient*. Twilio/SMS carriers enforce per-destination pacing. For unofficial WhatsApp this is a ban-risk mitigation. Medium gap. |
 | Webhook retry policy with dead-letter queue | Failed webhook delivery must not silently drop events | MEDIUM | `[COVERED]` | Arch 05: webhook stream `MaxDeliver: 10`, exp `AckWait` (1s→10m), `webhooks_dlq` stream, surfaced on admin console. Excellent. |
@@ -44,7 +44,7 @@ Features users assume exist. Missing these = product feels incomplete. A backend
 
 ### Differentiators (Competitive Advantage)
 
-Features that set OmniGo apart. These align with the Core Value from PROJECT.md (no markup, no lock-in, full data custody, official + unofficial channels).
+Features that set PerGo apart. These align with the Core Value from PROJECT.md (no markup, no lock-in, full data custody, official + unofficial channels).
 
 | Feature | Value Proposition | Complexity | PRD Coverage | Notes |
 |---------|-------------------|------------|--------------|-------|
@@ -68,18 +68,18 @@ Features to deliberately NOT build. Includes PRD §7 exclusions plus additional 
 | Feature | Why Requested | Why Problematic | Alternative |
 |---------|---------------|-----------------|-------------|
 | Real-time Voice / WebRTC / SIP trunking | "Full CPaaS = voice" | Massive scope expansion; different latency/protocol stack (Pion, RTP, SIP); orthogonal to transactional messaging. Twilio Voice is a separate product. | Stay text/media/template only (PRD §7). Voice is a different product. |
-| Visual conversation flow builder / drag-drop bot designer | "I want to design bots visually" | OmniGo is a backend router, not a bot platform. Flow builders become full apps (Chatwoot, Twilio Studio). Bloats scope, couples to UI complexity. | Consumer app implements chat logic via REST + webhooks (PRD §7). |
+| Visual conversation flow builder / drag-drop bot designer | "I want to design bots visually" | PerGo is a backend router, not a bot platform. Flow builders become full apps (Chatwoot, Twilio Studio). Bloats scope, couples to UI complexity. | Consumer app implements chat logic via REST + webhooks (PRD §7). |
 | Group/community management (create groups, permissions, announcement groups) | "Administer WhatsApp groups" | Different domain (membership CRUD, permissions); high API surface; official APIs limit it. | Direct-message delivery only; Group JID *targeting* allowed but no admin features (PRD §7). |
 | Kafka as the broker | "Kafka is the industry standard" | Operational weight (Zookeeper/KRaft, partitions, consumer groups) unjustified at 500 req/s. NATS JetStream gives work-queue + durability in one binary. | NATS JetStream (arch 02). |
 | Redis cache layer | "Add Redis for speed" | Unmeasured need at 500 req/s; API-key auth fits in-memory map with TTL. Adds an ops dependency for no proven gain. | In-memory map + TTL; add Redis only if measurement shows hot path (arch 02). |
 | ORM / query builder / DI framework | "Productivity" | Hand-written SQL with pgx CollectRows is clearer for a small known query set; ORMs hide SQL and add magic. | Hand-written SQL + pgx (arch 02). |
 | OpenTelemetry SDK in MVP | "Standard observability" | Adds a SDK + exporter + tracing backend dependency for a single-binary system. Trace-ID via context+NATS headers+slog meets the 100% correlation SLO. | Explicit Trace-ID propagation; add OTel only if a tracing backend is introduced (arch 02). |
 | gRPC internal mesh | "Microservices" | Single binary; REST + JetStream suffice. Adds protobuf tooling burden on callers. | REST/JSON public API; JetStream internal (arch 02). |
-| Link shortening + click tracking | "Marketing analytics" | Marketing-feature; pulls in URL storage, click analytics, redirect service. OmniGo is transactional. | Defer; consumer app can shorten before sending. |
-| Two-way conversational state machine inside OmniGo | "Manage conversation context" | Couples router to business logic; session windows belong to the consumer app. | Stateless router; consumer tracks session windows via webhooks. |
+| Link shortening + click tracking | "Marketing analytics" | Marketing-feature; pulls in URL storage, click analytics, redirect service. PerGo is transactional. | Defer; consumer app can shorten before sending. |
+| Two-way conversational state machine inside PerGo | "Manage conversation context" | Couples router to business logic; session windows belong to the consumer app. | Stateless router; consumer tracks session windows via webhooks. |
 | SMS / MMS / RCS channels | "Add SMS too" | Different regulatory stack (A2P 10DLC, toll-free, alphanumeric sender, carrier registration — see Twilio docs). SMS compliance is a product unto itself. | Keep WhatsApp + Telegram focus; add SMS only if a regulated sender stack is wanted. |
-| Phone number purchasing / porting | "Buy numbers in-app" | Telecom regulatory workflow; OmniGo has no carrier relationships. | Out of scope; users bring their own numbers/accounts. |
-| Built-in AI / LLM message generation | "AI-powered messaging" | OmniGo routes, it doesn't compose. Couples to model vendors, prompt management. | Consumer app generates content; OmniGo delivers. |
+| Phone number purchasing / porting | "Buy numbers in-app" | Telecom regulatory workflow; PerGo has no carrier relationships. | Out of scope; users bring their own numbers/accounts. |
+| Built-in AI / LLM message generation | "AI-powered messaging" | PerGo routes, it doesn't compose. Couples to model vendors, prompt management. | Consumer app generates content; PerGo delivers. |
 | Per-message billing / metering | "Charge tenants per message" | Self-hosted = no billing. Adding metering couples to a payments stack. | Infrastructure-cost model only (PROJECT.md). |
 
 ---
@@ -124,7 +124,7 @@ Features to deliberately NOT build. Includes PRD §7 exclusions plus additional 
     └──requires──> [Buffered batch writer] (covered)
 
 [Inbound message ingestion]  <-- GAP (v1.x)
-    └──requires──> [Provider→OmniGo inbound webhook receiver / whatsmeow event handler]
+    └──requires──> [Provider→PerGo inbound webhook receiver / whatsmeow event handler]
     └──requires──> [Inbound webhook forwarding to consumer]
 
 [Media message support]  <-- GAP
@@ -135,7 +135,7 @@ Features to deliberately NOT build. Includes PRD §7 exclusions plus additional 
 
 ### Dependency Notes
 
-- **WABA adapter requires template management.** This is the hardest dependency: business-initiated WABA messages *cannot* be sent without a Meta-approved template. OmniGo's WABA adapter is blocked from real use until template CRUD + storage + approval-status tracking exists. This should reshape milestone planning — template management is not optional for WABA, it is a prerequisite.
+- **WABA adapter requires template management.** This is the hardest dependency: business-initiated WABA messages *cannot* be sent without a Meta-approved template. PerGo's WABA adapter is blocked from real use until template CRUD + storage + approval-status tracking exists. This should reshape milestone planning — template management is not optional for WABA, it is a prerequisite.
 - **Webhook signing must precede any production webhook consumer.** A self-hosted gateway posting unsigned webhooks is a security hole. Low effort, high urgency.
 - **Media support unblocks multiple channel capabilities.** Without it, the "media" claim in PRD §7 is unfulfilled and WhatsApp/Telegram feel crippled.
 - **Inbound ingestion is the gateway to 2-way features** (opt-out compliance, reply tracking, conversation sessions). Outbound-only is defensible for MVP but blocks compliance-heavy use cases.
@@ -225,7 +225,7 @@ The smallest coherent product that delivers the Core Value (unified send + fallb
 
 ## Competitor Feature Analysis
 
-| Feature | Twilio (commercial CPaaS) | Vonage / MessageBird | OSS (Chatwoot/Whaticket/Evolution-API) | OmniGo Approach |
+| Feature | Twilio (commercial CPaaS) | Vonage / MessageBird | OSS (Chatwoot/Whaticket/Evolution-API) | PerGo Approach |
 |---------|---------------------------|----------------------|----------------------------------------|-----------------|
 | Unified send API | `POST /Messages` (SMS/MMS/WhatsApp/RCS/Messenger) | `POST /messages` (SMS/WhatsApp/Messenger) | Per-channel endpoints, often WhatsApp-only | `POST /messages` unified across WhatsApp Web/WABA/Telegram |
 | Channels | SMS, MMS, WhatsApp (WABA), RCS, Facebook Messenger | SMS, WhatsApp, Messenger, Viber | Mostly WhatsApp (official + unofficial); some Telegram | WhatsApp Web (unofficial) + WABA + Telegram — NO SMS |
@@ -246,7 +246,7 @@ The smallest coherent product that delivers the Core Value (unified send + fallb
 | Flow builder | Twilio Studio | Vonage Studio | Some (Chatwoot) | Explicitly excluded (PRD §7) |
 | Voice/Video | Full Voice + Video | Voice | No | Explicitly excluded (PRD §7) |
 
-**Strategic read:** OmniGo deliberately occupies the *self-hosted, no-markup, unofficial-WhatsApp, transactional-outbound* niche that neither commercial CPaaS (Twilio/Vonage — cloud, markup, official-only) nor typical OSS projects (Chatwoot — inbox-first, not a router; Whaticket/Evolution — WhatsApp-centric, weaker multi-tenant/audit) fill well. The differentiators are real. The gaps are in *table-stakes completeness* (webhook signing, error codes, templates, media, inbound) — not in the differentiation thesis.
+**Strategic read:** PerGo deliberately occupies the *self-hosted, no-markup, unofficial-WhatsApp, transactional-outbound* niche that neither commercial CPaaS (Twilio/Vonage — cloud, markup, official-only) nor typical OSS projects (Chatwoot — inbox-first, not a router; Whaticket/Evolution — WhatsApp-centric, weaker multi-tenant/audit) fill well. The differentiators are real. The gaps are in *table-stakes completeness* (webhook signing, error codes, templates, media, inbound) — not in the differentiation thesis.
 
 ---
 
@@ -268,7 +268,7 @@ This is the key deliverable: what the PRD covers vs what is missing that users w
 ### Gaps in Stated-but-Unspecified Scope
 
 6. **Media message support.** PRD §7 explicitly says "text, media, and structured template payloads" are in scope, but §5 specifies no media handling. Either narrow the §7 claim to "text + templates" or add media to the spec (unified media field, per-channel upload/download, storage policy). High complexity.
-7. **Inbound message ingestion (MO).** Not mentioned. Likely a deliberate MVP-scope choice (OmniGo = outbound router), but 2-way/opt-out/compliance flows will need it. Flag as v1.x and confirm the deliberate-scope reading with the orchestrator.
+7. **Inbound message ingestion (MO).** Not mentioned. Likely a deliberate MVP-scope choice (PerGo = outbound router), but 2-way/opt-out/compliance flows will need it. Flag as v1.x and confirm the deliberate-scope reading with the orchestrator.
 
 ### Gaps in Robustness/Quality (v1.x)
 
@@ -295,7 +295,7 @@ This is the key deliverable: what the PRD covers vs what is missing that users w
 - **Twilio Programmable Messaging — Messages resource** (official docs, fetched 2026-06-25): message status values (11 states), message properties (`direction`, `errorCode`, `numSegments`, `numMedia`, `price`), `statusCallback`, `MediaUrl[]` (5MB, up to 10), `contentSid`/`contentVariables` (Content API templates), `validity_period`, `attempt`, `scheduleType`/`sendAt`, `contentRetention`/`addressRetention`, `smart_encoded`, `shortenUrls`, `riskCheck`, signature validation. **Confidence: HIGH.** URL: https://www.twilio.com/docs/messaging/api/message-resource
 - **Telegram Bot API** (official docs, fetched 2026-06-25, Bot API 10.1 / June 11 2026): `getUpdates` vs `setWebhook` (mutually exclusive), `secret_token` → `X-Telegram-Bot-Api-Secret-Token` header (webhook auth), webhook retry-on-non-2xx + give-up, `WebhookInfo` (`pending_update_count`, `last_error_date`, `last_error_message`), supported ports (443/80/88/8443), `max_connections` (1-100), local Bot API server option, rich `Update` types (message, edited_message, callback_query, business_message, message_reaction...), media types (animation/audio/document/photo/video/voice/sticker/location/contact/poll), `error_code`+`description`+`ResponseParameters`. **Confidence: HIGH.** URL: https://core.telegram.org/bots/api
 - **WhatsApp Cloud API (WABA)** — Facebook docs blocked fetching (HTTP 400). Facts (24-hour customer service window, template requirement for business-initiated messages, template categories, media via URL/upload ID) sourced from established industry knowledge. **Confidence: MEDIUM** — stable, well-documented industry facts but not re-verified against primary source this session. Recommend phase-specific verification when WABA milestone is planned.
-- **OmniGo PRD** (`docs/PRD OmniGo.md` §5, §6, §7) and **architecture docs** (`docs/architecture/01-06`) — read directly; authoritative for current scope, exclusions, and technical posture. **Confidence: HIGH** (primary source for the project itself).
+- **PerGo PRD** (`docs/PRD PerGo.md` §5, §6, §7) and **architecture docs** (`docs/architecture/01-06`) — read directly; authoritative for current scope, exclusions, and technical posture. **Confidence: HIGH** (primary source for the project itself).
 - **Self-hosted OSS comparisons** (Chatwoot, Whaticket, Evolution API, UniMsg) — general ecosystem knowledge; not re-verified by fetch this session. **Confidence: MEDIUM.**
 
 ---

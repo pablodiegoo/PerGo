@@ -8,8 +8,8 @@
 ## User Constraints (from CONTEXT.md)
 
 ### Locked Decisions
-- **PostgreSQL Dual-Access Model**: One `*pgxpool.Pool` for OmniGo application queries (workspace/API key CRUD, audit writes); one `*sql.DB` via `pgx/v5/stdlib` bridge for whatsmeow's `sqlstore.Container` (NOT `lib/pq`). Both share the same database, non-overlapping schemas.
-- **Migration Strategy**: Goose manages OmniGo-owned tables: `workspaces`, `api_keys`, `devices`, `audit_logs`. `Container.Upgrade(ctx)` (whatsmeow) manages `whatsmeow_*` tables — called after OmniGo migrations at boot. Embedded SQL migrations via `go:embed`.
+- **PostgreSQL Dual-Access Model**: One `*pgxpool.Pool` for PerGo application queries (workspace/API key CRUD, audit writes); one `*sql.DB` via `pgx/v5/stdlib` bridge for whatsmeow's `sqlstore.Container` (NOT `lib/pq`). Both share the same database, non-overlapping schemas.
+- **Migration Strategy**: Goose manages PerGo-owned tables: `workspaces`, `api_keys`, `devices`, `audit_logs`. `Container.Upgrade(ctx)` (whatsmeow) manages `whatsmeow_*` tables — called after PerGo migrations at boot. Embedded SQL migrations via `go:embed`.
 - **Tenant Isolation (Convention, not RLS in M1)**: Every query carries `workspace_id` scoped via `context.Context` — the `platform/postgres` layer provides wrapper helpers that make omission a compile-time error. RLS policies deferred to M3 (Phase 5), but the tenant-context convention is enforced from the first query.
 - **Audit Partitioning**: `audit_logs` partitioned by **`created_at` range** (monthly), NOT by `workspace_id` — avoids hot partitions on busy tenants. `fillfactor=100`, BRIN index on `created_at`, no unique constraint (dedup lives upstream). Buffered batch writer: `chan Event` (cap 5000) + 2 batch writers → `pgx.CopyFrom` via `pool.Acquire`.
 - **Credential Encryption**: AES-256-GCM with fresh `crypto/rand` 12-byte nonce per `Seal`, nonce prepended to ciphertext. Envelope pattern: KEK (env var / file) wraps per-credential DEKs. `key_id`/`key_version` columns present from day one so rotation is a migration, not a schema change. API keys: SHA-256 hashed with cleartext prefix for lookup (NOT AES encrypted — hash, not cipher).
@@ -40,7 +40,7 @@
 | INFRA-01 | Go 1.25+ with Echo v5 HTTP framework | Echo v5 README confirms handler signature `func(c *echo.Context) error` and native slog integration |
 | INFRA-02 | PostgreSQL via pgx/v5 with dual-access model | pgx/v5 stdlib package documentation confirms `OpenDBFromPool` and `GetPoolConnector` for bridging pgxpool to database/sql |
 | INFRA-03 | Database migrations via goose with embedded SQL files | goose/v3 README shows `go:embed` usage and `SetBaseFS` for embedded migrations |
-| INFRA-04 | Docker Compose deployment topology | Docker Compose available (v2.40.3); will define omnigo + postgres + nats services |
+| INFRA-04 | Docker Compose deployment topology | Docker Compose available (v2.40.3); will define pergo + postgres + nats services |
 | INFRA-05 | Graceful shutdown | CONTEXT.md defines exact shutdown order; Go standard library provides `signal.NotifyContext` and `http.Server.Shutdown` |
 | INFRA-06 | Makefile with run, test, lint, templ generate, migrate targets | Standard Go project structure; templ binary installed at `/usr/local/bin/templ` |
 | AUTH-01 | API key authentication via SHA-256 hashed keys | crypto/sha256 documentation shows `Sum256` for hashing; prefix stored cleartext for lookup |
@@ -61,9 +61,9 @@
 
 ## Summary
 
-Phase 1 establishes the foundational infrastructure for OmniGo: a Go HTTP server (Echo v5) with PostgreSQL persistence (pgx/v5), database migrations (goose/v3), credential encryption (AES-256-GCM), audit logging (partitioned, batched), and observability (health endpoints, pprof, expvar, structured logging). The server boots and passes health checks without any message-flow functionality — NATS is present only as a connectivity ping for `/readyz`. The schema decisions locked here (dual-access PostgreSQL model, tenant-context convention, audit partitioning by `created_at`, encryption envelope with `key_id`/`key_version`) are designed to be expensive to retrofit, so they must be correct from day one.
+Phase 1 establishes the foundational infrastructure for PerGo: a Go HTTP server (Echo v5) with PostgreSQL persistence (pgx/v5), database migrations (goose/v3), credential encryption (AES-256-GCM), audit logging (partitioned, batched), and observability (health endpoints, pprof, expvar, structured logging). The server boots and passes health checks without any message-flow functionality — NATS is present only as a connectivity ping for `/readyz`. The schema decisions locked here (dual-access PostgreSQL model, tenant-context convention, audit partitioning by `created_at`, encryption envelope with `key_id`/`key_version`) are designed to be expensive to retrofit, so they must be correct from day one.
 
-**Primary recommendation:** Implement the foundation in strict dependency order: (1) project scaffolding + Docker Compose, (2) PostgreSQL dual-access pool setup, (3) goose migrations for OmniGo tables, (4) tenant-context wrapper, (5) credential encryption, (6) audit batch writer, (7) observability endpoints, (8) graceful shutdown wiring. Each step builds on the previous; the planner should structure waves accordingly.
+**Primary recommendation:** Implement the foundation in strict dependency order: (1) project scaffolding + Docker Compose, (2) PostgreSQL dual-access pool setup, (3) goose migrations for PerGo tables, (4) tenant-context wrapper, (5) credential encryption, (6) audit batch writer, (7) observability endpoints, (8) graceful shutdown wiring. Each step builds on the previous; the planner should structure waves accordingly.
 
 ## Architectural Responsibility Map
 
@@ -174,7 +174,7 @@ Document the verified version and publish date. Training data versions may be mo
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        OmniGo Server                            │
+│                        PerGo Server                            │
 │                                                                 │
 │  ┌──────────┐   ┌──────────────┐   ┌────────────────────────┐  │
 │  │  Echo v5  │──▶│  Middleware   │──▶│   API Handlers         │  │
@@ -192,7 +192,7 @@ Document the verified version and publish date. Training data versions may be mo
 │  │              PostgreSQL Dual-Access Model                  │ │
 │  │  ┌────────────────────┐   ┌────────────────────────────┐  │ │
 │  │  │   pgxpool.Pool     │   │   *sql.DB (stdlib bridge)  │  │ │
-│  │  │ (OmniGo queries)   │   │ (whatsmeow, goose)         │  │ │
+│  │  │ (PerGo queries)   │   │ (whatsmeow, goose)         │  │ │
 │  │  └─────────┬──────────┘   └─────────────┬──────────────┘  │ │
 │  │            │                            │                 │ │
 │  │            └──────────┬─────────────────┘                 │ │
@@ -238,9 +238,9 @@ Document the verified version and publish date. Training data versions may be mo
 
 ### Recommended Project Structure
 ```
-omnigo/
+pergo/
 ├── cmd/
-│   └── omnigo/
+│   └── pergo/
 │       └── main.go                 # Entry point, wiring, graceful shutdown
 ├── internal/
 │   ├── platform/
@@ -637,10 +637,10 @@ func StartDebugServer(addr string) *http.Server {
 
 ## Open Questions
 
-1. **whatsmeow `sqlstore.Container.Upgrade(ctx)` timing:** Should this be called after OmniGo migrations at boot, or within the same migration transaction?
-   - What we know: CONTEXT.md says "called after OmniGo migrations at boot"
+1. **whatsmeow `sqlstore.Container.Upgrade(ctx)` timing:** Should this be called after PerGo migrations at boot, or within the same migration transaction?
+   - What we know: CONTEXT.md says "called after PerGo migrations at boot"
    - What's unclear: Whether Container.Upgrade is idempotent and safe to call repeatedly
-   - Recommendation: Call after OmniGo migrations; verify idempotency in Phase 4 research
+   - Recommendation: Call after PerGo migrations; verify idempotency in Phase 4 research
 
 2. **NATS connectivity ping implementation:** Should `/readyz` ping NATS via `nats.Conn.Ping()` or via a JetStream health check?
    - What we know: Phase 1 only needs connectivity check, not JetStream readiness
@@ -686,7 +686,7 @@ func StartDebugServer(addr string) *http.Server {
 ### Phase Requirements → Test Map
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|-------------------|-------------|
-| INFRA-01 | Server boots with Echo v5 | integration | `go test ./cmd/omnigo -run TestServerBoot -v` | ❌ Wave 0 |
+| INFRA-01 | Server boots with Echo v5 | integration | `go test ./cmd/pergo -run TestServerBoot -v` | ❌ Wave 0 |
 | INFRA-02 | PostgreSQL dual-access pool | integration | `go test ./internal/platform/postgres -run TestDualAccess -v` | ❌ Wave 0 |
 | INFRA-03 | Goose migrations run | integration | `go test ./internal/platform/postgres -run TestMigrations -v` | ❌ Wave 0 |
 | INFRA-05 | Graceful shutdown sequence | unit | `go test ./internal/platform/shutdown -run TestShutdownOrder -v` | ❌ Wave 0 |

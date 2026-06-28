@@ -2,7 +2,7 @@
 
 ## PRD analysis
 
-OmniGo is a self-hosted omnichannel CPaaS gateway. The business intent is
+PerGo is a self-hosted omnichannel CPaaS gateway. The business intent is
 deceptively simple: accept one standardised JSON payload, route it to any
 number of heterogeneous messaging providers, and report delivery progress
 back to the caller via webhooks — without per-message markup and without

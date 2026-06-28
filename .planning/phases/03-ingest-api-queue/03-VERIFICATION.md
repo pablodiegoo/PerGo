@@ -41,7 +41,7 @@ human_verification: []
 | `internal/api/middleware/ratelimit.go` | Rate limiter + queue depth | ✓ VERIFIED | RateLimiter (token bucket), QueueDepthTracker (atomic counters), middleware |
 | `internal/platform/queue/jetstream.go` | JetStream publisher | ✓ VERIFIED | Publisher interface, JetStream publisher, stream creation, Nats-Msg-Id dedup |
 | `internal/platform/queue/worker.go` | Worker with retry/TTL/dedup | ✓ VERIFIED | Retry with exponential backoff, TTL enforcement, delivery dedup via sync.Map |
-| `cmd/omnigo/main.go` | Composition root wiring | ✓ VERIFIED | RateLimiter, QueueDepthTracker, RateLimiterMiddleware, Worker wired |
+| `cmd/pergo/main.go` | Composition root wiring | ✓ VERIFIED | RateLimiter, QueueDepthTracker, RateLimiterMiddleware, Worker wired |
 
 ### Test Coverage
 
@@ -73,4 +73,4 @@ human_verification: []
 
 - Staggered dispatch (1-3s random delay) deliberately deferred to Phase 4 — it's a WhatsApp Web ban-risk concern, not an ingest API concern. QUEUE-04 is satisfied by the rate limiter; staggered dispatch is a Phase 4 worker concern.
 - Worker dispatch is still a stub (log-only) — Phase 4 replaces with real channel dispatcher.
-- Integration tests in `cmd/omnigo` show pre-existing auth test failures due to shared test database with duplicate key constraints — not related to Phase 3. Phase 3 unit tests all pass cleanly.
+- Integration tests in `cmd/pergo` show pre-existing auth test failures due to shared test database with duplicate key constraints — not related to Phase 3. Phase 3 unit tests all pass cleanly.

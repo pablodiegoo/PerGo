@@ -50,7 +50,7 @@ import (
 
     "github.com/labstack/echo/v4"
 
-    "omnigo/internal/platform/trace"
+    "pergo/internal/platform/trace"
 )
 
 type IngestHandler struct {
@@ -110,7 +110,7 @@ import (
     "github.com/nats-io/nats.go"
     "github.com/nats-io/nats.go/jetstream"
 
-    "omnigo/internal/platform/trace"
+    "pergo/internal/platform/trace"
 )
 
 type Queue struct {
@@ -161,7 +161,7 @@ package channel
 
 import "context"
 
-import "omnigo/internal/messaging"
+import "pergo/internal/messaging"
 
 // Dispatcher is implemented by whatsappweb, whatsappcloud, and telegram.
 type Dispatcher interface {
@@ -207,8 +207,8 @@ import (
     "errors"
     "fmt"
 
-    "omnigo/internal/audit"
-    "omnigo/internal/channel"
+    "pergo/internal/audit"
+    "pergo/internal/channel"
 )
 
 type RoutingEngine struct {
@@ -283,7 +283,7 @@ import (
 
     "github.com/nats-io/nats.go/jetstream"
 
-    "omnigo/internal/platform/trace"
+    "pergo/internal/platform/trace"
 )
 
 type WorkerPool struct {

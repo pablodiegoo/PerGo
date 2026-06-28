@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // RecipientSessionReader defines the interface for retrieving recipient sessions,

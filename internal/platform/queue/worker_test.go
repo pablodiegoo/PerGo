@@ -14,10 +14,10 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/pablojhp.omnigo/internal/channel"
-	"github.com/pablojhp.omnigo/internal/domain"
-	"github.com/pablojhp.omnigo/internal/platform/postgres"
-	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 func TestRetryAttemptParsing(t *testing.T) {
@@ -202,9 +202,9 @@ func TestDeliveryDedup(t *testing.T) {
 func getTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
-	dsn := os.Getenv("OMNIGO_DATABASE_URL")
+	dsn := os.Getenv("PERGO_DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://postgres:postgres@localhost:5432/omnigo?sslmode=disable"
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

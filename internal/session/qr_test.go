@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/pablojhp.omnigo/internal/session"
+	"github.com/pablojhp.pergo/internal/session"
 )
 
 // TestQREventTypes verifies that the QREventType constants are correct.

@@ -8,7 +8,7 @@ package components
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-import "github.com/pablojhp.omnigo/internal/session"
+import "github.com/pablojhp.pergo/internal/session"
 
 // DeviceStatusBadge renders a colored status badge for a device.
 func DeviceStatusBadge(status session.DeviceStatus) templ.Component {

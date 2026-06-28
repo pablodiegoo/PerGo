@@ -1,6 +1,6 @@
-# OmniGo
+# PerGo
 
-OmniGo is a self-hosted, open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go. It exposes a single, unified REST API (`POST /messages`) that abstracts away the fragmentation of managing multiple messaging providers—WhatsApp Web (unofficial via `whatsmeow`), WhatsApp Cloud (WABA), and Telegram—under a single standardized JSON payload.
+PerGo is a self-hosted, open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go. It exposes a single, unified REST API (`POST /messages`) that abstracts away the fragmentation of managing multiple messaging providers—WhatsApp Web (unofficial via `whatsmeow`), WhatsApp Cloud (WABA), and Telegram—under a single standardized JSON payload.
 
 It is built for backend developers integrating omnichannel messaging into CRMs/ERPs and for system operators managing channel connections, compliance, and logs under full data custody.
 
@@ -27,7 +27,7 @@ It is built for backend developers integrating omnichannel messaging into CRMs/E
 
 ## Repository Directory Layout
 
-* `cmd/omnigo/`: Server entry point and composition root.
+* `cmd/pergo/`: Server entry point and composition root.
 * `internal/`: Core application modules.
   * `api/`: API handlers (health, messages, admin dashboard) and middlewares (auth, HTMX, rate limiter, trace).
   * `channel/`: Message dispatch registry and channel adapters (WhatsApp Web, WABA, Telegram).
@@ -39,7 +39,7 @@ It is built for backend developers integrating omnichannel messaging into CRMs/E
 * `static/`: Static assets (CSS, images) for the operator console.
 * `templates/`: `a-h/templ` components and views.
 
-For deeper architectural context, see the [Documentation Directory](file:///home/pablo/Coding/OmniGo/docs/architecture/README.md).
+For deeper architectural context, see the [Documentation Directory](file:///home/pablo/Coding/PerGo/docs/architecture/README.md).
 
 ---
 
@@ -60,16 +60,16 @@ docker compose up -d
 ```
 
 This starts:
-* **PostgreSQL** on port `5432` (Username/Password/Database: `postgres`/`postgres`/`omnigo`)
+* **PostgreSQL** on port `5432` (Username/Password/Database: `postgres`/`postgres`/`pergo`)
 * **NATS** on port `4222` (and management console on `8222`)
 
 ### 2. Environment Variables
 
 Configure your local environment. Default variables are structured in the app configuration:
-* `DATABASE_URL`: Connection string for PostgreSQL (e.g. `postgres://postgres:postgres@localhost:5432/omnigo?sslmode=disable`)
+* `DATABASE_URL`: Connection string for PostgreSQL (e.g. `postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable`)
 * `NATS_URL`: Connection string for NATS (e.g. `nats://localhost:4222`)
-* `OMNIGO_ADMIN_PASSWORD`: Plain password to access the `/admin` operator console.
-* `OMNIGO_SESSION_SECRET`: Key used for signing administration cookies.
+* `PERGO_ADMIN_PASSWORD`: Plain password to access the `/admin` operator console.
+* `PERGO_SESSION_SECRET`: Key used for signing administration cookies.
 
 ### 3. Running Locally
 
@@ -79,14 +79,14 @@ make run
 ```
 or
 ```bash
-go run ./cmd/omnigo
+go run ./cmd/pergo
 ```
 
 On start, goose database migrations will automatically be executed to set up the necessary PostgreSQL schemas.
 
 ### 4. Running via Docker
 
-To build and run the entire stack (including the `omnigo` binary itself) inside Docker:
+To build and run the entire stack (including the `pergo` binary itself) inside Docker:
 ```bash
 docker compose up --build
 ```

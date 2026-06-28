@@ -6,7 +6,7 @@
 
 ## Purpose of this document
 
-The PRD (`docs/PRD OmniGo.md`) and the six-part `docs/architecture/` set already prescribe a
+The PRD (`docs/PRD PerGo.md`) and the six-part `docs/architecture/` set already prescribe a
 coherent, unusually mature architecture. This research **validates that prescription against
 external evidence** and surfaces the structural gaps and refinements the roadmap must absorb.
 It is opinionated: where the PRD is right, it says so with the evidence; where a stronger or
@@ -91,15 +91,15 @@ identity and audit only — never hot-path queue state.
 The PRD's domain-oriented package layout (`docs/architecture/03-directory-structure.md`) is
 **correct and validated**. Domain packages own their types; `internal/platform/` is the only
 place that knows about pgx/nats/whatsmeow plumbing; adapters are siblings sharing an interface,
-not a hierarchy; `cmd/omnigo` is the sole composition root. **Two refinements emerge from
+not a hierarchy; `cmd/pergo` is the sole composition root. **Two refinements emerge from
 research:**
 
 1. **`internal/platform/postgres/` must host TWO pool constructors** — `pgxpool.Pool` for
-   OmniGo (auth, audit, devices metadata) AND a `*sql.DB` for whatsmeow's `sqlstore.Container`.
+   PerGo (auth, audit, devices metadata) AND a `*sql.DB` for whatsmeow's `sqlstore.Container`.
    whatsmeow speaks `database/sql`, not pgx native (confirmed: `sqlstore.NewWithDB(*sql.DB,
    ...)`). They share the PostgreSQL *database*, not the driver stack or connection pool.
 2. **`internal/platform/migrations/` must run TWO migration systems** at boot: goose (for
-   OmniGo's `workspaces`/`api_keys`/`devices`/`audit_logs`) AND `Container.Upgrade(ctx)` (for
+   PerGo's `workspaces`/`api_keys`/`devices`/`audit_logs`) AND `Container.Upgrade(ctx)` (for
    whatsmeow's own `whatsmeow_device`/`whatsmeow_prekey`/`whatsmeow_session`/... tables).
    These are non-overlapping schemas in the same DB.
 
@@ -107,9 +107,9 @@ research:**
 internal/
 ├── platform/
 │   ├── postgres/
-│   │   ├── pool.go          # *pgxpool.Pool for OmniGo
+│   │   ├── pool.go          # *pgxpool.Pool for PerGo
 │   │   ├── sqlstore_pool.go # *sql.DB for whatsmeow (lib/pq or pgx/stdlib)  [GAP]
-│   │   ├── migrations/      # goose *.sql for OmniGo tables
+│   │   ├── migrations/      # goose *.sql for PerGo tables
 │   │   └── audit_repo.go    # CopyFrom via pool.Acquire -> conn.CopyFrom
 │   ├── nats/ …
 │   ├── crypto/ …
@@ -340,9 +340,9 @@ and **refines the contents** to absorb the gaps.
 
 **Build first because everything depends on identity, config, and the ingest contract.**
 
-- Echo server + `cmd/omnigo` composition root + `platform/server`
+- Echo server + `cmd/pergo` composition root + `platform/server`
 - PostgreSQL: **both** pool constructors (`pgxpool` + `*sql.DB` for whatsmeow) [GAP #4]
-- **Both** migration runners at boot: goose (OmniGo tables) + `Container.Upgrade` [GAP #4]
+- **Both** migration runners at boot: goose (PerGo tables) + `Container.Upgrade` [GAP #4]
 - Schemas: `workspaces`, `api_keys` (SHA-256 + prefix), `devices` (metadata), `audit_logs`
   (partitioned by `workspace_id` or `created_at` day)
 - `platform/trace`, `platform/crypto` (AES-256-GCM + SHA-256 apikey), `platform/backoff`
@@ -430,9 +430,9 @@ in the admin panel.
 
 ### GAP 4 — Two driver stacks and two migration systems (MEDIUM impact, LOW effort — documentation/structure)
 whatsmeow's `sqlstore.Container` uses the `database/sql` interface (`NewWithDB(*sql.DB, ...)`,
-dialect `"postgres"`), **not** pgx native. OmniGo therefore runs **two** PostgreSQL driver
+dialect `"postgres"`), **not** pgx native. PerGo therefore runs **two** PostgreSQL driver
 stacks (pgxpool for the app, `*sql.DB` for whatsmeow) and **two** migration systems (goose for
-OmniGo tables, `Container.Upgrade(ctx)` for whatsmeow's `whatsmeow_*` tables) against one
+PerGo tables, `Container.Upgrade(ctx)` for whatsmeow's `whatsmeow_*` tables) against one
 database. This is fine — they own non-overlapping schemas — but it must be **explicit** in
 `platform/postgres/` and in the boot sequence. Also: set `whatsmeow.PostgresArrayWrapper =
 pq.Array` (or the pgx/stdlib equivalent) if using `lib/pq`. *(Official whatsmeow sqlstore
@@ -489,7 +489,7 @@ requirement demands it.
 | Scale | Architecture adjustment |
 |-------|--------------------------|
 | ≤500 req/s, single node (MVP target) | **Single binary, single NATS, single PG.** No change — the prescribed architecture is correctly sized. |
-| 1k–5k req/s | Add worker *goroutines* (cheap) and/or a second OmniGo process joining the NATS queue group (topology A scales within one process; for multi-process, mirror the work-queue stream to a `LimitsPolicy` stream with a push queue-group consumer). Vertical-scale PostgreSQL first. |
+| 1k–5k req/s | Add worker *goroutines* (cheap) and/or a second PerGo process joining the NATS queue group (topology A scales within one process; for multi-process, mirror the work-queue stream to a `LimitsPolicy` stream with a push queue-group consumer). Vertical-scale PostgreSQL first. |
 | 10k+ req/s | Split `audit_logs` writes to a dedicated PG instance; introduce PgBouncer (then disable pgx prepared statements via `QueryExecMode`); consider Redis for API-key cache only if measurement shows hot path. |
 
 ### Scaling priorities (in order of what breaks first)
@@ -512,7 +512,7 @@ requirement demands it.
 |--------------|----------------|-----------------|
 | Parallel `errgroup` fallback dispatch | Sends the message N times to a human | Sequential `for` loop in `RoutingEngine` |
 | Synchronous audit INSERT on the hot path | Violates the 50ms p99 budget | Non-blocking `Record` → bounded buffer → batch `CopyFrom` |
-| Encrypting whatsmeow's internal signal-protocol rows | whatsmeow reads/writes its own blob columns directly via `*sql.DB`; AES-GCM wrapping breaks it | Encrypt only OmniGo's *metadata* (workspace mapping, pairing tokens). whatsmeow's signal blobs are already opaque. |
+| Encrypting whatsmeow's internal signal-protocol rows | whatsmeow reads/writes its own blob columns directly via `*sql.DB`; AES-GCM wrapping breaks it | Encrypt only PerGo's *metadata* (workspace mapping, pairing tokens). whatsmeow's signal blobs are already opaque. |
 | `sync.Map` for the session registry | Loses type safety; `RWMutex` read-heavy fast path is faster for well-known JID keys | `sync.RWMutex` + `map[JID]*Session` |
 | Layering provider retries on top of JetStream retries | Doubles the delivery attempt count → sends to a human twice | `Dispatch` returns nil only on provider accept; transient errors → JetStream nak redelivers; terminal errors → advance fallback |
 | A second durable consumer on the same `WorkQueuePolicy` stream | JetStream rejects overlapping consumers | Single consumer + in-process `RoutingEngine` (topology A) |

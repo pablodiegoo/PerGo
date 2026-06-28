@@ -1,4 +1,4 @@
-// Package middleware provides Echo v5 middleware functions for the OmniGo API.
+// Package middleware provides Echo v5 middleware functions for the PerGo API.
 package middleware
 
 import (
@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	sessionCookieName = "omnigo-session"
+	sessionCookieName = "pergo-session"
 	sessionSecretLen  = 32
 )
 
@@ -94,7 +94,7 @@ func GetSessionSecret() []byte {
 
 func getSessionSecret() []byte {
 	cachedSecretOnce.Do(func() {
-		if secret := os.Getenv("OMNIGO_SESSION_SECRET"); secret != "" {
+		if secret := os.Getenv("PERGO_SESSION_SECRET"); secret != "" {
 			cachedSecret = []byte(secret)
 			return
 		}
@@ -102,7 +102,7 @@ func getSessionSecret() []byte {
 		secret := make([]byte, sessionSecretLen)
 		if _, err := rand.Read(secret); err != nil {
 			// Fallback to a fixed secret if crypto/rand fails (should never happen)
-			secret = []byte("omnigo-session-fallback-secret-do-not-use")
+			secret = []byte("pergo-session-fallback-secret-do-not-use")
 		}
 		cachedSecret = secret
 	})

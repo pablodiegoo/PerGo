@@ -1,4 +1,4 @@
-// Package crypto provides cryptographic primitives for OmniGo.
+// Package crypto provides cryptographic primitives for PerGo.
 // SHA-256 hashing for API keys and AES-256-GCM envelope encryption.
 package crypto
 

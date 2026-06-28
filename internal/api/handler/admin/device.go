@@ -8,9 +8,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
-	mw "github.com/pablojhp.omnigo/internal/api/middleware"
-	"github.com/pablojhp.omnigo/internal/session"
-	"github.com/pablojhp.omnigo/templates/pages"
+	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/session"
+	"github.com/pablojhp.pergo/templates/pages"
 )
 
 // DeviceHandler handles admin operations for WhatsApp Web device management.

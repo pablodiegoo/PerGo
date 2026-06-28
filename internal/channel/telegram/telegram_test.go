@@ -12,20 +12,20 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/pablojhp.omnigo/internal/channel"
-	"github.com/pablojhp.omnigo/internal/domain"
-	"github.com/pablojhp.omnigo/internal/platform/crypto"
-	"github.com/pablojhp.omnigo/internal/platform/postgres"
-	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
-	"github.com/pablojhp.omnigo/internal/platform/storage"
-	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/postgres"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 func getTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dsn := os.Getenv("OMNIGO_DATABASE_URL")
+	dsn := os.Getenv("PERGO_DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://postgres:postgres@localhost:5432/omnigo?sslmode=disable"
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -194,7 +194,7 @@ func TestTelegramDispatch(t *testing.T) {
 
 	t.Run("Success Send Media (Telegram)", func(t *testing.T) {
 		// Setup S3 Client and upload mock file
-		s3Client, err := storage.NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "omnigo-bucket", true)
+		s3Client, err := storage.NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "pergo-bucket", true)
 		if err != nil {
 			t.Fatalf("failed to init s3 client: %v", err)
 		}

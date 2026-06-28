@@ -27,8 +27,8 @@ key-files:
     - internal/platform/obs/logging.go
     - internal/platform/postgres/migrations/002_partition_audit.sql
   modified:
-    - cmd/omnigo/main.go
-    - cmd/omnigo/audit_test.go
+    - cmd/pergo/main.go
+    - cmd/pergo/audit_test.go
 
 key-decisions:
   - "Partition by created_at (not workspace_id) — avoids hot partitions on busy tenants"
@@ -51,7 +51,7 @@ coverage:
     requirement: AUDIT-02
     verification:
       - kind: unit
-        ref: "cmd/omnigo/audit_test.go#TestTraceMiddlewareGeneratesID"
+        ref: "cmd/pergo/audit_test.go#TestTraceMiddlewareGeneratesID"
         status: pass
     human_judgment: false
   - id: D2
@@ -59,7 +59,7 @@ coverage:
     requirement: AUDIT-02
     verification:
       - kind: unit
-        ref: "cmd/omnigo/audit_test.go#TestTraceMiddlewareExtractsHeader"
+        ref: "cmd/pergo/audit_test.go#TestTraceMiddlewareExtractsHeader"
         status: pass
     human_judgment: false
   - id: D3
@@ -67,7 +67,7 @@ coverage:
     requirement: AUDIT-02
     verification:
       - kind: unit
-        ref: "cmd/omnigo/audit_test.go#TestTraceIDFromContext"
+        ref: "cmd/pergo/audit_test.go#TestTraceIDFromContext"
         status: pass
     human_judgment: false
   - id: D4
@@ -75,7 +75,7 @@ coverage:
     requirement: AUDIT-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/audit_test.go#TestAuditEventWritten"
+        ref: "cmd/pergo/audit_test.go#TestAuditEventWritten"
         status: pass
     human_judgment: true
     rationale: "Integration test requires running PostgreSQL — verified programmatically when DB available"
@@ -84,7 +84,7 @@ coverage:
     requirement: AUDIT-03
     verification:
       - kind: integration
-        ref: "cmd/omnigo/audit_test.go#TestBatchWriterFlushAt100"
+        ref: "cmd/pergo/audit_test.go#TestBatchWriterFlushAt100"
         status: pass
     human_judgment: true
     rationale: "Integration test requires running PostgreSQL"
@@ -93,7 +93,7 @@ coverage:
     requirement: AUDIT-03
     verification:
       - kind: integration
-        ref: "cmd/omnigo/audit_test.go#TestBatchWriterDrainOnClose"
+        ref: "cmd/pergo/audit_test.go#TestBatchWriterDrainOnClose"
         status: pass
     human_judgment: true
     rationale: "Integration test requires running PostgreSQL"
@@ -102,7 +102,7 @@ coverage:
     requirement: OBS-03
     verification:
       - kind: unit
-        ref: "cmd/omnigo/audit_test.go#TestStructuredLogWithTrace"
+        ref: "cmd/pergo/audit_test.go#TestStructuredLogWithTrace"
         status: pass
     human_judgment: false
   - id: D8
@@ -110,7 +110,7 @@ coverage:
     requirement: AUDIT-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/audit_test.go#TestAuditLogSchema"
+        ref: "cmd/pergo/audit_test.go#TestAuditLogSchema"
         status: pass
     human_judgment: true
     rationale: "Integration test requires running PostgreSQL to query information_schema"
@@ -119,7 +119,7 @@ coverage:
     requirement: AUDIT-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/audit_test.go#TestAuditNoDedup"
+        ref: "cmd/pergo/audit_test.go#TestAuditNoDedup"
         status: pass
     human_judgment: true
     rationale: "Integration test requires running PostgreSQL"
@@ -128,7 +128,7 @@ coverage:
     requirement: AUDIT-03
     verification:
       - kind: integration
-        ref: "cmd/omnigo/audit_test.go#TestWriterCloseDrains"
+        ref: "cmd/pergo/audit_test.go#TestWriterCloseDrains"
         status: pass
     human_judgment: true
     rationale: "Integration test requires running PostgreSQL"
@@ -173,8 +173,8 @@ _TDD tasks may have multiple commits (test -> feat -> refactor)_
 - `internal/api/middleware/trace.go` - Trace middleware: UUID generation, X-Trace-Id header extraction, context propagation
 - `internal/platform/obs/logging.go` - Structured slog with trace_id context propagation
 - `internal/platform/postgres/migrations/002_partition_audit.sql` - Monthly partition function + BRIN index
-- `cmd/omnigo/main.go` - Integrated audit writer and trace middleware into composition root
-- `cmd/omnigo/audit_test.go` - 10 test functions covering the full audit pipeline
+- `cmd/pergo/main.go` - Integrated audit writer and trace middleware into composition root
+- `cmd/pergo/audit_test.go` - 10 test functions covering the full audit pipeline
 
 ## Decisions Made
 - **Partition by created_at (not workspace_id):** Avoids hot partitions on busy tenants; tenant isolation is via query-level workspace_id filtering

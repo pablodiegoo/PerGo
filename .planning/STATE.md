@@ -110,6 +110,7 @@ Items acknowledged and carried forward from previous milestone close:
 | GS10 | 2026-06-28 | automatizar-registro-webhooks | complete ✓ |
 | GS11 | 2026-06-28 | corrigir-hot-reload-nats | complete ✓ |
 | GS12 | 2026-06-28 | configurar-docker-compose-producao | complete ✓ |
+| GS13 | 2026-06-28 | renomear-projeto-para-pergo | complete ✓ |
 
 
 

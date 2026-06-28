@@ -1,4 +1,4 @@
-module github.com/pablojhp.omnigo
+module github.com/pablojhp.pergo
 
 go 1.26.4
 

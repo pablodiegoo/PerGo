@@ -8,7 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/pablojhp.omnigo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 )
 
 // ErrCredentialsNotFound is returned when credentials cannot be found.

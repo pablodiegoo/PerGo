@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/pablojhp.omnigo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 )
 
 // APIKey represents an API key entity.

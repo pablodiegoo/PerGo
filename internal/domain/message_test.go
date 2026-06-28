@@ -287,7 +287,7 @@ func TestErrorResponseJSON(t *testing.T) {
 	resp := ErrorResponse{
 		Code:    "invalid_payload",
 		Message: "request body validation failed",
-		MoreInfo: "https://docs.omnigo.dev/errors/invalid_payload",
+		MoreInfo: "https://docs.pergo.dev/errors/invalid_payload",
 		Details: []FieldError{
 			{Field: "to", Message: "is required"},
 		},

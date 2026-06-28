@@ -25,7 +25,7 @@ autonomous: true
 
 **Files modified:**
 - `internal/platform/queue/worker.go` — Real dispatch via Registry
-- `cmd/omnigo/main.go` — Registry wiring (empty for now, populated in Plan 02)
+- `cmd/pergo/main.go` — Registry wiring (empty for now, populated in Plan 02)
 
 **Tests:** 8 tests passing (channel: 3, whatsapp: 5)
 

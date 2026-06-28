@@ -15,7 +15,7 @@ Durable, HMAC-signed status event webhook delivery pipeline with exponential bac
 
 ### Webhook HMAC Signing Scheme
 - Cryptographic algorithm: HMAC-SHA256.
-- Format and Header: Hex-encoded signature sent in a custom header `X-OmniGo-Signature`.
+- Format and Header: Hex-encoded signature sent in a custom header `X-PerGo-Signature`.
 - Replay Prevention: Include a timestamp `t=timestamp` in both the header and the signed payload; client validates within a 5-minute threshold.
 - Secret Storage: AES-256-GCM encrypted in the PostgreSQL database per workspace using the workspace encryption key, with in-memory caching.
 
@@ -59,7 +59,7 @@ All other micro-design details are at the agent's discretion, keeping with the c
 
 ### Integration Points
 - `internal/platform/queue` - Add webhook publishing and worker/consumer setup.
-- `cmd/omnigo/main.go` - Wire the webhook workers, publishers, and DLQ handlers.
+- `cmd/pergo/main.go` - Wire the webhook workers, publishers, and DLQ handlers.
 - `templates/` - Update UI navigation sidebar and build templates for DLQ management using Templ.
 
 </code_context>

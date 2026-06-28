@@ -131,14 +131,14 @@ internal/
 │       └── consumer_test.go    # Worker tests
 ├── domain/
 │   └── message.go              # Message types, status enum, validation
-cmd/omnigo/
+cmd/pergo/
     └── ingest_test.go          # Integration tests
 ```
 
 ### Pattern 1: Echo v5 Handler with Structured Errors
 
 **What:** Handler function that validates input, publishes to JetStream, returns structured JSON responses
-**When to use:** All API endpoints in OmniGo
+**When to use:** All API endpoints in PerGo
 **Example:**
 
 ```go
@@ -149,7 +149,7 @@ func (h *MessageHandler) Create(c *echo.Context) error {
         return c.JSON(http.StatusBadRequest, ErrorResponse{
             Code:    "invalid_payload",
             Message: "request body validation failed",
-            MoreInfo: "https://docs.omnigo.dev/errors/invalid_payload",
+            MoreInfo: "https://docs.pergo.dev/errors/invalid_payload",
             Details: []FieldError{{Field: "body", Message: "invalid JSON"}},
         })
     }
@@ -378,8 +378,8 @@ import (
     "github.com/google/uuid"
     "github.com/labstack/echo/v5"
     "github.com/nats-io/nats.go/jetstream"
-    "github.com/pablojhp.omnigo/internal/domain"
-    "github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
+    "github.com/pablojhp.pergo/internal/domain"
+    "github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 )
 
 type MessageHandler struct {
@@ -398,7 +398,7 @@ func (h *MessageHandler) Create(c *echo.Context) error {
         return c.JSON(http.StatusTooManyRequests, domain.ErrorResponse{
             Code:    "rate_limited",
             Message: "too many requests, slow down",
-            MoreInfo: "https://docs.omnigo.dev/errors/rate_limited",
+            MoreInfo: "https://docs.pergo.dev/errors/rate_limited",
         })
     }
 
@@ -408,7 +408,7 @@ func (h *MessageHandler) Create(c *echo.Context) error {
         return c.JSON(http.StatusTooManyRequests, domain.ErrorResponse{
             Code:    "queue_full",
             Message: "per-session message queue limit exceeded",
-            MoreInfo: "https://docs.omnigo.dev/errors/queue_full",
+            MoreInfo: "https://docs.pergo.dev/errors/queue_full",
         })
     }
 
@@ -434,7 +434,7 @@ func (h *MessageHandler) Create(c *echo.Context) error {
             return c.JSON(http.StatusTooManyRequests, domain.ErrorResponse{
                 Code:    "backpressure",
                 Message: "message queue is full, retry later",
-                MoreInfo: "https://docs.omnigo.dev/errors/backpressure",
+                MoreInfo: "https://docs.pergo.dev/errors/backpressure",
             })
         }
         return err
@@ -513,7 +513,7 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 
 | Req ID | Behavior | Test Type | Automated Command | File Exists? |
 |--------|----------|-----------|-------------------|-------------|
-| API-01 | POST /messages accepts valid payload, returns 202 with trace header | integration | `go test ./cmd/omnigo/ -run TestIngestAPI -v` | ❌ Wave 0 |
+| API-01 | POST /messages accepts valid payload, returns 202 with trace header | integration | `go test ./cmd/pergo/ -run TestIngestAPI -v` | ❌ Wave 0 |
 | API-02 | Invalid payload returns 400 with field-level errors | unit | `go test ./internal/api/handler/ -run TestCreateValidation -v` | ❌ Wave 0 |
 | API-03 | Status enum values are correct and transitions documented | unit | `go test ./internal/domain/ -run TestMessageStatus -v` | ❌ Wave 0 |
 | API-04 | Error responses match {code, message, more_info} format | unit | `go test ./internal/api/handler/ -run TestErrorResponseFormat -v` | ❌ Wave 0 |
@@ -541,7 +541,7 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 - [ ] `internal/platform/queue/jetstream_test.go` — Queue integration tests
 - [ ] `internal/platform/queue/consumer.go` — Worker stub + Dispatcher interface
 - [ ] `internal/platform/queue/consumer_test.go` — Worker tests
-- [ ] `cmd/omnigo/ingest_test.go` — End-to-end integration test
+- [ ] `cmd/pergo/ingest_test.go` — End-to-end integration test
 - [ ] Migration `003_message_status.sql` — If message status needs DB tracking (likely not needed for MVP — status is in-memory/JetStream metadata)
 
 ## Security Domain

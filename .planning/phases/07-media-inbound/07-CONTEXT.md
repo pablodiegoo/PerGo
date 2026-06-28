@@ -7,7 +7,7 @@
 <domain>
 ## Phase Boundary
 
-`POST /messages` accepts a unified media field (image, document, audio, video) that OmniGo downloads, stores in an S3-compatible object store, and delivers through per-channel adapter paths; inbound messages from all three providers (WhatsApp Web, WABA, Telegram) are ingested with full content extraction (text, media, location, contacts), forwarded to consumer webhooks via durable NATS delivery, and audit-logged with Trace-ID correlation.
+`POST /messages` accepts a unified media field (image, document, audio, video) that PerGo downloads, stores in an S3-compatible object store, and delivers through per-channel adapter paths; inbound messages from all three providers (WhatsApp Web, WABA, Telegram) are ingested with full content extraction (text, media, location, contacts), forwarded to consumer webhooks via durable NATS delivery, and audit-logged with Trace-ID correlation.
 
 </domain>
 
@@ -72,7 +72,7 @@
 
 ### Integration Points
 - Add Media fields to `CreateMessageRequest` and `QueueMessage` in `internal/domain/message.go`
-- Register S3 client and wire `WebhookWorker` to consume `INBOUND` streams in `cmd/omnigo/main.go`
+- Register S3 client and wire `WebhookWorker` to consume `INBOUND` streams in `cmd/pergo/main.go`
 - Extend whatsmeow handler in `internal/session/manager.go` to parse and publish messages
 - Extend Telegram webhook handler in `internal/api/handler/telegram_webhook.go`
 - Add WABA webhook endpoint `/webhooks/waba/:workspace_id` in `internal/api/handler/`
@@ -94,7 +94,7 @@
 - Thumbnail generation for images/videos
 - Cross-channel media forwarding
 - Media retention/expiry policy
-- Resumable/chunked media uploads to OmniGo
+- Resumable/chunked media uploads to PerGo
 - Media transcoding
 - Read receipts / delivery receipts as inbound events
 - Inbound message threading / conversation grouping

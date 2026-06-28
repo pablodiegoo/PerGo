@@ -17,11 +17,11 @@
 
 4. **Telegram Webhook Parsing & Media Download**:
    - Telegram sends message objects via webhook. Text is in `.Text`, locations are in `.Location`, contacts are in `.Contact`. Media objects (photo, document, audio, video) contain a `file_id`.
-   - To download a media attachment, OmniGo must first call Telegram's `getFile?file_id=<FILE_ID>` API to obtain the dynamic file path, and then issue an HTTP GET to `https://api.telegram.org/file/bot<TOKEN>/<FILE_PATH>`.
+   - To download a media attachment, PerGo must first call Telegram's `getFile?file_id=<FILE_ID>` API to obtain the dynamic file path, and then issue an HTTP GET to `https://api.telegram.org/file/bot<TOKEN>/<FILE_PATH>`.
 
 5. **WABA Webhook Verification & Media Download**:
    - For Meta Verification, the handler must implement a `GET` endpoint responding to `hub.mode == "subscribe"` and validating the workspace's configured token against `hub.verify_token` before returning `hub.challenge` as plain text.
-   - For media downloads, the Graph API payload provides a media ID. OmniGo must first query `https://graph.facebook.com/v20.0/<MEDIA_ID>` to obtain the temporary download URL, and then download the file bytes from that URL, including the Bearer Authorization header in both requests.
+   - For media downloads, the Graph API payload provides a media ID. PerGo must first query `https://graph.facebook.com/v20.0/<MEDIA_ID>` to obtain the temporary download URL, and then download the file bytes from that URL, including the Bearer Authorization header in both requests.
 
 6. **Deduplication Mechanism**:
    - Database-level deduplication is implemented via an `inbound_dedups` table. By performing an atomic `INSERT INTO inbound_dedups ... ON CONFLICT DO NOTHING` query, we leverage PostgreSQL constraints for thread-safe at-most-once event ingestion. A simple background task executes cleanups of old records via a TTL query.
@@ -587,7 +587,7 @@ graph TD
 ### Step 4: Outbound Adapter Media Integration
 - WhatsApp Web: Upload downloaded bytes using `wc.Client().Upload()`. Then map result fields to a `waE2E.ImageMessage/DocumentMessage/...` proto payload and dispatch.
 - Telegram: Package media as a multipart POST payload to Telegram API.
-- WABA: Route the public OmniGo S3 proxy URL directly to Meta Cloud API parameters.
+- WABA: Route the public PerGo S3 proxy URL directly to Meta Cloud API parameters.
 
 ### Step 5: Webhook Worker Extensions for Inbound Processing
 - Create NATS `INBOUND` stream.

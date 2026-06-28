@@ -27,9 +27,9 @@ key-files:
     - internal/api/handler/admin/audit.go
     - templates/pages/audit.templ
     - templates/pages/audit_templ.go
-    - cmd/omnigo/admin_audit_test.go
+    - cmd/pergo/admin_audit_test.go
   modified:
-    - cmd/omnigo/main.go
+    - cmd/pergo/main.go
 
 key-decisions:
   - "Dynamic SQL WHERE clause builder with parameterized args — prevents SQL injection (T-02-09)"
@@ -49,7 +49,7 @@ coverage:
     requirement: ADMIN-05
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_audit_test.go#TestAdminAuditList"
+        ref: "cmd/pergo/admin_audit_test.go#TestAdminAuditList"
         status: pass
     human_judgment: false
   - id: D2
@@ -57,7 +57,7 @@ coverage:
     requirement: ADMIN-05
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_audit_test.go#TestAdminAuditFilterWorkspace"
+        ref: "cmd/pergo/admin_audit_test.go#TestAdminAuditFilterWorkspace"
         status: pass
     human_judgment: false
   - id: D3
@@ -65,7 +65,7 @@ coverage:
     requirement: AUDIT-04
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_audit_test.go#TestAdminAuditFilterTraceID"
+        ref: "cmd/pergo/admin_audit_test.go#TestAdminAuditFilterTraceID"
         status: pass
     human_judgment: false
   - id: D4
@@ -73,7 +73,7 @@ coverage:
     requirement: ADMIN-05
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_audit_test.go#TestAdminAuditFilterEventType"
+        ref: "cmd/pergo/admin_audit_test.go#TestAdminAuditFilterEventType"
         status: pass
     human_judgment: false
   - id: D5
@@ -81,7 +81,7 @@ coverage:
     requirement: ADMIN-05
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_audit_test.go#TestAdminAuditPagination"
+        ref: "cmd/pergo/admin_audit_test.go#TestAdminAuditPagination"
         status: pass
     human_judgment: false
   - id: D6
@@ -89,7 +89,7 @@ coverage:
     requirement: ADMIN-05
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_audit_test.go#TestAdminAuditFilterTimeRange"
+        ref: "cmd/pergo/admin_audit_test.go#TestAdminAuditFilterTimeRange"
         status: pass
     human_judgment: false
   - id: D7
@@ -97,7 +97,7 @@ coverage:
     requirement: AUDIT-04
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_audit_test.go#TestAdminAuditExportCSV"
+        ref: "cmd/pergo/admin_audit_test.go#TestAdminAuditExportCSV"
         status: pass
     human_judgment: false
   - id: D8
@@ -105,7 +105,7 @@ coverage:
     requirement: ADMIN-05
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_audit_test.go#TestAdminAuditHTMXFragment"
+        ref: "cmd/pergo/admin_audit_test.go#TestAdminAuditHTMXFragment"
         status: pass
     human_judgment: false
   - id: D9
@@ -113,7 +113,7 @@ coverage:
     requirement: ADMIN-05
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_audit_test.go#TestAdminAuditPaginationControls"
+        ref: "cmd/pergo/admin_audit_test.go#TestAdminAuditPaginationControls"
         status: pass
     human_judgment: false
 
@@ -156,8 +156,8 @@ _TDD tasks may have multiple commits (test → feat → refactor)_
 - `internal/api/handler/admin/audit.go` - Audit handler with List and ExportCSV endpoints
 - `templates/pages/audit.templ` - Audit page templates: table, filters, pagination
 - `templates/pages/audit_templ.go` - Generated templ Go code
-- `cmd/omnigo/admin_audit_test.go` - 9 integration tests for audit log review
-- `cmd/omnigo/main.go` - Wired audit admin routes (/admin/audit, /admin/audit/export)
+- `cmd/pergo/admin_audit_test.go` - 9 integration tests for audit log review
+- `cmd/pergo/main.go` - Wired audit admin routes (/admin/audit, /admin/audit/export)
 
 ## Decisions Made
 - **Dynamic WHERE clause builder:** `buildWhereClause()` constructs parameterized SQL with `$1, $2...` placeholders — all filter values passed as query args, never string-concatenated. Addresses threat T-02-09 (SQL injection).
@@ -172,7 +172,7 @@ _TDD tasks may have multiple commits (test → feat → refactor)_
 - **Found during:** Task 2 (GREEN phase — TestAdminAuditFilterTimeRange failing)
 - **Issue:** Test seeded events with fixed 2026-06-15 timestamps that fell below page 1 due to accumulated entries from prior test runs
 - **Fix:** Changed to `time.Now().Add(-1*time.Second)` so in-range event appears on page 1
-- **Files modified:** cmd/omnigo/admin_audit_test.go
+- **Files modified:** cmd/pergo/admin_audit_test.go
 - **Verification:** All 9 audit tests pass
 - **Committed in:** c766e37
 
@@ -180,7 +180,7 @@ _TDD tasks may have multiple commits (test → feat → refactor)_
 - **Found during:** Task 2 (GREEN phase — TestAdminAuditPagination failing)
 - **Issue:** Pagination tests didn't filter by workspace, so accumulated DB entries pushed seeded events off expected pages
 - **Fix:** Added `workspace_id` query parameter to pagination test requests
-- **Files modified:** cmd/omnigo/admin_audit_test.go
+- **Files modified:** cmd/pergo/admin_audit_test.go
 - **Verification:** All 9 audit tests pass consistently
 - **Committed in:** c766e37
 

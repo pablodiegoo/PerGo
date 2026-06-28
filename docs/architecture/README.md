@@ -1,7 +1,7 @@
-# OmniGo — Architectural Implementation Plan (Golang)
+# PerGo — Architectural Implementation Plan (Golang)
 
 This directory contains the architectural design derived from
-`docs/PRD OmniGo.md`. It is written from the perspective of a senior
+`docs/PRD PerGo.md`. It is written from the perspective of a senior
 distributed-systems engineer reviewing the PRD during a design-doc review.
 
 The plan favours the Go standard library, idiomatic concurrency, and the

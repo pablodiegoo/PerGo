@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/pablojhp.omnigo/internal/repository"
-	"github.com/pablojhp.omnigo/templates/layout"
+	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/layout"
 )
 
 // WABATemplatePage renders the full WABA templates list page with base layout.
@@ -126,7 +126,7 @@ templ WABATemplateCreateForm(workspaceID uuid.UUID) {
 
 			<div class="form-group mb-4">
 				<label for="components" class="form-label block font-semibold mb-1">Components (JSON Array)</label>
-				<textarea id="components" name="components" rows="5" class="form-input w-full p-2 border rounded font-mono text-sm" placeholder='[{"type":"BODY","text":"Hello {{1}}, welcome to OmniGo!"}]'></textarea>
+				<textarea id="components" name="components" rows="5" class="form-input w-full p-2 border rounded font-mono text-sm" placeholder='[{"type":"BODY","text":"Hello {{1}}, welcome to PerGo!"}]'></textarea>
 				<p class="text-xs text-muted mt-1">Specify template components such as BODY with variables. Refer to Meta Graph API guidelines.</p>
 			</div>
 

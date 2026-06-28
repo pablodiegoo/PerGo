@@ -14,8 +14,8 @@ Prepare the application for production deployment on Dokploy or general virtual 
    - Persist NATS JetStream data via a named volume (`nats_data`) mapped to `/data` in the NATS container.
    - Run NATS with `-js` and explicit `-sd /data` store directory.
    - Parameterize PostgreSQL credentials (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`) using defaults, allowing them to be overridden in production environments.
-   - Parameterize database connection URL for the `omnigo` service to use these PostgreSQL credentials dynamically.
+   - Parameterize database connection URL for the `pergo` service to use these PostgreSQL credentials dynamically.
    - Persist PostgreSQL data via named volume `postgres_data` (matching `pgdata` or renaming it).
 3. **Document Dokploy deployment**:
-   - Provide explicit configuration details on how to set up OmniGo on Dokploy.
+   - Provide explicit configuration details on how to set up PerGo on Dokploy.
 4. **Verification**: Run compose validation and verify the container builds successfully.

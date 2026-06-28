@@ -1,4 +1,4 @@
-# Requirements: OmniGo
+# Requirements: PerGo
 
 **Defined:** 2026-06-25
 **Core Value:** A single API request delivers a message through any configured channel with automatic fallback — without per-message markup, without vendor lock-in, and with full custody of transaction data on infrastructure you control.
@@ -111,9 +111,9 @@ Requirements for initial release. Each maps to roadmap phases.
 ### Infrastructure
 
 - [x] **INFRA-01**: Go 1.25+ with Echo v5 HTTP framework (v5 native `*slog.Logger` integration, `*echo.Context` handler signature)
-- [x] **INFRA-02**: PostgreSQL via pgx/v5 with dual-access model (pgxpool for OmniGo queries + `pgx/v5/stdlib` bridge for whatsmeow `database/sql` and goose migrations)
+- [x] **INFRA-02**: PostgreSQL via pgx/v5 with dual-access model (pgxpool for PerGo queries + `pgx/v5/stdlib` bridge for whatsmeow `database/sql` and goose migrations)
 - [x] **INFRA-03**: Database migrations via goose with embedded SQL files (versioned, one file per migration)
-- [x] **INFRA-04**: Docker Compose deployment topology (omnigo + postgres + nats)
+- [x] **INFRA-04**: Docker Compose deployment topology (pergo + postgres + nats)
 - [x] **INFRA-05**: Graceful shutdown (drain JetStream consumers, flush audit buffer, close connections, stop HTTP listener)
 - [x] **INFRA-06**: Makefile with run, test, lint, `templ generate`, migrate targets
 - [x] **INFRA-07**: whatsmeow pseudo-version pinning (dated commit-hash, not `@latest`) with documented upgrade ritual
@@ -149,7 +149,7 @@ Explicitly excluded. Documented to prevent scope creep.
 | Feature | Reason |
 |---------|--------|
 | Real-time Voice / WebRTC / SIP trunking | Different latency/protocol stack (Pion, RTP, SIP); orthogonal to transactional messaging — PRD §7 |
-| Visual conversation flow builder / bot designer | OmniGo is a backend router, not a bot platform; flow builders become full apps — PRD §7 |
+| Visual conversation flow builder / bot designer | PerGo is a backend router, not a bot platform; flow builders become full apps — PRD §7 |
 | Group/community management (create, permissions, announcements) | Different domain (membership CRUD, permissions); high API surface — PRD §7. Group JID targeting allowed, no admin features. |
 | Kafka as broker | Operational weight unjustified at 500 req/s; NATS JetStream covers durability + queue groups — arch 02 |
 | Redis / memcached cache layer | Unmeasured need at 500 req/s; API-key auth fits in-memory map with TTL — arch 02 |
@@ -157,10 +157,10 @@ Explicitly excluded. Documented to prevent scope creep.
 | ORM / query builder / DI framework | Hand-written SQL with pgx is clearer for small known query set — arch 02 |
 | OpenTelemetry SDK in MVP | Trace-ID via context + NATS headers + slog meets 100% correlation SLO; add OTel only with tracing backend — arch 02 |
 | SMS / MMS / RCS channels | Different regulatory stack (A2P 10DLC, carrier registration); separate product domain |
-| Phone number purchasing / porting | Telecom regulatory workflow; OmniGo has no carrier relationships |
+| Phone number purchasing / porting | Telecom regulatory workflow; PerGo has no carrier relationships |
 | Per-message billing / metering | Self-hosted = no billing; adding metering couples to payments stack |
-| AI / LLM message generation | OmniGo routes, doesn't compose; consumer app generates content |
-| Link shortening + click tracking | Marketing feature; pulls in URL storage, redirect service — OmniGo is transactional |
+| AI / LLM message generation | PerGo routes, doesn't compose; consumer app generates content |
+| Link shortening + click tracking | Marketing feature; pulls in URL storage, redirect service — PerGo is transactional |
 | Built-in conversation state machine | Couples router to business logic; session windows belong to consumer app |
 
 ## Traceability

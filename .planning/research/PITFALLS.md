@@ -4,7 +4,7 @@
 **Researched:** 2026-06-25
 **Confidence:** HIGH (findings drawn from official PostgreSQL/Go/NATS documentation and whatsmeow's own GitHub issue tracker — primary sources. The provider-level classifier returns LOW because the webfetch/exa providers are generic, but the underlying sources are authoritative.)
 
-> **Scope note:** This file maps pitfalls to OmniGo's three-milestone plan
+> **Scope note:** This file maps pitfalls to PerGo's three-milestone plan
 > (M1 Core Foundation, M2 Queue & WhatsApp Web, M3 Official Channels + Fallback + Load Testing)
 > and rates each pitfall by severity and by how well the existing PRD/architecture docs
 > already address it.
@@ -276,7 +276,7 @@ decision before M1 schema creation.**
 **Severity:** HIGH
 
 **What goes wrong:**
-OmniGo serves multiple workspaces from one binary and one PostgreSQL database. If a
+PerGo serves multiple workspaces from one binary and one PostgreSQL database. If a
 query anywhere in the codebase omits the `workspace_id` filter — a missing `WHERE`, a
 join that drops the tenant predicate, an admin-list query that fetches all rows — one
 tenant can read or act on another tenant's audit logs, device sessions, or API keys.
@@ -376,7 +376,7 @@ env and consider the requirement met.
 1. **Generate a fresh random 12-byte nonce per `Seal` call** via `crypto/rand` and
    **prepend it to the ciphertext** (standard pattern: `nonce || ciphertext || tag`).
    Never derive the nonce deterministically from the credential. Track that the key is
-   not used for more than 2^32 encryptions (vastly more than OmniGo will ever hit, but
+   not used for more than 2^32 encryptions (vastly more than PerGo will ever hit, but
    document the ceiling).
 2. **Use envelope encryption.** A master Key Encryption Key (KEK) wraps per-credential
    Data Encryption Keys (DEKs); the DEK is stored encrypted at rest alongside the
@@ -417,7 +417,7 @@ runbook must cover KEK custody. Both are unspecified.**
 
 ## Technical Debt Patterns
 
-Shortcuts that seem reasonable but create long-term problems at OmniGo's scale.
+Shortcuts that seem reasonable but create long-term problems at PerGo's scale.
 
 | Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
 |----------|-------------------|----------------|-----------------|
@@ -434,7 +434,7 @@ Shortcuts that seem reasonable but create long-term problems at OmniGo's scale.
 | Integration | Common Mistake | Correct Approach |
 |-------------|----------------|------------------|
 | whatsmeow `events.LoggedOut` | Treating it like a transient disconnect and auto-reconnecting | It is terminal — the server deleted the session. Emit an operator alert, mark the device `disabled`, and stop reconnecting. Re-pairing requires the official phone app. |
-| whatsmeow `store/sqlstore` Container in the shared PostgreSQL DB | Letting whatsmeow manage its own schema/tables without co-location planning | whatsmeow's `sqlstore` creates its own tables (`whatsmeow_device`, prekeys, etc.) in the target DB. Co-locate in OmniGo's PostgreSQL but document that these tables are library-owned — do not hand-write migrations against them. Use a separate schema or clear naming to avoid collision with OmniGo's `devices` table. |
+| whatsmeow `store/sqlstore` Container in the shared PostgreSQL DB | Letting whatsmeow manage its own schema/tables without co-location planning | whatsmeow's `sqlstore` creates its own tables (`whatsmeow_device`, prekeys, etc.) in the target DB. Co-locate in PerGo's PostgreSQL but document that these tables are library-owned — do not hand-write migrations against them. Use a separate schema or clear naming to avoid collision with PerGo's `devices` table. |
 | NATS JetStream `AckWait` vs. dispatch duration | Setting `AckWait` shorter than the 1–3s staggered dispatch + provider round-trip → spurious redelivery | `AckWait` must exceed worst-case dispatch time (stagger + send + ack round-trip). With 3s stagger + 5s send, `AckWait` < 8s causes redelivery storms. Use `Backoff` and `Nak` with explicit delay instead of relying on `AckWait` alone. |
 | NATS `Nats-Msg-Id` dedup window | Relying on it for consumer-side idempotency | `Nats-Msg-Id` is **publish-side** dedup (prevents the same publish being stored twice). It does NOT prevent a consumer from processing a redelivered message twice. Consumer-side dedup (Pitfall 2) is separate. |
 | pgx `CopyFrom` into partitioned table | Assuming `CopyFrom` routes rows automatically | It does route by partition key, but all rows for one workspace in a batch hit one partition. Batch across workspaces/time, or accept the hot-partition cost. |
@@ -501,7 +501,7 @@ When pitfalls occur despite prevention, how to recover.
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| WhatsApp account banned/logged out (Pitfall 1) | HIGH (account may be unrecoverable) | 1. Disable the session in OmniGo. 2. Operator opens official WhatsApp on the phone, re-verifies. 3. Re-pair via QR in OmniGo. 4. If account is permanently banned, escalate to Meta / use WABA fallback. Messages queued for that session drain via fallback or DLQ. |
+| WhatsApp account banned/logged out (Pitfall 1) | HIGH (account may be unrecoverable) | 1. Disable the session in PerGo. 2. Operator opens official WhatsApp on the phone, re-verifies. 3. Re-pair via QR in PerGo. 4. If account is permanently banned, escalate to Meta / use WABA fallback. Messages queued for that session drain via fallback or DLQ. |
 | Duplicate message sent to a human (Pitfall 2) | MEDIUM (trust/reputation) | 1. Add the `dispatched_messages` dedup set retroactively. 2. Audit-log query for duplicate `trace_id`+channel pairs to assess blast radius. 3. Notify affected tenants. 4. Tune `AckWait`/`MaxDeliver` to reduce redelivery frequency. Cannot "unsend" a delivered WhatsApp message. |
 | Goroutine leak in production (Pitfall 3) | MEDIUM (restart + fix) | 1. Restart the process (immediate relief). 2. Capture `pprof goroutine` before restart to localize the leak. 3. Fix the forgotten-sender or unjoined goroutine. 4. Add a goroutine-count regression test. |
 | Audit write contention / dropped events (Pitfall 4) | MEDIUM (compliance gap) | 1. Increase audit buffer cap / writer count. 2. Switch to `created_at` range partitioning if hot. 3. Backfill any dropped events from JetStream (the message stream is the source of truth; audit is derived). 4. Tune fillfactor/autovacuum. |
@@ -542,8 +542,8 @@ structure are set in M1/M2 and retrofits are painful.
 - PostgreSQL docs §5.12: Table Partitioning (declarative partitioning, limitations, best practices, partition pruning, unique-key-must-include-partition-key) — https://www.postgresql.org/docs/current/ddl-partitioning.html — **official docs** (HIGH)
 - PostgreSQL docs §5.9: Row Security Policies (RLS, USING/WITH CHECK, BYPASSRLS, covert channels via referential integrity, race conditions) — https://www.postgresql.org/docs/current/ddl-rowsecurity.html — **official docs** (HIGH)
 - Go `crypto/cipher` package docs (AEAD, NewGCM, nonce uniqueness requirement, 2^32 random-nonce ceiling, NewGCMWithRandomNonce Go 1.24+) — https://pkg.go.dev/crypto/cipher — **official stdlib docs** (HIGH)
-- OmniGo project docs (cross-referenced for PRD coverage assessment): `.planning/PROJECT.md`, `docs/PRD OmniGo.md` §8, `docs/architecture/01-06` — **internal, authoritative for the project** (HIGH for coverage assessment)
+- PerGo project docs (cross-referenced for PRD coverage assessment): `.planning/PROJECT.md`, `docs/PRD PerGo.md` §8, `docs/architecture/01-06` — **internal, authoritative for the project** (HIGH for coverage assessment)
 
 ---
-*Pitfalls research for: self-hosted omnichannel CPaaS (OmniGo) — unofficial WhatsApp Web, NATS JetStream, PostgreSQL, Go*
+*Pitfalls research for: self-hosted omnichannel CPaaS (PerGo) — unofficial WhatsApp Web, NATS JetStream, PostgreSQL, Go*
 *Researched: 2026-06-25*

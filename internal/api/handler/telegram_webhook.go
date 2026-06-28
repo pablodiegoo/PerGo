@@ -16,10 +16,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
-	"github.com/pablojhp.omnigo/internal/platform/audit"
-	"github.com/pablojhp.omnigo/internal/platform/queue"
-	"github.com/pablojhp.omnigo/internal/platform/storage"
-	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.pergo/internal/platform/audit"
+	"github.com/pablojhp.pergo/internal/platform/queue"
+	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // TelegramWebhookHandler handles inbound webhooks from Telegram.

@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/pablojhp.omnigo/internal/domain"
+	"github.com/pablojhp.pergo/internal/domain"
 )
 
 // MessagePayload is the channel-layer message contract, separate from the

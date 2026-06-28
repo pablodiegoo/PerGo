@@ -6,7 +6,7 @@
 
 ## Goal
 
-`POST /messages` accepts a unified media field (image, document, audio, video) that OmniGo downloads, stores in an S3-compatible object store, and delivers through per-channel adapter paths; inbound messages from all three providers (WhatsApp Web, WABA, Telegram) are ingested with full content extraction (text, media, location, contacts), forwarded to consumer webhooks via durable NATS delivery, and audit-logged with Trace-ID correlation.
+`POST /messages` accepts a unified media field (image, document, audio, video) that PerGo downloads, stores in an S3-compatible object store, and delivers through per-channel adapter paths; inbound messages from all three providers (WhatsApp Web, WABA, Telegram) are ingested with full content extraction (text, media, location, contacts), forwarded to consumer webhooks via durable NATS delivery, and audit-logged with Trace-ID correlation.
 
 ## Background
 
@@ -32,7 +32,7 @@ For inbound, partial foundations exist:
    - Target: WhatsApp Web sends `waE2E.ImageMessage`/`DocumentMessage`/`AudioMessage`/`VideoMessage` with downloaded bytes; WABA sends `type: "image"|"document"|"audio"|"video"` with media URL; Telegram calls `sendPhoto`/`sendDocument`/`sendAudio`/`sendVideo` with multipart upload
    - Acceptance: A message with `media_type: "image"` and a valid image URL is delivered successfully through each of the three channels; delivery shows channel-native media rendering (not a text link)
 
-3. **S3-compatible media storage**: OmniGo downloads media from `media_url`, stores it in an S3-compatible object store (e.g., MinIO), and serves it via proxy URL.
+3. **S3-compatible media storage**: PerGo downloads media from `media_url`, stores it in an S3-compatible object store (e.g., MinIO), and serves it via proxy URL.
    - Current: No S3 client, no media storage, no download pipeline
    - Target: Media downloaded once from source URL; stored as `{workspace_id}/{content_hash}.{ext}` in the configured S3 bucket; 25MB max file size enforced (inclusive: ≤ 25,000,000 bytes accepted, > 25,000,000 bytes rejected with HTTP 422); content-type validated against declared `media_type`
    - Acceptance: Media file at exactly 25MB is accepted; media file at 25MB+1 byte is rejected with HTTP 422 and error message `"media_size_exceeded"`; media stored in S3 with correct key format; if source URL returns 404/timeout/DNS failure, the message is rejected with HTTP 422 before entering the NATS queue
@@ -81,7 +81,7 @@ For inbound, partial foundations exist:
 - Thumbnail generation for images/videos — deferred; adds complexity without core value
 - Cross-channel media forwarding (receive on WhatsApp, forward to Telegram) — deferred; requires message routing logic not yet designed
 - Media retention/expiry policy (auto-delete after N days) — deferred; needs lifecycle management design
-- Resumable/chunked media uploads from API caller to OmniGo — deferred; standard URL-based media is sufficient for MVP
+- Resumable/chunked media uploads from API caller to PerGo — deferred; standard URL-based media is sufficient for MVP
 - Media transcoding (e.g., HEIC → JPEG) — deferred; channels handle format requirements
 - Read receipts / delivery receipts as inbound events — deferred; status events are a separate concern
 - Inbound message threading / conversation grouping — deferred; no conversation model exists yet
@@ -159,7 +159,7 @@ For inbound, partial foundations exist:
 | Prohibition (must-NOT statement) | Requirement | Status | Verification / Reason |
 |----------------------------------|-------------|--------|------------------------|
 | MUST NOT forward inbound messages containing personal data (phone numbers, contacts, location) to consumer webhooks without the workspace having explicitly opted in to receiving PII | R4, R5 | resolved | verification: judgment — requires manual review of webhook payload format and workspace PII opt-in flag |
-| ~~MUST NOT include raw phone numbers or email addresses in default inbound webhook payload~~ | R5 | dismissed | Consumer application is responsible for handling PII, not the messaging gateway; OmniGo is a self-hosted infrastructure component, not a SaaS |
+| ~~MUST NOT include raw phone numbers or email addresses in default inbound webhook payload~~ | R5 | dismissed | Consumer application is responsible for handling PII, not the messaging gateway; PerGo is a self-hosted infrastructure component, not a SaaS |
 | ~~MUST NOT store full message content in audit_logs table~~ | R6 | dismissed | Audit logs are internal and should contain whatever's needed for debugging; PII in audit logs is acceptable for a self-hosted product where the operator controls infrastructure |
 
 **Canon-referral breadcrumbs:**

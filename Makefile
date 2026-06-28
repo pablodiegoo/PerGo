@@ -1,11 +1,11 @@
 # ─────────────────────────────────────────────────────────────
-#  OmniGo — Makefile
+#  PerGo — Makefile
 #  Uso:
 #    make dev        → hot-reload (carrega .env automaticamente)
 #    make prod       → build + sobe tudo via docker compose
 #    make infra      → sobe só postgres + nats (sem o app)
 #    make infra-down → derruba infra
-#    make build      → compila o binário para ./bin/omnigo
+#    make build      → compila o binário para ./bin/pergo
 #    make generate   → regenera arquivos templ
 #    make test       → testes rápidos
 #    make test-race  → testes com race detector
@@ -20,7 +20,7 @@ ifneq (,$(wildcard .env))
   export
 endif
 
-BINARY     := ./bin/omnigo
+BINARY     := ./bin/pergo
 BUILD_FLAGS := -ldflags="-s -w"
 
 # ─── Dev ─────────────────────────────────────────────────────
@@ -36,11 +36,11 @@ dev: _check-air _check-templ
 prod:
 	@echo "→ Fazendo build e subindo em produção..."
 	@docker compose up --build -d
-	@echo "✓ Rodando em http://localhost:$${OMNIGO_SERVER_PORT:-8080}"
+	@echo "✓ Rodando em http://localhost:$${PERGO_SERVER_PORT:-8080}"
 
 ## prod-logs: acompanha os logs do container em produção
 prod-logs:
-	@docker compose logs -f omnigo
+	@docker compose logs -f pergo
 
 ## prod-down: derruba todos os containers
 prod-down:
@@ -60,11 +60,11 @@ infra-down:
 
 # ─── Build ───────────────────────────────────────────────────
 
-## build: compila o binário otimizado para ./bin/omnigo
+## build: compila o binário otimizado para ./bin/pergo
 build: generate
 	@echo "→ Compilando..."
 	@mkdir -p bin
-	@go build $(BUILD_FLAGS) -o $(BINARY) ./cmd/omnigo
+	@go build $(BUILD_FLAGS) -o $(BINARY) ./cmd/pergo
 	@echo "✓ Binário em $(BINARY)"
 
 ## generate: regenera os arquivos Go a partir dos templates templ
@@ -94,7 +94,7 @@ clean:
 ## help: lista todos os targets disponíveis
 help:
 	@echo ""
-	@echo "  OmniGo — comandos disponíveis:"
+	@echo "  PerGo — comandos disponíveis:"
 	@echo ""
 	@grep -E '^## ' Makefile | sed 's/## /  make /' | column -t -s ':'
 	@echo ""

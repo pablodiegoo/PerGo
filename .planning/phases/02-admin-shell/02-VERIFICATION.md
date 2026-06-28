@@ -29,8 +29,8 @@ human_verification: []
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Operator can create, view, and manage multi-tenant workspaces via the admin panel (Echo + Templ + HTMX with HTMX fragment detection — interactions return fragments without full-page reloads) | ✓ VERIFIED | 16 passing tests: 7 admin shell tests (login, session auth, dashboard, HTMX fragments) + 5 workspace CRUD tests (list, create, detail, confirm-delete, delete). All routes wired in `cmd/omnigo/main.go` (lines 139-172). HTMX fragment detection confirmed by `TestAdminHTMXFragment` — response does not contain `<!DOCTYPE` or `<html>`. |
-| 2 | Operator can generate new API keys per workspace and view/revoke existing keys from the admin panel | ✓ VERIFIED | 4 passing tests: API key list, generate (one-time plaintext display), confirm-revoke, revoke. Routes wired at lines 175-190 of `cmd/omnigo/main.go`. `TestAdminAPIKeyGenerate` confirms one-time display warning ("once"/"Once"/"copy"/"Copy"). `TestAdminAPIKeyRevoke` confirms revoked badge appears. |
+| 1 | Operator can create, view, and manage multi-tenant workspaces via the admin panel (Echo + Templ + HTMX with HTMX fragment detection — interactions return fragments without full-page reloads) | ✓ VERIFIED | 16 passing tests: 7 admin shell tests (login, session auth, dashboard, HTMX fragments) + 5 workspace CRUD tests (list, create, detail, confirm-delete, delete). All routes wired in `cmd/pergo/main.go` (lines 139-172). HTMX fragment detection confirmed by `TestAdminHTMXFragment` — response does not contain `<!DOCTYPE` or `<html>`. |
+| 2 | Operator can generate new API keys per workspace and view/revoke existing keys from the admin panel | ✓ VERIFIED | 4 passing tests: API key list, generate (one-time plaintext display), confirm-revoke, revoke. Routes wired at lines 175-190 of `cmd/pergo/main.go`. `TestAdminAPIKeyGenerate` confirms one-time display warning ("once"/"Once"/"copy"/"Copy"). `TestAdminAPIKeyRevoke` confirms revoked badge appears. |
 | 3 | Operator can search, filter (by workspace, trace_id, time range), and export audit logs from the admin panel; audit log access is also available via API | ✓ VERIFIED | 9 passing tests: list, filter by workspace, filter by trace_id, filter by event_type, filter by time range, pagination (50 rows/page), CSV export, HTMX fragment, pagination controls. Parameterized SQL WHERE builder (`buildWhereClause` in `internal/repository/audit.go`) prevents SQL injection (threat T-02-09). CSV export uses stdlib `encoding/csv` with `Content-Disposition` download header. Audit endpoints are HTTP endpoints at `/admin/audit` and `/admin/audit/export`. |
 
 **Score:** 3/3 truths verified
@@ -63,11 +63,11 @@ human_verification: []
 
 | From | To | Via | Status | Details |
 |------|-----|-----|--------|---------|
-| `cmd/omnigo/main.go` | `admin.LoginPage`, `admin.LoginPost`, `admin.Logout` | Import + route wiring at lines 139-147 | ✓ WIRED | Public group routes (no session auth) |
-| `cmd/omnigo/main.go` | `admin.DashboardHandler.Index` | Import + route wiring at line 161 | ✓ WIRED | Protected group with session auth |
-| `cmd/omnigo/main.go` | `admin.WorkspaceHandler.{List,Create,Detail,ConfirmDelete,Delete}` | Import + route wiring at lines 164-172 | ✓ WIRED | 5 routes wired |
-| `cmd/omnigo/main.go` | `admin.APIKeyHandler.{List,Generate,ConfirmRevoke,Revoke}` | Import + route wiring at lines 175-190 | ✓ WIRED | 4 routes wired |
-| `cmd/omnigo/main.go` | `admin.AuditHandler.{List,ExportCSV}` | Import + route wiring at lines 194-196 | ✓ WIRED | 2 routes wired |
+| `cmd/pergo/main.go` | `admin.LoginPage`, `admin.LoginPost`, `admin.Logout` | Import + route wiring at lines 139-147 | ✓ WIRED | Public group routes (no session auth) |
+| `cmd/pergo/main.go` | `admin.DashboardHandler.Index` | Import + route wiring at line 161 | ✓ WIRED | Protected group with session auth |
+| `cmd/pergo/main.go` | `admin.WorkspaceHandler.{List,Create,Detail,ConfirmDelete,Delete}` | Import + route wiring at lines 164-172 | ✓ WIRED | 5 routes wired |
+| `cmd/pergo/main.go` | `admin.APIKeyHandler.{List,Generate,ConfirmRevoke,Revoke}` | Import + route wiring at lines 175-190 | ✓ WIRED | 4 routes wired |
+| `cmd/pergo/main.go` | `admin.AuditHandler.{List,ExportCSV}` | Import + route wiring at lines 194-196 | ✓ WIRED | 2 routes wired |
 | `middleware.SessionAuthMiddleware` | `middleware.HTMXMiddleware` | Both applied via `adminGroup.Use()` at lines 152-153 | ✓ WIRED | Middleware chain correct |
 | `admin.WorkspaceHandler` | `repository.WorkspaceRepository` | Constructor at line 164 | ✓ WIRED | Repository injected |
 | `admin.APIKeyHandler` | `repository.APIKeyRepository` | Constructor at line 175 | ✓ WIRED | Repository injected |
@@ -90,10 +90,10 @@ human_verification: []
 |----------|---------|--------|--------|
 | Build compiles | `go build ./...` | No errors | ✓ PASS |
 | Go vet clean | `go vet ./...` | No issues | ✓ PASS |
-| Admin shell tests (7) | `go test ./cmd/omnigo/ -run TestAdmin -count=1` | 7/7 PASS | ✓ PASS |
-| Workspace/API key tests (9) | `go test ./cmd/omnigo/ -run TestAdmin -count=1` | 9/9 PASS | ✓ PASS |
-| Audit log tests (9) | `go test ./cmd/omnigo/ -run TestAdmin -count=1` | 9/9 PASS | ✓ PASS |
-| All admin tests (25) | `go test ./cmd/omnigo/ -run TestAdmin -count=1` | 25/25 PASS (0.88s) | ✓ PASS |
+| Admin shell tests (7) | `go test ./cmd/pergo/ -run TestAdmin -count=1` | 7/7 PASS | ✓ PASS |
+| Workspace/API key tests (9) | `go test ./cmd/pergo/ -run TestAdmin -count=1` | 9/9 PASS | ✓ PASS |
+| Audit log tests (9) | `go test ./cmd/pergo/ -run TestAdmin -count=1` | 9/9 PASS | ✓ PASS |
+| All admin tests (25) | `go test ./cmd/pergo/ -run TestAdmin -count=1` | 25/25 PASS (0.88s) | ✓ PASS |
 
 ### Probe Execution
 

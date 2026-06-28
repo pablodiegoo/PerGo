@@ -9,9 +9,9 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 import (
-	"github.com/pablojhp.omnigo/internal/session"
-	"github.com/pablojhp.omnigo/templates/components"
-	"github.com/pablojhp.omnigo/templates/layout"
+	"github.com/pablojhp.pergo/internal/session"
+	"github.com/pablojhp.pergo/templates/components"
+	"github.com/pablojhp.pergo/templates/layout"
 )
 
 // DeviceListPage renders the full device management page with layout.

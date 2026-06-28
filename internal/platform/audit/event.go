@@ -1,5 +1,5 @@
 // Package audit provides the audit event type and buffered batch writer
-// for OmniGo's audit logging subsystem.
+// for PerGo's audit logging subsystem.
 package audit
 
 import (

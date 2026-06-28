@@ -23,7 +23,7 @@
   - On `TerminalError` (detected via `channel.IsTerminal`), worker immediately advances to next fallback channel, updating database status.
   - If all fallbacks are exhausted, database status is set to `failed` and message is `Ack`ed (ending NATS retry).
   - On transient errors, database status is updated to `failed_transient` and message is `Nak`ed with backoff (triggering JetStream retry).
-- Updated worker initialization in `cmd/omnigo/main.go` to instantiate and pass `MessageDispatchRepository`.
+- Updated worker initialization in `cmd/pergo/main.go` to instantiate and pass `MessageDispatchRepository`.
 
 ### Task 4: Integration testing of worker fallback loop
 - Wrote mock NATS message `mockMsg` and mock dispatcher `mockDispatcher` in `internal/platform/queue/worker_test.go`.
@@ -38,18 +38,18 @@
 ## Files Created/Modified
 
 ### Created
-- [007_create_message_dispatches.sql](file:///home/pablo/Coding/OmniGo/internal/platform/postgres/migrations/007_create_message_dispatches.sql)
-- [dispatch.go](file:///home/pablo/Coding/OmniGo/internal/repository/dispatch.go)
-- [dispatch_test.go](file:///home/pablo/Coding/OmniGo/internal/repository/dispatch_test.go)
+- [007_create_message_dispatches.sql](file:///home/pablo/Coding/PerGo/internal/platform/postgres/migrations/007_create_message_dispatches.sql)
+- [dispatch.go](file:///home/pablo/Coding/PerGo/internal/repository/dispatch.go)
+- [dispatch_test.go](file:///home/pablo/Coding/PerGo/internal/repository/dispatch_test.go)
 
 ### Modified
-- [message.go](file:///home/pablo/Coding/OmniGo/internal/domain/message.go)
-- [message.go (handler)](file:///home/pablo/Coding/OmniGo/internal/api/handler/message.go)
-- [message_test.go (handler)](file:///home/pablo/Coding/OmniGo/internal/api/handler/message_test.go)
-- [worker.go](file:///home/pablo/Coding/OmniGo/internal/platform/queue/worker.go)
-- [worker_test.go](file:///home/pablo/Coding/OmniGo/internal/platform/queue/worker_test.go)
-- [waba_test.go](file:///home/pablo/Coding/OmniGo/internal/channel/whatsapp/waba_test.go)
-- [main.go](file:///home/pablo/Coding/OmniGo/cmd/omnigo/main.go)
+- [message.go](file:///home/pablo/Coding/PerGo/internal/domain/message.go)
+- [message.go (handler)](file:///home/pablo/Coding/PerGo/internal/api/handler/message.go)
+- [message_test.go (handler)](file:///home/pablo/Coding/PerGo/internal/api/handler/message_test.go)
+- [worker.go](file:///home/pablo/Coding/PerGo/internal/platform/queue/worker.go)
+- [worker_test.go](file:///home/pablo/Coding/PerGo/internal/platform/queue/worker_test.go)
+- [waba_test.go](file:///home/pablo/Coding/PerGo/internal/channel/whatsapp/waba_test.go)
+- [main.go](file:///home/pablo/Coding/PerGo/cmd/pergo/main.go)
 
 ---
 

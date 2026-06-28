@@ -23,14 +23,14 @@ human_verification: []
 
 | # | Truth | Status | Evidence |
 |---|-------|--------|----------|
-| 1 | Webhook configs table supports AES-256-GCM encrypted signing secrets | ✓ VERIFIED | [webhook_dlq.go](file:///home/pablo/Coding/OmniGo/internal/repository/webhook_dlq.go) saves configuration using platform KEK. |
-| 2 | NATS JetStream `WEBHOOKS` stream configured under LimitsPolicy | ✓ VERIFIED | [jetstream.go](file:///home/pablo/Coding/OmniGo/internal/platform/queue/jetstream.go) configures `EnsureWebhookStream` stream. |
-| 3 | Message status updates publish events to NATS subject `webhooks.events` | ✓ VERIFIED | [worker.go](file:///home/pablo/Coding/OmniGo/internal/platform/queue/worker.go) publishes webhook payloads on transitions. |
-| 4 | Webhook signature generated using HMAC-SHA256 `t=timestamp,v1=signature` schema | ✓ VERIFIED | [webhook_worker.go](file:///home/pablo/Coding/OmniGo/internal/platform/queue/webhook_worker.go) signs payload and formats header. |
-| 5 | Webhook consumer enforces 10s timeout and routes terminal failures to DB DLQ | ✓ VERIFIED | [webhook_worker.go](file:///home/pablo/Coding/OmniGo/internal/platform/queue/webhook_worker.go) routes 400, 401, 403, 404 immediately to DLQ. |
-| 6 | Transient failures trigger exponential backoff NakWithDelay up to 10 attempts | ✓ VERIFIED | [webhook_worker.go](file:///home/pablo/Coding/OmniGo/internal/platform/queue/webhook_worker.go) schedules NATS retry delay based on attempt count. |
-| 7 | Admin UI config form allows updating webhook endpoint URL and secret | ✓ VERIFIED | [webhooks.templ](file:///home/pablo/Coding/OmniGo/templates/pages/webhooks.templ) renders URL and secret password fields. |
-| 8 | Admin DLQ logs table allows modal details, logs deletion, and manual retry | ✓ VERIFIED | [webhooks.templ](file:///home/pablo/Coding/OmniGo/templates/pages/webhooks.templ) provides details, retry, and delete buttons. |
+| 1 | Webhook configs table supports AES-256-GCM encrypted signing secrets | ✓ VERIFIED | [webhook_dlq.go](file:///home/pablo/Coding/PerGo/internal/repository/webhook_dlq.go) saves configuration using platform KEK. |
+| 2 | NATS JetStream `WEBHOOKS` stream configured under LimitsPolicy | ✓ VERIFIED | [jetstream.go](file:///home/pablo/Coding/PerGo/internal/platform/queue/jetstream.go) configures `EnsureWebhookStream` stream. |
+| 3 | Message status updates publish events to NATS subject `webhooks.events` | ✓ VERIFIED | [worker.go](file:///home/pablo/Coding/PerGo/internal/platform/queue/worker.go) publishes webhook payloads on transitions. |
+| 4 | Webhook signature generated using HMAC-SHA256 `t=timestamp,v1=signature` schema | ✓ VERIFIED | [webhook_worker.go](file:///home/pablo/Coding/PerGo/internal/platform/queue/webhook_worker.go) signs payload and formats header. |
+| 5 | Webhook consumer enforces 10s timeout and routes terminal failures to DB DLQ | ✓ VERIFIED | [webhook_worker.go](file:///home/pablo/Coding/PerGo/internal/platform/queue/webhook_worker.go) routes 400, 401, 403, 404 immediately to DLQ. |
+| 6 | Transient failures trigger exponential backoff NakWithDelay up to 10 attempts | ✓ VERIFIED | [webhook_worker.go](file:///home/pablo/Coding/PerGo/internal/platform/queue/webhook_worker.go) schedules NATS retry delay based on attempt count. |
+| 7 | Admin UI config form allows updating webhook endpoint URL and secret | ✓ VERIFIED | [webhooks.templ](file:///home/pablo/Coding/PerGo/templates/pages/webhooks.templ) renders URL and secret password fields. |
+| 8 | Admin DLQ logs table allows modal details, logs deletion, and manual retry | ✓ VERIFIED | [webhooks.templ](file:///home/pablo/Coding/PerGo/templates/pages/webhooks.templ) provides details, retry, and delete buttons. |
 
 **Score:** 8/8 truths verified
 
@@ -38,10 +38,10 @@ human_verification: []
 
 | Artifact | Expected | Status | Details |
 |----------|----------|--------|---------|
-| [webhook_dlq.go](file:///home/pablo/Coding/OmniGo/internal/repository/webhook_dlq.go) | Repository for webhooks and DLQ | ✓ VERIFIED | Handles configuration storage, badge count, and DLQ operations |
-| [webhook_worker.go](file:///home/pablo/Coding/OmniGo/internal/platform/queue/webhook_worker.go) | Webhook pull consumer worker | ✓ VERIFIED | signs webhook payloads, handles delivery attempts and retries |
-| [webhooks.templ](file:///home/pablo/Coding/OmniGo/templates/pages/webhooks.templ) | Webhooks configuration and DLQ views | ✓ VERIFIED | Render-time templates for DLQ table, modal details, and forms |
-| [webhook_dlq.go](file:///home/pablo/Coding/OmniGo/internal/api/handler/admin/webhook_dlq.go) | Webhook DLQ Echo handlers | ✓ VERIFIED | Endpoint controllers for saving config, deletion, details, and retry |
+| [webhook_dlq.go](file:///home/pablo/Coding/PerGo/internal/repository/webhook_dlq.go) | Repository for webhooks and DLQ | ✓ VERIFIED | Handles configuration storage, badge count, and DLQ operations |
+| [webhook_worker.go](file:///home/pablo/Coding/PerGo/internal/platform/queue/webhook_worker.go) | Webhook pull consumer worker | ✓ VERIFIED | signs webhook payloads, handles delivery attempts and retries |
+| [webhooks.templ](file:///home/pablo/Coding/PerGo/templates/pages/webhooks.templ) | Webhooks configuration and DLQ views | ✓ VERIFIED | Render-time templates for DLQ table, modal details, and forms |
+| [webhook_dlq.go](file:///home/pablo/Coding/PerGo/internal/api/handler/admin/webhook_dlq.go) | Webhook DLQ Echo handlers | ✓ VERIFIED | Endpoint controllers for saving config, deletion, details, and retry |
 
 ### Test Coverage
 
@@ -49,7 +49,7 @@ human_verification: []
 |---------|--------|-------------|
 | `internal/repository` | PASS | Webhook configurations CRUD, DLQ listing, and tenant isolation integration tests |
 | `internal/platform/queue` | PASS | Webhook signature generation, NATS publishing, worker delivery loop, and backoff retries |
-| `cmd/omnigo` | PASS | Webhook configurations and DLQ admin endpoints integration tests |
+| `cmd/pergo` | PASS | Webhook configurations and DLQ admin endpoints integration tests |
 
 **Total Phase 6 tests:** all PASS
 

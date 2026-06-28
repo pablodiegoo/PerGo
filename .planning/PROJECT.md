@@ -1,8 +1,8 @@
-# OmniGo
+# PerGo
 
 ## What This Is
 
-OmniGo is a self-hosted, open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go. It exposes a single unified REST API (`POST /messages`) that abstracts away the fragmentation of managing multiple messaging providers — WhatsApp Web (unofficial via whatsmeow), WhatsApp Cloud (WABA), and Telegram — under one standardized JSON payload. It is built for backend developers integrating omnichannel flows into CRMs/ERPs and for system operators managing channel connections and compliance.
+PerGo is a self-hosted, open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go. It exposes a single unified REST API (`POST /messages`) that abstracts away the fragmentation of managing multiple messaging providers — WhatsApp Web (unofficial via whatsmeow), WhatsApp Cloud (WABA), and Telegram — under one standardized JSON payload. It is built for backend developers integrating omnichannel flows into CRMs/ERPs and for system operators managing channel connections and compliance.
 
 ## Core Value
 
@@ -13,7 +13,7 @@ A single API request delivers a message through any configured channel with auto
 - **Customer**: Backend developers and system operators at organizations that need omnichannel messaging without commercial CPaaS markup (replacing Twilio-like vendors for a specific deployment)
 - **Revenue model**: Self-hosted open-source — no per-message fees; cost is infrastructure only
 - **Success metric**: 99.5% delivery success across all channels at 500+ req/s sustained throughput
-- **Strategy notes**: See `docs/PRD OmniGo.md` and `docs/architecture/` for full product and technical specifications
+- **Strategy notes**: See `docs/PRD PerGo.md` and `docs/architecture/` for full product and technical specifications
 
 ## Requirements
 
@@ -41,7 +41,7 @@ A single API request delivers a message through any configured channel with auto
 
 - Real-time Voice and WebRTC orchestration (SIP trunking, audio calls, Pion) — not core to transactional messaging
 - Community and group management (creating groups, member permissions, announcement groups) — direct message delivery only; Group JID targeting allowed but no admin features
-- Visual conversation flow builders / drag-and-drop bot designers — OmniGo is a backend router; chat logic lives in consumer applications via REST + webhooks
+- Visual conversation flow builders / drag-and-drop bot designers — PerGo is a backend router; chat logic lives in consumer applications via REST + webhooks
 - Redis / memcached cache layer — unmeasured need at 500 req/s; add only if auth or session lookup proves hot
 - Kafka — NATS JetStream covers durability + queue groups with less operational weight at this scale
 - gRPC internal mesh — single binary, REST + JetStream suffice
@@ -50,7 +50,7 @@ A single API request delivers a message through any configured channel with auto
 
 ## Context
 
-**Existing documentation:** The project has a comprehensive PRD (`docs/PRD OmniGo.md`) and a six-part architecture document set (`docs/architecture/01-06`). These were produced before GSD initialization and define the product scope, technical stack, directory structure, concurrency model, resilience strategy, and core code examples. They are the authoritative source for implementation detail.
+**Existing documentation:** The project has a comprehensive PRD (`docs/PRD PerGo.md`) and a six-part architecture document set (`docs/architecture/01-06`). These were produced before GSD initialization and define the product scope, technical stack, directory structure, concurrency model, resilience strategy, and core code examples. They are the authoritative source for implementation detail.
 
 **Deployment context:** Building for a specific real use case (not a general release). Solo developer directing AI agents for implementation. No hard deadline — quality and architectural correctness take priority over speed.
 
@@ -89,7 +89,7 @@ A single API request delivers a message through any configured channel with auto
 | In-house circuit breaker and backoff over sony/gobreaker | State machine is small; avoid external dependency semantics mismatch — revisit if requirements grow | — Pending |
 | No OpenTelemetry in MVP | Trace-ID propagated explicitly via context + NATS headers + slog; add OTel only if tracing backend introduced | — Pending |
 | Domain-oriented packages over MVC layers | Each package importable on its own, depends only on internal/platform; channel adapters are siblings sharing an interface, not a hierarchy | — Pending |
-| cmd/omnigo as sole composition root | No internal/app "god package"; main.go wires deps, starts HTTP + workers | — Pending |
+| cmd/pergo as sole composition root | No internal/app "god package"; main.go wires deps, starts HTTP + workers | — Pending |
 
 ## Evolution
 

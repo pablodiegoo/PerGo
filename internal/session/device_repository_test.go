@@ -8,15 +8,15 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/pablojhp.omnigo/internal/platform/postgres"
+	"github.com/pablojhp.pergo/internal/platform/postgres"
 )
 
 func getTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
-	dsn := os.Getenv("OMNIGO_DATABASE_URL")
+	dsn := os.Getenv("PERGO_DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://postgres:postgres@localhost:5432/omnigo?sslmode=disable"
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

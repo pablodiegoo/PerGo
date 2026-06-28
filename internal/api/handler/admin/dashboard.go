@@ -1,4 +1,4 @@
-// Package admin provides HTTP handlers for the OmniGo admin panel.
+// Package admin provides HTTP handlers for the PerGo admin panel.
 package admin
 
 import (
@@ -7,11 +7,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
-	mw "github.com/pablojhp.omnigo/internal/api/middleware"
-	"github.com/pablojhp.omnigo/internal/platform/audit"
-	"github.com/pablojhp.omnigo/internal/repository"
-	"github.com/pablojhp.omnigo/templates/layout"
-	"github.com/pablojhp.omnigo/templates/pages"
+	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/platform/audit"
+	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/layout"
+	"github.com/pablojhp.pergo/templates/pages"
 )
 
 // DashboardHandler holds dependencies for the admin dashboard.

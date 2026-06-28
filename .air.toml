@@ -4,8 +4,8 @@ tmp_dir = "tmp"
 [build]
   # Comando completo: gera os arquivos templ antes de compilar
   pre_cmd = ["templ generate ./..."]
-  cmd = "go build -o ./tmp/omnigo ./cmd/omnigo"
-  bin = "./tmp/omnigo"
+  cmd = "go build -o ./tmp/pergo ./cmd/pergo"
+  bin = "./tmp/pergo"
   delay = 500
   exclude_dir = [
     "tmp", "vendor", ".planning", ".agents",

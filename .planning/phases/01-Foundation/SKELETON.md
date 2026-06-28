@@ -1,4 +1,4 @@
-# Walking Skeleton — OmniGo
+# Walking Skeleton — PerGo
 
 **Phase:** 1
 **Generated:** 2026-06-25
@@ -19,8 +19,8 @@ The server boots, connects to PostgreSQL and NATS, serves health checks, authent
 | Tenant isolation | Context convention (workspace_id in `context.Context`) | Enforced from first query via wrapper helpers; RLS deferred to Phase 5 |
 | Audit | Partitioned by `created_at` range (monthly), buffered batch writer | Avoids hot partitions on busy tenants; `pgx.CopyFrom` for bulk inserts via bounded channel + 2 workers |
 | Observability | `/healthz` + `/readyz`, pprof on :6060, expvar, slog with Trace-ID | Liveness/readiness probes; runtime profiling; structured logging with end-to-end trace correlation |
-| Deployment | Docker Compose (omnigo + postgres + nats) | Single-command local dev stack; mirrors integration-test topology |
-| Directory layout | `cmd/omnigo/` entry point, `internal/platform/` infrastructure, `internal/api/handler/` HTTP handlers | Standard Go project layout; platform layer isolates infrastructure concerns |
+| Deployment | Docker Compose (pergo + postgres + nats) | Single-command local dev stack; mirrors integration-test topology |
+| Directory layout | `cmd/pergo/` entry point, `internal/platform/` infrastructure, `internal/api/handler/` HTTP handlers | Standard Go project layout; platform layer isolates infrastructure concerns |
 
 ## Stack Touched in Phase 1
 

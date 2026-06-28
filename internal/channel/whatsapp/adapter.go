@@ -13,8 +13,8 @@ import (
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 
-	"github.com/pablojhp.omnigo/internal/channel"
-	"github.com/pablojhp.omnigo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/platform/storage"
 )
 
 // minStagger and maxStagger define the random delay range for

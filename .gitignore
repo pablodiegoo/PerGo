@@ -6,8 +6,8 @@
 *.dylib
 
 # Compiled binaries
-/omnigo
-omnigo.test
+/pergo
+pergo.test
 
 # Test binary, built with `go test -c`
 *.test

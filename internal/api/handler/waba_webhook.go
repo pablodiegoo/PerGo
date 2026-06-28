@@ -15,10 +15,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
-	"github.com/pablojhp.omnigo/internal/platform/audit"
-	"github.com/pablojhp.omnigo/internal/platform/queue"
-	"github.com/pablojhp.omnigo/internal/platform/storage"
-	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.pergo/internal/platform/audit"
+	"github.com/pablojhp.pergo/internal/platform/queue"
+	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // InboundEventPayload is the standard format for inbound messages forwarded to consumers.
@@ -119,7 +119,7 @@ func (h *WABAWebhookHandler) HandleGet(c *echo.Context) error {
 	verifyToken := c.Request().URL.Query().Get("hub.verify_token")
 	challenge := c.Request().URL.Query().Get("hub.challenge")
 
-	expectedVerifyToken := "omnigo_verify_token_" + workspaceIDStr
+	expectedVerifyToken := "pergo_verify_token_" + workspaceIDStr
 	if verifyToken == "" || challenge == "" || (verifyToken != creds.VerifyToken && verifyToken != expectedVerifyToken) {
 		return c.NoContent(http.StatusForbidden)
 	}

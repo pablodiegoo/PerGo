@@ -125,7 +125,7 @@ func TestDownloadAndValidate(t *testing.T) {
 }
 
 func TestS3ClientUploadAndDownload(t *testing.T) {
-	client, err := NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "omnigo-bucket", true)
+	client, err := NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "pergo-bucket", true)
 	if err != nil {
 		t.Fatalf("failed to create s3 client: %v", err)
 	}

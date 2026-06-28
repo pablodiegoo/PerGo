@@ -24,9 +24,9 @@ key-files:
     - internal/platform/obs/pprof.go
     - internal/platform/obs/expvar.go
     - internal/platform/shutdown/orchestrator.go
-    - cmd/omnigo/obs_test.go
+    - cmd/pergo/obs_test.go
   modified:
-    - cmd/omnigo/main.go
+    - cmd/pergo/main.go
 
 key-decisions:
   - "Debug server on localhost only (127.0.0.1:6060) — never exposed on public port"
@@ -47,7 +47,7 @@ coverage:
     requirement: OBS-02
     verification:
       - kind: unit
-        ref: "cmd/omnigo/obs_test.go#TestPprofServer"
+        ref: "cmd/pergo/obs_test.go#TestPprofServer"
         status: pass
     human_judgment: false
   - id: D2
@@ -55,7 +55,7 @@ coverage:
     requirement: OBS-04
     verification:
       - kind: unit
-        ref: "cmd/omnigo/obs_test.go#TestExpvarHandler"
+        ref: "cmd/pergo/obs_test.go#TestExpvarHandler"
         status: pass
     human_judgment: false
   - id: D3
@@ -63,7 +63,7 @@ coverage:
     requirement: OBS-04
     verification:
       - kind: unit
-        ref: "cmd/omnigo/obs_test.go#TestAuditDropCounter"
+        ref: "cmd/pergo/obs_test.go#TestAuditDropCounter"
         status: pass
     human_judgment: false
   - id: D4
@@ -71,7 +71,7 @@ coverage:
     requirement: INFRA-05
     verification:
       - kind: unit
-        ref: "cmd/omnigo/obs_test.go#TestOrchestratorOrder"
+        ref: "cmd/pergo/obs_test.go#TestOrchestratorOrder"
         status: pass
     human_judgment: false
   - id: D5
@@ -79,7 +79,7 @@ coverage:
     requirement: INFRA-05
     verification:
       - kind: unit
-        ref: "cmd/omnigo/obs_test.go#TestOrchestratorTimeout"
+        ref: "cmd/pergo/obs_test.go#TestOrchestratorTimeout"
         status: pass
     human_judgment: false
   - id: D6
@@ -87,7 +87,7 @@ coverage:
     requirement: INFRA-05
     verification:
       - kind: unit
-        ref: "cmd/omnigo/obs_test.go#TestOrchestratorSlowCleanup"
+        ref: "cmd/pergo/obs_test.go#TestOrchestratorSlowCleanup"
         status: pass
     human_judgment: false
   - id: D7
@@ -95,7 +95,7 @@ coverage:
     requirement: INFRA-05
     verification:
       - kind: unit
-        ref: "cmd/omnigo/obs_test.go#TestOrchestratorIdempotent"
+        ref: "cmd/pergo/obs_test.go#TestOrchestratorIdempotent"
         status: pass
     human_judgment: false
 
@@ -137,8 +137,8 @@ _TDD tasks may have multiple commits (test -> feat -> refactor)_
 - `internal/platform/obs/pprof.go` - DebugServer with pprof + expvar on localhost, StartDebugServer constructor
 - `internal/platform/obs/expvar.go` - AuditDrops package-level counter
 - `internal/platform/shutdown/orchestrator.go` - Orchestrator with Register(), Shutdown(ctx), LIFO order, sync.Once idempotency
-- `cmd/omnigo/obs_test.go` - 7 unit tests covering all observability and shutdown behaviors
-- `cmd/omnigo/main.go` - Full composition root: config, pgxpool, NATS, audit, debug server, shutdown orchestrator, health handlers, /api/v1/me test route
+- `cmd/pergo/obs_test.go` - 7 unit tests covering all observability and shutdown behaviors
+- `cmd/pergo/main.go` - Full composition root: config, pgxpool, NATS, audit, debug server, shutdown orchestrator, health handlers, /api/v1/me test route
 
 ## Decisions Made
 - **Debug server on localhost only:** pprof/expvar bound to 127.0.0.1:6060 — never exposed on public port or via Docker
@@ -154,7 +154,7 @@ _TDD tasks may have multiple commits (test -> feat -> refactor)_
 - **Found during:** Task 2 (GREEN phase verification)
 - **Issue:** Test expected `ctx.Err() != nil` after shutdown, but orchestrator doesn't own the context lifecycle — context is only cancelled by the caller's `defer cancel()`
 - **Fix:** Removed the assertion that context should be cancelled after shutdown
-- **Files modified:** cmd/omnigo/obs_test.go
+- **Files modified:** cmd/pergo/obs_test.go
 - **Verification:** All 7 tests pass
 - **Committed in:** 596bf93
 
@@ -162,7 +162,7 @@ _TDD tasks may have multiple commits (test -> feat -> refactor)_
 - **Found during:** Task 2 (build verification)
 - **Issue:** Rewriting main.go removed the `runServer` function that existing test relied on
 - **Fix:** Added minimal `runServer(ctx, pool, db)` helper that blocks until ctx is cancelled
-- **Files modified:** cmd/omnigo/main.go
+- **Files modified:** cmd/pergo/main.go
 - **Verification:** go build, go vet, all tests pass
 - **Committed in:** 596bf93
 
@@ -196,8 +196,8 @@ Key files verified on disk:
 - [x] internal/platform/obs/pprof.go
 - [x] internal/platform/obs/expvar.go
 - [x] internal/platform/shutdown/orchestrator.go
-- [x] cmd/omnigo/obs_test.go
-- [x] cmd/omnigo/main.go
+- [x] cmd/pergo/obs_test.go
+- [x] cmd/pergo/main.go
 
 Commits verified:
 - [x] 13e9067 (test(01-04): RED phase)

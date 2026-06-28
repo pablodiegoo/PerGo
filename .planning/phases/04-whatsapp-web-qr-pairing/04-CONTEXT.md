@@ -53,7 +53,7 @@ Messages dispatch end-to-end through WhatsApp Web (unofficial via whatsmeow) wit
 - Middleware pattern: `internal/api/middleware/` for cross-cutting concerns
 - Handler pattern: `internal/api/handler/` (public) + `internal/api/handler/admin/` (admin)
 - Templ templates: `templates/components/`, `templates/pages/`, `templates/layout/`
-- Composition root: `cmd/omnigo/main.go` wires all dependencies
+- Composition root: `cmd/pergo/main.go` wires all dependencies
 
 ### Integration Points
 - Worker needs a `Dispatcher` interface — currently `dispatch()` is a private method returning nil

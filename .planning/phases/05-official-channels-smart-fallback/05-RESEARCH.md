@@ -2,7 +2,7 @@
 
 ## 1. WABA Integration Details
 
-The WhatsApp Cloud API (WABA) is a stateless REST API hosted by Meta. To integrate WABA as a channel adapter in OmniGo, we will call Meta's Graph API endpoints.
+The WhatsApp Cloud API (WABA) is a stateless REST API hosted by Meta. To integrate WABA as a channel adapter in PerGo, we will call Meta's Graph API endpoints.
 
 ### API Endpoint & Auth Headers
 *   **Base URL & Version:** `https://graph.facebook.com/v18.0` (as defined in `D-01`)

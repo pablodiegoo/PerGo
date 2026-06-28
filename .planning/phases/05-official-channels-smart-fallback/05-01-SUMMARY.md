@@ -29,7 +29,7 @@ key-files:
     - internal/channel/telegram/telegram.go
     - internal/channel/telegram/telegram_test.go
   modified:
-    - cmd/omnigo/main.go
+    - cmd/pergo/main.go
     - .gitignore
 
 key-decisions:

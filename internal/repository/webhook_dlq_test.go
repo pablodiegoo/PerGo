@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/pablojhp.omnigo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 )
 
 func TestWebhookDLQRepository(t *testing.T) {

@@ -1,8 +1,8 @@
-# Roadmap: OmniGo
+# Roadmap: PerGo
 
 ## Overview
 
-OmniGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS JetStream as the durability boundary, stateless channel workers behind a plugin Dispatcher interface, PostgreSQL as the system of record for identity and audit, and a server-rendered admin console. The roadmap follows the research-validated ordering — foundation schema decisions that are expensive to retrofit land first, the highest-risk channel (unofficial WhatsApp Web) and all durability machinery land second, and official channels, fallback, webhooks, media, and inbound complete the platform. Each phase delivers a coherent, independently testable capability.
+PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS JetStream as the durability boundary, stateless channel workers behind a plugin Dispatcher interface, PostgreSQL as the system of record for identity and audit, and a server-rendered admin console. The roadmap follows the research-validated ordering — foundation schema decisions that are expensive to retrofit land first, the highest-risk channel (unofficial WhatsApp Web) and all durability machinery land second, and official channels, fallback, webhooks, media, and inbound complete the platform. Each phase delivers a coherent, independently testable capability.
 
 ## Phases
 
@@ -31,7 +31,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Requirements**: INFRA-01, INFRA-02, INFRA-03, INFRA-04, INFRA-05, INFRA-06, AUTH-01, AUTH-02, AUTH-03, SEC-01, SEC-02, SEC-03, SEC-05, AUDIT-01, AUDIT-02, AUDIT-03, OBS-01, OBS-02, OBS-03, OBS-04
 **Success Criteria** (what must be TRUE):
 
-  1. Server starts via `cmd/omnigo` composition root, responds on `/healthz` (200) and `/readyz` (200 with pgx + NATS connectivity pings), and shuts down gracefully on SIGTERM (drains JetStream consumers, flushes audit buffer, closes connections within 30s)
+  1. Server starts via `cmd/pergo` composition root, responds on `/healthz` (200) and `/readyz` (200 with pgx + NATS connectivity pings), and shuts down gracefully on SIGTERM (drains JetStream consumers, flushes audit buffer, closes connections within 30s)
   2. Operator can create a workspace and generate an API key; the auth middleware accepts valid keys (SHA-256 hashed with cleartext prefix lookup), rejects invalid ones with structured 401, and serves subsequent requests from in-memory cache (TTL refresh); revocation takes effect immediately via cache invalidation
   3. Every HTTP request carries a Trace-ID propagated through context, structured slog logs, and audit log rows — a single request's trace can be followed end-to-end across all three surfaces
   4. Credentials and session tokens stored in PostgreSQL are AES-256-GCM encrypted with per-row nonces and `key_id`/`key_version` columns for rotation; API keys are SHA-256 hashed with cleartext prefix for lookup

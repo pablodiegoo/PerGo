@@ -9,8 +9,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
-	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
-	"github.com/pablojhp.omnigo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/platform/storage"
 )
 
 // MediaHandler serves stored S3 objects securely.

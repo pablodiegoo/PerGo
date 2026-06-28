@@ -13,6 +13,6 @@ description: Implemented robust NATS consumer recreation retry-after-delete stra
 2. **Implementation**:
    - Implemented `createConsumerWithRetry(ctx, stream, config)` in `jetstream.go`.
    - On consumer creation failure, it logs a warning, calls `DeleteConsumer` to clear the old consumer, waits for 500ms to allow the old process to fully exit, and retries the creation up to 3 times.
-   - Wired this robust helper for all three of OmniGo's JetStream consumers: the outbound message worker consumer (`worker-1`), the outbound webhooks consumer (`webhooks-consumer`), and the inbound webhooks consumer (`inbound-webhooks-consumer`).
+   - Wired this robust helper for all three of PerGo's JetStream consumers: the outbound message worker consumer (`worker-1`), the outbound webhooks consumer (`webhooks-consumer`), and the inbound webhooks consumer (`inbound-webhooks-consumer`).
 3. **Verification**:
    - The project builds successfully and all tests pass with 100% success rate. Hot-reload restarts are now completely seamless.

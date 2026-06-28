@@ -28,11 +28,11 @@ key-files:
     - templates/pages/webhooks.templ
     - templates/pages/webhooks_templ.go
     - internal/api/handler/admin/webhook_dlq.go
-    - cmd/omnigo/admin_webhook_dlq_test.go
+    - cmd/pergo/admin_webhook_dlq_test.go
   modified:
     - internal/platform/queue/jetstream.go
     - internal/platform/queue/worker.go
-    - cmd/omnigo/main.go
+    - cmd/pergo/main.go
     - static/css/admin.css
     - templates/layout/sidebar.templ
     - templates/layout/sidebar_templ.go
@@ -86,7 +86,7 @@ coverage:
     requirement: WHOOK-04
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_webhook_dlq_test.go#TestAdminWebhookDLQHandlers"
+        ref: "cmd/pergo/admin_webhook_dlq_test.go#TestAdminWebhookDLQHandlers"
         status: pass
   - id: WHOOK-05-01
     description: "Webhook retry triggers NakWithDelay exponential backoff, and terminal status triggers immediate DLQ move"

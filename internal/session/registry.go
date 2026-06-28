@@ -6,7 +6,7 @@ import (
 
 	"go.mau.fi/whatsmeow/types"
 
-	whatsapp "github.com/pablojhp.omnigo/internal/channel/whatsapp"
+	whatsapp "github.com/pablojhp.pergo/internal/channel/whatsapp"
 )
 
 // Session represents an active WhatsApp device session managed by the server.

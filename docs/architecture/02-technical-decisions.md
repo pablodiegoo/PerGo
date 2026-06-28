@@ -60,7 +60,7 @@ three dependencies that clearly earn their place: `pgx`, `nats.go`,
 - **Schema highlights:**
   - `workspaces(id, name, created_at)`
   - `api_keys(id, workspace_id, key_hash, label, created_at, revoked_at)`
-    — `key_hash` is SHA-256; the prefix (e.g. `omnigo_<8 chars>`) is
+    — `key_hash` is SHA-256; the prefix (e.g. `pergo_<8 chars>`) is
     stored cleartext for lookup, the secret is hashed.
   - `devices(jid, workspace_id, platform, encrypted_session, created_at)`
     — whatsmeow `store.Device` row, `encrypted_session` is AES-256-GCM.

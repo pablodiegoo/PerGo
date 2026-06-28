@@ -2,8 +2,8 @@ package pages
 
 import (
 	"fmt"
-	"github.com/pablojhp.omnigo/internal/repository"
-	"github.com/pablojhp.omnigo/templates/layout"
+	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/layout"
 )
 
 templ WebhooksPage(workspaces []repository.Workspace, dlqItems []*repository.WebhookDLQ) {
@@ -80,7 +80,7 @@ templ WorkspaceWebhooksContent(ws repository.Workspace, config *repository.Webho
 					<input type="password" id="secret" name="secret" required class="form-input" placeholder="Enter signing secret"/>
 				}
 				<small class="form-text text-muted" style="color: var(--color-text-muted); font-size: 0.8rem; display: block; margin-top: 0.25rem;">
-					Used to compute HMAC-SHA256 signature in X-OmniGo-Signature header.
+					Used to compute HMAC-SHA256 signature in X-PerGo-Signature header.
 				</small>
 			</div>
 			<div class="form-actions">

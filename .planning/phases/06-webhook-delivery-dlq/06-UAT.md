@@ -17,7 +17,7 @@ expected: Workspace details page contains a "Configure Webhooks" button. Clickin
 result: pass
 
 ### 2. Webhook Replay Prevention Header
-expected: Sent webhooks contain the X-OmniGo-Signature header structured as t=timestamp,v1=signature computed with HMAC-SHA256 of timestamp + "." + payload.
+expected: Sent webhooks contain the X-PerGo-Signature header structured as t=timestamp,v1=signature computed with HMAC-SHA256 of timestamp + "." + payload.
 result: pass
 
 ### 3. Webhook Payload Schema

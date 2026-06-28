@@ -1,13 +1,13 @@
 # Project Research Summary
 
-**Project:** OmniGo — self-hosted omnichannel CPaaS / messaging gateway (Twilio-replacement for transactional messaging)
+**Project:** PerGo — self-hosted omnichannel CPaaS / messaging gateway (Twilio-replacement for transactional messaging)
 **Domain:** Self-hosted CPaaS gateway in Go (unofficial WhatsApp Web via whatsmeow + official WABA + Telegram, NATS JetStream durability, PostgreSQL, server-rendered admin console)
 **Researched:** 2026-06-25
 **Confidence:** HIGH
 
 ## Executive Summary
 
-OmniGo is a single-binary, self-hosted messaging gateway that abstracts WhatsApp Web (unofficial, via whatsmeow), WhatsApp Cloud API (WABA), and Telegram behind one `POST /messages` REST endpoint with ordered channel fallback, durable delivery, and multi-tenant workspaces. Experts build this class of system as a **durable work-queue pipeline**: a thin ingestion handler (two I/O max — cached API-key lookup + broker publish — returning 202 in ≤50ms p99), NATS JetStream `WorkQueuePolicy` as the durability boundary, stateless channel workers behind a plugin `Dispatcher` interface, an async bounded-buffer audit fan-in written via `pgx.CopyFrom`, and PostgreSQL as the system of record for identity + audit only. The PRD/architecture docs already prescribe this shape; research validates it against external evidence (official NATS, whatsmeow sqlstore, and pgx v5 docs, plus a production whatsmeow reference implementation).
+PerGo is a single-binary, self-hosted messaging gateway that abstracts WhatsApp Web (unofficial, via whatsmeow), WhatsApp Cloud API (WABA), and Telegram behind one `POST /messages` REST endpoint with ordered channel fallback, durable delivery, and multi-tenant workspaces. Experts build this class of system as a **durable work-queue pipeline**: a thin ingestion handler (two I/O max — cached API-key lookup + broker publish — returning 202 in ≤50ms p99), NATS JetStream `WorkQueuePolicy` as the durability boundary, stateless channel workers behind a plugin `Dispatcher` interface, an async bounded-buffer audit fan-in written via `pgx.CopyFrom`, and PostgreSQL as the system of record for identity + audit only. The PRD/architecture docs already prescribe this shape; research validates it against external evidence (official NATS, whatsmeow sqlstore, and pgx v5 docs, plus a production whatsmeow reference implementation).
 
 The recommended approach is to keep all seven PRD-stack choices (Echo, templ+HTMX, NATS JetStream, pgx/v5, whatsmeow, x/time/rate, log/slog) — **all validated** — with three urgent corrections: target **Echo v5** (not v4; v4 EOLs 2026-12-31), use canonical import `go.mau.fi/whatsmeow`, and pin a one-driver PostgreSQL stack by bridging whatsmeow/goose onto pgx via `pgx/v5/stdlib` instead of `lib/pq`. Floor is Go 1.25 (toolchain 1.26.4). Surrounding gaps the PRD left under-specified — migrations (goose/v3), UUID (google/uuid — already a whatsmeow transitive dep), config (env vars, no daemon), testcontainers for integration tests, goreleaser for distribution — are now pinned.
 
@@ -23,7 +23,7 @@ All seven PRD core choices are validated as correct for 2026; three require vers
 - **Go 1.26.x toolchain (1.25 floor)** — every heavy dep declares `go 1.25.0`; standardise the team/CI toolchain to avoid surprise toolchain fetches.
 - **Echo v5.2.1** (`labstack/echo/v5`) — HTTP router + middleware; v5 is the current major line (since 2026-01-18) with native `*slog.Logger`; **do NOT start on v4** (EOL 2026-12-31).
 - **NATS JetStream** (`nats.go` v1.52.0 + Server 2.10+) — durable `WorkQueuePolicy` stream (ack-deletes, single consumer per subject, `MaxDeliver` retry); far less operational weight than Kafka at 500 req/s.
-- **PostgreSQL 16+** via **pgx/v5** (v5.10.0) — sole datastore (no Redis); `pgxpool.Pool` for OmniGo + `pgx/v5/stdlib` bridge for whatsmeow/goose (both speak `database/sql`) → **one** PG driver stack.
+- **PostgreSQL 16+** via **pgx/v5** (v5.10.0) — sole datastore (no Redis); `pgxpool.Pool` for PerGo + `pgx/v5/stdlib` bridge for whatsmeow/goose (both speak `database/sql`) → **one** PG driver stack.
 - **whatsmeow** (`go.mau.fi/whatsmeow`, dated pseudo-version — **no semver tags**, pin deliberately) — the only viable Go WhatsApp Web multi-device library; `sqlstore.Container` supports Postgres; writes device keys plaintext (see gaps).
 - **a-h/templ** (v0.3.1020) + **HTMX 2.x** (`htmx.org@2.0.10`) — compile-time type-safe HTML + server-driven fragments for the operator console; avoid htmx v4 beta.
 - **log/slog** (stdlib) + **golang.org/x/time/rate** (v0.15.0) — `Limiter.Wait(ctx)` yields the P while pacing unofficial dispatch 1–3s.
@@ -49,11 +49,11 @@ Feature research (`FEATURES.md`) maps the CPaaS ecosystem against the PRD. The d
 
 **Defer (v2+):** message scheduling (`send_at`), content redaction/PII retention, SMS/RCS (separate regulatory stack), OpenTelemetry tracing export, Prometheus exporter (only when scraping infra exists), contact/consent API, per-key spend limits.
 
-**Anti-features (explicit exclusions, keep):** Voice/WebRTC/SIP, visual flow builder, group management, Kafka/Redis/gRPC mesh, ORM/DI framework, OpenTelemetry-in-MVP, SMS/MMS/RCS, phone-number purchasing, per-message billing/metering, built-in AI generation, two-way conversational state machine inside OmniGo (router is stateless; consumer owns session windows), link shortening.
+**Anti-features (explicit exclusions, keep):** Voice/WebRTC/SIP, visual flow builder, group management, Kafka/Redis/gRPC mesh, ORM/DI framework, OpenTelemetry-in-MVP, SMS/MMS/RCS, phone-number purchasing, per-message billing/metering, built-in AI generation, two-way conversational state machine inside PerGo (router is stateless; consumer owns session windows), link shortening.
 
 ### Architecture Approach
 
-Architecture research (`ARCHITECTURE.md`) validates the PRD's durable work-queue pipeline against external evidence and surfaces 10 structural gaps. The PRD's domain-oriented package layout is correct; two structural refinements emerge: `platform/postgres/` must host **two** pool constructors (`pgxpool.Pool` for OmniGo + `*sql.DB` for whatsmeow's `sqlstore`) sharing one database, and `platform/migrations/` must run **two** migration systems at boot (goose for OmniGo tables + `Container.Upgrade(ctx)` for whatsmeow's `whatsmeow_*` tables — non-overlapping schemas, same DB).
+Architecture research (`ARCHITECTURE.md`) validates the PRD's durable work-queue pipeline against external evidence and surfaces 10 structural gaps. The PRD's domain-oriented package layout is correct; two structural refinements emerge: `platform/postgres/` must host **two** pool constructors (`pgxpool.Pool` for PerGo + `*sql.DB` for whatsmeow's `sqlstore`) sharing one database, and `platform/migrations/` must run **two** migration systems at boot (goose for PerGo tables + `Container.Upgrade(ctx)` for whatsmeow's `whatsmeow_*` tables — non-overlapping schemas, same DB).
 
 **Major components:**
 1. **Ingestion gateway (Echo)** — parse, validate, attach Trace-ID, enforce backpressure, publish to broker, return 202; two I/O max on hot path (cached auth + publish).
@@ -83,7 +83,7 @@ Based on combined research, the validated ordering is: **M1 Core Foundation must
 ### Phase 1: Core Foundation (M1)
 
 **Rationale:** Identity, audit, crypto, and trace scaffolding are hard dependencies of every later phase — and the schema decisions (partition strategy, `key_id` columns, tenant-context convention) are expensive to retrofit. Build first.
-**Delivers:** Echo server + `cmd/omnigo` composition root; PostgreSQL with **both** pool constructors (`pgxpool` + `*sql.DB` for whatsmeow) and **both** migration runners (goose + `Container.Upgrade`); schemas for `workspaces`, `api_keys` (SHA-256+prefix), `devices`, `audit_logs` (partitioned by **`created_at` range**); `platform/trace`, `platform/crypto` (AES-256-GCM with fresh nonces + envelope pattern + `key_id` columns), `platform/backoff`; API-key auth middleware + in-mem cache; audit engine (buffer + batch writer + `pool.Acquire`→`CopyFrom`); Templ+HTMX admin shell (workspaces, key gen; QR deferred to M2); `/healthz` + `/readyz` + pprof on `localhost:6060`; graceful shutdown scaffolding (root ctx, `Echo.Shutdown`, 30s ceiling). **Tenant-context convention enforced from the first query** (linter/wrapper).
+**Delivers:** Echo server + `cmd/pergo` composition root; PostgreSQL with **both** pool constructors (`pgxpool` + `*sql.DB` for whatsmeow) and **both** migration runners (goose + `Container.Upgrade`); schemas for `workspaces`, `api_keys` (SHA-256+prefix), `devices`, `audit_logs` (partitioned by **`created_at` range**); `platform/trace`, `platform/crypto` (AES-256-GCM with fresh nonces + envelope pattern + `key_id` columns), `platform/backoff`; API-key auth middleware + in-mem cache; audit engine (buffer + batch writer + `pool.Acquire`→`CopyFrom`); Templ+HTMX admin shell (workspaces, key gen; QR deferred to M2); `/healthz` + `/readyz` + pprof on `localhost:6060`; graceful shutdown scaffolding (root ctx, `Echo.Shutdown`, 30s ceiling). **Tenant-context convention enforced from the first query** (linter/wrapper).
 **Addresses features:** API key auth, audit logging, credential encryption, multi-tenant workspaces (enforced), health/readiness, admin panel shell.
 **Avoids pitfalls:** P4 (audit partition strategy), P5 (tenant convention from day one), P6 (nonce/key_id schema). NATS is NOT brought up beyond a connectivity check — ingest returns 503 until M2; keeps M1 focused on identity + audit.
 
@@ -154,7 +154,7 @@ Phases with standard patterns (skip research-phase):
 - **whatsmeow GitHub issue tracker** — issue #810 (ban-risk warnings, OPEN May 2025), issue #561 (force-logout for unofficial app use, 403).
 - **PostgreSQL docs** — §5.12 Table Partitioning (declarative, limitations, unique-key-must-include-partition-key), §5.9 Row Security Policies (BYPASSRLS, covert channels via referential integrity).
 - **Go `crypto/cipher` package docs** — AEAD, NewGCM, nonce uniqueness, 2^32 random-nonce ceiling, `NewGCMWithRandomNonce` (Go 1.24+).
-- **OmniGo PRD** (`docs/PRD OmniGo.md` §5–9) and **architecture docs** (`docs/architecture/01-06`) — authoritative for current scope, exclusions, technical posture; coverage assessment against research.
+- **PerGo PRD** (`docs/PRD PerGo.md` §5–9) and **architecture docs** (`docs/architecture/01-06`) — authoritative for current scope, exclusions, technical posture; coverage assessment against research.
 
 ### Secondary (MEDIUM confidence)
 - **gdbrns/go-whatsapp-multi-session-rest-api** (GitHub reference impl) — production whatsmeow+PostgreSQL patterns: startup reconnect-storm protection (semaphore + jitter), WA Web version auto-refresh (`SetWAVersion`), 86 webhook event types with retries/quotas, JWT-vs-API-key scoping divergence.

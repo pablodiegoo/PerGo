@@ -18,7 +18,7 @@ All 4 tasks specified in the plan `05-02-PLAN.md` have been successfully impleme
 ### Task 3: WABA template CRUD and Sync REST endpoints
 - Created `internal/api/handler/admin/waba_template.go` exposing HTTP REST handlers for listing, creating, and syncing approval status of WABA templates.
 - Created `internal/api/handler/admin/waba_template_test.go` testing the endpoints using mocked Meta API HTTP responses.
-- Registered endpoints in `cmd/omnigo/main.go` under the protected admin group.
+- Registered endpoints in `cmd/pergo/main.go` under the protected admin group.
 
 ### Task 4: Admin UI pages for template management
 - Created `templates/pages/waba_templates.templ` outlining the list view, creation form modal, and status sync controls.
@@ -27,21 +27,21 @@ All 4 tasks specified in the plan `05-02-PLAN.md` have been successfully impleme
 ## Files Created/Modified
 
 ### Created
-- [internal/platform/postgres/migrations/005_create_waba_templates.sql](file:///home/pablo/Coding/OmniGo/internal/platform/postgres/migrations/005_create_waba_templates.sql)
-- [internal/repository/waba_template.go](file:///home/pablo/Coding/OmniGo/internal/repository/waba_template.go)
-- [internal/repository/waba_template_test.go](file:///home/pablo/Coding/OmniGo/internal/repository/waba_template_test.go)
-- [internal/api/handler/admin/waba_template.go](file:///home/pablo/Coding/OmniGo/internal/api/handler/admin/waba_template.go)
-- [internal/api/handler/admin/waba_template_test.go](file:///home/pablo/Coding/OmniGo/internal/api/handler/admin/waba_template_test.go)
-- [templates/pages/waba_templates.templ](file:///home/pablo/Coding/OmniGo/templates/pages/waba_templates.templ)
+- [internal/platform/postgres/migrations/005_create_waba_templates.sql](file:///home/pablo/Coding/PerGo/internal/platform/postgres/migrations/005_create_waba_templates.sql)
+- [internal/repository/waba_template.go](file:///home/pablo/Coding/PerGo/internal/repository/waba_template.go)
+- [internal/repository/waba_template_test.go](file:///home/pablo/Coding/PerGo/internal/repository/waba_template_test.go)
+- [internal/api/handler/admin/waba_template.go](file:///home/pablo/Coding/PerGo/internal/api/handler/admin/waba_template.go)
+- [internal/api/handler/admin/waba_template_test.go](file:///home/pablo/Coding/PerGo/internal/api/handler/admin/waba_template_test.go)
+- [templates/pages/waba_templates.templ](file:///home/pablo/Coding/PerGo/templates/pages/waba_templates.templ)
 
 ### Modified
-- [internal/domain/message.go](file:///home/pablo/Coding/OmniGo/internal/domain/message.go)
-- [internal/domain/message_test.go](file:///home/pablo/Coding/OmniGo/internal/domain/message_test.go)
-- [internal/channel/dispatcher.go](file:///home/pablo/Coding/OmniGo/internal/channel/dispatcher.go)
-- [internal/channel/whatsapp/waba.go](file:///home/pablo/Coding/OmniGo/internal/channel/whatsapp/waba.go)
-- [internal/channel/whatsapp/waba_test.go](file:///home/pablo/Coding/OmniGo/internal/channel/whatsapp/waba_test.go)
-- [cmd/omnigo/main.go](file:///home/pablo/Coding/OmniGo/cmd/omnigo/main.go)
-- [templates/pages/workspaces.templ](file:///home/pablo/Coding/OmniGo/templates/pages/workspaces.templ)
+- [internal/domain/message.go](file:///home/pablo/Coding/PerGo/internal/domain/message.go)
+- [internal/domain/message_test.go](file:///home/pablo/Coding/PerGo/internal/domain/message_test.go)
+- [internal/channel/dispatcher.go](file:///home/pablo/Coding/PerGo/internal/channel/dispatcher.go)
+- [internal/channel/whatsapp/waba.go](file:///home/pablo/Coding/PerGo/internal/channel/whatsapp/waba.go)
+- [internal/channel/whatsapp/waba_test.go](file:///home/pablo/Coding/PerGo/internal/channel/whatsapp/waba_test.go)
+- [cmd/pergo/main.go](file:///home/pablo/Coding/PerGo/cmd/pergo/main.go)
+- [templates/pages/workspaces.templ](file:///home/pablo/Coding/PerGo/templates/pages/workspaces.templ)
 
 ## Verification Instructions
 

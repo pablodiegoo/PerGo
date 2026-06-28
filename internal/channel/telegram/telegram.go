@@ -11,10 +11,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/pablojhp.omnigo/internal/channel"
-	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
-	"github.com/pablojhp.omnigo/internal/platform/storage"
-	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // TelegramAdapter implements channel.Dispatcher for Telegram Bot API.

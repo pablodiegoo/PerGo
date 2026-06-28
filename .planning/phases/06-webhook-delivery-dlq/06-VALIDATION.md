@@ -50,7 +50,7 @@ validated: 2026-06-27T11:24:00Z
 | 06-01-03 | 01 | 2 | WHOOK-05 | unit | `go test ./internal/platform/queue/ -run TestRetryAttemptParsing` | worker_test.go | ✅ green |
 | 06-01-03 | 01 | 2 | WHOOK-05 | unit | `go test ./internal/platform/queue/ -run TestExponentialBackoff` | worker_test.go | ✅ green |
 | 06-01-03 | 01 | 2 | WHOOK-05 | integration | `go test ./internal/platform/queue/ -run TestWebhookWorker_TerminalErrorDLQ` | webhook_worker_test.go | ✅ green |
-| 06-01-04 | 01 | 3 | WHOOK-04 | integration | `go test ./cmd/omnigo/ -run TestAdminWebhookDLQHandlers` | admin_webhook_dlq_test.go | ✅ green |
+| 06-01-04 | 01 | 3 | WHOOK-04 | integration | `go test ./cmd/pergo/ -run TestAdminWebhookDLQHandlers` | admin_webhook_dlq_test.go | ✅ green |
 
 ---
 

@@ -23,7 +23,7 @@ autonomous: true
 - `internal/platform/postgres/migrations/003_add_device_whatsapp_fields.sql`
 
 **Files modified:**
-- `cmd/omnigo/main.go` — Manager wiring, shutdown registration
+- `cmd/pergo/main.go` — Manager wiring, shutdown registration
 
 **Tests:** 10 tests passing (device: 2, registry: 8)
 

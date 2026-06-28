@@ -12,19 +12,19 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/pablojhp.omnigo/internal/channel"
-	"github.com/pablojhp.omnigo/internal/domain"
-	"github.com/pablojhp.omnigo/internal/platform/crypto"
-	"github.com/pablojhp.omnigo/internal/platform/postgres"
-	"github.com/pablojhp.omnigo/internal/platform/postgres/tenant"
-	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/postgres"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 func getTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dsn := os.Getenv("OMNIGO_DATABASE_URL")
+	dsn := os.Getenv("PERGO_DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://postgres:postgres@localhost:5432/omnigo?sslmode=disable"
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -119,7 +119,7 @@ func TestWABADispatch(t *testing.T) {
 			if req.MessagingProduct != "whatsapp" || req.RecipientType != "individual" {
 				t.Errorf("unexpected product or recipient: %+v", req)
 			}
-			if req.To != "+5511999999999" || req.Type != "text" || req.Text == nil || req.Text.Body != "Hello from OmniGo!" {
+			if req.To != "+5511999999999" || req.Type != "text" || req.Text == nil || req.Text.Body != "Hello from PerGo!" {
 				t.Errorf("unexpected payload details: %+v", req)
 			}
 
@@ -133,7 +133,7 @@ func TestWABADispatch(t *testing.T) {
 
 		payload := &channel.MessagePayload{
 			To:   "+5511999999999",
-			Body: "Hello from OmniGo!",
+			Body: "Hello from PerGo!",
 		}
 
 		err := adapter.Dispatch(tenantCtx, payload)
@@ -158,7 +158,7 @@ func TestWABADispatch(t *testing.T) {
 			if len(req.Template.Components) != 1 || len(req.Template.Components[0].Parameters) != 2 {
 				t.Errorf("unexpected components or parameters: %+v", req.Template.Components)
 			}
-			if req.Template.Components[0].Parameters[0].Text != "Pablo" || req.Template.Components[0].Parameters[1].Text != "OmniGo" {
+			if req.Template.Components[0].Parameters[0].Text != "Pablo" || req.Template.Components[0].Parameters[1].Text != "PerGo" {
 				t.Errorf("unexpected parameters content: %+v", req.Template.Components[0].Parameters)
 			}
 
@@ -176,7 +176,7 @@ func TestWABADispatch(t *testing.T) {
 				"template_name":     "welcome_test",
 				"template_language": "pt_BR",
 				"param1":            "Pablo",
-				"param2":            "OmniGo",
+				"param2":            "PerGo",
 			},
 		}
 

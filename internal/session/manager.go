@@ -17,12 +17,12 @@ import (
 	waEvents "go.mau.fi/whatsmeow/types/events"
 
 	"github.com/google/uuid"
-	"github.com/pablojhp.omnigo/internal/channel"
-	whatsapp "github.com/pablojhp.omnigo/internal/channel/whatsapp"
-	"github.com/pablojhp.omnigo/internal/platform/audit"
-	"github.com/pablojhp.omnigo/internal/platform/queue"
-	"github.com/pablojhp.omnigo/internal/platform/storage"
-	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.pergo/internal/channel"
+	whatsapp "github.com/pablojhp.pergo/internal/channel/whatsapp"
+	"github.com/pablojhp.pergo/internal/platform/audit"
+	"github.com/pablojhp.pergo/internal/platform/queue"
+	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 const (

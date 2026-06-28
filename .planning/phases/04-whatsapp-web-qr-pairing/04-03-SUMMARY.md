@@ -36,7 +36,7 @@ autonomous: true
 - `internal/session/registry.go` — `DisconnectByJID` method
 - `internal/channel/whatsapp/client.go` — `Connect()`, `Disconnect()` methods
 - `templates/layout/sidebar.templ` — Devices + Telemetry links
-- `cmd/omnigo/main.go` — Device/Telemetry handler wiring + `natsConn.IsConnected()`
+- `cmd/pergo/main.go` — Device/Telemetry handler wiring + `natsConn.IsConnected()`
 
 **Tests:** All session and API tests pass (session: 5+10 existing + 5 new QR tests; admin handlers: 6 tests)
 

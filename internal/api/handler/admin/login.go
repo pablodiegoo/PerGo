@@ -5,10 +5,10 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	mw "github.com/pablojhp.omnigo/internal/api/middleware"
-	"github.com/pablojhp.omnigo/internal/repository"
-	"github.com/pablojhp.omnigo/templates/layout"
-	"github.com/pablojhp.omnigo/templates/pages"
+	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/layout"
+	"github.com/pablojhp.pergo/templates/pages"
 )
 
 // LoginPage renders the login form using a minimal layout (no sidebar, no HTMX polling).

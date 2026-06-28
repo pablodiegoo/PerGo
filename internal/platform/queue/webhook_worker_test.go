@@ -14,8 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/pablojhp.omnigo/internal/platform/crypto"
-	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 func TestSignPayload(t *testing.T) {
@@ -167,14 +167,14 @@ func TestWebhookWorker_Integration(t *testing.T) {
 	}
 
 	// 9. Verify Signature headers
-	sigHeader := headers.Get("X-OmniGo-Signature")
+	sigHeader := headers.Get("X-PerGo-Signature")
 	if sigHeader == "" {
-		t.Error("missing X-OmniGo-Signature header in delivered webhook")
+		t.Error("missing X-PerGo-Signature header in delivered webhook")
 	} else {
 		// Format: t=timestamp,v1=sig
 		parts := strings.Split(sigHeader, ",")
 		if len(parts) != 2 || !strings.HasPrefix(parts[0], "t=") || !strings.HasPrefix(parts[1], "v1=") {
-			t.Errorf("invalid format for X-OmniGo-Signature: %q", sigHeader)
+			t.Errorf("invalid format for X-PerGo-Signature: %q", sigHeader)
 		} else {
 			ts := strings.TrimPrefix(parts[0], "t=")
 			computedSig := SignPayload(payloadBytes, webhookSecret, ts)

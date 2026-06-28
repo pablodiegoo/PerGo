@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/pablojhp.omnigo/templates/layout"
+	"github.com/pablojhp.pergo/templates/layout"
 )
 
 // SessionInfo holds per-session display data for the telemetry page.

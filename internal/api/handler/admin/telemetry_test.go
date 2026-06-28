@@ -8,7 +8,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 
-	"github.com/pablojhp.omnigo/internal/api/handler/admin"
+	"github.com/pablojhp.pergo/internal/api/handler/admin"
 )
 
 // TestTelemetryHandler_Construction verifies TelemetryHandler is constructable.

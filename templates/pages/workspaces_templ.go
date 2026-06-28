@@ -11,9 +11,9 @@ import templruntime "github.com/a-h/templ/runtime"
 import (
 	"fmt"
 
-	"github.com/pablojhp.omnigo/internal/repository"
-	"github.com/pablojhp.omnigo/templates/components"
-	"github.com/pablojhp.omnigo/templates/layout"
+	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/components"
+	"github.com/pablojhp.pergo/templates/layout"
 )
 
 type WABAConfig struct {

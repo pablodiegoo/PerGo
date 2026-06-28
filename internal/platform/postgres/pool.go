@@ -1,5 +1,5 @@
 // Package postgres provides PostgreSQL connection management and migration
-// utilities for OmniGo.
+// utilities for PerGo.
 package postgres
 
 import (

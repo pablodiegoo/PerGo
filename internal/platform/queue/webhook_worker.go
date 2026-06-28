@@ -18,7 +18,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	"github.com/pablojhp.omnigo/internal/repository"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 type WebhookEvent struct {
@@ -242,7 +242,7 @@ func (w *WebhookWorker) dispatch(ctx context.Context, url string, secret []byte,
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-OmniGo-Signature", signature)
+	req.Header.Set("X-PerGo-Signature", signature)
 	if traceID != "" {
 		req.Header.Set("X-Trace-ID", traceID)
 	}

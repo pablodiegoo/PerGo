@@ -12,8 +12,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/pablojhp.omnigo/internal/repository"
-	"github.com/pablojhp.omnigo/templates/components"
+	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/components"
 )
 
 // APIKeyRow renders a single API key table row.

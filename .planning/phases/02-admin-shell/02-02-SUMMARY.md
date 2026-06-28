@@ -31,11 +31,11 @@ key-files:
     - templates/pages/workspaces.templ
     - templates/pages/apikeys.templ
     - templates/components/modal.templ
-    - cmd/omnigo/admin_workspace_test.go
+    - cmd/pergo/admin_workspace_test.go
   modified:
     - internal/repository/workspace.go
     - internal/repository/apikey.go
-    - cmd/omnigo/main.go
+    - cmd/pergo/main.go
 
 key-decisions:
   - "Hex-encoded API key generation to avoid invalid UTF-8 in PostgreSQL prefix column"
@@ -55,10 +55,10 @@ coverage:
     requirement: ADMIN-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_workspace_test.go#TestAdminWorkspaceList"
+        ref: "cmd/pergo/admin_workspace_test.go#TestAdminWorkspaceList"
         status: pass
       - kind: integration
-        ref: "cmd/omnigo/admin_workspace_test.go#TestAdminWorkspaceCreate"
+        ref: "cmd/pergo/admin_workspace_test.go#TestAdminWorkspaceCreate"
         status: pass
     human_judgment: false
   - id: D2
@@ -66,7 +66,7 @@ coverage:
     requirement: ADMIN-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_workspace_test.go#TestAdminWorkspaceDetail"
+        ref: "cmd/pergo/admin_workspace_test.go#TestAdminWorkspaceDetail"
         status: pass
     human_judgment: false
   - id: D3
@@ -74,10 +74,10 @@ coverage:
     requirement: ADMIN-01
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_workspace_test.go#TestAdminWorkspaceConfirmDelete"
+        ref: "cmd/pergo/admin_workspace_test.go#TestAdminWorkspaceConfirmDelete"
         status: pass
       - kind: integration
-        ref: "cmd/omnigo/admin_workspace_test.go#TestAdminWorkspaceDelete"
+        ref: "cmd/pergo/admin_workspace_test.go#TestAdminWorkspaceDelete"
         status: pass
     human_judgment: false
   - id: D4
@@ -85,7 +85,7 @@ coverage:
     requirement: ADMIN-02
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_workspace_test.go#TestAdminAPIKeyList"
+        ref: "cmd/pergo/admin_workspace_test.go#TestAdminAPIKeyList"
         status: pass
     human_judgment: false
   - id: D5
@@ -93,7 +93,7 @@ coverage:
     requirement: ADMIN-02
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_workspace_test.go#TestAdminAPIKeyGenerate"
+        ref: "cmd/pergo/admin_workspace_test.go#TestAdminAPIKeyGenerate"
         status: pass
     human_judgment: false
   - id: D6
@@ -101,10 +101,10 @@ coverage:
     requirement: ADMIN-02
     verification:
       - kind: integration
-        ref: "cmd/omnigo/admin_workspace_test.go#TestAdminAPIKeyConfirmRevoke"
+        ref: "cmd/pergo/admin_workspace_test.go#TestAdminAPIKeyConfirmRevoke"
         status: pass
       - kind: integration
-        ref: "cmd/omnigo/admin_workspace_test.go#TestAdminAPIKeyRevoke"
+        ref: "cmd/pergo/admin_workspace_test.go#TestAdminAPIKeyRevoke"
         status: pass
     human_judgment: false
 
@@ -153,8 +153,8 @@ _TDD tasks may have multiple commits (test → feat → refactor)_
 - `templates/components/modal.templ` - Reusable ConfirmModal with hx-delete pattern
 - `internal/repository/workspace.go` - Added List (with limit) and Delete methods
 - `internal/repository/apikey.go` - Added ListByWorkspace; fixed UTF-8 encoding in key generation
-- `cmd/omnigo/main.go` - Wired workspace and API key admin routes
-- `cmd/omnigo/admin_workspace_test.go` - 9 integration tests for workspace and API key flows
+- `cmd/pergo/main.go` - Wired workspace and API key admin routes
+- `cmd/pergo/admin_workspace_test.go` - 9 integration tests for workspace and API key flows
 
 ## Decisions Made
 - **Hex-encoded API key generation:** `string(keyBytes)` produced invalid UTF-8 sequences rejected by PostgreSQL. Fixed with `hex.EncodeToString(keyBytes)` for safe prefix storage.
@@ -177,7 +177,7 @@ _TDD tasks may have multiple commits (test → feat → refactor)_
 - **Found during:** Task 2 (GREEN phase — tests failing with "duplicate key value violates unique constraint")
 - **Issue:** Tests used static workspace names (e.g. "Detail Workspace") that persisted in shared DB across runs
 - **Fix:** `createTestWorkspace` now appends UUID suffix; `TestAdminWorkspaceCreate` uses unique name
-- **Files modified:** cmd/omnigo/admin_workspace_test.go
+- **Files modified:** cmd/pergo/admin_workspace_test.go
 - **Verification:** All 9 tests pass consistently across runs
 - **Committed in:** aa41164
 
@@ -187,7 +187,7 @@ _TDD tasks may have multiple commits (test → feat → refactor)_
 **Impact on plan:** Both fixes necessary for correctness. UTF-8 encoding is a data integrity issue; test isolation prevents flaky tests. No scope creep.
 
 ## Issues Encountered
-- PostgreSQL on port 5432 needed `omnigo_test` database created before tests could run (test DSN targets port 5432, not the omnigo-test-pg container on 5433)
+- PostgreSQL on port 5432 needed `pergo_test` database created before tests could run (test DSN targets port 5432, not the pergo-test-pg container on 5433)
 
 ## User Setup Required
 

@@ -31,7 +31,7 @@ key-files:
   modified:
     - internal/platform/queue/worker.go
     - internal/api/handler/message.go
-    - cmd/omnigo/main.go
+    - cmd/pergo/main.go
 
 key-decisions:
   - "Rate limiter middleware runs AFTER auth (workspace_id available), not before"
@@ -156,7 +156,7 @@ status: complete
 - `internal/platform/queue/worker.go` — Updated with retry, TTL, dedup, new constructor
 - `internal/platform/queue/worker_test.go` — 4 tests (retry parsing, backoff calc, TTL check, dedup)
 - `internal/api/handler/message.go` — QueueDepth field, backpressure check, optional middleware in RegisterRoutes
-- `cmd/omnigo/main.go` — RateLimiter, QueueDepthTracker, RateLimiterMiddleware, Worker(5, 60s)
+- `cmd/pergo/main.go` — RateLimiter, QueueDepthTracker, RateLimiterMiddleware, Worker(5, 60s)
 - `internal/platform/postgres/migrations/002_partition_audit.sql` — goose StatementBegin/End fix
 
 ## Decisions Made

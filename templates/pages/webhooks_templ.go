@@ -10,8 +10,8 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import (
 	"fmt"
-	"github.com/pablojhp.omnigo/internal/repository"
-	"github.com/pablojhp.omnigo/templates/layout"
+	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/layout"
 )
 
 func WebhooksPage(workspaces []repository.Workspace, dlqItems []*repository.WebhookDLQ) templ.Component {
@@ -254,7 +254,7 @@ func WorkspaceWebhooksContent(ws repository.Workspace, config *repository.Webhoo
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<small class=\"form-text text-muted\" style=\"color: var(--color-text-muted); font-size: 0.8rem; display: block; margin-top: 0.25rem;\">Used to compute HMAC-SHA256 signature in X-OmniGo-Signature header.</small></div><div class=\"form-actions\"><button type=\"submit\" class=\"btn btn-primary\">Save Configuration</button> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<small class=\"form-text text-muted\" style=\"color: var(--color-text-muted); font-size: 0.8rem; display: block; margin-top: 0.25rem;\">Used to compute HMAC-SHA256 signature in X-PerGo-Signature header.</small></div><div class=\"form-actions\"><button type=\"submit\" class=\"btn btn-primary\">Save Configuration</button> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

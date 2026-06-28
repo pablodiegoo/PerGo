@@ -27,18 +27,18 @@ All tests passed successfully on `2026-06-27`.
 
 ```bash
 $ go test -count=1 ./...
-ok  	github.com/pablojhp.omnigo/cmd/omnigo	4.525s
-ok  	github.com/pablojhp.omnigo/internal/api/handler	0.263s
-ok  	github.com/pablojhp.omnigo/internal/api/handler/admin	0.077s
-ok  	github.com/pablojhp.omnigo/internal/api/middleware	0.029s
-ok  	github.com/pablojhp.omnigo/internal/channel	0.005s
-ok  	github.com/pablojhp.omnigo/internal/channel/telegram	0.093s
-ok  	github.com/pablojhp.omnigo/internal/channel/whatsapp	0.045s
-ok  	github.com/pablojhp.omnigo/internal/domain	0.004s
-ok  	github.com/pablojhp.omnigo/internal/platform/queue	15.823s
-ok  	github.com/pablojhp.omnigo/internal/platform/storage	0.292s
-ok  	github.com/pablojhp.omnigo/internal/repository	0.191s
-ok  	github.com/pablojhp.omnigo/internal/session	0.013s
+ok  	github.com/pablojhp.pergo/cmd/pergo	4.525s
+ok  	github.com/pablojhp.pergo/internal/api/handler	0.263s
+ok  	github.com/pablojhp.pergo/internal/api/handler/admin	0.077s
+ok  	github.com/pablojhp.pergo/internal/api/middleware	0.029s
+ok  	github.com/pablojhp.pergo/internal/channel	0.005s
+ok  	github.com/pablojhp.pergo/internal/channel/telegram	0.093s
+ok  	github.com/pablojhp.pergo/internal/channel/whatsapp	0.045s
+ok  	github.com/pablojhp.pergo/internal/domain	0.004s
+ok  	github.com/pablojhp.pergo/internal/platform/queue	15.823s
+ok  	github.com/pablojhp.pergo/internal/platform/storage	0.292s
+ok  	github.com/pablojhp.pergo/internal/repository	0.191s
+ok  	github.com/pablojhp.pergo/internal/session	0.013s
 ```
 
 **Verdict:** Phase 7 meets all implementation and UAT criteria.

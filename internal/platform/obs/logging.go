@@ -1,4 +1,4 @@
-// Package obs provides observability utilities for OmniGo, including
+// Package obs provides observability utilities for PerGo, including
 // structured logging with trace context propagation.
 package obs
 
@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/pablojhp.omnigo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 )
 
 type loggerKey struct{}

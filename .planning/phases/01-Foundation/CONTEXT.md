@@ -2,18 +2,18 @@
 
 ## Summary
 
-Phase 1 locks in the expensive-to-retrofit schema decisions before any message flows. By the end of this phase, the OmniGo server boots with identity management (workspaces + API keys), AES-256-GCM credential encryption with key rotation support, immutable partitioned audit logging with buffered batch writes, and full observability (health endpoints, pprof, structured tracing, expvar). NATS is present only as a connectivity ping for /readyz — JetStream provisioning and message queuing are deferred to Phase 3.
+Phase 1 locks in the expensive-to-retrofit schema decisions before any message flows. By the end of this phase, the PerGo server boots with identity management (workspaces + API keys), AES-256-GCM credential encryption with key rotation support, immutable partitioned audit logging with buffered batch writes, and full observability (health endpoints, pprof, structured tracing, expvar). NATS is present only as a connectivity ping for /readyz — JetStream provisioning and message queuing are deferred to Phase 3.
 
 ## Key Architectural Decisions
 
 ### PostgreSQL Dual-Access Model
-- One `*pgxpool.Pool` for OmniGo application queries (workspace/API key CRUD, audit writes)
+- One `*pgxpool.Pool` for PerGo application queries (workspace/API key CRUD, audit writes)
 - One `*sql.DB` via `pgx/v5/stdlib` bridge for whatsmeow's `sqlstore.Container` (NOT `lib/pq`)
 - Both share the same database, non-overlapping schemas
 
 ### Migration Strategy
-- **Goose** manages OmniGo-owned tables: `workspaces`, `api_keys`, `devices`, `audit_logs`
-- `Container.Upgrade(ctx)` (whatsmeow) manages `whatsmeow_*` tables — called after OmniGo migrations at boot
+- **Goose** manages PerGo-owned tables: `workspaces`, `api_keys`, `devices`, `audit_logs`
+- `Container.Upgrade(ctx)` (whatsmeow) manages `whatsmeow_*` tables — called after PerGo migrations at boot
 - Embedded SQL migrations via `go:embed`
 
 ### Tenant Isolation (Convention, not RLS in M1)

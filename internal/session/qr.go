@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	whatsapp "github.com/pablojhp.omnigo/internal/channel/whatsapp"
+	whatsapp "github.com/pablojhp.pergo/internal/channel/whatsapp"
 )
 
 const (

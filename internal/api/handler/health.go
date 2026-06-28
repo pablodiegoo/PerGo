@@ -1,4 +1,4 @@
-// Package handler provides HTTP handler constructors for the OmniGo API.
+// Package handler provides HTTP handler constructors for the PerGo API.
 package handler
 
 import (

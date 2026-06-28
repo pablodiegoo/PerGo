@@ -16,7 +16,7 @@ RUN go mod download
 RUN templ generate ./...
 
 # Build the CGO-free static binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o omnigo ./cmd/omnigo
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o pergo ./cmd/pergo
 
 # Stage 2: Minimal runtime image
 FROM gcr.io/distroless/static-debian12:latest
@@ -27,7 +27,7 @@ WORKDIR /app
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Copy the compiled binary
-COPY --from=builder /app/omnigo .
+COPY --from=builder /app/pergo .
 
 # Copy static assets (needed for admin UI)
 COPY --from=builder /app/static ./static
@@ -36,4 +36,4 @@ COPY --from=builder /app/static ./static
 EXPOSE 8080
 
 # Command to run the application
-ENTRYPOINT ["/app/omnigo"]
+ENTRYPOINT ["/app/pergo"]
