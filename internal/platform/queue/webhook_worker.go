@@ -57,7 +57,7 @@ func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dlqRepo *repository.We
 	}
 
 	// Create pull consumer
-	consumer, err := stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
+	consumer, err := createConsumerWithRetry(ctx, stream, jetstream.ConsumerConfig{
 		Durable:       "webhooks-consumer",
 		Description:   "Webhook delivery worker consumer",
 		DeliverPolicy: jetstream.DeliverAllPolicy,
@@ -84,7 +84,7 @@ func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dlqRepo *repository.We
 	}
 
 	// Create inbound consumer
-	inboundConsumer, err := inboundStream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
+	inboundConsumer, err := createConsumerWithRetry(ctx, inboundStream, jetstream.ConsumerConfig{
 		Durable:       "inbound-webhooks-consumer",
 		Description:   "Inbound webhook delivery worker consumer",
 		DeliverPolicy: jetstream.DeliverAllPolicy,

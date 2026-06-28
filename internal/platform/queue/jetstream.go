@@ -81,19 +81,40 @@ func EnsureConsumer(ctx context.Context, stream jetstream.Stream, consumerName s
 		slog.Info("jetstream consumer found", "consumer", consumerName)
 		return cons, nil
 	}
-	// Create new consumer
-	cons, err = stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
+
+	cfg := jetstream.ConsumerConfig{
 		Durable:       consumerName,
 		FilterSubject: StreamSubject,
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		MaxDeliver:    5,
 		MaxAckPending: 100,
-	})
+	}
+
+	cons, err = createConsumerWithRetry(ctx, stream, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("create consumer %s: %w", consumerName, err)
 	}
 	slog.Info("jetstream consumer ready", "consumer", consumerName)
 	return cons, nil
+}
+
+func createConsumerWithRetry(ctx context.Context, stream jetstream.Stream, cfg jetstream.ConsumerConfig) (jetstream.Consumer, error) {
+	var cons jetstream.Consumer
+	var err error
+	for i := 0; i < 3; i++ {
+		cons, err = stream.CreateOrUpdateConsumer(ctx, cfg)
+		if err == nil {
+			return cons, nil
+		}
+		slog.Warn("failed to create/update consumer, retrying after delete", "consumer", cfg.Durable, "attempt", i+1, "error", err)
+		_ = stream.DeleteConsumer(ctx, cfg.Durable)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+	return nil, err
 }
 
 // JetStreamPublisher publishes messages to the JetStream "messages.outbound"
