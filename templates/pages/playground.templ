@@ -209,28 +209,6 @@ templ PlaygroundContent(workspaces []repository.Workspace) {
 					></textarea>
 				</div>
 
-				<div id="waba-template-fields" style="display: none; border-top: 1px solid var(--color-border); padding-top: var(--spacing-md); margin-top: var(--spacing-md);">
-					<h3 style="font-size: 1rem; font-weight: 600; margin-bottom: var(--spacing-sm); color: var(--color-text);">WABA Template Options (Optional)</h3>
-					<div class="form-group">
-						<label for="template_name">Template Name</label>
-						<input type="text" name="template_name" id="template_name" placeholder="ex: hello_world" class="form-input" style="width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius);"/>
-					</div>
-					<div class="form-group">
-						<label for="template_language">Language Code</label>
-						<input type="text" name="template_language" id="template_language" placeholder="ex: en_US" class="form-input" style="width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius);"/>
-					</div>
-					<div class="form-group">
-						<label for="template_components">Template Parameters (JSON Array)</label>
-						<textarea
-							name="template_components"
-							id="template_components"
-							rows="3"
-							style="width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius); resize: vertical; font-family: monospace;"
-							placeholder='[{"type":"body","parameters":[{"type":"text","text":"John"}]}]'
-						></textarea>
-					</div>
-				</div>
-
 				<button type="submit" class="btn btn-primary" style="width: 100%;">
 					Enqueue Outbound Message
 				</button>
@@ -241,22 +219,46 @@ templ PlaygroundContent(workspaces []repository.Workspace) {
 			(function() {
 				function initPlayground() {
 					const channelSelect = document.getElementById("channel");
-					const wabaFields = document.getElementById("waba-template-fields");
+					const bodyContainer = document.getElementById("body-field-container");
 					const bodyTextarea = document.getElementById("body");
-					if (!channelSelect || !wabaFields || !bodyTextarea) return;
+					const templateSelectContainer = document.getElementById("playground-template-select-container");
+					if (!channelSelect || !bodyContainer || !bodyTextarea || !templateSelectContainer) return;
 
 					function updateFields() {
-						if (channelSelect.value === "whatsapp_cloud") {
-							wabaFields.style.display = "block";
-							bodyTextarea.required = false;
+						const isWABA = channelSelect.value === "whatsapp_cloud";
+						if (isWABA) {
+							templateSelectContainer.style.display = "block";
+							const templateSelect = document.getElementById("template_select");
+							if (templateSelect && templateSelect.value) {
+								bodyContainer.style.display = "none";
+								bodyTextarea.required = false;
+							} else {
+								bodyContainer.style.display = "block";
+								bodyTextarea.required = true;
+							}
 						} else {
-							wabaFields.style.display = "none";
+							templateSelectContainer.style.display = "none";
+							const detailsContainer = document.getElementById("template-details-container");
+							if (detailsContainer) {
+								detailsContainer.innerHTML = "";
+							}
+							bodyContainer.style.display = "block";
 							bodyTextarea.required = true;
+						}
+					}
+
+					function handleDocumentChange(e) {
+						if (e.target && e.target.id === "template_select") {
+							updateFields();
 						}
 					}
 
 					channelSelect.removeEventListener("change", updateFields);
 					channelSelect.addEventListener("change", updateFields);
+
+					document.removeEventListener("change", handleDocumentChange);
+					document.addEventListener("change", handleDocumentChange);
+
 					updateFields();
 				}
 
@@ -363,7 +365,7 @@ func parseTemplateComponents(componentsRaw []byte) ParsedTemplateDetails {
 
 templ PlaygroundTemplateDetails(tmpl repository.WABATemplate) {
 	{{ details := parseTemplateComponents(tmpl.Components) }}
-	<div id="template-details" style="margin-top: var(--spacing-md); border-top: 1px solid var(--color-border); padding-top: var(--spacing-md);">
+	<div id="template-details" data-body-text={ details.BodyText } data-header-format={ details.HeaderFormat } style="margin-top: var(--spacing-md); border-top: 1px solid var(--color-border); padding-top: var(--spacing-md);">
 		<!-- Language code input hidden (passed automatically to send route) -->
 		<input type="hidden" name="template_language" value={ tmpl.Language }/>
 
@@ -414,8 +416,9 @@ templ PlaygroundTemplateDetails(tmpl repository.WABATemplate) {
 
 	<script>
 		(function() {
-			const bodyText = {` + fmt.Sprintf("%q", details.BodyText) + `};
-			const headerFormat = {` + fmt.Sprintf("%q", details.HeaderFormat) + `};
+			const detailsEl = document.getElementById("template-details");
+			const bodyText = detailsEl ? (detailsEl.dataset.bodyText || "") : "";
+			const headerFormat = detailsEl ? (detailsEl.dataset.headerFormat || "") : "";
 
 			function updatePlaygroundPreview() {
 				let preview = bodyText;
