@@ -75,6 +75,19 @@ func EnsureWebhookStream(ctx context.Context, nc *nats.Conn) (jetstream.Stream, 
 // EnsureConsumer creates or gets a durable pull consumer on the given stream.
 // Safe to call multiple times — CreateConsumer is idempotent when the config matches.
 func EnsureConsumer(ctx context.Context, stream jetstream.Stream, consumerName string) (jetstream.Consumer, error) {
+	// For WorkQueuePolicy stream, delete any other consumer to prevent "filtered consumer not unique" errors.
+	// Since WorkQueue only allows one consumer (or non-overlapping), having any old/stale/test consumers
+	// will block the creation of the target consumer.
+	if stream.CachedInfo().Config.Retention == jetstream.WorkQueuePolicy {
+		lister := stream.ConsumerNames(ctx)
+		for name := range lister.Name() {
+			if name != consumerName {
+				slog.Info("deleting stale consumer from WorkQueue stream", "stream", stream.CachedInfo().Config.Name, "consumer", name)
+				_ = stream.DeleteConsumer(ctx, name)
+			}
+		}
+	}
+
 	// Try to get existing consumer first
 	cons, err := stream.Consumer(ctx, consumerName)
 	if err == nil {

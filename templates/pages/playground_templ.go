@@ -9,6 +9,11 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+
 	"github.com/pablojhp.omnigo/internal/repository"
 	"github.com/pablojhp.omnigo/templates/layout"
 )
@@ -65,43 +70,51 @@ func PlaygroundContent(workspaces []repository.Workspace) templ.Component {
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<script src=\"https://unpkg.com/htmx-ext-ws@2.0.1/ws.js\"></script><style>\n\t\t.playground-grid {\n\t\t\tdisplay: grid;\n\t\t\tgrid-template-columns: 1fr 1fr;\n\t\t\tgap: var(--spacing-xl);\n\t\t\talign-items: start;\n\t\t}\n\t\t.playground-panel {\n\t\t\tbackground: var(--color-surface);\n\t\t\tpadding: var(--spacing-lg);\n\t\t\tborder-radius: var(--radius);\n\t\t\tbox-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.025);\n\t\t\tborder: 1px solid var(--color-border);\n\t\t}\n\t\t.playground-panel h2 {\n\t\t\tfont-size: 1.25rem;\n\t\t\tfont-weight: 600;\n\t\t\tmargin-bottom: var(--spacing-md);\n\t\t\tcolor: var(--color-text);\n\t\t\tdisplay: flex;\n\t\t\talign-items: center;\n\t\t\tgap: var(--spacing-sm);\n\t\t}\n\t\t.ws-status-bar {\n\t\t\tdisplay: flex;\n\t\t\talign-items: center;\n\t\t\tgap: var(--spacing-xs);\n\t\t\tfont-size: 0.875rem;\n\t\t\tcolor: var(--color-text-muted);\n\t\t\tmargin-bottom: var(--spacing-md);\n\t\t\tpadding: var(--spacing-sm) var(--spacing-md);\n\t\t\tbackground: #f1f5f9;\n\t\t\tborder-radius: var(--radius);\n\t\t}\n\t\t.ws-indicator {\n\t\t\twidth: 8px;\n\t\t\theight: 8px;\n\t\t\tborder-radius: 50%;\n\t\t\tbackground: #94a3b8;\n\t\t}\n\t\t.ws-connected .ws-indicator {\n\t\t\tbackground: var(--color-success);\n\t\t\tbox-shadow: 0 0 8px var(--color-success);\n\t\t\tanimation: pulse 2s infinite;\n\t\t}\n\t\t@keyframes pulse {\n\t\t\t0% { opacity: 0.5; }\n\t\t\t50% { opacity: 1; }\n\t\t\t100% { opacity: 0.5; }\n\t\t}\n\t\t.event-list {\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t\tgap: var(--spacing-sm);\n\t\t\tmax-height: 550px;\n\t\t\toverflow-y: auto;\n\t\t\tpadding-right: var(--spacing-xs);\n\t\t}\n\t\t.event-card {\n\t\t\tpadding: var(--spacing-md);\n\t\t\tborder-radius: var(--radius);\n\t\t\tbackground: #f8fafc;\n\t\t\tborder-left: 4px solid #64748b;\n\t\t\ttransition: all 0.2s ease;\n\t\t\tanimation: slideIn 0.3s ease-out;\n\t\t}\n\t\t@keyframes slideIn {\n\t\t\tfrom { transform: translateY(-10px); opacity: 0; }\n\t\t\tto { transform: translateY(0); opacity: 1; }\n\t\t}\n\t\t.event-card:hover {\n\t\t\ttransform: translateX(4px);\n\t\t\tbox-shadow: 0 2px 4px rgba(0,0,0,0.05);\n\t\t}\n\t\t.event-card.outbound {\n\t\t\tborder-left-color: var(--color-primary);\n\t\t\tbackground: #eff6ff;\n\t\t}\n\t\t.event-card.inbound {\n\t\t\tborder-left-color: var(--color-success);\n\t\t\tbackground: #f0fdf4;\n\t\t}\n\t\t.event-card.webhook {\n\t\t\tborder-left-color: #a855f7;\n\t\t\tbackground: #faf5ff;\n\t\t}\n\t\t.event-header {\n\t\t\tdisplay: flex;\n\t\t\tjustify-content: space-between;\n\t\t\talign-items: center;\n\t\t\tmargin-bottom: var(--spacing-xs);\n\t\t}\n\t\t.event-time {\n\t\t\tfont-size: 0.75rem;\n\t\t\tcolor: var(--color-text-muted);\n\t\t\tfont-family: monospace;\n\t\t}\n\t\t.event-body {\n\t\t\tfont-size: 0.875rem;\n\t\t\tfont-family: monospace;\n\t\t\twhite-space: pre-wrap;\n\t\t\tword-break: break-all;\n\t\t\tbackground: rgba(0,0,0,0.03);\n\t\t\tpadding: var(--spacing-sm);\n\t\t\tborder-radius: var(--radius);\n\t\t\tmargin-top: var(--spacing-xs);\n\t\t}\n\t\t.form-select {\n\t\t\twidth: 100%;\n\t\t\tpadding: var(--spacing-sm) var(--spacing-md);\n\t\t\tborder: 1px solid var(--color-border);\n\t\t\tborder-radius: var(--radius);\n\t\t\tfont-size: 1rem;\n\t\t\tbackground: white;\n\t\t\toutline: none;\n\t\t}\n\t\t.form-select:focus {\n\t\t\tborder-color: var(--color-primary);\n\t\t}\n\t</style><div class=\"page-header\"><h1>Developer Playground</h1><p class=\"subtitle text-muted\">Test message ingestion and watch channel events live via WebSockets</p></div><div class=\"playground-grid\"><!-- Left Panel: Send message form --><div class=\"playground-panel\"><h2><span>✉</span> Send Test Message</h2><div id=\"form-alert\"></div><form hx-post=\"/admin/playground/send\" hx-target=\"#form-alert\" hx-swap=\"innerHTML\" class=\"form\"><div class=\"form-group\"><label for=\"workspace_id\">Workspace</label> <select name=\"workspace_id\" id=\"workspace_id\" class=\"form-select\" required>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<script src=\"https://unpkg.com/htmx-ext-ws@2.0.1/ws.js\"></script>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = playgroundGlobalScript().Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<style>\n\t\t.playground-grid {\n\t\t\tdisplay: grid;\n\t\t\tgrid-template-columns: 1fr 1fr;\n\t\t\tgap: var(--spacing-xl);\n\t\t\talign-items: start;\n\t\t}\n\t\t.playground-panel {\n\t\t\tbackground: var(--color-surface);\n\t\t\tpadding: var(--spacing-lg);\n\t\t\tborder-radius: var(--radius);\n\t\t\tbox-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.025);\n\t\t\tborder: 1px solid var(--color-border);\n\t\t}\n\t\t.playground-panel h2 {\n\t\t\tfont-size: 1.25rem;\n\t\t\tfont-weight: 600;\n\t\t\tmargin-bottom: var(--spacing-md);\n\t\t\tcolor: var(--color-text);\n\t\t\tdisplay: flex;\n\t\t\talign-items: center;\n\t\t\tgap: var(--spacing-sm);\n\t\t}\n\t\t.ws-status-bar {\n\t\t\tdisplay: flex;\n\t\t\talign-items: center;\n\t\t\tgap: var(--spacing-xs);\n\t\t\tfont-size: 0.875rem;\n\t\t\tcolor: var(--color-text-muted);\n\t\t\tmargin-bottom: var(--spacing-md);\n\t\t\tpadding: var(--spacing-sm) var(--spacing-md);\n\t\t\tbackground: #f1f5f9;\n\t\t\tborder-radius: var(--radius);\n\t\t}\n\t\t.ws-indicator {\n\t\t\twidth: 8px;\n\t\t\theight: 8px;\n\t\t\tborder-radius: 50%;\n\t\t\tbackground: #94a3b8;\n\t\t}\n\t\t.ws-connected .ws-indicator {\n\t\t\tbackground: var(--color-success);\n\t\t\tbox-shadow: 0 0 8px var(--color-success);\n\t\t\tanimation: pulse 2s infinite;\n\t\t}\n\t\t@keyframes pulse {\n\t\t\t0% { opacity: 0.5; }\n\t\t\t50% { opacity: 1; }\n\t\t\t100% { opacity: 0.5; }\n\t\t}\n\t\t.event-list {\n\t\t\tdisplay: flex;\n\t\t\tflex-direction: column;\n\t\t\tgap: var(--spacing-sm);\n\t\t\tmax-height: 550px;\n\t\t\toverflow-y: auto;\n\t\t\tpadding-right: var(--spacing-xs);\n\t\t}\n\t\t.event-card {\n\t\t\tpadding: var(--spacing-md);\n\t\t\tborder-radius: var(--radius);\n\t\t\tbackground: #f8fafc;\n\t\t\tborder-left: 4px solid #64748b;\n\t\t\ttransition: all 0.2s ease;\n\t\t\tanimation: slideIn 0.3s ease-out;\n\t\t}\n\t\t@keyframes slideIn {\n\t\t\tfrom { transform: translateY(-10px); opacity: 0; }\n\t\t\tto { transform: translateY(0); opacity: 1; }\n\t\t}\n\t\t.event-card:hover {\n\t\t\ttransform: translateX(4px);\n\t\t\tbox-shadow: 0 2px 4px rgba(0,0,0,0.05);\n\t\t}\n\t\t.event-card.outbound {\n\t\t\tborder-left-color: var(--color-primary);\n\t\t\tbackground: #eff6ff;\n\t\t}\n\t\t.event-card.inbound {\n\t\t\tborder-left-color: var(--color-success);\n\t\t\tbackground: #f0fdf4;\n\t\t}\n\t\t.event-card.webhook {\n\t\t\tborder-left-color: #a855f7;\n\t\t\tbackground: #faf5ff;\n\t\t}\n\t\t.event-header {\n\t\t\tdisplay: flex;\n\t\t\tjustify-content: space-between;\n\t\t\talign-items: center;\n\t\t\tmargin-bottom: var(--spacing-xs);\n\t\t}\n\t\t.event-time {\n\t\t\tfont-size: 0.75rem;\n\t\t\tcolor: var(--color-text-muted);\n\t\t\tfont-family: monospace;\n\t\t}\n\t\t.event-body {\n\t\t\tfont-size: 0.875rem;\n\t\t\tfont-family: monospace;\n\t\t\twhite-space: pre-wrap;\n\t\t\tword-break: break-all;\n\t\t\tbackground: rgba(0,0,0,0.03);\n\t\t\tpadding: var(--spacing-sm);\n\t\t\tborder-radius: var(--radius);\n\t\t\tmargin-top: var(--spacing-xs);\n\t\t}\n\t\t.form-select {\n\t\t\twidth: 100%;\n\t\t\tpadding: var(--spacing-sm) var(--spacing-md);\n\t\t\tborder: 1px solid var(--color-border);\n\t\t\tborder-radius: var(--radius);\n\t\t\tfont-size: 1rem;\n\t\t\tbackground: white;\n\t\t\toutline: none;\n\t\t}\n\t\t.form-select:focus {\n\t\t\tborder-color: var(--color-primary);\n\t\t}\n\t</style><div class=\"page-header\"><h1>Developer Playground</h1><p class=\"subtitle text-muted\">Test message ingestion and watch channel events live via WebSockets</p></div><div class=\"playground-grid\"><!-- Left Panel: Send message form --><div class=\"playground-panel\"><h2><span>✉</span> Send Test Message</h2><div id=\"form-alert\"></div><form hx-post=\"/admin/playground/send\" hx-target=\"#form-alert\" hx-swap=\"innerHTML\" class=\"form\"><div class=\"form-group\"><label for=\"workspace_id\">Workspace</label> <select name=\"workspace_id\" id=\"workspace_id\" class=\"form-select\" required hx-get=\"/admin/playground/templates\" hx-target=\"#playground-template-select-container\" hx-trigger=\"change, load delay:100ms\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, ws := range workspaces {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<option value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<option value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(ws.ID.String())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 159, Col: 37}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 169, Col: 37}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(ws.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 159, Col: 49}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 169, Col: 49}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</option>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</option>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</select></div><div class=\"form-group\"><label for=\"channel\">Channel</label> <select name=\"channel\" id=\"channel\" class=\"form-select\" required><option value=\"whatsapp_cloud\">WhatsApp Cloud (WABA)</option> <option value=\"telegram\">Telegram Bot</option> <option value=\"whatsapp\">WhatsApp Web (QR Code)</option></select></div><div class=\"form-group\"><label for=\"to\">Recipient (Destination)</label> <input type=\"text\" name=\"to\" id=\"to\" placeholder=\"ex: 5511999999999 or telegram chat_id\" required></div><div class=\"form-group\" id=\"body-field-container\"><label for=\"body\">Message Body</label> <textarea name=\"body\" id=\"body\" rows=\"4\" style=\"width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius); resize: vertical;\" placeholder=\"Hello from the OmniGo testing playground!\" required></textarea></div><div id=\"waba-template-fields\" style=\"display: none; border-top: 1px solid var(--color-border); padding-top: var(--spacing-md); margin-top: var(--spacing-md);\"><h3 style=\"font-size: 1rem; font-weight: 600; margin-bottom: var(--spacing-sm); color: var(--color-text);\">WABA Template Options (Optional)</h3><div class=\"form-group\"><label for=\"template_name\">Template Name</label> <input type=\"text\" name=\"template_name\" id=\"template_name\" placeholder=\"ex: hello_world\" class=\"form-input\" style=\"width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius);\"></div><div class=\"form-group\"><label for=\"template_language\">Language Code</label> <input type=\"text\" name=\"template_language\" id=\"template_language\" placeholder=\"ex: en_US\" class=\"form-input\" style=\"width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius);\"></div><div class=\"form-group\"><label for=\"template_components\">Template Parameters (JSON Array)</label> <textarea name=\"template_components\" id=\"template_components\" rows=\"3\" style=\"width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius); resize: vertical; font-family: monospace;\" placeholder='[{\"type\":\"body\",\"parameters\":[{\"type\":\"text\",\"text\":\"John\"}]}]'></textarea></div></div><button type=\"submit\" class=\"btn btn-primary\" style=\"width: 100%;\">Enqueue Outbound Message</button></form></div><script>\n\t\t\t(function() {\n\t\t\t\tfunction initPlayground() {\n\t\t\t\t\tconst channelSelect = document.getElementById(\"channel\");\n\t\t\t\t\tconst wabaFields = document.getElementById(\"waba-template-fields\");\n\t\t\t\t\tconst bodyTextarea = document.getElementById(\"body\");\n\t\t\t\t\tif (!channelSelect || !wabaFields || !bodyTextarea) return;\n\n\t\t\t\t\tfunction updateFields() {\n\t\t\t\t\t\tif (channelSelect.value === \"whatsapp_cloud\") {\n\t\t\t\t\t\t\twabaFields.style.display = \"block\";\n\t\t\t\t\t\t\tbodyTextarea.required = false;\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\twabaFields.style.display = \"none\";\n\t\t\t\t\t\t\tbodyTextarea.required = true;\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tchannelSelect.removeEventListener(\"change\", updateFields);\n\t\t\t\t\tchannelSelect.addEventListener(\"change\", updateFields);\n\t\t\t\t\tupdateFields();\n\t\t\t\t}\n\n\t\t\t\tinitPlayground();\n\t\t\t\tdocument.body.addEventListener(\"htmx:load\", initPlayground);\n\t\t\t})();\n\t\t</script><!-- Right Panel: Live Logs --><div class=\"playground-panel\" hx-ext=\"ws\" ws-connect=\"/admin/playground/ws\"><h2><span>⚡</span> Live Activity Stream</h2><div class=\"ws-status-bar ws-connected\" id=\"ws-status-container\"><div class=\"ws-indicator\"></div><span id=\"ws-status-text\">Connected to NATS Broker via WebSocket</span></div><div class=\"event-list\" id=\"playground-events\"><div class=\"empty-state\" id=\"playground-empty\">No events received yet. Send a test message or trigger an inbound webhook to see activity.</div></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</select></div><div class=\"form-group\"><label for=\"channel\">Channel</label> <select name=\"channel\" id=\"channel\" class=\"form-select\" required><option value=\"whatsapp_cloud\">WhatsApp Cloud (WABA)</option> <option value=\"telegram\">Telegram Bot</option> <option value=\"whatsapp\">WhatsApp Web (QR Code)</option></select></div><!-- WABA Template Select Area --><div id=\"playground-template-select-container\"></div><!-- Template Details Area --><div id=\"template-details-container\"></div><div class=\"form-group\"><label for=\"to\">Recipient (Destination)</label> <input type=\"text\" name=\"to\" id=\"to\" placeholder=\"ex: 5511999999999 or telegram chat_id\" required></div><div class=\"form-group\" id=\"body-field-container\"><label for=\"body\">Message Body</label> <textarea name=\"body\" id=\"body\" rows=\"4\" style=\"width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius); resize: vertical;\" placeholder=\"Hello from the OmniGo testing playground!\" required></textarea></div><button type=\"submit\" class=\"btn btn-primary\" style=\"width: 100%;\">Enqueue Outbound Message</button></form></div><script>\n\t\t\t(function() {\n\t\t\t\tfunction initPlayground() {\n\t\t\t\t\tconst channelSelect = document.getElementById(\"channel\");\n\t\t\t\t\tconst bodyContainer = document.getElementById(\"body-field-container\");\n\t\t\t\t\tconst bodyTextarea = document.getElementById(\"body\");\n\t\t\t\t\tconst templateSelectContainer = document.getElementById(\"playground-template-select-container\");\n\t\t\t\t\tif (!channelSelect || !bodyContainer || !bodyTextarea || !templateSelectContainer) return;\n\n\t\t\t\t\tfunction updateFields() {\n\t\t\t\t\t\tconst isWABA = channelSelect.value === \"whatsapp_cloud\";\n\t\t\t\t\t\tif (isWABA) {\n\t\t\t\t\t\t\ttemplateSelectContainer.style.display = \"block\";\n\t\t\t\t\t\t\tconst templateSelect = document.getElementById(\"template_select\");\n\t\t\t\t\t\t\tif (templateSelect && templateSelect.value) {\n\t\t\t\t\t\t\t\tbodyContainer.style.display = \"none\";\n\t\t\t\t\t\t\t\tbodyTextarea.required = false;\n\t\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t\tbodyContainer.style.display = \"block\";\n\t\t\t\t\t\t\t\tbodyTextarea.required = true;\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\ttemplateSelectContainer.style.display = \"none\";\n\t\t\t\t\t\t\tconst detailsContainer = document.getElementById(\"template-details-container\");\n\t\t\t\t\t\t\tif (detailsContainer) {\n\t\t\t\t\t\t\t\tdetailsContainer.innerHTML = \"\";\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\tbodyContainer.style.display = \"block\";\n\t\t\t\t\t\t\tbodyTextarea.required = true;\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tfunction handleDocumentChange(e) {\n\t\t\t\t\t\tif (e.target && e.target.id === \"template_select\") {\n\t\t\t\t\t\t\tupdateFields();\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\n\t\t\t\t\tchannelSelect.removeEventListener(\"change\", updateFields);\n\t\t\t\t\tchannelSelect.addEventListener(\"change\", updateFields);\n\n\t\t\t\t\tdocument.removeEventListener(\"change\", handleDocumentChange);\n\t\t\t\t\tdocument.addEventListener(\"change\", handleDocumentChange);\n\n\t\t\t\t\tupdateFields();\n\t\t\t\t}\n\n\t\t\t\tinitPlayground();\n\t\t\t\tdocument.body.addEventListener(\"htmx:load\", initPlayground);\n\t\t\t})();\n\t\t</script><!-- Right Panel: Live Logs --><div class=\"playground-panel\" hx-ext=\"ws\" ws-connect=\"/admin/playground/ws\"><h2><span>⚡</span> Live Activity Stream</h2><div class=\"ws-status-bar ws-connected\" id=\"ws-status-container\"><div class=\"ws-indicator\"></div><span id=\"ws-status-text\">Connected to NATS Broker via WebSocket</span></div><div class=\"event-list\" id=\"playground-events\"><div class=\"empty-state\" id=\"playground-empty\">No events received yet. Send a test message or trigger an inbound webhook to see activity.</div></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -131,7 +144,7 @@ func PlaygroundEventRow(eventType string, badgeClass string, title string, timeS
 			templ_7745c5c3_Var5 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div id=\"playground-empty\" hx-swap-oob=\"delete\"></div><div id=\"playground-events\" hx-swap-oob=\"afterbegin\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div id=\"playground-empty\" hx-swap-oob=\"delete\"></div><div id=\"playground-events\" hx-swap-oob=\"afterbegin\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -140,7 +153,7 @@ func PlaygroundEventRow(eventType string, badgeClass string, title string, timeS
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div class=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -153,7 +166,7 @@ func PlaygroundEventRow(eventType string, badgeClass string, title string, timeS
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\"><div class=\"event-header\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\"><div class=\"event-header\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -162,7 +175,7 @@ func PlaygroundEventRow(eventType string, badgeClass string, title string, timeS
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<span class=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<span class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -175,59 +188,493 @@ func PlaygroundEventRow(eventType string, badgeClass string, title string, timeS
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(eventType)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 278, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 296, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</span> <span class=\"event-time\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</span> <span class=\"event-time\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(timeStr)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 279, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 297, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</span></div><strong>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</span></div><strong>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 281, Col: 18}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 299, Col: 18}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</strong><div class=\"event-body\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</strong><div class=\"event-body\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(details)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 282, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 300, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</div></div></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func PlaygroundTemplateSelect(templates []repository.WABATemplate) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var14 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var14 == nil {
+			templ_7745c5c3_Var14 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<div class=\"form-group\" style=\"margin-top: var(--spacing-md);\"><label for=\"template_select\">Select WABA Template (Optional)</label> <select name=\"template_name\" id=\"template_select\" class=\"form-select\" hx-get=\"/admin/playground/templates/details\" hx-target=\"#template-details-container\" hx-trigger=\"change\" hx-include=\"[name='workspace_id']\"><option value=\"\">-- No Template (Send Free Text) --</option> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		for _, t := range templates {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<option value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var15 string
+			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Name)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 316, Col: 26}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var16 string
+			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(t.Name)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 316, Col: 37}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, " (")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var17 string
+			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(t.Language)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 316, Col: 53}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, ")</option>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</select></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+type ParsedTemplateDetails struct {
+	BodyText      string
+	HeaderText    string
+	HeaderFormat  string
+	BodyVarsCount int
+}
+
+func parseTemplateComponents(componentsRaw []byte) ParsedTemplateDetails {
+	type component struct {
+		Type   string `json:"type"`
+		Format string `json:"format"`
+		Text   string `json:"text"`
+	}
+	var comps []component
+	_ = json.Unmarshal(componentsRaw, &comps)
+
+	var details ParsedTemplateDetails
+	for _, c := range comps {
+		switch strings.ToUpper(c.Type) {
+		case "BODY":
+			details.BodyText = c.Text
+			re := regexp.MustCompile(`\{\{(\d+)\}\}`)
+			matches := re.FindAllStringSubmatch(c.Text, -1)
+			maxVar := 0
+			for _, m := range matches {
+				if len(m) > 1 {
+					var num int
+					fmt.Sscanf(m[1], "%d", &num)
+					if num > maxVar {
+						maxVar = num
+					}
+				}
+			}
+			details.BodyVarsCount = maxVar
+		case "HEADER":
+			details.HeaderFormat = strings.ToUpper(c.Format)
+			if details.HeaderFormat == "TEXT" {
+				details.HeaderText = c.Text
+			}
+		}
+	}
+	return details
+}
+
+func PlaygroundTemplateDetails(tmpl repository.WABATemplate) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var18 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var18 == nil {
+			templ_7745c5c3_Var18 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		details := parseTemplateComponents(tmpl.Components)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<div id=\"template-details\" data-body-text=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var19 string
+		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(details.BodyText)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 368, Col: 61}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" data-header-format=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var20 string
+		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(details.HeaderFormat)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 368, Col: 105}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" style=\"margin-top: var(--spacing-md); border-top: 1px solid var(--color-border); padding-top: var(--spacing-md);\"><!-- Language code input hidden (passed automatically to send route) --><input type=\"hidden\" name=\"template_language\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var21 string
+		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(tmpl.Language)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 370, Col: 69}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "\"><!-- Metadata loop --><div style=\"display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm); margin-bottom: var(--spacing-md); font-size: 0.875rem;\"><div><strong>Category:</strong> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var22 string
+		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(tmpl.Category)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 374, Col: 50}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</div><div><strong>Status:</strong> <span class=\"badge badge-success\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var23 string
+		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(tmpl.Status)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 375, Col: 80}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</span></div><div><strong>Language:</strong> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var24 string
+		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(tmpl.Language)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 376, Col: 50}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</div><div><strong>Meta ID:</strong> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var25 string
+		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(tmpl.MetaTemplateID)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 377, Col: 55}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</div><div><strong>Created:</strong> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var26 string
+		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(tmpl.CreatedAt.Format("2006-01-02 15:04:05"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 378, Col: 80}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</div></div><!-- Real-time Preview --><div style=\"background: #f1f5f9; padding: var(--spacing-md); border-radius: var(--radius); margin-bottom: var(--spacing-md); border: 1px solid var(--color-border);\"><h4 style=\"font-size: 0.875rem; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: var(--spacing-xs); font-weight: 600;\">Message Preview</h4><div id=\"preview-header-media\" style=\"margin-bottom: var(--spacing-sm); display: none; text-align: center; background: #e2e8f0; padding: var(--spacing-sm); border-radius: var(--radius);\"><img id=\"preview-image\" src=\"\" style=\"max-height: 180px; max-width: 100%; border-radius: var(--radius); display: none; margin: 0 auto;\"><div id=\"preview-doc\" style=\"display: none; font-size: 0.875rem; color: var(--color-text-muted); padding: var(--spacing-md);\">📄 Document Attached</div><div id=\"preview-video\" style=\"display: none; font-size: 0.875rem; color: var(--color-text-muted); padding: var(--spacing-md);\">🎥 Video Attached</div></div><div id=\"preview-text\" style=\"white-space: pre-wrap; font-family: sans-serif; font-size: 0.95rem; color: var(--color-text); line-height: 1.5;\"></div></div><!-- Inputs --><div id=\"variable-inputs\" style=\"display: flex; flex-direction: column; gap: var(--spacing-sm);\"><!-- Media Header -->")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if details.HeaderFormat == "IMAGE" || details.HeaderFormat == "VIDEO" || details.HeaderFormat == "DOCUMENT" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<div class=\"form-group\"><label for=\"header-media-url\">Header ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var27 string
+			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(details.HeaderFormat)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 397, Col: 64}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, " URL</label><div style=\"display: flex; gap: var(--spacing-sm);\"><input type=\"hidden\" name=\"param_header_type\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var28 string
+			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.ResolveAttributeValue(strings.ToLower(details.HeaderFormat))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 399, Col: 97}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "\"> <input type=\"text\" id=\"header-media-url\" name=\"param_header_url\" class=\"form-input\" style=\"flex: 1; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius);\" placeholder=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var29 string
+			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("Enter %s URL or upload", details.HeaderFormat))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 400, Col: 277}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\"> <input type=\"file\" id=\"header-file-upload\" style=\"display: none;\" onchange=\"uploadPlaygroundFile(this)\"> <button type=\"button\" class=\"btn btn-secondary btn-sm\" onclick=\"document.getElementById('header-file-upload').click()\">Upload</button></div></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<!-- Body Variables -->")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		for i := 1; i <= details.BodyVarsCount; i++ {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<div class=\"form-group\"><label for=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var30 string
+			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("param_body_%d", i))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 410, Col: 49}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var30)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\">Variable ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var31 string
+			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("{{%d}}", i))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 410, Col: 87}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</label> <input type=\"text\" id=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var32 string
+			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("param_body_%d", i))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 411, Col: 60}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\" name=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var33 string
+			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("param_body_%d", i))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 411, Col: 101}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\" class=\"form-input param-body-input\" style=\"width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius);\" placeholder=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var34 string
+			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("Value for {{%d}}", i))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 411, Col: 306}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var34)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "\" required></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</div></div><script>\n\t\t(function() {\n\t\t\tconst detailsEl = document.getElementById(\"template-details\");\n\t\t\tconst bodyText = detailsEl ? (detailsEl.dataset.bodyText || \"\") : \"\";\n\t\t\tconst headerFormat = detailsEl ? (detailsEl.dataset.headerFormat || \"\") : \"\";\n\n\t\t\tfunction updatePlaygroundPreview() {\n\t\t\t\tlet preview = bodyText;\n\t\t\t\t\n\t\t\t\tconst bodyInputs = document.querySelectorAll(\".param-body-input\");\n\t\t\t\tbodyInputs.forEach((input, index) => {\n\t\t\t\t\tconst num = index + 1;\n\t\t\t\t\tpreview = preview.replaceAll(\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Var35, templ_7745c5c3_Err := templruntime.ScriptContentInsideStringLiteral(" + num + ")
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 429, Col: 48}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var35)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "\", input.value || (\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Var36, templ_7745c5c3_Err := templruntime.ScriptContentInsideStringLiteral(" + num + ")
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/playground.templ`, Line: 429, Col: 83}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var36)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "\"));\n\t\t\t\t});\n\n\t\t\t\tdocument.getElementById(\"preview-text\").innerText = preview;\n\n\t\t\t\tconst headerContainer = document.getElementById(\"preview-header-media\");\n\t\t\t\tconst previewImg = document.getElementById(\"preview-image\");\n\t\t\t\tconst previewDoc = document.getElementById(\"preview-doc\");\n\t\t\t\tconst previewVid = document.getElementById(\"preview-video\");\n\t\t\t\tconst mediaUrlInput = document.getElementById(\"header-media-url\");\n\n\t\t\t\tif (headerContainer && mediaUrlInput) {\n\t\t\t\t\tconst url = mediaUrlInput.value;\n\t\t\t\t\tif (url) {\n\t\t\t\t\t\theaderContainer.style.display = \"block\";\n\t\t\t\t\t\tif (headerFormat === \"IMAGE\") {\n\t\t\t\t\t\t\tpreviewImg.src = url;\n\t\t\t\t\t\t\tpreviewImg.style.display = \"block\";\n\t\t\t\t\t\t\tpreviewDoc.style.display = \"none\";\n\t\t\t\t\t\t\tpreviewVid.style.display = \"none\";\n\t\t\t\t\t\t} else if (headerFormat === \"DOCUMENT\") {\n\t\t\t\t\t\t\tpreviewImg.style.display = \"none\";\n\t\t\t\t\t\t\tpreviewDoc.style.display = \"block\";\n\t\t\t\t\t\t\tpreviewVid.style.display = \"none\";\n\t\t\t\t\t\t} else if (headerFormat === \"VIDEO\") {\n\t\t\t\t\t\t\tpreviewImg.style.display = \"none\";\n\t\t\t\t\t\t\tpreviewDoc.style.display = \"none\";\n\t\t\t\t\t\t\tpreviewVid.style.display = \"block\";\n\t\t\t\t\t\t}\n\t\t\t\t\t} else {\n\t\t\t\t\t\theaderContainer.style.display = \"none\";\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\n\t\t\twindow.updatePlaygroundPreview = updatePlaygroundPreview;\n\n\t\t\tdocument.querySelectorAll(\".param-body-input\").forEach(input => {\n\t\t\t\tinput.addEventListener(\"input\", updatePlaygroundPreview);\n\t\t\t});\n\n\t\t\tconst mediaUrlInput = document.getElementById(\"header-media-url\");\n\t\t\tif (mediaUrlInput) {\n\t\t\t\tmediaUrlInput.addEventListener(\"input\", updatePlaygroundPreview);\n\t\t\t}\n\n\t\t\tupdatePlaygroundPreview();\n\t\t})();\n\t</script>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// Global script inside Page scope
+func playgroundGlobalScript() templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var37 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var37 == nil {
+			templ_7745c5c3_Var37 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<script>\n\t\tfunction uploadPlaygroundFile(input) {\n\t\t\tif (!input.files || !input.files[0]) return;\n\t\t\tconst file = input.files[0];\n\t\t\tconst formData = new FormData();\n\t\t\tformData.append(\"file\", file);\n\t\t\t\n\t\t\tconst workspaceSelect = document.getElementById(\"workspace_id\");\n\t\t\tconst workspaceId = workspaceSelect ? workspaceSelect.value : \"\";\n\t\t\tif (!workspaceId) {\n\t\t\t\talert(\"Please select a workspace first.\");\n\t\t\t\treturn;\n\t\t\t}\n\t\t\t\n\t\t\tconst uploadBtn = input.nextElementSibling;\n\t\t\tconst originalText = uploadBtn.innerText;\n\t\t\tuploadBtn.innerText = \"Uploading...\";\n\t\t\tuploadBtn.disabled = true;\n\t\t\t\n\t\t\tfetch(\"/admin/playground/upload?workspace_id=\" + workspaceId, {\n\t\t\t\tmethod: \"POST\",\n\t\t\t\tbody: formData\n\t\t\t})\n\t\t\t.then(res => {\n\t\t\t\tif (!res.ok) {\n\t\t\t\t\treturn res.json().then(err => { throw new Error(err.error || \"Upload failed\"); });\n\t\t\t\t}\n\t\t\t\treturn res.json();\n\t\t\t})\n\t\t\t.then(data => {\n\t\t\t\tif (data.url) {\n\t\t\t\t\tconst mediaInput = document.getElementById(\"header-media-url\");\n\t\t\t\t\tif (mediaInput) {\n\t\t\t\t\t\tmediaInput.value = data.url;\n\t\t\t\t\t\tif (window.updatePlaygroundPreview) {\n\t\t\t\t\t\t\twindow.updatePlaygroundPreview();\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t} else {\n\t\t\t\t\talert(\"Upload failed: url not returned\");\n\t\t\t\t}\n\t\t\t})\n\t\t\t.catch(err => {\n\t\t\t\talert(\"Upload error: \" + err.message);\n\t\t\t})\n\t\t\t.finally(() => {\n\t\t\t\tuploadBtn.innerText = originalText;\n\t\t\t\tuploadBtn.disabled = false;\n\t\t\t});\n\t\t}\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
