@@ -8,7 +8,7 @@ Display comprehensive project statistics including phase progress, plan executio
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/stats.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/stats.md
 </execution_context>
 
 <process>

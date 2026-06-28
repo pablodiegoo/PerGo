@@ -25,7 +25,7 @@ Then resolve the install context via the deterministic projection (#498). **Do N
 GSD_TOOLS=""
 for cand in \
   "$PREFERRED_CONFIG_DIR/gsd-core/bin/gsd-tools.cjs" \
-  "/home/pablo/Coding/OmniGo/.opencode/gsd-core/bin/gsd-tools.cjs"; do
+  "/home/pablo/Coding/PerGo/.opencode/gsd-core/bin/gsd-tools.cjs"; do
   if [ -n "$cand" ] && [ -f "$cand" ]; then GSD_TOOLS="$cand"; break; fi
 done
 # Last resort: the gsd-tools shim on PATH — resolved to its absolute path and
@@ -97,7 +97,7 @@ esac
 <step name="check_latest_version">
 Check npm for latest version via the deterministic script. **Do NOT run `npm view` or `npm search` directly** — the package name must come from the script, not from a free choice at execution time. (#2992: LLM-driven prescriptions of npm package names produced wrong-package queries; moving the package name into a script constant closes that gap.)
 
-The `GSD_DIR` value emitted by `get_installed_version` (line 4) resolves to the runtime-specific config dir (`/home/pablo/Coding/OmniGo/.opencode/`, `~/.gemini/`, `~/.codex/`, etc.), so the script invocation works for every runtime — not just the agent. If `GSD_DIR` is empty (scope `UNKNOWN`), skip this step and go directly to install.
+The `GSD_DIR` value emitted by `get_installed_version` (line 4) resolves to the runtime-specific config dir (`/home/pablo/Coding/PerGo/.opencode/`, `~/.gemini/`, `~/.codex/`, etc.), so the script invocation works for every runtime — not just the agent. If `GSD_DIR` is empty (scope `UNKNOWN`), skip this step and go directly to install.
 
 `LATEST_RESULT` is a JSON document with the documented shape `{ ok: bool, version: string, reason: string, detail?: string }`. Parse via `jq` ONLY when the script actually ran. When `GSD_DIR` is empty (scope `UNKNOWN`), skip the check entirely and seed the parsed fields with their no-op values so downstream logic does not mistake an unset `LATEST_RESULT` for a failed network check (#2993 CR feedback):
 
@@ -244,7 +244,7 @@ rm -f "$CHANGELOG_TMP"
 - `agents/gsd-*` files will be replaced
 
 (Paths are relative to detected runtime install location:
-global: `/home/pablo/Coding/OmniGo/.opencode/`, `~/.config/opencode/`, `~/.opencode/`, `~/.gemini/`, `~/.config/kilo/`, or `~/.codex/`
+global: `/home/pablo/Coding/PerGo/.opencode/`, `~/.config/opencode/`, `~/.opencode/`, `~/.gemini/`, `~/.config/kilo/`, or `~/.codex/`
 local: `./.opencode/`, `./.config/opencode/`, `./.opencode/`, `./.gemini/`, `./.kilo/`, or `./.codex/`)
 
 Your custom files in other locations are preserved:

@@ -16,10 +16,10 @@ Spawned by `discuss-phase` via `Task()`. You do NOT present output directly to t
 - Return structured markdown output for the main agent to synthesize
 </role>
 
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/untrusted-input-boundary.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/untrusted-input-boundary.md
 
 <documentation_lookup>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/research-documentation-lookup.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/research-documentation-lookup.md
 </documentation_lookup>
 
 <input>

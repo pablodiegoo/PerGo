@@ -13,7 +13,7 @@ Output: updated VALIDATION.md + generated test files.
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/validate-phase.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/validate-phase.md
 </execution_context>
 
 <context>

@@ -30,10 +30,10 @@ Mode routing:
 </routing>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/add-phase.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/insert-phase.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/remove-phase.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/edit-phase.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/add-phase.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/insert-phase.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/remove-phase.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/edit-phase.md
 </execution_context>
 
 <context>

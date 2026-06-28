@@ -216,7 +216,7 @@ gsd-core/
 
 **New Workflow:**
 - Implementation: `gsd-core/workflows/{name}.md`
-- Usage: Reference from command with `@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/{name}.md`
+- Usage: Reference from command with `@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/{name}.md`
 
 **New Reference Document:**
 - Implementation: `gsd-core/references/{name}.md`
@@ -229,12 +229,12 @@ gsd-core/
 ## Special Directories
 
 **gsd-core/**
-- Purpose: Resources installed to /home/pablo/Coding/OmniGo/.opencode/
+- Purpose: Resources installed to /home/pablo/Coding/PerGo/.opencode/
 - Source: Copied by bin/install.js during installation
 - Committed: Yes (source of truth)
 
 **commands/**
-- Purpose: Slash commands installed to /home/pablo/Coding/OmniGo/.opencode/commands/
+- Purpose: Slash commands installed to /home/pablo/Coding/PerGo/.opencode/commands/
 - Source: Copied by bin/install.js during installation
 - Committed: Yes (source of truth)
 

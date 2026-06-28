@@ -19,7 +19,7 @@ Output: Forensic report saved to `.planning/forensics/`, presented inline, with 
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/forensics.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/forensics.md
 </execution_context>
 
 <context>

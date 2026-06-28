@@ -30,8 +30,8 @@ Create executable phase prompts (PLAN.md files) for a roadmap phase with integra
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/plan-phase.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ui-brand.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/plan-phase.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ui-brand.md
 </execution_context>
 
 <runtime_note>

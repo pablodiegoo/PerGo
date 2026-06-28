@@ -22,7 +22,7 @@ Output: updated SECURITY.md.
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/secure-phase.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/secure-phase.md
 </execution_context>
 
 <context>

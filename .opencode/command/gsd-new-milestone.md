@@ -25,11 +25,11 @@ Brownfield equivalent of new-project. Project exists, PROJECT.md has history. Ga
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/new-milestone.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/questioning.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ui-brand.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/templates/project.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/templates/requirements.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/new-milestone.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/questioning.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ui-brand.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/templates/project.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/templates/requirements.md
 </execution_context>
 
 <context>

@@ -2,10 +2,10 @@
   "$schema": "https://opencode.ai/config.json",
   "permission": {
     "read": {
-      "/home/pablo/Coding/OmniGo/.opencode/gsd-core/*": "allow"
+      "/home/pablo/Coding/PerGo/.opencode/gsd-core/*": "allow"
     },
     "external_directory": {
-      "/home/pablo/Coding/OmniGo/.opencode/gsd-core/*": "allow"
+      "/home/pablo/Coding/PerGo/.opencode/gsd-core/*": "allow"
     }
   }
 }

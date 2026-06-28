@@ -20,7 +20,7 @@ and optionally applies labels or closes non-compliant submissions.
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/inbox.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/inbox.md
 </execution_context>
 
 <context>

@@ -29,13 +29,13 @@ Does not require prior new-project setup — auto-creates `.planning/sketches/` 
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/sketch.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/sketch-wrap-up.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ui-brand.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/sketch-theme-system.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/sketch-interactivity.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/sketch-tooling.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/sketch-variant-patterns.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/sketch.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/sketch-wrap-up.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ui-brand.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/sketch-theme-system.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/sketch-interactivity.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/sketch-tooling.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/sketch-variant-patterns.md
 </execution_context>
 
 <runtime_note>

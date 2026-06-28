@@ -12,7 +12,7 @@ Default: `balanced` if not set or config missing.
 
 ## Lookup Table
 
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/model-profiles.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/model-profiles.md
 
 Look up the agent in the table for the resolved profile. Pass the model parameter to Task calls:
 

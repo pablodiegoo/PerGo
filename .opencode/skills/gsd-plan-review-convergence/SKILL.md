@@ -15,10 +15,10 @@ Replaces gsd-plan-phase's internal gsd-plan-checker with external AI reviewers (
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/plan-review-convergence.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/revision-loop.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/gates.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/agent-contracts.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/plan-review-convergence.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/revision-loop.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/gates.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/agent-contracts.md
 </execution_context>
 
 <runtime_note>

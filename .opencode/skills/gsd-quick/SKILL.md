@@ -30,7 +30,7 @@ Granular flags are composable: `--discuss --research --validate` gives the same 
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/quick.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/quick.md
 </execution_context>
 
 <context>

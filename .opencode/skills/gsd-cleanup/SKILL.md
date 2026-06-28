@@ -10,7 +10,7 @@ Use when `.planning/phases/` has accumulated directories from past milestones.
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/cleanup.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/cleanup.md
 </execution_context>
 
 <process>

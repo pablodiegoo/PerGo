@@ -31,10 +31,10 @@ Three modes:
 </flags>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/progress.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/next.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/do.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ui-brand.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/progress.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/next.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/do.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ui-brand.md
 </execution_context>
 
 <process>

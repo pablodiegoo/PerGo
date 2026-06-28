@@ -29,13 +29,13 @@ Mode routing:
 </routing>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/add-todo.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/note.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/add-backlog.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/plant-seed.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/check-todos.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/list-seeds.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ui-brand.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/add-todo.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/note.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/add-backlog.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/plant-seed.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/check-todos.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/list-seeds.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ui-brand.md
 </execution_context>
 
 <context>

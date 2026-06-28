@@ -10,8 +10,8 @@ Flow: Validate → Research UI → Verify UI-SPEC → Done
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/ui-phase.md
-@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ui-brand.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/ui-phase.md
+@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ui-brand.md
 </execution_context>
 
 <context>
