@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,6 +25,7 @@ type WorkspaceHandler struct {
 	APIKeys     *repository.APIKeyRepository
 	Credentials *repository.CredentialsRepository
 	Templates   *repository.WABATemplateRepository
+	ExternalURL string
 }
 
 // List renders the workspace list page or HTMX fragment.
@@ -180,7 +182,31 @@ func (h *WorkspaceHandler) SaveCredentials(c *echo.Context) error {
 			tg.Token = "" // Clear token to render the form again
 			return mw.Render(c, http.StatusOK, pages.TelegramCredentialsCard(idStr, tg, err.Error()))
 		}
-		payload, err = json.Marshal(tg)
+
+		secretToken := ""
+		if strings.HasPrefix(h.ExternalURL, "https://") {
+			secretToken = uuid.New().String()
+			webhookURL := fmt.Sprintf("%s/webhooks/telegram/%s", h.ExternalURL, idStr)
+			err = h.registerTelegramWebhook(c.Request().Context(), tg.Token, webhookURL, secretToken)
+			if err != nil {
+				slog.Warn("failed to register Telegram webhook", "error", err, "workspace_id", workspaceID)
+				tg.Token = "" // Clear token to render the form again
+				return mw.Render(c, http.StatusOK, pages.TelegramCredentialsCard(idStr, tg, fmt.Sprintf("Bot token is valid, but failed to set webhook: %v", err)))
+			}
+		} else {
+			// Generate a predictable fallback secret token for local non-HTTPS development
+			secretToken = "omnigo_secret_token_" + idStr
+		}
+
+		type storedTelegramConfig struct {
+			Token       string `json:"token"`
+			SecretToken string `json:"secret_token"`
+		}
+
+		payload, err = json.Marshal(storedTelegramConfig{
+			Token:       tg.Token,
+			SecretToken: secretToken,
+		})
 	}
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to marshal credentials")
@@ -195,6 +221,41 @@ func (h *WorkspaceHandler) SaveCredentials(c *echo.Context) error {
 	} else {
 		return mw.Render(c, http.StatusOK, pages.TelegramCredentialsCard(idStr, tg, ""))
 	}
+}
+
+func (h *WorkspaceHandler) registerTelegramWebhook(ctx context.Context, token, webhookURL, secretToken string) error {
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/setWebhook?url=%s&secret_token=%s", token, webhookURL, secretToken)
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create Telegram webhook registration request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to connect to Telegram API for webhook registration: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Telegram webhook registration returned HTTP status %d", resp.StatusCode)
+	}
+
+	type tgWebhookResponse struct {
+		Ok          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	var tgResp tgWebhookResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tgResp); err != nil {
+		return fmt.Errorf("failed to decode Telegram webhook response: %w", err)
+	}
+
+	if !tgResp.Ok {
+		return fmt.Errorf("Telegram webhook registration failed: %s", tgResp.Description)
+	}
+
+	slog.Info("Telegram webhook registered successfully", "url", webhookURL)
+	return nil
 }
 
 func (h *WorkspaceHandler) validateTelegramToken(ctx context.Context, token string) error {

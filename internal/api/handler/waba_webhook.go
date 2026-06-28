@@ -119,7 +119,8 @@ func (h *WABAWebhookHandler) HandleGet(c *echo.Context) error {
 	verifyToken := c.Request().URL.Query().Get("hub.verify_token")
 	challenge := c.Request().URL.Query().Get("hub.challenge")
 
-	if verifyToken == "" || challenge == "" || verifyToken != creds.VerifyToken {
+	expectedVerifyToken := "omnigo_verify_token_" + workspaceIDStr
+	if verifyToken == "" || challenge == "" || (verifyToken != creds.VerifyToken && verifyToken != expectedVerifyToken) {
 		return c.NoContent(http.StatusForbidden)
 	}
 

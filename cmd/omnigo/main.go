@@ -306,6 +306,7 @@ func main() {
 		APIKeys:     apiKeyRepo,
 		Credentials: credentialsRepo,
 		Templates:   wabaTemplateRepo,
+		ExternalURL: cfg.ExternalURL,
 	}
 	adminGroup.GET("/workspaces", workspaceHandler.List)
 	adminGroup.POST("/workspaces", workspaceHandler.Create)
