@@ -35,9 +35,10 @@ templ TelemetryContent(data TelemetryData) {
 		id="telemetry-content"
 		hx-get="/admin/telemetry"
 		hx-trigger="every 10s"
-		hx-target="#telemetry-content"
-		hx-swap="outerHTML"
+		hx-target="#telemetry-inner"
+		hx-swap="innerHTML"
 	>
+		<div id="telemetry-inner">
 		<div class="page-header">
 			<h1>Telemetry</h1>
 			<span class="refresh-badge">Auto-refreshes every 10s</span>
@@ -102,6 +103,7 @@ templ TelemetryContent(data TelemetryData) {
 					}
 				</tbody>
 			</table>
+		</div>
 		</div>
 	</div>
 }

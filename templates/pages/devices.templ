@@ -111,7 +111,7 @@ templ QRFragment(code string, phone string, status string, message string) {
 					hx-get={ "/admin/devices/qr?phone=" + phone }
 					hx-trigger="every 5s"
 					hx-target="#qr-area"
-					hx-swap="outerHTML"
+					hx-swap="innerHTML"
 				></div>
 			case "paired":
 				<div class="qr-success">

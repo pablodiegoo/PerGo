@@ -12,14 +12,14 @@ import (
 	"github.com/pablojhp.omnigo/templates/pages"
 )
 
-// LoginPage renders the login form.
+// LoginPage renders the login form using a minimal layout (no sidebar, no HTMX polling).
 func LoginPage(c *echo.Context, showError bool) error {
 	msg := ""
 	if showError {
 		msg = "Invalid password"
 	}
 	login := pages.Login(msg)
-	return mw.Render(c, http.StatusOK, layout.Base("Login", login))
+	return mw.Render(c, http.StatusOK, layout.LoginBase("Login", login))
 }
 
 // LoginPost handles the login form submission.
@@ -29,7 +29,7 @@ func LoginPost(c *echo.Context, wsRepo *repository.WorkspaceRepository) error {
 
 	if password != adminPassword {
 		login := pages.Login("Invalid password")
-		return mw.Render(c, http.StatusUnauthorized, layout.Base("Login", login))
+		return mw.Render(c, http.StatusUnauthorized, layout.LoginBase("Login", login))
 	}
 
 	// Set session cookie

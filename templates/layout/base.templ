@@ -20,3 +20,22 @@ templ Base(title string, content templ.Component) {
 		</body>
 	</html>
 }
+
+// LoginBase is a minimal layout without sidebar or any HTMX polling elements.
+// Must be used for all unauthenticated pages to prevent infinite loops caused
+// by the sidebar's hx-trigger="load" on the DLQ badge requesting a protected
+// endpoint, which would redirect back to login and repeat indefinitely.
+templ LoginBase(title string, content templ.Component) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ title } - OmniGo Admin</title>
+			<link rel="stylesheet" href="/static/css/admin.css"/>
+		</head>
+		<body>
+			@content
+		</body>
+	</html>
+}
