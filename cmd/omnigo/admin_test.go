@@ -32,7 +32,7 @@ func setupTestRoutes(t *testing.T) *echo.Echo {
 	})
 	adminPublic.POST("/login", func(c *echo.Context) error {
 		// Use a nil wsRepo for login tests — password check doesn't need DB
-		return admin.LoginPost(c, nil)
+		return admin.LoginPost(c, nil, "testpass123")
 	})
 	adminPublic.POST("/logout", func(c *echo.Context) error {
 		return admin.Logout(c)

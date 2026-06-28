@@ -47,7 +47,7 @@ func setupWorkspaceRoutes(t *testing.T) *echo.Echo {
 		return admin.LoginPage(c, false)
 	})
 	adminPublic.POST("/login", func(c *echo.Context) error {
-		return admin.LoginPost(c, nil)
+		return admin.LoginPost(c, nil, "testpass123")
 	})
 	adminPublic.POST("/logout", func(c *echo.Context) error {
 		return admin.Logout(c)

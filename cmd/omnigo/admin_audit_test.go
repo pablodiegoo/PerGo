@@ -43,7 +43,7 @@ func setupAuditTestRoutes(t *testing.T) *echo.Echo {
 	// Public admin routes (login/logout)
 	adminPublic := e.Group("/admin")
 	adminPublic.POST("/login", func(c *echo.Context) error {
-		return admin.LoginPost(c, nil)
+		return admin.LoginPost(c, nil, "testpass123")
 	})
 	adminPublic.POST("/logout", func(c *echo.Context) error {
 		return admin.Logout(c)

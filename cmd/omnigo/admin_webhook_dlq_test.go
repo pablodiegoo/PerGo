@@ -57,7 +57,7 @@ func setupWebhookRoutes(t *testing.T) (*echo.Echo, *repository.WebhookDLQReposit
 	// Public login
 	adminPublic := e.Group("/admin")
 	adminPublic.POST("/login", func(c *echo.Context) error {
-		return admin.LoginPost(c, nil)
+		return admin.LoginPost(c, nil, "testpass123")
 	})
 
 	// Protected admin routes

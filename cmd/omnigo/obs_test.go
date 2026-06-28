@@ -15,7 +15,10 @@ import (
 
 // TestPprofServer verifies the debug server starts and serves pprof on a random port.
 func TestPprofServer(t *testing.T) {
-	ds := obs.StartDebugServer("127.0.0.1:0")
+	ds, err := obs.StartDebugServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start debug server: %v", err)
+	}
 	defer ds.Shutdown(context.Background())
 
 	addr := ds.Addr()
@@ -38,7 +41,10 @@ func TestPprofServer(t *testing.T) {
 
 // TestExpvarHandler verifies expvar is available at /debug/vars with memstats.
 func TestExpvarHandler(t *testing.T) {
-	ds := obs.StartDebugServer("127.0.0.1:0")
+	ds, err := obs.StartDebugServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start debug server: %v", err)
+	}
 	defer ds.Shutdown(context.Background())
 
 	resp, err := http.Get(fmt.Sprintf("http://%s/debug/vars", ds.Addr()))
@@ -66,7 +72,10 @@ func TestExpvarHandler(t *testing.T) {
 func TestAuditDropCounter(t *testing.T) {
 	counter := obs.RegisterCounter("test_audit_drops_obs")
 
-	ds := obs.StartDebugServer("127.0.0.1:0")
+	ds, err := obs.StartDebugServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to start debug server: %v", err)
+	}
 	defer ds.Shutdown(context.Background())
 
 	// Increment the counter

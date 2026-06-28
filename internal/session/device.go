@@ -50,12 +50,12 @@ func NewDeviceRepository(pool *pgxpool.Pool) *DeviceRepository {
 // Create persists a new device to the database.
 func (r *DeviceRepository) Create(ctx context.Context, d *Device) error {
 	_, err := r.pool.Exec(ctx, `
-		INSERT INTO devices (id, workspace_id, channel, jid, phone, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-		ON CONFLICT ON CONSTRAINT idx_devices_jid DO UPDATE SET
+		INSERT INTO devices (id, workspace_id, channel, device_id, jid, phone, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+		ON CONFLICT (jid) WHERE jid IS NOT NULL DO UPDATE SET
 			status = EXCLUDED.status,
 			updated_at = NOW()
-	`, d.ID, d.WorkspaceID, d.Channel, d.JID, d.Phone, d.Status)
+	`, d.ID, d.WorkspaceID, d.Channel, d.ID.String(), d.JID, d.Phone, d.Status)
 	return err
 }
 

@@ -301,7 +301,7 @@ func main() {
 	adminGroup.GET("/", dashboardHandler.Index)
 
 	// Workspace management routes
-	workspaceHandler := &admin.WorkspaceHandler{Repo: wsRepo, APIKeys: apiKeyRepo}
+	workspaceHandler := &admin.WorkspaceHandler{Repo: wsRepo, APIKeys: apiKeyRepo, Credentials: credentialsRepo}
 	adminGroup.GET("/workspaces", workspaceHandler.List)
 	adminGroup.POST("/workspaces", workspaceHandler.Create)
 	adminGroup.GET("/workspaces/new", func(c *echo.Context) error {
@@ -310,6 +310,8 @@ func main() {
 	adminGroup.GET("/workspaces/:id", workspaceHandler.Detail)
 	adminGroup.GET("/workspaces/:id/confirm-delete", workspaceHandler.ConfirmDelete)
 	adminGroup.DELETE("/workspaces/:id", workspaceHandler.Delete)
+	adminGroup.POST("/workspaces/:id/credentials/:channel", workspaceHandler.SaveCredentials)
+	adminGroup.DELETE("/workspaces/:id/credentials/:channel", workspaceHandler.DeleteCredentials)
 
 	// API key management routes
 	apiKeyHandler := &admin.APIKeyHandler{Repo: apiKeyRepo, Workspaces: wsRepo}

@@ -54,9 +54,15 @@ func TestDeviceStatus_TerminalLock(t *testing.T) {
 	ctx := context.Background()
 
 	// Create test device
+	wsID := uuid.New()
+	_, err := pool.Exec(ctx, "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ($1, $2, now(), now())", wsID, "test-workspace-device-"+wsID.String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace for device FK: %v", err)
+	}
+
 	d := &Device{
 		ID:          uuid.New(),
-		WorkspaceID: uuid.New(),
+		WorkspaceID: wsID,
 		Channel:     "whatsapp",
 		JID:         "5511999999999@s.whatsapp.net",
 		Phone:       "5511999999999",
@@ -64,7 +70,7 @@ func TestDeviceStatus_TerminalLock(t *testing.T) {
 	}
 
 	// Insert into DB
-	err := repo.Create(ctx, d)
+	err = repo.Create(ctx, d)
 	if err != nil {
 		t.Fatalf("failed to create test device: %v", err)
 	}

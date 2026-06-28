@@ -400,6 +400,12 @@ func TestWABA_MediaExternalURL(t *testing.T) {
 	wsID := uuid.New()
 	tenantCtx := tenant.WithWorkspaceID(context.Background(), wsID)
 	
+	// Create test workspace to satisfy FK constraint on channel_credentials
+	_, err = pool.Exec(context.Background(), "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ($1, $2, now(), now())", wsID, "test-workspace-"+wsID.String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace for FK: %v", err)
+	}
+	
 	creds := WABAConfig{
 		PhoneNumberID: "12345",
 		Token:         "token_123",
