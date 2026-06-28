@@ -111,7 +111,22 @@ func (w *Worker) run(ctx context.Context) {
 				slog.Info("message worker stopped")
 				return
 			}
-			slog.Error("worker: failed to get next message", "error", err)
+			slog.Error("worker: failed to get next message, recreating messages context", "error", err)
+			msgCtx.Stop()
+
+			// Sleep to prevent tight reconnect loops
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(1 * time.Second):
+			}
+
+			newMsgCtx, err := w.consumer.Messages()
+			if err != nil {
+				slog.Error("worker: failed to recreate messages context", "error", err)
+				continue
+			}
+			msgCtx = newMsgCtx
 			continue
 		}
 
