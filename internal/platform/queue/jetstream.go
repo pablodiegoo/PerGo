@@ -72,6 +72,30 @@ func EnsureWebhookStream(ctx context.Context, nc *nats.Conn) (jetstream.Stream, 
 	return stream, nil
 }
 
+// EnsureConsumer creates or gets a durable pull consumer on the given stream.
+// Safe to call multiple times — CreateConsumer is idempotent when the config matches.
+func EnsureConsumer(ctx context.Context, stream jetstream.Stream, consumerName string) (jetstream.Consumer, error) {
+	// Try to get existing consumer first
+	cons, err := stream.Consumer(ctx, consumerName)
+	if err == nil {
+		slog.Info("jetstream consumer found", "consumer", consumerName)
+		return cons, nil
+	}
+	// Create new consumer
+	cons, err = stream.CreateOrUpdateConsumer(ctx, jetstream.ConsumerConfig{
+		Durable:       consumerName,
+		FilterSubject: StreamSubject,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		MaxDeliver:    5,
+		MaxAckPending: 100,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create consumer %s: %w", consumerName, err)
+	}
+	slog.Info("jetstream consumer ready", "consumer", consumerName)
+	return cons, nil
+}
+
 // JetStreamPublisher publishes messages to the JetStream "messages.outbound"
 // subject. Each publish carries a Nats-Msg-Id header set to the caller's
 // trace_id for publish-side idempotency (dedup).

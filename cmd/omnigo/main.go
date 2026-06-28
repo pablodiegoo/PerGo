@@ -88,7 +88,7 @@ func main() {
 	publisher := queue.NewJetStreamPublisher(nc)
 
 	// --- Worker (reads from JetStream, logs dispatched messages) ---
-	consumer, err := stream.Consumer(ctx, "worker-1")
+	consumer, err := queue.EnsureConsumer(ctx, stream, "worker-1")
 	if err != nil {
 		slog.Error("failed to create JetStream consumer", "error", err)
 		os.Exit(1)
