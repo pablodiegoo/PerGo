@@ -162,8 +162,14 @@ func main() {
 	slog.Info("queue depth limit", "max", 1000)
 
 	// --- Debug server (pprof + expvar) ---
-	debugSrv := obs.StartDebugServer(net.JoinHostPort("127.0.0.1", cfg.DebugPort))
-	slog.Info("debug server started", "addr", debugSrv.Addr())
+	debugSrv, err := obs.StartDebugServer(net.JoinHostPort("127.0.0.1", cfg.DebugPort))
+	if err != nil {
+		slog.Warn("debug server unavailable (port in use?), continuing without pprof",
+			"addr", net.JoinHostPort("127.0.0.1", cfg.DebugPort),
+			"error", err)
+	} else {
+		slog.Info("debug server started", "addr", debugSrv.Addr())
+	}
 
 	// --- Shutdown orchestrator ---
 	orch := shutdown.NewOrchestrator()
@@ -207,12 +213,14 @@ func main() {
 		slog.Info("audit buffer flushed")
 		return err
 	})
-	orch.Register(func() error {
-		slog.Info("shutting down debug server")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return debugSrv.Shutdown(ctx)
-	})
+	if debugSrv != nil {
+		orch.Register(func() error {
+			slog.Info("shutting down debug server")
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			return debugSrv.Shutdown(ctx)
+		})
+	}
 
 	// --- Repositories ---
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)

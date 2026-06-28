@@ -5,6 +5,7 @@ package obs
 import (
 	"context"
 	"expvar"
+	"fmt"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -25,14 +26,17 @@ func (ds *DebugServer) Addr() string {
 // StartDebugServer creates an HTTP server on the given address with pprof
 // and expvar handlers, then starts it in a background goroutine.
 // The returned DebugServer can be shut down gracefully via its Shutdown method.
-func StartDebugServer(addr string) *DebugServer {
+// Returns an error (instead of panicking) if the address cannot be bound —
+// the debug server is optional observability tooling and a port conflict
+// must never crash the main application.
+func StartDebugServer(addr string) (*DebugServer, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/debug/pprof/", http.DefaultServeMux)
 	mux.Handle("/debug/vars", expvar.Handler())
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		panic("obs: failed to listen on " + addr + ": " + err.Error())
+		return nil, fmt.Errorf("obs: failed to listen on %s: %w", addr, err)
 	}
 
 	srv := &http.Server{
@@ -50,7 +54,7 @@ func StartDebugServer(addr string) *DebugServer {
 	return &DebugServer{
 		Server:   srv,
 		listener: ln,
-	}
+	}, nil
 }
 
 // Shutdown gracefully shuts down the debug server.
