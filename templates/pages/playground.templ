@@ -1,6 +1,11 @@
 package pages
 
 import (
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+
 	"github.com/pablojhp.omnigo/internal/repository"
 	"github.com/pablojhp.omnigo/templates/layout"
 )
@@ -13,6 +18,7 @@ templ PlaygroundPage(workspaces []repository.Workspace) {
 // PlaygroundContent renders the main playground workspace layout.
 templ PlaygroundContent(workspaces []repository.Workspace) {
 	<script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js"></script>
+	@playgroundGlobalScript()
 	<style>
 		.playground-grid {
 			display: grid;
@@ -154,7 +160,11 @@ templ PlaygroundContent(workspaces []repository.Workspace) {
 			>
 				<div class="form-group">
 					<label for="workspace_id">Workspace</label>
-					<select name="workspace_id" id="workspace_id" class="form-select" required>
+					<select name="workspace_id" id="workspace_id" class="form-select" required
+						hx-get="/admin/playground/templates"
+						hx-target="#playground-template-select-container"
+						hx-trigger="change, load delay:100ms"
+					>
 						for _, ws := range workspaces {
 							<option value={ ws.ID.String() }>{ ws.Name }</option>
 						}
@@ -169,6 +179,12 @@ templ PlaygroundContent(workspaces []repository.Workspace) {
 						<option value="whatsapp">WhatsApp Web (QR Code)</option>
 					</select>
 				</div>
+
+				<!-- WABA Template Select Area -->
+				<div id="playground-template-select-container"></div>
+
+				<!-- Template Details Area -->
+				<div id="template-details-container"></div>
 
 				<div class="form-group">
 					<label for="to">Recipient (Destination)</label>
@@ -282,4 +298,233 @@ templ PlaygroundEventRow(eventType string, badgeClass string, title string, time
 			<div class="event-body">{ details }</div>
 		</div>
 	</div>
+}
+
+templ PlaygroundTemplateSelect(templates []repository.WABATemplate) {
+	<div class="form-group" style="margin-top: var(--spacing-md);">
+		<label for="template_select">Select WABA Template (Optional)</label>
+		<select name="template_name" id="template_select" class="form-select"
+			hx-get="/admin/playground/templates/details"
+			hx-target="#template-details-container"
+			hx-trigger="change"
+			hx-include="[name='workspace_id']"
+		>
+			<option value="">-- No Template (Send Free Text) --</option>
+			for _, t := range templates {
+				<option value={ t.Name }>{ t.Name } ({ t.Language })</option>
+			}
+		</select>
+	</div>
+}
+
+type ParsedTemplateDetails struct {
+	BodyText      string
+	HeaderText    string
+	HeaderFormat  string
+	BodyVarsCount int
+}
+
+func parseTemplateComponents(componentsRaw []byte) ParsedTemplateDetails {
+	type component struct {
+		Type   string `json:"type"`
+		Format string `json:"format"`
+		Text   string `json:"text"`
+	}
+	var comps []component
+	_ = json.Unmarshal(componentsRaw, &comps)
+
+	var details ParsedTemplateDetails
+	for _, c := range comps {
+		switch strings.ToUpper(c.Type) {
+		case "BODY":
+			details.BodyText = c.Text
+			re := regexp.MustCompile(`\{\{(\d+)\}\}`)
+			matches := re.FindAllStringSubmatch(c.Text, -1)
+			maxVar := 0
+			for _, m := range matches {
+				if len(m) > 1 {
+					var num int
+					fmt.Sscanf(m[1], "%d", &num)
+					if num > maxVar {
+						maxVar = num
+					}
+				}
+			}
+			details.BodyVarsCount = maxVar
+		case "HEADER":
+			details.HeaderFormat = strings.ToUpper(c.Format)
+			if details.HeaderFormat == "TEXT" {
+				details.HeaderText = c.Text
+			}
+		}
+	}
+	return details
+}
+
+templ PlaygroundTemplateDetails(tmpl repository.WABATemplate) {
+	{{ details := parseTemplateComponents(tmpl.Components) }}
+	<div id="template-details" style="margin-top: var(--spacing-md); border-top: 1px solid var(--color-border); padding-top: var(--spacing-md);">
+		<!-- Language code input hidden (passed automatically to send route) -->
+		<input type="hidden" name="template_language" value={ tmpl.Language }/>
+
+		<!-- Metadata loop -->
+		<div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-sm); margin-bottom: var(--spacing-md); font-size: 0.875rem;">
+			<div><strong>Category:</strong> { tmpl.Category }</div>
+			<div><strong>Status:</strong> <span class="badge badge-success">{ tmpl.Status }</span></div>
+			<div><strong>Language:</strong> { tmpl.Language }</div>
+			<div><strong>Meta ID:</strong> { tmpl.MetaTemplateID }</div>
+			<div><strong>Created:</strong> { tmpl.CreatedAt.Format("2006-01-02 15:04:05") }</div>
+		</div>
+
+		<!-- Real-time Preview -->
+		<div style="background: #f1f5f9; padding: var(--spacing-md); border-radius: var(--radius); margin-bottom: var(--spacing-md); border: 1px solid var(--color-border);">
+			<h4 style="font-size: 0.875rem; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: var(--spacing-xs); font-weight: 600;">Message Preview</h4>
+			<div id="preview-header-media" style="margin-bottom: var(--spacing-sm); display: none; text-align: center; background: #e2e8f0; padding: var(--spacing-sm); border-radius: var(--radius);">
+				<img id="preview-image" src="" style="max-height: 180px; max-width: 100%; border-radius: var(--radius); display: none; margin: 0 auto;"/>
+				<div id="preview-doc" style="display: none; font-size: 0.875rem; color: var(--color-text-muted); padding: var(--spacing-md);">📄 Document Attached</div>
+				<div id="preview-video" style="display: none; font-size: 0.875rem; color: var(--color-text-muted); padding: var(--spacing-md);">🎥 Video Attached</div>
+			</div>
+			<div id="preview-text" style="white-space: pre-wrap; font-family: sans-serif; font-size: 0.95rem; color: var(--color-text); line-height: 1.5;"></div>
+		</div>
+
+		<!-- Inputs -->
+		<div id="variable-inputs" style="display: flex; flex-direction: column; gap: var(--spacing-sm);">
+			<!-- Media Header -->
+			if details.HeaderFormat == "IMAGE" || details.HeaderFormat == "VIDEO" || details.HeaderFormat == "DOCUMENT" {
+				<div class="form-group">
+					<label for="header-media-url">Header { details.HeaderFormat } URL</label>
+					<div style="display: flex; gap: var(--spacing-sm);">
+						<input type="hidden" name="param_header_type" value={ strings.ToLower(details.HeaderFormat) }/>
+						<input type="text" id="header-media-url" name="param_header_url" class="form-input" style="flex: 1; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius);" placeholder={ fmt.Sprintf("Enter %s URL or upload", details.HeaderFormat) }/>
+						<input type="file" id="header-file-upload" style="display: none;" onchange="uploadPlaygroundFile(this)"/>
+						<button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('header-file-upload').click()">Upload</button>
+					</div>
+				</div>
+			}
+
+			<!-- Body Variables -->
+			for i := 1; i <= details.BodyVarsCount; i++ {
+				<div class="form-group">
+					<label for={ fmt.Sprintf("param_body_%d", i) }>Variable { fmt.Sprintf("{{%d}}", i) }</label>
+					<input type="text" id={ fmt.Sprintf("param_body_%d", i) } name={ fmt.Sprintf("param_body_%d", i) } class="form-input param-body-input" style="width: 100%; padding: var(--spacing-sm); border: 1px solid var(--color-border); border-radius: var(--radius);" placeholder={ fmt.Sprintf("Value for {{%d}}", i) } required/>
+				</div>
+			}
+		</div>
+	</div>
+
+	<script>
+		(function() {
+			const bodyText = {` + fmt.Sprintf("%q", details.BodyText) + `};
+			const headerFormat = {` + fmt.Sprintf("%q", details.HeaderFormat) + `};
+
+			function updatePlaygroundPreview() {
+				let preview = bodyText;
+				
+				const bodyInputs = document.querySelectorAll(".param-body-input");
+				bodyInputs.forEach((input, index) => {
+					const num = index + 1;
+					preview = preview.replaceAll("{{" + num + "}}", input.value || ("{{" + num + "}}"));
+				});
+
+				document.getElementById("preview-text").innerText = preview;
+
+				const headerContainer = document.getElementById("preview-header-media");
+				const previewImg = document.getElementById("preview-image");
+				const previewDoc = document.getElementById("preview-doc");
+				const previewVid = document.getElementById("preview-video");
+				const mediaUrlInput = document.getElementById("header-media-url");
+
+				if (headerContainer && mediaUrlInput) {
+					const url = mediaUrlInput.value;
+					if (url) {
+						headerContainer.style.display = "block";
+						if (headerFormat === "IMAGE") {
+							previewImg.src = url;
+							previewImg.style.display = "block";
+							previewDoc.style.display = "none";
+							previewVid.style.display = "none";
+						} else if (headerFormat === "DOCUMENT") {
+							previewImg.style.display = "none";
+							previewDoc.style.display = "block";
+							previewVid.style.display = "none";
+						} else if (headerFormat === "VIDEO") {
+							previewImg.style.display = "none";
+							previewDoc.style.display = "none";
+							previewVid.style.display = "block";
+						}
+					} else {
+						headerContainer.style.display = "none";
+					}
+				}
+			}
+
+			window.updatePlaygroundPreview = updatePlaygroundPreview;
+
+			document.querySelectorAll(".param-body-input").forEach(input => {
+				input.addEventListener("input", updatePlaygroundPreview);
+			});
+
+			const mediaUrlInput = document.getElementById("header-media-url");
+			if (mediaUrlInput) {
+				mediaUrlInput.addEventListener("input", updatePlaygroundPreview);
+			}
+
+			updatePlaygroundPreview();
+		})();
+	</script>
+}
+
+// Global script inside Page scope
+templ playgroundGlobalScript() {
+	<script>
+		function uploadPlaygroundFile(input) {
+			if (!input.files || !input.files[0]) return;
+			const file = input.files[0];
+			const formData = new FormData();
+			formData.append("file", file);
+			
+			const workspaceSelect = document.getElementById("workspace_id");
+			const workspaceId = workspaceSelect ? workspaceSelect.value : "";
+			if (!workspaceId) {
+				alert("Please select a workspace first.");
+				return;
+			}
+			
+			const uploadBtn = input.nextElementSibling;
+			const originalText = uploadBtn.innerText;
+			uploadBtn.innerText = "Uploading...";
+			uploadBtn.disabled = true;
+			
+			fetch("/admin/playground/upload?workspace_id=" + workspaceId, {
+				method: "POST",
+				body: formData
+			})
+			.then(res => {
+				if (!res.ok) {
+					return res.json().then(err => { throw new Error(err.error || "Upload failed"); });
+				}
+				return res.json();
+			})
+			.then(data => {
+				if (data.url) {
+					const mediaInput = document.getElementById("header-media-url");
+					if (mediaInput) {
+						mediaInput.value = data.url;
+						if (window.updatePlaygroundPreview) {
+							window.updatePlaygroundPreview();
+						}
+					}
+				} else {
+					alert("Upload failed: url not returned");
+				}
+			})
+			.catch(err => {
+				alert("Upload error: " + err.message);
+			})
+			.finally(() => {
+				uploadBtn.innerText = originalText;
+				uploadBtn.disabled = false;
+			});
+		}
+	</script>
 }

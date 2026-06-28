@@ -67,8 +67,15 @@ type wabaComponent struct {
 }
 
 type wabaParameter struct {
-	Type string `json:"type"`
-	Text string `json:"text,omitempty"`
+	Type     string              `json:"type"`
+	Text     string              `json:"text,omitempty"`
+	Image    *wabaParameterMedia `json:"image,omitempty"`
+	Video    *wabaParameterMedia `json:"video,omitempty"`
+	Document *wabaParameterMedia `json:"document,omitempty"`
+}
+
+type wabaParameterMedia struct {
+	Link string `json:"link"`
 }
 
 // MetaErrorResponse is the structure returned by Meta on API errors.
@@ -172,9 +179,26 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 				if len(comp.Parameters) > 0 {
 					tmpl.Components[i].Parameters = make([]wabaParameter, len(comp.Parameters))
 					for j, param := range comp.Parameters {
+						var img, video, doc *wabaParameterMedia
+						textVal := param.Text
+						switch param.Type {
+						case "image":
+							img = &wabaParameterMedia{Link: param.Text}
+							textVal = ""
+						case "video":
+							video = &wabaParameterMedia{Link: param.Text}
+							textVal = ""
+						case "document":
+							doc = &wabaParameterMedia{Link: param.Text}
+							textVal = ""
+						}
+
 						tmpl.Components[i].Parameters[j] = wabaParameter{
-							Type: param.Type,
-							Text: param.Text,
+							Type:     param.Type,
+							Text:     textVal,
+							Image:    img,
+							Video:    video,
+							Document: doc,
 						}
 					}
 				}

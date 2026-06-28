@@ -385,10 +385,13 @@ func main() {
 	adminGroup.DELETE("/workspaces/:workspace_id/webhooks/config", webhookHandler.DeleteConfig)
 
 	// Developer Playground
-	playgroundHandler := admin.NewPlaygroundHandler(wsRepo, publisher, nc)
+	playgroundHandler := admin.NewPlaygroundHandler(wsRepo, publisher, nc, wabaTemplateRepo, s3Client)
 	adminGroup.GET("/playground", playgroundHandler.Page)
 	adminGroup.POST("/playground/send", playgroundHandler.Send)
 	adminGroup.GET("/playground/ws", playgroundHandler.WS)
+	adminGroup.GET("/playground/templates", playgroundHandler.GetTemplates)
+	adminGroup.GET("/playground/templates/details", playgroundHandler.GetTemplateDetails)
+	adminGroup.POST("/playground/upload", playgroundHandler.Upload)
 
 	// Static files
 	e.Static("/static", "static")

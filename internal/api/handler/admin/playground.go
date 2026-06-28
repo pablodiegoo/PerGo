@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -16,23 +17,28 @@ import (
 	"github.com/pablojhp.omnigo/internal/api/middleware"
 	"github.com/pablojhp.omnigo/internal/domain"
 	"github.com/pablojhp.omnigo/internal/platform/queue"
+	"github.com/pablojhp.omnigo/internal/platform/storage"
 	"github.com/pablojhp.omnigo/internal/repository"
 	"github.com/pablojhp.omnigo/templates/pages"
 )
 
 // PlaygroundHandler handles routes for the Developer Playground screen.
 type PlaygroundHandler struct {
-	wsRepo    *repository.WorkspaceRepository
-	publisher *queue.JetStreamPublisher
-	nc        *nats.Conn
+	wsRepo        *repository.WorkspaceRepository
+	publisher     *queue.JetStreamPublisher
+	nc            *nats.Conn
+	templatesRepo *repository.WABATemplateRepository
+	s3Client      *storage.S3Client
 }
 
 // NewPlaygroundHandler creates a new instance of PlaygroundHandler.
-func NewPlaygroundHandler(wsRepo *repository.WorkspaceRepository, publisher *queue.JetStreamPublisher, nc *nats.Conn) *PlaygroundHandler {
+func NewPlaygroundHandler(wsRepo *repository.WorkspaceRepository, publisher *queue.JetStreamPublisher, nc *nats.Conn, templatesRepo *repository.WABATemplateRepository, s3Client *storage.S3Client) *PlaygroundHandler {
 	return &PlaygroundHandler{
-		wsRepo:    wsRepo,
-		publisher: publisher,
-		nc:        nc,
+		wsRepo:        wsRepo,
+		publisher:     publisher,
+		nc:            nc,
+		templatesRepo: templatesRepo,
+		s3Client:      s3Client,
 	}
 }
 
@@ -72,7 +78,6 @@ func (h *PlaygroundHandler) Send(c *echo.Context) error {
 	if channel == "whatsapp_cloud" {
 		templateName := c.FormValue("template_name")
 		templateLanguage := c.FormValue("template_language")
-		templateComponentsRaw := c.FormValue("template_components")
 
 		if templateName != "" {
 			qMsg.TemplateName = templateName
@@ -82,13 +87,43 @@ func (h *PlaygroundHandler) Send(c *echo.Context) error {
 				qMsg.Language = "en_US"
 			}
 
-			if templateComponentsRaw != "" {
-				var components []domain.TemplateComponent
-				if err := json.Unmarshal([]byte(templateComponentsRaw), &components); err != nil {
-					return c.HTML(http.StatusOK, fmt.Sprintf(`<div class="alert alert-error" style="background: #fef2f2; color: var(--color-error); border: 1px solid #fecaca; padding: var(--spacing-md); border-radius: var(--radius); margin-bottom: var(--spacing-md);"><strong>Error:</strong> Invalid Template Parameters JSON: %v</div>`, err))
-				}
-				qMsg.Components = components
+			var components []domain.TemplateComponent
+
+			// Parse header media parameter
+			headerType := c.FormValue("param_header_type")
+			headerURL := c.FormValue("param_header_url")
+			if headerType != "" && headerURL != "" {
+				components = append(components, domain.TemplateComponent{
+					Type: "header",
+					Parameters: []domain.TemplateParameter{
+						{
+							Type: headerType,
+							Text: headerURL,
+						},
+					},
+				})
 			}
+
+			// Parse body parameters
+			var bodyParams []domain.TemplateParameter
+			for i := 1; ; i++ {
+				val := c.FormValue(fmt.Sprintf("param_body_%d", i))
+				if val == "" {
+					break
+				}
+				bodyParams = append(bodyParams, domain.TemplateParameter{
+					Type: "text",
+					Text: val,
+				})
+			}
+			if len(bodyParams) > 0 {
+				components = append(components, domain.TemplateComponent{
+					Type:       "body",
+					Parameters: bodyParams,
+				})
+			}
+
+			qMsg.Components = components
 		}
 	}
 
@@ -213,4 +248,97 @@ func (h *PlaygroundHandler) WS(c *echo.Context) error {
 			}
 		}
 	}
+}
+
+// GetTemplates returns a template select dropdown fragment.
+func (h *PlaygroundHandler) GetTemplates(c *echo.Context) error {
+	workspaceIDStr := c.QueryParam("workspace_id")
+	if workspaceIDStr == "" {
+		return c.HTML(http.StatusOK, `<p style="color: var(--color-text-muted);">Select a workspace first</p>`)
+	}
+	workspaceID, err := uuid.Parse(workspaceIDStr)
+	if err != nil {
+		return c.HTML(http.StatusOK, `<p style="color: var(--color-text-muted);">Invalid workspace ID</p>`)
+	}
+
+	templates, err := h.templatesRepo.ListByWorkspace(c.Request().Context(), workspaceID)
+	if err != nil {
+		return c.HTML(http.StatusOK, fmt.Sprintf(`<p style="color: var(--color-error);">Failed to load templates: %v</p>`, err))
+	}
+
+	return middleware.Render(c, http.StatusOK, pages.PlaygroundTemplateSelect(templates))
+}
+
+// GetTemplateDetails returns variable inputs and meta info for a selected template.
+func (h *PlaygroundHandler) GetTemplateDetails(c *echo.Context) error {
+	workspaceIDStr := c.QueryParam("workspace_id")
+	templateName := c.QueryParam("template_name")
+
+	if templateName == "" || workspaceIDStr == "" {
+		return c.HTML(http.StatusOK, "")
+	}
+
+	workspaceID, err := uuid.Parse(workspaceIDStr)
+	if err != nil {
+		return c.HTML(http.StatusOK, "Invalid Workspace ID")
+	}
+
+	templates, err := h.templatesRepo.ListByWorkspace(c.Request().Context(), workspaceID)
+	if err != nil {
+		return c.HTML(http.StatusOK, fmt.Sprintf("Failed to load templates: %v", err))
+	}
+
+	var matchedTmpl *repository.WABATemplate
+	for _, t := range templates {
+		if t.Name == templateName {
+			matchedTmpl = &t
+			break
+		}
+	}
+
+	if matchedTmpl == nil {
+		return c.HTML(http.StatusOK, "Template not found")
+	}
+
+	return middleware.Render(c, http.StatusOK, pages.PlaygroundTemplateDetails(*matchedTmpl))
+}
+
+// Upload handles uploading a file to S3 and returning a proxy URL.
+func (h *PlaygroundHandler) Upload(c *echo.Context) error {
+	workspaceIDStr := c.QueryParam("workspace_id")
+	if workspaceIDStr == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "workspace_id is required"})
+	}
+	workspaceID, err := uuid.Parse(workspaceIDStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace_id"})
+	}
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "no file uploaded"})
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to open uploaded file"})
+	}
+	defer src.Close()
+
+	data, err := io.ReadAll(src)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to read uploaded file"})
+	}
+
+	s3Filename := uuid.New().String() + "-" + file.Filename
+	s3Key := workspaceID.String() + "/" + s3Filename
+
+	err = h.s3Client.Upload(c.Request().Context(), s3Key, data, file.Header.Get("Content-Type"))
+	if err != nil {
+		slog.Error("failed to upload playground file to S3", "error", err, "key", s3Key)
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to save file to S3"})
+	}
+
+	proxyURL := fmt.Sprintf("/media/%s/%s", workspaceIDStr, s3Filename)
+	return c.JSON(http.StatusOK, map[string]string{"url": proxyURL})
 }
