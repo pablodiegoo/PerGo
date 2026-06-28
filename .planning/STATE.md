@@ -104,6 +104,7 @@ Items acknowledged and carried forward from previous milestone close:
 |---|---|---|---|
 | GS5 | 2026-06-28 | criar-tela-configuracao-credenciais-canais | complete ✓ |
 | GS6 | 2026-06-28 | criar-tela-playground-testes-websocket | complete ✓ |
+| GS7 | 2026-06-28 | auto-carregar-templates-meta | complete ✓ |
 
 ## Session Continuity
 
