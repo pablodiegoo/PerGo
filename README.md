@@ -39,8 +39,18 @@ It is built for backend developers integrating omnichannel messaging into CRMs/E
 * `static/`: Static assets (CSS, images) for the operator console.
 * `templates/`: `a-h/templ` components and views.
 
-For deeper architectural context, see the [Documentation Directory](file:///home/pablo/Coding/PerGo/docs/architecture/README.md).
-For a step-by-step guide on configuring messaging channels (Telegram, WABA, WhatsApp Web), see the [Channels Setup Guide](file:///home/pablo/Coding/PerGo/docs/CHANNELS.md).
+## Documentação
+
+Para guias detalhados de configuração, desenvolvimento e implantação do PerGo, consulte a documentação oficial:
+
+* **Arquitetura do PerGo:** [Visão Geral de Arquitetura](file:///home/pablo/Coding/PerGo/docs/architecture/README.md)
+* **Como Começar:** [Guia de Início Rápido (Getting Started)](file:///home/pablo/Coding/PerGo/docs/GETTING-STARTED.md)
+* **Configurações:** [Variáveis de Ambiente (.env)](file:///home/pablo/Coding/PerGo/docs/CONFIGURATION.md)
+* **Referência da API:** [Endpoints, Payloads e Erros](file:///home/pablo/Coding/PerGo/docs/API.md)
+* **Configuração de Provedores:** [Telegram, WABA e WhatsApp Web Setup](file:///home/pablo/Coding/PerGo/docs/CHANNELS.md)
+* **Desenvolvimento:** [Estrutura de Pastas e Diretrizes](file:///home/pablo/Coding/PerGo/docs/DEVELOPMENT.md)
+* **Testes:** [Guia de Escrita e Execução de Testes](file:///home/pablo/Coding/PerGo/docs/TESTING.md)
+* **Implantação (Deploy):** [Dockerfile e Compose para Produção](file:///home/pablo/Coding/PerGo/docs/DEPLOYMENT.md)
 
 ---
 
