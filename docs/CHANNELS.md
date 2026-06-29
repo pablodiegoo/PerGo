@@ -64,7 +64,7 @@ Para que o PerGo receba notificações de mensagens entregues, lidas, falhas e n
 1. No portal Meta for Developers, no menu esquerdo do WhatsApp, clique em **Configuração (Configuration)**.
 2. Em **Webhook**, clique em **Editar**.
 3. Insira as informações:
-   * **URL de retorno (Callback URL):** `https://[seu-dominio-pergo]/webhooks/waba`
+   * **URL de retorno (Callback URL):** `https://[seu-dominio-pergo]/webhooks/waba/[workspace_id]`
    * **Token de verificação (Verify Token):** Escolha uma palavra-chave aleatória de sua preferência (você usará essa mesma palavra no painel do PerGo).
 4. Clique em **Verificar e salvar**.
 5. Em **Campos de webhook**, clique em **Gerenciar** e marque a caixa de seleção **messages**. Isso é **obrigatório** para receber mensagens de clientes e atualizar os status no PerGo.

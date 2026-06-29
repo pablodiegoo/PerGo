@@ -94,7 +94,7 @@ func (h *WorkspaceHandler) Detail(c *echo.Context) error {
 		}
 	}
 
-	return mw.Render(c, http.StatusOK, pages.WorkspaceDetailPage(*ws, keys, waba, tg))
+	return mw.Render(c, http.StatusOK, pages.WorkspaceDetailPage(*ws, keys, waba, tg, h.ExternalURL))
 }
 
 // ConfirmDelete returns an HTMX modal fragment for delete confirmation.
@@ -168,7 +168,7 @@ func (h *WorkspaceHandler) SaveCredentials(c *echo.Context) error {
 		if err != nil {
 			slog.Warn("WABA credentials validation failed", "error", err, "workspace_id", workspaceID)
 			waba.Token = "" // Clear token to render the form again
-			return mw.Render(c, http.StatusOK, pages.WABACredentialsCard(idStr, waba, err.Error()))
+			return mw.Render(c, http.StatusOK, pages.WABACredentialsCard(idStr, waba, err.Error(), h.ExternalURL))
 		}
 		payload, err = json.Marshal(waba)
 	} else {
@@ -180,7 +180,7 @@ func (h *WorkspaceHandler) SaveCredentials(c *echo.Context) error {
 		if err != nil {
 			slog.Warn("Telegram token validation failed", "error", err, "workspace_id", workspaceID)
 			tg.Token = "" // Clear token to render the form again
-			return mw.Render(c, http.StatusOK, pages.TelegramCredentialsCard(idStr, tg, err.Error()))
+			return mw.Render(c, http.StatusOK, pages.TelegramCredentialsCard(idStr, tg, err.Error(), h.ExternalURL))
 		}
 
 		secretToken := ""
@@ -191,7 +191,7 @@ func (h *WorkspaceHandler) SaveCredentials(c *echo.Context) error {
 			if err != nil {
 				slog.Warn("failed to register Telegram webhook", "error", err, "workspace_id", workspaceID)
 				tg.Token = "" // Clear token to render the form again
-				return mw.Render(c, http.StatusOK, pages.TelegramCredentialsCard(idStr, tg, fmt.Sprintf("Bot token is valid, but failed to set webhook: %v", err)))
+				return mw.Render(c, http.StatusOK, pages.TelegramCredentialsCard(idStr, tg, fmt.Sprintf("Bot token is valid, but failed to set webhook: %v", err), h.ExternalURL))
 			}
 		} else {
 			// Generate a predictable fallback secret token for local non-HTTPS development
@@ -217,9 +217,9 @@ func (h *WorkspaceHandler) SaveCredentials(c *echo.Context) error {
 	}
 
 	if channel == "whatsapp_cloud" {
-		return mw.Render(c, http.StatusOK, pages.WABACredentialsCard(idStr, waba, ""))
+		return mw.Render(c, http.StatusOK, pages.WABACredentialsCard(idStr, waba, "", h.ExternalURL))
 	} else {
-		return mw.Render(c, http.StatusOK, pages.TelegramCredentialsCard(idStr, tg, ""))
+		return mw.Render(c, http.StatusOK, pages.TelegramCredentialsCard(idStr, tg, "", h.ExternalURL))
 	}
 }
 
@@ -407,9 +407,9 @@ func (h *WorkspaceHandler) DeleteCredentials(c *echo.Context) error {
 	}
 
 	if channel == "whatsapp_cloud" {
-		return mw.Render(c, http.StatusOK, pages.WABACredentialsCard(idStr, pages.WABAConfig{}, ""))
+		return mw.Render(c, http.StatusOK, pages.WABACredentialsCard(idStr, pages.WABAConfig{}, "", h.ExternalURL))
 	} else {
-		return mw.Render(c, http.StatusOK, pages.TelegramCredentialsCard(idStr, pages.TelegramConfig{}, ""))
+		return mw.Render(c, http.StatusOK, pages.TelegramCredentialsCard(idStr, pages.TelegramConfig{}, "", h.ExternalURL))
 	}
 }
 
