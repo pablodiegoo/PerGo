@@ -40,6 +40,7 @@ It is built for backend developers integrating omnichannel messaging into CRMs/E
 * `templates/`: `a-h/templ` components and views.
 
 For deeper architectural context, see the [Documentation Directory](file:///home/pablo/Coding/PerGo/docs/architecture/README.md).
+For a step-by-step guide on configuring messaging channels (Telegram, WABA, WhatsApp Web), see the [Channels Setup Guide](file:///home/pablo/Coding/PerGo/docs/CHANNELS.md).
 
 ---
 

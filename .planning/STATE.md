@@ -111,6 +111,7 @@ Items acknowledged and carried forward from previous milestone close:
 | GS11 | 2026-06-28 | corrigir-hot-reload-nats | complete ✓ |
 | GS12 | 2026-06-28 | configurar-docker-compose-producao | complete ✓ |
 | GS13 | 2026-06-28 | renomear-projeto-para-pergo | complete ✓ |
+| GS14 | 2026-06-28 | documentar-configuracao-provedores | complete ✓ |
 
 
 
