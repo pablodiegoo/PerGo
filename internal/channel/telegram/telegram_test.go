@@ -129,7 +129,7 @@ func TestTelegramDispatch(t *testing.T) {
 			Body: "Hello Telegram!",
 		}
 
-		err := adapter.Dispatch(tenantCtx, payload)
+		_, err := adapter.Dispatch(tenantCtx, payload)
 		if err != nil {
 			t.Fatalf("expected nil error on success, got: %v", err)
 		}
@@ -145,7 +145,7 @@ func TestTelegramDispatch(t *testing.T) {
 		adapter := NewTelegramAdapter(credsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
-		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "invalid_chat", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "invalid_chat", Body: "hi"})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -164,7 +164,7 @@ func TestTelegramDispatch(t *testing.T) {
 		adapter := NewTelegramAdapter(credsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
-		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "blocked_chat", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "blocked_chat", Body: "hi"})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -183,7 +183,7 @@ func TestTelegramDispatch(t *testing.T) {
 		adapter := NewTelegramAdapter(credsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
-		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "987654321", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "987654321", Body: "hi"})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -259,7 +259,7 @@ func TestTelegramDispatch(t *testing.T) {
 			},
 		}
 
-		err = adapter.Dispatch(tenantCtx, payload)
+		_, err = adapter.Dispatch(tenantCtx, payload)
 		if err != nil {
 			t.Fatalf("expected nil error on success, got: %v", err)
 		}

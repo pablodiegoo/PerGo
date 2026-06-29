@@ -6,26 +6,26 @@ import (
 )
 
 // AuditPage renders the full audit log page with base layout, filters, and table.
-templ AuditPage(entries []repository.AuditEntry, total int, filters repository.AuditFilters, workspaces []repository.Workspace) {
-	@layout.Base("Audit Logs", AuditPageContent(entries, total, filters, workspaces))
+templ AuditPage(title string, entries []repository.AuditEntry, total int, filters repository.AuditFilters, workspaces []repository.Workspace, baseURL string) {
+	@layout.Base(title, AuditPageContent(title, entries, total, filters, workspaces, baseURL))
 }
 
 // AuditPageContent renders the audit log page content.
-templ AuditPageContent(entries []repository.AuditEntry, total int, filters repository.AuditFilters, workspaces []repository.Workspace) {
+templ AuditPageContent(title string, entries []repository.AuditEntry, total int, filters repository.AuditFilters, workspaces []repository.Workspace, baseURL string) {
 	<div class="page-header">
-		<h1>Audit Logs</h1>
+		<h1>{ title }</h1>
 	</div>
-	@AuditFiltersUI(filters, workspaces)
-	@AuditTable(entries, total, filters)
+	@AuditFiltersUI(filters, workspaces, baseURL)
+	@AuditTable(entries, total, filters, baseURL)
 }
 
 // AuditTableFragment renders just the table body and pagination for HTMX updates.
-templ AuditTableFragment(entries []repository.AuditEntry, total int, filters repository.AuditFilters) {
-	@AuditTable(entries, total, filters)
+templ AuditTableFragment(entries []repository.AuditEntry, total int, filters repository.AuditFilters, baseURL string) {
+	@AuditTable(entries, total, filters, baseURL)
 }
 
 // AuditTable renders the audit log table with rows and pagination.
-templ AuditTable(entries []repository.AuditEntry, total int, filters repository.AuditFilters) {
+templ AuditTable(entries []repository.AuditEntry, total int, filters repository.AuditFilters, baseURL string) {
 	<div id="audit-table">
 		<table class="table">
 			<thead>
@@ -44,7 +44,7 @@ templ AuditTable(entries []repository.AuditEntry, total int, filters repository.
 						<td>{ entry.WorkspaceID.String()[:8] }</td>
 						<td>{ entry.TraceID }</td>
 						<td>{ entry.EventType }</td>
-						<td>{ string(entry.Payload) }</td>
+						<td style="max-width: 500px; overflow-wrap: break-word; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap;">{ string(entry.Payload) }</td>
 					</tr>
 				}
 				if len(entries) == 0 {
@@ -54,14 +54,14 @@ templ AuditTable(entries []repository.AuditEntry, total int, filters repository.
 				}
 			</tbody>
 		</table>
-		@AuditPagination(total, filters.Page, filters.PageSize, filters)
+		@AuditPagination(total, filters.Page, filters.PageSize, filters, baseURL)
 	</div>
 }
 
 // AuditFiltersUI renders the filter controls for the audit log page.
-templ AuditFiltersUI(filters repository.AuditFilters, workspaces []repository.Workspace) {
+templ AuditFiltersUI(filters repository.AuditFilters, workspaces []repository.Workspace, baseURL string) {
 	<div class="section audit-filters">
-		<form hx-get="/admin/audit" hx-target="#audit-table" hx-swap="innerHTML">
+		<form hx-get={ baseURL } hx-target="#audit-table" hx-swap="innerHTML">
 			<div class="form-row">
 				<div class="form-group">
 					<label for="workspace_id">Workspace</label>
@@ -71,10 +71,6 @@ templ AuditFiltersUI(filters repository.AuditFilters, workspaces []repository.Wo
 							<option value={ ws.ID.String() }>{ ws.Name }</option>
 						}
 					</select>
-				</div>
-				<div class="form-group">
-					<label for="event_type">Event Type</label>
-					<input type="text" name="event_type" id="event_type" class="form-input" placeholder="e.g. message.sent"/>
 				</div>
 				<div class="form-group">
 					<label for="trace_id">Trace ID</label>
@@ -90,7 +86,7 @@ templ AuditFiltersUI(filters repository.AuditFilters, workspaces []repository.Wo
 				</div>
 				<div class="form-group form-actions-inline">
 					<button type="submit" class="btn btn-primary">Search</button>
-					<a href={ templ.SafeURL(buildExportURL(filters)) } class="btn btn-secondary">Export CSV</a>
+					<a href={ templ.SafeURL(buildExportURL(baseURL, filters)) } class="btn btn-secondary">Export CSV</a>
 				</div>
 			</div>
 		</form>
@@ -98,7 +94,7 @@ templ AuditFiltersUI(filters repository.AuditFilters, workspaces []repository.Wo
 }
 
 // AuditPagination renders pagination controls.
-templ AuditPagination(total int, page int, pageSize int, filters repository.AuditFilters) {
+templ AuditPagination(total int, page int, pageSize int, filters repository.AuditFilters, baseURL string) {
 	<div class="pagination">
 		<span class="pagination-info">
 			if pageSize > 0 {
@@ -109,17 +105,17 @@ templ AuditPagination(total int, page int, pageSize int, filters repository.Audi
 		</span>
 		<div class="pagination-links">
 			if page > 1 {
-				<a href={ templ.SafeURL(buildPageURL(page-1, filters)) } class="btn btn-sm" hx-get={ buildPageURL(page-1, filters) } hx-target="#audit-table" hx-swap="innerHTML">Previous</a>
+				<a href={ templ.SafeURL(buildPageURL(baseURL, page-1, filters)) } class="btn btn-sm" hx-get={ buildPageURL(baseURL, page-1, filters) } hx-target="#audit-table" hx-swap="innerHTML">Previous</a>
 			}
 			if pageSize > 0 && page < (total+pageSize-1)/pageSize {
-				<a href={ templ.SafeURL(buildPageURL(page+1, filters)) } class="btn btn-sm" hx-get={ buildPageURL(page+1, filters) } hx-target="#audit-table" hx-swap="innerHTML">Next</a>
+				<a href={ templ.SafeURL(buildPageURL(baseURL, page+1, filters)) } class="btn btn-sm" hx-get={ buildPageURL(baseURL, page+1, filters) } hx-target="#audit-table" hx-swap="innerHTML">Next</a>
 			}
 		</div>
 	</div>
 }
 
-func buildPageURL(page int, filters repository.AuditFilters) string {
-	url := "/admin/audit?page=" + itoa(page) + "&pageSize=" + itoa(filters.PageSize)
+func buildPageURL(baseURL string, page int, filters repository.AuditFilters) string {
+	url := baseURL + "?page=" + itoa(page) + "&pageSize=" + itoa(filters.PageSize)
 	if filters.WorkspaceID != nil {
 		url += "&workspace_id=" + filters.WorkspaceID.String()
 	}
@@ -138,8 +134,8 @@ func buildPageURL(page int, filters repository.AuditFilters) string {
 	return url
 }
 
-func buildExportURL(filters repository.AuditFilters) string {
-	url := "/admin/audit/export?"
+func buildExportURL(baseURL string, filters repository.AuditFilters) string {
+	url := baseURL + "/export?"
 	if filters.WorkspaceID != nil {
 		url += "workspace_id=" + filters.WorkspaceID.String() + "&"
 	}

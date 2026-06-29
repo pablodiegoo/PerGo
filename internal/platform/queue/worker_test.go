@@ -259,10 +259,10 @@ type mockDispatcher struct {
 	calledWith  []string
 }
 
-func (m *mockDispatcher) Dispatch(ctx context.Context, p *channel.MessagePayload) error {
+func (m *mockDispatcher) Dispatch(ctx context.Context, p *channel.MessagePayload) (string, error) {
 	m.calledCount++
 	m.calledWith = append(m.calledWith, p.Channel)
-	return m.err
+	return "", m.err
 }
 
 func TestWorkerFallbackLoop(t *testing.T) {

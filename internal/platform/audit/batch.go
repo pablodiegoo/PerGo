@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -74,20 +75,34 @@ func (w *BatchWriter) Close() error {
 }
 
 // worker collects events into a batch slice and flushes them when the batch
-// is full or when the channel is closed.
+// is full, when the channel is closed, or when the 50ms idle timer expires.
 func (w *BatchWriter) worker() {
 	defer w.wg.Done()
 	batch := make([]Event, 0, w.batchSize)
-	for e := range w.ch {
-		batch = append(batch, e)
-		if len(batch) >= w.batchSize {
-			w.flush(batch)
-			batch = batch[:0]
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case e, ok := <-w.ch:
+			if !ok {
+				// Flush any remaining events after channel close
+				if len(batch) > 0 {
+					w.flush(batch)
+				}
+				return
+			}
+			batch = append(batch, e)
+			if len(batch) >= w.batchSize {
+				w.flush(batch)
+				batch = batch[:0]
+			}
+		case <-ticker.C:
+			if len(batch) > 0 {
+				w.flush(batch)
+				batch = batch[:0]
+			}
 		}
-	}
-	// Flush any remaining events after channel close
-	if len(batch) > 0 {
-		w.flush(batch)
 	}
 }
 

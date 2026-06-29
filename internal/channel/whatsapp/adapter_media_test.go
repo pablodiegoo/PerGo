@@ -46,7 +46,7 @@ func TestWhatsAppAdapter_Media(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 
-		err := adapter.Dispatch(ctx, payload)
+		_, err := adapter.Dispatch(ctx, payload)
 		if err == nil {
 			t.Fatal("expected error since client is nil")
 		}

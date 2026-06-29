@@ -66,56 +66,88 @@ func parseAuditFilters(c *echo.Context) repository.AuditFilters {
 	return filters
 }
 
-// List renders the audit log list page or HTMX fragment with filtering and pagination.
-func (h *AuditHandler) List(c *echo.Context) error {
+// Redirect redirects /admin/audit to /admin/audit/inbound
+func (h *AuditHandler) Redirect(c *echo.Context) error {
+	return c.Redirect(http.StatusMovedPermanently, "/admin/audit/inbound")
+}
+
+// ListInbound renders the inbound audit log page.
+func (h *AuditHandler) ListInbound(c *echo.Context) error {
 	ctx := c.Request().Context()
 	filters := parseAuditFilters(c)
+	filters.EventType = "inbound_message"
 
-	// Get workspace list for filter dropdown
 	var workspaces []repository.Workspace
 	if h.Workspaces != nil {
 		workspaces, _ = h.Workspaces.List(ctx, 100)
 	}
 
-	// Query audit entries
 	entries, total, err := h.Repo.ListFiltered(ctx, filters)
 	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to load audit logs")
+		return c.String(http.StatusInternalServerError, "failed to load inbound audit logs")
 	}
 
 	if mw.IsHTMX(c) {
-		return mw.Render(c, http.StatusOK, pages.AuditTableFragment(entries, total, filters))
+		return mw.Render(c, http.StatusOK, pages.AuditTableFragment(entries, total, filters, "/admin/audit/inbound"))
 	}
-	return mw.Render(c, http.StatusOK, pages.AuditPage(entries, total, filters, workspaces))
+	return mw.Render(c, http.StatusOK, pages.AuditPage("Inbound Audit Logs", entries, total, filters, workspaces, "/admin/audit/inbound"))
 }
 
-// ExportCSV streams filtered audit logs as a CSV download.
-func (h *AuditHandler) ExportCSV(c *echo.Context) error {
+// ListOutbound renders the outbound audit log page.
+func (h *AuditHandler) ListOutbound(c *echo.Context) error {
 	ctx := c.Request().Context()
 	filters := parseAuditFilters(c)
+	filters.EventType = "outbound_message"
 
-	// Query all matching entries (no pagination for export)
+	var workspaces []repository.Workspace
+	if h.Workspaces != nil {
+		workspaces, _ = h.Workspaces.List(ctx, 100)
+	}
+
+	entries, total, err := h.Repo.ListFiltered(ctx, filters)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to load outbound audit logs")
+	}
+
+	if mw.IsHTMX(c) {
+		return mw.Render(c, http.StatusOK, pages.AuditTableFragment(entries, total, filters, "/admin/audit/outbound"))
+	}
+	return mw.Render(c, http.StatusOK, pages.AuditPage("Outbound Audit Logs", entries, total, filters, workspaces, "/admin/audit/outbound"))
+}
+
+// ExportInboundCSV streams filtered inbound audit logs as a CSV download.
+func (h *AuditHandler) ExportInboundCSV(c *echo.Context) error {
+	filters := parseAuditFilters(c)
+	filters.EventType = "inbound_message"
+	return h.exportCSV(c, filters, "inbound")
+}
+
+// ExportOutboundCSV streams filtered outbound audit logs as a CSV download.
+func (h *AuditHandler) ExportOutboundCSV(c *echo.Context) error {
+	filters := parseAuditFilters(c)
+	filters.EventType = "outbound_message"
+	return h.exportCSV(c, filters, "outbound")
+}
+
+func (h *AuditHandler) exportCSV(c *echo.Context, filters repository.AuditFilters, prefix string) error {
+	ctx := c.Request().Context()
+
 	entries, err := h.Repo.ListAll(ctx, filters)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to export audit logs")
 	}
 
-	// Set CSV headers
 	c.Response().Header().Set("Content-Type", "text/csv; charset=UTF-8")
-	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=audit-logs-%s.csv", time.Now().Format("2006-01-02")))
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s-audit-logs-%s.csv", prefix, time.Now().Format("2006-01-02")))
 
-	// Write CSV using stdlib encoding/csv
 	c.Response().WriteHeader(http.StatusOK)
 	w := csv.NewWriter(c.Response())
 	defer w.Flush()
 
-	// Header row
 	w.Write([]string{"timestamp", "workspace_id", "trace_id", "event_type", "payload"})
 
-	// Data rows
 	for _, entry := range entries {
 		payload := string(entry.Payload)
-		// Strip JSON quotes from payload if present
 		payload = strings.Trim(payload, "\"")
 		w.Write([]string{
 			entry.CreatedAt.Format(time.RFC3339),

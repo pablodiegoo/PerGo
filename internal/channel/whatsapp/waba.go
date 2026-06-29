@@ -110,27 +110,27 @@ func (a *WABAAdapter) SetBaseURL(url string) {
 }
 
 // Dispatch sends a message through the WhatsApp Cloud REST API.
-func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) error {
+func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (string, error) {
 	workspaceID, err := tenant.RequireWorkspaceID(ctx)
 	if err != nil {
-		return channel.NewTerminalError(err)
+		return "", channel.NewTerminalError(err)
 	}
 
 	credsBytes, err := a.credentialsRepo.Get(ctx, workspaceID, "whatsapp_cloud")
 	if err != nil {
 		if errors.Is(err, repository.ErrCredentialsNotFound) {
-			return channel.NewTerminalError(fmt.Errorf("credentials not found: %w", err))
+			return "", channel.NewTerminalError(fmt.Errorf("credentials not found: %w", err))
 		}
-		return err
+		return "", err
 	}
 
 	var config WABAConfig
 	if err := json.Unmarshal(credsBytes, &config); err != nil {
-		return channel.NewTerminalError(fmt.Errorf("invalid credentials format: %w", err))
+		return "", channel.NewTerminalError(fmt.Errorf("invalid credentials format: %w", err))
 	}
 
 	if config.PhoneNumberID == "" || config.Token == "" {
-		return channel.NewTerminalError(errors.New("missing phone_number_id or token in credentials"))
+		return "", channel.NewTerminalError(errors.New("missing phone_number_id or token in credentials"))
 	}
 
 	reqPayload := wabaMessageRequest{
@@ -148,10 +148,10 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 		if a.windowChecker != nil {
 			open, err := a.windowChecker.IsWindowOpen(ctx, workspaceID, m.To, "whatsapp_cloud")
 			if err != nil {
-				return err
+				return "", err
 			}
 			if !open {
-				return channel.NewTerminalError(errors.New("customer service window expired"))
+				return "", channel.NewTerminalError(errors.New("customer service window expired"))
 			}
 		}
 	}
@@ -278,7 +278,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 			}
 			bodyBytes, err := json.Marshal(imgReq)
 			if err != nil {
-				return channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
+				return "", channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
 			}
 			return a.sendRequest(ctx, config.PhoneNumberID, config.Token, bodyBytes)
 
@@ -316,7 +316,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 			}
 			bodyBytes, err := json.Marshal(docReq)
 			if err != nil {
-				return channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
+				return "", channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
 			}
 			return a.sendRequest(ctx, config.PhoneNumberID, config.Token, bodyBytes)
 
@@ -342,7 +342,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 			}
 			bodyBytes, err := json.Marshal(audReq)
 			if err != nil {
-				return channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
+				return "", channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
 			}
 			return a.sendRequest(ctx, config.PhoneNumberID, config.Token, bodyBytes)
 
@@ -374,28 +374,28 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) e
 			}
 			bodyBytes, err := json.Marshal(vidReq)
 			if err != nil {
-				return channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
+				return "", channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
 			}
 			return a.sendRequest(ctx, config.PhoneNumberID, config.Token, bodyBytes)
 
 		default:
-			return channel.NewTerminalError(fmt.Errorf("unsupported media type: %s", m.Media.MediaType))
+			return "", channel.NewTerminalError(fmt.Errorf("unsupported media type: %s", m.Media.MediaType))
 		}
 	}
 
 	bodyBytes, err := json.Marshal(reqPayload)
 	if err != nil {
-		return channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
+		return "", channel.NewTerminalError(fmt.Errorf("marshal request: %w", err))
 	}
 
 	return a.sendRequest(ctx, config.PhoneNumberID, config.Token, bodyBytes)
 }
 
-func (a *WABAAdapter) sendRequest(ctx context.Context, phoneNumberID, token string, bodyBytes []byte) error {
+func (a *WABAAdapter) sendRequest(ctx context.Context, phoneNumberID, token string, bodyBytes []byte) (string, error) {
 	url := fmt.Sprintf("%s/%s/messages", a.baseURL, phoneNumberID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return channel.NewTerminalError(fmt.Errorf("create HTTP request: %w", err))
+		return "", channel.NewTerminalError(fmt.Errorf("create HTTP request: %w", err))
 	}
 
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -403,24 +403,24 @@ func (a *WABAAdapter) sendRequest(ctx context.Context, phoneNumberID, token stri
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 
+	respBytes, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		return nil
+		return string(respBytes), nil
 	}
 
-	respBytes, _ := io.ReadAll(resp.Body)
 	var errorResp MetaErrorResponse
 	if err := json.Unmarshal(respBytes, &errorResp); err != nil {
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
-			return channel.NewTerminalError(fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(respBytes)))
+			return string(respBytes), channel.NewTerminalError(fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(respBytes)))
 		}
-		return fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(respBytes))
+		return string(respBytes), fmt.Errorf("HTTP error %d: %s", resp.StatusCode, string(respBytes))
 	}
 
-	return a.classifyError(resp.StatusCode, &errorResp)
+	return string(respBytes), a.classifyError(resp.StatusCode, &errorResp)
 }
 
 func (a *WABAAdapter) classifyError(statusCode int, errResp *MetaErrorResponse) error {

@@ -136,7 +136,7 @@ func TestWABADispatch(t *testing.T) {
 			Body: "Hello from PerGo!",
 		}
 
-		err := adapter.Dispatch(tenantCtx, payload)
+		_, err := adapter.Dispatch(tenantCtx, payload)
 		if err != nil {
 			t.Fatalf("expected nil error on success, got: %v", err)
 		}
@@ -180,7 +180,7 @@ func TestWABADispatch(t *testing.T) {
 			},
 		}
 
-		err := adapter.Dispatch(tenantCtx, payload)
+		_, err := adapter.Dispatch(tenantCtx, payload)
 		if err != nil {
 			t.Fatalf("expected nil error on template dispatch, got: %v", err)
 		}
@@ -228,7 +228,7 @@ func TestWABADispatch(t *testing.T) {
 			},
 		}
 
-		err := adapter.Dispatch(tenantCtx, payload)
+		_, err := adapter.Dispatch(tenantCtx, payload)
 		if err != nil {
 			t.Fatalf("expected nil error on template dispatch, got: %v", err)
 		}
@@ -244,7 +244,7 @@ func TestWABADispatch(t *testing.T) {
 		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
-		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -263,7 +263,7 @@ func TestWABADispatch(t *testing.T) {
 		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
-		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -282,7 +282,7 @@ func TestWABADispatch(t *testing.T) {
 		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
-		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -295,7 +295,7 @@ func TestWABADispatch(t *testing.T) {
 		mockChecker := &mockWABAWindowChecker{open: false}
 		adapter := NewWABAAdapter(credsRepo, nil, mockChecker, "")
 
-		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -318,7 +318,7 @@ func TestWABADispatch(t *testing.T) {
 		adapter := NewWABAAdapter(credsRepo, nil, mockChecker, "")
 		adapter.SetBaseURL(server.URL)
 
-		err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
 		if err != nil {
 			t.Fatalf("expected nil error, got: %v", err)
 		}
@@ -373,7 +373,7 @@ func TestWABADispatch(t *testing.T) {
 			},
 		}
 
-		err := adapter.Dispatch(tenantCtx, payload)
+		_, err := adapter.Dispatch(tenantCtx, payload)
 		if err != nil {
 			t.Fatalf("expected nil error on success, got: %v", err)
 		}
@@ -445,7 +445,7 @@ func TestWABA_MediaExternalURL(t *testing.T) {
 		},
 	}
 
-	err = adapter.Dispatch(tenantCtx, payload)
+	_, err = adapter.Dispatch(tenantCtx, payload)
 	if err != nil {
 		t.Fatalf("expected nil error on success, got: %v", err)
 	}

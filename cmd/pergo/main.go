@@ -146,7 +146,7 @@ func main() {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	sessionManager := session.NewManager(db, deviceRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", recipientSessionRepo, s3Client, dedupRepo, publisher, auditWriter, wsRepo)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
-	worker := queue.NewWorker(ctx, consumer, 5, 60*time.Second, dispatcherRegistry, dispatchRepo, publisher, queueDepth)
+	worker := queue.NewWorker(ctx, consumer, 5, 60*time.Second, dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter)
 	slog.Info("message worker started", "consumer", "worker-1")
 
 	// --- Webhook Worker ---
@@ -340,8 +340,15 @@ func main() {
 	// Audit log review routes
 	auditRepo := repository.NewAuditRepository(pool)
 	auditHandler := &admin.AuditHandler{Repo: auditRepo, Workspaces: wsRepo}
-	adminGroup.GET("/audit", auditHandler.List)
-	adminGroup.GET("/audit/export", auditHandler.ExportCSV)
+	adminGroup.GET("/audit", auditHandler.Redirect)
+	adminGroup.GET("/audit/inbound", auditHandler.ListInbound)
+	adminGroup.GET("/audit/inbound/export", auditHandler.ExportInboundCSV)
+	adminGroup.GET("/audit/outbound", auditHandler.ListOutbound)
+	adminGroup.GET("/audit/outbound/export", auditHandler.ExportOutboundCSV)
+
+	// Inbox routes
+	inboxHandler := &admin.InboxHandler{Repo: auditRepo}
+	adminGroup.GET("/inbox/:channel", inboxHandler.View)
 
 	// Device management routes (WhatsApp Web pairing & session control)
 	deviceHandler := &admin.DeviceHandler{

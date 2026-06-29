@@ -70,8 +70,11 @@ func setupAuditTestRoutes(t *testing.T) *echo.Echo {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	auditHandler := &admin.AuditHandler{Repo: auditRepo, Workspaces: wsRepo}
 
-	adminGroup.GET("/audit", auditHandler.List)
-	adminGroup.GET("/audit/export", auditHandler.ExportCSV)
+	adminGroup.GET("/audit", auditHandler.Redirect)
+	adminGroup.GET("/audit/inbound", auditHandler.ListInbound)
+	adminGroup.GET("/audit/inbound/export", auditHandler.ExportInboundCSV)
+	adminGroup.GET("/audit/outbound", auditHandler.ListOutbound)
+	adminGroup.GET("/audit/outbound/export", auditHandler.ExportOutboundCSV)
 
 	return e
 }
@@ -94,7 +97,7 @@ func getAuditSessionCookie(t *testing.T, e *echo.Echo) *http.Cookie {
 	return nil
 }
 
-// Test 1: GET /admin/audit with session returns 200 with audit log table
+// Test 1: GET /admin/audit/inbound with session returns 200 with audit log table
 func TestAdminAuditList(t *testing.T) {
 	pool := getTestPool(t)
 	if pool == nil {
@@ -102,12 +105,12 @@ func TestAdminAuditList(t *testing.T) {
 	}
 
 	wsID := uuid.New()
-	seedAuditEvent(t, pool, wsID, uuid.New().String(), "test.event", `{"msg":"hello"}`, time.Now())
+	seedAuditEvent(t, pool, wsID, uuid.New().String(), "inbound_message", `{"msg":"hello"}`, time.Now())
 
 	e := setupAuditTestRoutes(t)
 	cookie := getAuditSessionCookie(t, e)
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/audit", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/audit/inbound", nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -121,7 +124,7 @@ func TestAdminAuditList(t *testing.T) {
 	}
 }
 
-// Test 2: GET /admin/audit?workspace_id={id} filters logs to that workspace
+// Test 2: GET /admin/audit/inbound?workspace_id={id} filters logs to that workspace
 func TestAdminAuditFilterWorkspace(t *testing.T) {
 	pool := getTestPool(t)
 	if pool == nil {
@@ -134,13 +137,13 @@ func TestAdminAuditFilterWorkspace(t *testing.T) {
 	trace2 := uuid.New().String()
 	now := time.Now()
 
-	seedAuditEvent(t, pool, ws1, trace1, "test.ws1", `{"ws":1}`, now)
-	seedAuditEvent(t, pool, ws2, trace2, "test.ws2", `{"ws":2}`, now)
+	seedAuditEvent(t, pool, ws1, trace1, "inbound_message", `{"ws":1}`, now)
+	seedAuditEvent(t, pool, ws2, trace2, "inbound_message", `{"ws":2}`, now)
 
 	e := setupAuditTestRoutes(t)
 	cookie := getAuditSessionCookie(t, e)
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/audit?workspace_id="+ws1.String(), nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/audit/inbound?workspace_id="+ws1.String(), nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -157,7 +160,7 @@ func TestAdminAuditFilterWorkspace(t *testing.T) {
 	}
 }
 
-// Test 3: GET /admin/audit?trace_id={id} filters logs to exact trace_id match
+// Test 3: GET /admin/audit/inbound?trace_id={id} filters logs to exact trace_id match
 func TestAdminAuditFilterTraceID(t *testing.T) {
 	pool := getTestPool(t)
 	if pool == nil {
@@ -169,13 +172,13 @@ func TestAdminAuditFilterTraceID(t *testing.T) {
 	trace2 := "different-trace-id-67890"
 	now := time.Now()
 
-	seedAuditEvent(t, pool, wsID, trace1, "test.t1", `{"t":1}`, now)
-	seedAuditEvent(t, pool, wsID, trace2, "test.t2", `{"t":2}`, now)
+	seedAuditEvent(t, pool, wsID, trace1, "inbound_message", `{"t":1}`, now)
+	seedAuditEvent(t, pool, wsID, trace2, "inbound_message", `{"t":2}`, now)
 
 	e := setupAuditTestRoutes(t)
 	cookie := getAuditSessionCookie(t, e)
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/audit?trace_id="+trace1, nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/audit/inbound?trace_id="+trace1, nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -192,7 +195,7 @@ func TestAdminAuditFilterTraceID(t *testing.T) {
 	}
 }
 
-// Test 4: GET /admin/audit?event_type={type} filters logs to that event type
+// Test 4: GET /admin/audit/inbound and /admin/audit/outbound filters by event type
 func TestAdminAuditFilterEventType(t *testing.T) {
 	pool := getTestPool(t)
 	if pool == nil {
@@ -204,30 +207,48 @@ func TestAdminAuditFilterEventType(t *testing.T) {
 	trace2 := uuid.New().String()
 	now := time.Now()
 
-	seedAuditEvent(t, pool, wsID, trace1, "message.sent", `{"type":"sent"}`, now)
-	seedAuditEvent(t, pool, wsID, trace2, "message.failed", `{"type":"failed"}`, now)
+	seedAuditEvent(t, pool, wsID, trace1, "inbound_message", `{"type":"inbound"}`, now)
+	seedAuditEvent(t, pool, wsID, trace2, "outbound_message", `{"type":"outbound"}`, now)
 
 	e := setupAuditTestRoutes(t)
 	cookie := getAuditSessionCookie(t, e)
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/audit?event_type=message.sent", nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+	// Inbound endpoint should only return trace1
+	reqIn := httptest.NewRequest(http.MethodGet, "/admin/audit/inbound", nil)
+	reqIn.AddCookie(cookie)
+	recIn := httptest.NewRecorder()
+	e.ServeHTTP(recIn, reqIn)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	if recIn.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", recIn.Code, recIn.Body.String())
 	}
-	body := rec.Body.String()
-	if !strings.Contains(body, trace1) {
-		t.Error("expected filtered results to contain message.sent event")
+	bodyIn := recIn.Body.String()
+	if !strings.Contains(bodyIn, trace1) {
+		t.Error("expected inbound logs to contain trace1")
 	}
-	if strings.Contains(body, trace2) {
-		t.Error("expected filtered results to NOT contain message.failed event")
+	if strings.Contains(bodyIn, trace2) {
+		t.Error("expected inbound logs to NOT contain trace2")
+	}
+
+	// Outbound endpoint should only return trace2
+	reqOut := httptest.NewRequest(http.MethodGet, "/admin/audit/outbound", nil)
+	reqOut.AddCookie(cookie)
+	recOut := httptest.NewRecorder()
+	e.ServeHTTP(recOut, reqOut)
+
+	if recOut.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", recOut.Code, recOut.Body.String())
+	}
+	bodyOut := recOut.Body.String()
+	if !strings.Contains(bodyOut, trace2) {
+		t.Error("expected outbound logs to contain trace2")
+	}
+	if strings.Contains(bodyOut, trace1) {
+		t.Error("expected outbound logs to NOT contain trace1")
 	}
 }
 
-// Test 5: GET /admin/audit?page=2 returns second page of results (50 rows per page)
+// Test 5: GET /admin/audit/inbound?page=2 returns second page of results (50 rows per page)
 func TestAdminAuditPagination(t *testing.T) {
 	pool := getTestPool(t)
 	if pool == nil {
@@ -240,7 +261,7 @@ func TestAdminAuditPagination(t *testing.T) {
 	// Insert 75 events
 	for i := 0; i < 75; i++ {
 		traceID := fmt.Sprintf("pagination-trace-%d", i)
-		seedAuditEvent(t, pool, wsID, traceID, "test.pagination", `{"page":"test"}`, now.Add(-time.Duration(i)*time.Second))
+		seedAuditEvent(t, pool, wsID, traceID, "inbound_message", `{"page":"test"}`, now.Add(-time.Duration(i)*time.Second))
 	}
 
 	e := setupAuditTestRoutes(t)
@@ -249,7 +270,7 @@ func TestAdminAuditPagination(t *testing.T) {
 	wsFilter := "?workspace_id=" + wsID.String()
 
 	// Page 1
-	req1 := httptest.NewRequest(http.MethodGet, "/admin/audit"+wsFilter, nil)
+	req1 := httptest.NewRequest(http.MethodGet, "/admin/audit/inbound"+wsFilter, nil)
 	req1.AddCookie(cookie)
 	rec1 := httptest.NewRecorder()
 	e.ServeHTTP(rec1, req1)
@@ -263,7 +284,7 @@ func TestAdminAuditPagination(t *testing.T) {
 	}
 
 	// Page 2
-	req2 := httptest.NewRequest(http.MethodGet, "/admin/audit"+wsFilter+"&page=2", nil)
+	req2 := httptest.NewRequest(http.MethodGet, "/admin/audit/inbound"+wsFilter+"&page=2", nil)
 	req2.AddCookie(cookie)
 	rec2 := httptest.NewRecorder()
 	e.ServeHTTP(rec2, req2)
@@ -278,7 +299,7 @@ func TestAdminAuditPagination(t *testing.T) {
 	}
 }
 
-// Test 6: GET /admin/audit?start=2026-01-01&end=2026-12-31 filters by time range
+// Test 6: GET /admin/audit/inbound?start=2026-01-01&end=2026-12-31 filters by time range
 func TestAdminAuditFilterTimeRange(t *testing.T) {
 	pool := getTestPool(t)
 	if pool == nil {
@@ -289,13 +310,13 @@ func TestAdminAuditFilterTimeRange(t *testing.T) {
 	traceInRange := uuid.New().String()
 	traceOutOfRange := uuid.New().String()
 
-	seedAuditEvent(t, pool, wsID, traceInRange, "test.inrange", `{"range":"in"}`, time.Now().Add(-1*time.Second))
-	seedAuditEvent(t, pool, wsID, traceOutOfRange, "test.outrange", `{"range":"out"}`, time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
+	seedAuditEvent(t, pool, wsID, traceInRange, "inbound_message", `{"range":"in"}`, time.Now().Add(-1*time.Second))
+	seedAuditEvent(t, pool, wsID, traceOutOfRange, "inbound_message", `{"range":"out"}`, time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC))
 
 	e := setupAuditTestRoutes(t)
 	cookie := getAuditSessionCookie(t, e)
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/audit?start=2026-01-01&end=2026-12-31", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/audit/inbound?start=2026-01-01&end=2026-12-31", nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -305,13 +326,14 @@ func TestAdminAuditFilterTimeRange(t *testing.T) {
 	}
 	body := rec.Body.String()
 	if !strings.Contains(body, traceInRange) {
+		t.Error("expected filtered results to contain in-range event")
 	}
 	if strings.Contains(body, traceOutOfRange) {
 		t.Error("expected filtered results to NOT contain out-of-range event")
 	}
 }
 
-// Test 7: GET /admin/audit/export?workspace_id={id} returns CSV with Content-Type text/csv
+// Test 7: GET /admin/audit/inbound/export?workspace_id={id} returns CSV with Content-Type text/csv
 func TestAdminAuditExportCSV(t *testing.T) {
 	pool := getTestPool(t)
 	if pool == nil {
@@ -322,12 +344,12 @@ func TestAdminAuditExportCSV(t *testing.T) {
 	traceID := uuid.New().String()
 	now := time.Now()
 
-	seedAuditEvent(t, pool, wsID, traceID, "test.csvexport", `{"csv":"data"}`, now)
+	seedAuditEvent(t, pool, wsID, traceID, "inbound_message", `{"csv":"data"}`, now)
 
 	e := setupAuditTestRoutes(t)
 	cookie := getAuditSessionCookie(t, e)
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/audit/export?workspace_id="+wsID.String(), nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/audit/inbound/export?workspace_id="+wsID.String(), nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -348,7 +370,7 @@ func TestAdminAuditExportCSV(t *testing.T) {
 	}
 }
 
-// Test 8: GET /admin/audit with HX-Request header returns HTML fragment (table body only)
+// Test 8: GET /admin/audit/inbound with HX-Request header returns HTML fragment (table body only)
 func TestAdminAuditHTMXFragment(t *testing.T) {
 	pool := getTestPool(t)
 	if pool == nil {
@@ -356,12 +378,12 @@ func TestAdminAuditHTMXFragment(t *testing.T) {
 	}
 
 	wsID := uuid.New()
-	seedAuditEvent(t, pool, wsID, uuid.New().String(), "test.htmx", `{"htmx":"data"}`, time.Now())
+	seedAuditEvent(t, pool, wsID, uuid.New().String(), "inbound_message", `{"htmx":"data"}`, time.Now())
 
 	e := setupAuditTestRoutes(t)
 	cookie := getAuditSessionCookie(t, e)
 
-	req := httptest.NewRequest(http.MethodGet, "/admin/audit", nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/audit/inbound", nil)
 	req.AddCookie(cookie)
 	req.Header.Set("HX-Request", "true")
 	rec := httptest.NewRecorder()
@@ -381,7 +403,7 @@ func TestAdminAuditHTMXFragment(t *testing.T) {
 	}
 }
 
-// Test 9: GET /admin/audit returns pagination controls (page 1 of N, next/prev links)
+// Test 9: GET /admin/audit/inbound returns pagination controls (page 1 of N, next/prev links)
 func TestAdminAuditPaginationControls(t *testing.T) {
 	pool := getTestPool(t)
 	if pool == nil {
@@ -394,14 +416,14 @@ func TestAdminAuditPaginationControls(t *testing.T) {
 	// Insert 75 events to ensure multiple pages
 	for i := 0; i < 75; i++ {
 		traceID := fmt.Sprintf("controls-trace-%d", i)
-		seedAuditEvent(t, pool, wsID, traceID, "test.controls", `{"controls":"test"}`, now.Add(-time.Duration(i)*time.Second))
+		seedAuditEvent(t, pool, wsID, traceID, "inbound_message", `{"controls":"test"}`, now.Add(-time.Duration(i)*time.Second))
 	}
 
 	e := setupAuditTestRoutes(t)
 	cookie := getAuditSessionCookie(t, e)
 
 	wsFilter := "?workspace_id=" + wsID.String()
-	req := httptest.NewRequest(http.MethodGet, "/admin/audit"+wsFilter, nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/audit/inbound"+wsFilter, nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)

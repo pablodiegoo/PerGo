@@ -43,7 +43,7 @@ type TemplateParameter struct {
 // Dispatcher sends a message through a specific channel adapter.
 // Implementations must be safe for concurrent use.
 type Dispatcher interface {
-	Dispatch(ctx context.Context, m *MessagePayload) error
+	Dispatch(ctx context.Context, m *MessagePayload) (string, error)
 }
 
 // TerminalError marks an error as non-retryable. The worker and routing

@@ -14,6 +14,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -54,6 +55,9 @@ type Worker struct {
 	// queueDepth tracks workspace-scoped queue depth.
 	queueDepth QueueDepthTracker
 
+	// auditWriter is the writer for audit events.
+	auditWriter audit.Writer
+
 	// dispatched tracks message IDs already processed (in-memory dedup).
 	dispatched sync.Map // message_id string → struct{}
 }
@@ -61,7 +65,7 @@ type Worker struct {
 // NewWorker starts a goroutine that reads messages from consumer and processes them.
 // The goroutine stops when ctx is cancelled. Call Stop() to initiate shutdown.
 // dispatchers may be nil for log-only mode (useful in tests).
-func NewWorker(ctx context.Context, consumer jetstream.Consumer, maxRetries int, maxBackoff time.Duration, dispatchers *channel.Registry, dispatchRepo *repository.MessageDispatchRepository, publisher *JetStreamPublisher, queueDepth QueueDepthTracker) *Worker {
+func NewWorker(ctx context.Context, consumer jetstream.Consumer, maxRetries int, maxBackoff time.Duration, dispatchers *channel.Registry, dispatchRepo *repository.MessageDispatchRepository, publisher *JetStreamPublisher, queueDepth QueueDepthTracker, auditWriter audit.Writer) *Worker {
 	if maxRetries <= 0 {
 		maxRetries = defaultMaxRetries
 	}
@@ -80,6 +84,7 @@ func NewWorker(ctx context.Context, consumer jetstream.Consumer, maxRetries int,
 		dispatchRepo: dispatchRepo,
 		publisher:    publisher,
 		queueDepth:   queueDepth,
+		auditWriter:  auditWriter,
 	}
 
 	go w.run(ctx)
@@ -259,7 +264,7 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 		}
 
 		slog.Info("worker: attempting dispatch", "channel", channelName, "trace_id", traceID, "index", i, "attempt", attempt)
-		err := w.dispatchToChannel(ctx, channelName, &qMsg)
+		respStr, err := w.dispatchToChannel(ctx, channelName, &qMsg)
 		if err == nil {
 			// Success! Update DB status to 'sent'
 			if w.dispatchRepo != nil && dispatch != nil {
@@ -267,6 +272,18 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 				w.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "sent", channelName, nil)
 			}
 			slog.Info("worker: message dispatched successfully", "channel", channelName, "trace_id", traceID)
+
+			// Write outbound audit log
+			if w.auditWriter != nil {
+				auditPayload := map[string]any{
+					"request":  qMsg,
+					"response": respStr,
+					"status":   "sent",
+				}
+				payloadBytes, _ := json.Marshal(auditPayload)
+				_ = w.auditWriter.Write(audit.NewEvent(workspaceID, traceID, "outbound_message", payloadBytes))
+			}
+
 			w.ackMessage(msg, workspaceID)
 			return
 		}
@@ -278,6 +295,19 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 				"error", err,
 				"trace_id", traceID,
 			)
+
+			// Write outbound audit log (failure attempt)
+			if w.auditWriter != nil {
+				auditPayload := map[string]any{
+					"request":  qMsg,
+					"response": respStr,
+					"status":   "failed",
+					"error":    err.Error(),
+				}
+				payloadBytes, _ := json.Marshal(auditPayload)
+				_ = w.auditWriter.Write(audit.NewEvent(workspaceID, traceID, "outbound_message", payloadBytes))
+			}
+
 			// Loop continues to next fallback channel
 			continue
 		} else {
@@ -292,6 +322,19 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 				"error", err,
 				"trace_id", traceID,
 			)
+
+			// Write outbound audit log (failure attempt)
+			if w.auditWriter != nil {
+				auditPayload := map[string]any{
+					"request":  qMsg,
+					"response": respStr,
+					"status":   "failed_transient",
+					"error":    err.Error(),
+				}
+				payloadBytes, _ := json.Marshal(auditPayload)
+				_ = w.auditWriter.Write(audit.NewEvent(workspaceID, traceID, "outbound_message", payloadBytes))
+			}
+
 			w.handleFailure(msg, workspaceID, traceID, attempt)
 			return
 		}
@@ -308,9 +351,9 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 }
 
 // dispatchToChannel looks up the channel dispatcher and sends.
-func (w *Worker) dispatchToChannel(ctx context.Context, channelName string, qMsg *domain.QueueMessage) error {
+func (w *Worker) dispatchToChannel(ctx context.Context, channelName string, qMsg *domain.QueueMessage) (string, error) {
 	if w.dispatchers == nil {
-		return nil // no-op mode
+		return "", nil // no-op mode
 	}
 
 	dispatcher, ok := w.dispatchers.Get(channelName)
@@ -319,7 +362,7 @@ func (w *Worker) dispatchToChannel(ctx context.Context, channelName string, qMsg
 			"channel", channelName,
 			"trace_id", qMsg.TraceID,
 		)
-		return nil // not an error
+		return "", nil // not an error
 	}
 
 	return dispatcher.Dispatch(ctx, &channel.MessagePayload{

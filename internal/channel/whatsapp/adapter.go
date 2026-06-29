@@ -2,6 +2,7 @@ package whatsapp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -48,9 +49,9 @@ func NewWhatsAppAdapter(client *WhatsAppClient, s3Client *storage.S3Client) *Wha
 //
 // Returns channel.TerminalError for 403/logged-out errors (non-retryable).
 // Returns regular error for transient failures (retryable).
-func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) error {
+func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (string, error) {
 	if a.client == nil || a.client.Client() == nil {
-		return fmt.Errorf("whatsapp: client not connected")
+		return "", fmt.Errorf("whatsapp: client not connected")
 	}
 
 	// Staggered dispatch: random delay before send
@@ -58,13 +59,13 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 	select {
 	case <-time.After(stagger):
 	case <-ctx.Done():
-		return ctx.Err()
+		return "", ctx.Err()
 	}
 
 	// Convert phone number to JID
 	recipientJID, parseErr := types.ParseJID(phoneToJID(m.To))
 	if parseErr != nil {
-		return fmt.Errorf("whatsapp: invalid recipient %q: %w", m.To, parseErr)
+		return "", fmt.Errorf("whatsapp: invalid recipient %q: %w", m.To, parseErr)
 	}
 
 	a.log.Info("whatsapp: dispatching message",
@@ -77,14 +78,14 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 
 	if m.Media != nil {
 		if a.s3Client == nil {
-			return channel.NewTerminalError(fmt.Errorf("whatsapp: media storage client not configured"))
+			return "", channel.NewTerminalError(fmt.Errorf("whatsapp: media storage client not configured"))
 		}
 
 		// Rewrite internal proxy URL to key format: {workspace_id}/{hash}.{ext}
 		// m.Media.MediaURL looks like: /media/{workspace_id}/{hash}.{ext}
 		parts := strings.Split(m.Media.MediaURL, "/")
 		if len(parts) < 3 {
-			return channel.NewTerminalError(fmt.Errorf("whatsapp: invalid media URL format: %s", m.Media.MediaURL))
+			return "", channel.NewTerminalError(fmt.Errorf("whatsapp: invalid media URL format: %s", m.Media.MediaURL))
 		}
 		workspaceIDStr := parts[len(parts)-2]
 		hashWithExt := parts[len(parts)-1]
@@ -92,13 +93,13 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 
 		bodyRC, contentType, err := a.s3Client.Download(ctx, key)
 		if err != nil {
-			return fmt.Errorf("whatsapp media download from S3 failed: %w", err)
+			return "", fmt.Errorf("whatsapp media download from S3 failed: %w", err)
 		}
 		defer bodyRC.Close()
 
 		dataBytes, err := io.ReadAll(bodyRC)
 		if err != nil {
-			return fmt.Errorf("whatsapp media read failed: %w", err)
+			return "", fmt.Errorf("whatsapp media read failed: %w", err)
 		}
 
 		var uploadType whatsmeow.MediaType
@@ -112,12 +113,12 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 		case "video":
 			uploadType = whatsmeow.MediaVideo
 		default:
-			return channel.NewTerminalError(fmt.Errorf("whatsapp: unsupported media type %s", m.Media.MediaType))
+			return "", channel.NewTerminalError(fmt.Errorf("whatsapp: unsupported media type %s", m.Media.MediaType))
 		}
 
 		resp, err := a.client.Client().Upload(ctx, dataBytes, uploadType)
 		if err != nil {
-			return fmt.Errorf("whatsapp upload to CDN failed: %w", err)
+			return "", fmt.Errorf("whatsapp upload to CDN failed: %w", err)
 		}
 
 		var caption *string
@@ -181,7 +182,7 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 		msg.Conversation = &body
 	}
 
-	_, err := a.client.Client().SendMessage(ctx, recipientJID, &msg)
+	respSend, err := a.client.Client().SendMessage(ctx, recipientJID, &msg)
 	if err != nil {
 		a.log.Error("whatsapp: send failed",
 			"error", err,
@@ -189,16 +190,21 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 			"to", recipientJID.String(),
 		)
 		if isTerminalWhatsAppError(err) {
-			return channel.NewTerminalError(fmt.Errorf("whatsapp terminal: %w", err))
+			return "", channel.NewTerminalError(fmt.Errorf("whatsapp terminal: %w", err))
 		}
-		return fmt.Errorf("whatsapp send: %w", err)
+		return "", fmt.Errorf("whatsapp send: %w", err)
 	}
 
 	a.log.Info("whatsapp: message sent",
 		"trace_id", m.TraceID,
 		"to", recipientJID.String(),
 	)
-	return nil
+
+	respJSON, _ := json.Marshal(map[string]any{
+		"message_id": respSend.ID,
+		"timestamp":  respSend.Timestamp,
+	})
+	return string(respJSON), nil
 }
 
 // phoneToJID converts a phone number string to a WhatsApp JID.

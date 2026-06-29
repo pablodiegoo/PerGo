@@ -19,7 +19,29 @@ templ Sidebar() {
 				<a href="/admin/telemetry" class="nav-item">Telemetry</a>
 			</li>
 			<li>
-				<a href="/admin/audit" class="nav-item">Audit Logs</a>
+				<span class="nav-section-title" style="display: block; padding: 0.5rem 1rem 0.2rem 1rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted); opacity: 0.7; letter-spacing: 0.05em;">Audit Logs</span>
+				<ul style="list-style: none; padding-left: 0.75rem;">
+					<li>
+						<a href="/admin/audit/inbound" class="nav-item" style="padding: 0.25rem 1rem; font-size: 0.9rem;">Inbound</a>
+					</li>
+					<li>
+						<a href="/admin/audit/outbound" class="nav-item" style="padding: 0.25rem 1rem; font-size: 0.9rem;">Outbound</a>
+					</li>
+				</ul>
+			</li>
+			<li>
+				<span class="nav-section-title" style="display: block; padding: 0.5rem 1rem 0.2rem 1rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted); opacity: 0.7; letter-spacing: 0.05em;">Inboxes</span>
+				<ul style="list-style: none; padding-left: 0.75rem;">
+					<li>
+						<a href="/admin/inbox/whatsapp" class="nav-item" style="padding: 0.25rem 1rem; font-size: 0.9rem;">WhatsApp Web</a>
+					</li>
+					<li>
+						<a href="/admin/inbox/whatsapp_cloud" class="nav-item" style="padding: 0.25rem 1rem; font-size: 0.9rem;">WhatsApp Cloud</a>
+					</li>
+					<li>
+						<a href="/admin/inbox/telegram" class="nav-item" style="padding: 0.25rem 1rem; font-size: 0.9rem;">Telegram</a>
+					</li>
+				</ul>
 			</li>
 			<li>
 				<a href="/admin/webhooks" class="nav-item">

@@ -1,0 +1,49 @@
+package pages
+
+import (
+	"github.com/pablojhp.pergo/templates/layout"
+)
+
+type InboxMessage struct {
+	TraceID   string
+	From      string
+	Body      string
+	CreatedAt string
+}
+
+templ InboxPage(channelName string, entries []InboxMessage) {
+	@layout.Base("Inbox - "+channelName, InboxPageContent(channelName, entries))
+}
+
+templ InboxPageContent(channelName string, entries []InboxMessage) {
+	<div class="page-header">
+		<h1>Inbox: { channelName }</h1>
+	</div>
+	<div class="section">
+		<table class="table">
+			<thead>
+				<tr>
+					<th>Timestamp</th>
+					<th>From</th>
+					<th>Message</th>
+					<th>Trace ID</th>
+				</tr>
+			</thead>
+			<tbody>
+				for _, entry := range entries {
+					<tr>
+						<td>{ entry.CreatedAt }</td>
+						<td><strong>{ entry.From }</strong></td>
+						<td>{ entry.Body }</td>
+						<td><small>{ entry.TraceID }</small></td>
+					</tr>
+				}
+				if len(entries) == 0 {
+					<tr>
+						<td colspan="4" class="empty-state">No messages received in this channel yet.</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+}

@@ -106,8 +106,8 @@ type mockDispatcher struct {
 	Err error
 }
 
-func (m *mockDispatcher) Dispatch(_ context.Context, _ *MessagePayload) error {
-	return m.Err
+func (m *mockDispatcher) Dispatch(_ context.Context, _ *MessagePayload) (string, error) {
+	return "", m.Err
 }
 
 // Ensure mockDispatcher satisfies the interface at compile time.
@@ -122,7 +122,7 @@ func TestMockDispatcherTerminalError(t *testing.T) {
 	if !ok {
 		t.Fatal("expected whatsapp dispatcher")
 	}
-	err := d.Dispatch(context.Background(), &MessagePayload{To: "12345", Channel: "whatsapp", Body: "hello"})
+	_, err := d.Dispatch(context.Background(), &MessagePayload{To: "12345", Channel: "whatsapp", Body: "hello"})
 	if err == nil {
 		t.Error("expected error")
 	}

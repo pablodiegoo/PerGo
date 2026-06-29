@@ -25,6 +25,7 @@ type AuditFilters struct {
 	WorkspaceID *uuid.UUID
 	TraceID     string
 	EventType   string
+	Channel     string
 	Start       *time.Time
 	End         *time.Time
 	Page        int
@@ -61,6 +62,11 @@ func buildWhereClause(filters AuditFilters) (string, []any) {
 	if filters.EventType != "" {
 		conditions = append(conditions, fmt.Sprintf("event_type = $%d", argIdx))
 		args = append(args, filters.EventType)
+		argIdx++
+	}
+	if filters.Channel != "" {
+		conditions = append(conditions, fmt.Sprintf("payload->>'channel' = $%d", argIdx))
+		args = append(args, filters.Channel)
 		argIdx++
 	}
 	if filters.Start != nil {
