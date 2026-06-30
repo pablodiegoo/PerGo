@@ -179,11 +179,17 @@ Note: Phase 2 and Phase 3 are independent after Phase 1 and may execute in paral
 **Goal:** [To be planned]
 **Requirements**: TBD
 **Depends on:** Phase 7
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
+**Wave 1**
 
-- [ ] TBD (run /gsd-plan-phase 8 to break down)
+- [ ] 08-01-PLAN.md — Database Consolidation & Repository Migration
+- [ ] 08-02-PLAN.md — Outbound Dynamic Routing, API Changes, Proxy Support & Limits
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 08-03-PLAN.md — Notion-Style Dashboard UI, Dynamic Onboarding & Limit Enforcement
 
 ---
 *Roadmap created: 2026-06-25*
