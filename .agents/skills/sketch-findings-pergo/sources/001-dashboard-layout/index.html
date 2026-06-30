@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PerGo - Dashboard Layout Sketch</title>
+  <!-- Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- daisyUI CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Shared Theme -->
+  <link rel="stylesheet" href="../themes/default.css">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'sans-serif'],
+          },
+          colors: {
+            notion: {
+              bg: '#fcfcfc',
+              sidebar: '#f4f4f5',
+              border: '#e4e4e7',
+              text: '#18181b',
+              muted: '#71717a'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Notion Font and Overrides */
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background-color: var(--color-bg);
+      color: var(--color-text);
+    }
+    .variant-tab.active {
+      border-bottom: 2px solid #000;
+      color: #000;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body class="pt-12 min-h-screen flex flex-col">
+
+  <!-- Variant Navigation Bar -->
+  <div id="variant-nav" class="fixed top-0 left-0 right-0 z-[9998] bg-white border-b border-notion-border px-4 py-2 flex items-center gap-4 text-sm font-medium">
+    <span class="text-xs uppercase tracking-wider text-notion-muted font-bold mr-2">Esboço 001: Navegação</span>
+    <button class="variant-tab px-3 py-1 text-notion-muted hover:text-black transition-all active" onclick="showVariant('a', this)">A: Barra Lateral Notion (Larga) ★</button>
+    <button class="variant-tab px-3 py-1 text-notion-muted hover:text-black transition-all" onclick="showVariant('b', this)">B: Barra Lateral Slim (Ícones)</button>
+    <button class="variant-tab px-3 py-1 text-notion-muted hover:text-black transition-all" onclick="showVariant('c', this)">C: Menu Superior (Horizontal)</button>
+  </div>
+
+  <!-- VARIANT A: Wide Sidebar Layout (Notion Style) -->
+  <div id="variant-a" class="variant flex-1 flex flex-row">
+    <!-- Sidebar -->
+    <aside class="w-64 bg-notion-sidebar border-r border-notion-border flex flex-col justify-between shrink-0 h-[calc(100vh-3rem)] sticky top-12">
+      <div>
+        <!-- Workspace Dropdown -->
+        <div class="p-4 border-b border-notion-border">
+          <div class="flex items-center justify-between cursor-pointer hover:bg-gray-200/50 p-2 rounded-md transition-all">
+            <div class="flex items-center gap-2">
+              <div class="w-6 h-6 bg-black text-white rounded flex items-center justify-center font-bold text-sm">P</div>
+              <div>
+                <h3 class="text-sm font-semibold text-notion-text">PerGo Workspace</h3>
+                <span class="text-xs text-notion-muted">pablo@workspace</span>
+              </div>
+            </div>
+            <i data-lucide="chevrons-up-down" class="w-4 h-4 text-notion-muted"></i>
+          </div>
+        </div>
+
+        <!-- Menu Navigation -->
+        <nav class="p-3 space-y-1">
+          <a href="#" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md bg-gray-200/70 text-black">
+            <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Visão Geral
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all">
+            <i data-lucide="link" class="w-4 h-4"></i> Conexões
+            <span class="badge badge-sm badge-success ml-auto font-bold text-[10px]">3</span>
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all">
+            <i data-lucide="play-circle" class="w-4 h-4"></i> Playground
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all">
+            <i data-lucide="list-collapse" class="w-4 h-4"></i> Logs de Auditoria
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all">
+            <i data-lucide="settings" class="w-4 h-4"></i> Configurações
+          </a>
+        </nav>
+      </div>
+
+      <!-- User and Docs Info -->
+      <div class="p-4 border-t border-notion-border space-y-2">
+        <a href="#" class="flex items-center gap-2 text-xs font-medium text-notion-muted hover:text-black">
+          <i data-lucide="book-open" class="w-3.5 h-3.5"></i> Documentação API
+        </a>
+        <div class="flex items-center justify-between text-xs text-notion-muted pt-2">
+          <span>v1.0.0-beta</span>
+          <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 bg-white p-8 flex flex-col justify-start">
+      <!-- Breadcrumbs Header -->
+      <header class="flex items-center justify-between border-b border-notion-border pb-4 mb-6">
+        <div class="flex items-center gap-2 text-sm text-notion-muted">
+          <span>PerGo</span>
+          <span class="text-gray-300">/</span>
+          <span class="font-semibold text-black">Visão Geral</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="badge badge-outline text-xs border-notion-border text-notion-muted px-3 py-2 font-mono">ID: active-ws</span>
+          <button class="btn btn-sm btn-outline border-notion-border hover:bg-black hover:text-white transition-all text-xs">Ações</button>
+        </div>
+      </header>
+
+      <!-- Mock Content Box -->
+      <div class="border border-dashed border-notion-border rounded-lg p-16 flex flex-col items-center justify-center text-center">
+        <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+          <i data-lucide="mouse-pointer" class="w-6 h-6 text-notion-muted"></i>
+        </div>
+        <h4 class="text-lg font-semibold mb-1">Visualização do Esboço</h4>
+        <p class="text-sm text-notion-muted max-w-md">Esta é a Variant A (Barra Lateral Larga). Alterne as abas no menu superior para ver as estruturas alternativas.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- VARIANT B: Slim Sidebar Layout -->
+  <div id="variant-b" class="variant flex-1 flex flex-row" style="display: none;">
+    <!-- Slim Sidebar -->
+    <aside class="w-16 bg-notion-sidebar border-r border-notion-border flex flex-col justify-between items-center py-4 shrink-0 h-[calc(100vh-3rem)] sticky top-12">
+      <div class="flex flex-col gap-6 items-center w-full">
+        <!-- Logo Icon -->
+        <div class="w-8 h-8 bg-black text-white rounded flex items-center justify-center font-bold text-base cursor-pointer">
+          P
+        </div>
+
+        <!-- Navigation Icons -->
+        <nav class="flex flex-col gap-2 w-full px-2">
+          <a href="#" class="tooltip tooltip-right flex items-center justify-center w-full py-3 rounded-md bg-gray-200 text-black" data-tip="Visão Geral">
+            <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+          </a>
+          <a href="#" class="tooltip tooltip-right flex items-center justify-center w-full py-3 rounded-md text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all" data-tip="Conexões">
+            <i data-lucide="link" class="w-5 h-5"></i>
+          </a>
+          <a href="#" class="tooltip tooltip-right flex items-center justify-center w-full py-3 rounded-md text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all" data-tip="Playground">
+            <i data-lucide="play-circle" class="w-5 h-5"></i>
+          </a>
+          <a href="#" class="tooltip tooltip-right flex items-center justify-center w-full py-3 rounded-md text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all" data-tip="Logs de Auditoria">
+            <i data-lucide="list-collapse" class="w-5 h-5"></i>
+          </a>
+          <a href="#" class="tooltip tooltip-right flex items-center justify-center w-full py-3 rounded-md text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all" data-tip="Configurações">
+            <i data-lucide="settings" class="w-5 h-5"></i>
+          </a>
+        </nav>
+      </div>
+
+      <!-- Bottom Profile/Status -->
+      <div class="flex flex-col gap-4 items-center w-full">
+        <a href="#" class="tooltip tooltip-right text-notion-muted hover:text-black" data-tip="Documentação">
+          <i data-lucide="book-open" class="w-4 h-4"></i>
+        </a>
+        <div class="w-2 h-2 rounded-full bg-green-500"></div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 bg-white p-8 flex flex-col justify-start">
+      <!-- Breadcrumbs Header -->
+      <header class="flex items-center justify-between border-b border-notion-border pb-4 mb-6">
+        <div class="flex items-center gap-2 text-sm text-notion-muted">
+          <span>PerGo</span>
+          <span class="text-gray-300">/</span>
+          <span class="font-semibold text-black">Visão Geral</span>
+        </div>
+      </header>
+
+      <!-- Mock Content Box -->
+      <div class="border border-dashed border-notion-border rounded-lg p-16 flex flex-col items-center justify-center text-center">
+        <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+          <i data-lucide="mouse-pointer" class="w-6 h-6 text-notion-muted"></i>
+        </div>
+        <h4 class="text-lg font-semibold mb-1">Visualização do Esboço</h4>
+        <p class="text-sm text-notion-muted max-w-md">Esta é a Variant B (Barra Lateral Slim). Esta variação economiza espaço de tela, ideal para layouts de playground e fluxos amplos.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- VARIANT C: Top Navigation Layout -->
+  <div id="variant-c" class="variant flex-1 flex flex-col" style="display: none;">
+    <!-- Top Navigation Header -->
+    <header class="bg-notion-sidebar border-b border-notion-border px-8 py-3 flex items-center justify-between sticky top-12 z-50">
+      <div class="flex items-center gap-8">
+        <!-- Logo -->
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 bg-black text-white rounded flex items-center justify-center font-bold text-sm">P</div>
+          <span class="font-semibold text-sm text-black">PerGo</span>
+        </div>
+
+        <!-- Horizontal Menu -->
+        <nav class="flex items-center gap-1">
+          <a href="#" class="px-3 py-1.5 text-sm font-medium rounded bg-gray-200 text-black">Visão Geral</a>
+          <a href="#" class="px-3 py-1.5 text-sm font-medium rounded text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all">Conexões</a>
+          <a href="#" class="px-3 py-1.5 text-sm font-medium rounded text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all">Playground</a>
+          <a href="#" class="px-3 py-1.5 text-sm font-medium rounded text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all">Logs</a>
+          <a href="#" class="px-3 py-1.5 text-sm font-medium rounded text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all">Configurações</a>
+        </nav>
+      </div>
+
+      <!-- Right User Context -->
+      <div class="flex items-center gap-4">
+        <span class="text-xs text-notion-muted">pablo@workspace</span>
+        <div class="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center font-semibold text-xs border border-notion-border">
+          PD
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-6xl mx-auto w-full p-8 flex-1 flex flex-col justify-start">
+      <!-- Mock Content Box -->
+      <div class="border border-dashed border-notion-border rounded-lg p-16 flex flex-col items-center justify-center text-center">
+        <div class="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+          <i data-lucide="mouse-pointer" class="w-6 h-6 text-notion-muted"></i>
+        </div>
+        <h4 class="text-lg font-semibold mb-1">Visualização do Esboço</h4>
+        <p class="text-sm text-notion-muted max-w-md">Esta é a Variant C (Menu Superior). Uma abordagem mais parecida com apps SaaS clássicos, maximizando o espaço horizontal.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- Sketch Utility Toolbar -->
+  <div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.85);color:white;padding:8px 12px;border-radius:8px;opacity:0.6;transition:opacity 0.2s;display:flex;align-items:center;gap:12px;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'">
+    <!-- Theme Info -->
+    <div class="flex items-center gap-1.5">
+      <i data-lucide="palette" class="w-3.5 h-3.5"></i>
+      <span>Monocromático (Notion)</span>
+    </div>
+    <div class="w-px h-3.5 bg-gray-600"></div>
+    <!-- Responsive Viewports -->
+    <div class="flex gap-1.5">
+      <button class="px-1.5 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-[10px]" onclick="setViewport(375)">Mobile</button>
+      <button class="px-1.5 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-[10px]" onclick="setViewport(768)">Tablet</button>
+      <button class="px-1.5 py-0.5 rounded bg-gray-700 hover:bg-gray-600 text-[10px]" onclick="setViewport('100%')">Full</button>
+    </div>
+  </div>
+
+  <script>
+    // Initialize icons
+    lucide.createIcons();
+
+    // Toggle between variants
+    function showVariant(id, tabElement) {
+      document.querySelectorAll('.variant').forEach(v => v.style.display = 'none');
+      document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+      
+      document.getElementById('variant-' + id).style.display = 'flex';
+      if (id === 'c') {
+        document.getElementById('variant-c').style.setProperty('display', 'flex', 'important');
+        document.getElementById('variant-c').style.flexDirection = 'column';
+      }
+      
+      tabElement.classList.add('active');
+      lucide.createIcons();
+    }
+
+    // Adjust container viewport sizing
+    function setViewport(width) {
+      const wrappers = document.querySelectorAll('.variant');
+      wrappers.forEach(w => {
+        if (width === '100%') {
+          w.style.maxWidth = '100%';
+          w.style.margin = '0';
+        } else {
+          w.style.maxWidth = width + 'px';
+          w.style.margin = '0 auto';
+          w.style.borderLeft = '1px solid #e4e4e7';
+          w.style.borderRight = '1px solid #e4e4e7';
+        }
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PerGo - Onboarding vs Operational Dashboard Sketch</title>
+  <!-- Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- daisyUI CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Shared Theme -->
+  <link rel="stylesheet" href="../themes/default.css">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'sans-serif'],
+          },
+          colors: {
+            notion: {
+              bg: '#fcfcfc',
+              sidebar: '#f4f4f5',
+              border: '#e4e4e7',
+              text: '#18181b',
+              muted: '#71717a'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background-color: var(--color-bg);
+      color: var(--color-text);
+    }
+    .variant-tab.active {
+      border-bottom: 2px solid #000;
+      color: #000;
+      font-weight: 600;
+    }
+    .step-badge {
+      transition: all 0.3s ease;
+    }
+    .completed-step {
+      text-decoration: line-through;
+      color: var(--color-text-muted);
+    }
+  </style>
+</head>
+<body class="pt-12 min-h-screen flex flex-col bg-[#fcfcfc]">
+
+  <!-- Variant Navigation Bar -->
+  <div id="variant-nav" class="fixed top-0 left-0 right-0 z-[9998] bg-white border-b border-notion-border px-4 py-2 flex items-center gap-4 text-sm font-medium">
+    <span class="text-xs uppercase tracking-wider text-notion-muted font-bold mr-2">Esboço 002: Dashboard UX</span>
+    <button id="tab-a" class="variant-tab px-3 py-1 text-notion-muted hover:text-black transition-all active" onclick="showVariant('a')">A: Onboarding Dinâmico (Dia 1) ★</button>
+    <button id="tab-b" class="variant-tab px-3 py-1 text-notion-muted hover:text-black transition-all" onclick="showVariant('b')">B: Painel Operacional (Dia 2+) ★</button>
+  </div>
+
+  <!-- Notion-Style Layout Container -->
+  <div class="flex-1 flex flex-row">
+    <!-- Sidebar (Shared for visual context, Notion-style) -->
+    <aside class="w-64 bg-notion-sidebar border-r border-notion-border flex flex-col justify-between shrink-0 h-[calc(100vh-3rem)] sticky top-12">
+      <div>
+        <div class="p-4 border-b border-notion-border">
+          <div class="flex items-center gap-2 p-2">
+            <div class="w-6 h-6 bg-black text-white rounded flex items-center justify-center font-bold text-sm">P</div>
+            <div>
+              <h3 class="text-sm font-semibold text-notion-text">PerGo Workspace</h3>
+              <span class="text-xs text-notion-muted">active-ws</span>
+            </div>
+          </div>
+        </div>
+
+        <nav class="p-3 space-y-1">
+          <a href="#" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md bg-gray-200/70 text-black">
+            <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Visão Geral
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all">
+            <i data-lucide="link" class="w-4 h-4"></i> Conexões
+            <span id="sidebar-conn-count" class="badge badge-sm badge-outline border-notion-border ml-auto font-mono text-[10px]">0</span>
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all">
+            <i data-lucide="play-circle" class="w-4 h-4"></i> Playground
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all">
+            <i data-lucide="list-collapse" class="w-4 h-4"></i> Logs de Auditoria
+          </a>
+          <a href="#" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-notion-muted hover:bg-gray-200/50 hover:text-black transition-all">
+            <i data-lucide="settings" class="w-4 h-4"></i> Configurações
+          </a>
+        </nav>
+      </div>
+      <div class="p-4 border-t border-notion-border text-xs text-notion-muted flex items-center justify-between">
+        <span>v1.0.0-beta</span>
+        <div class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-green-500"></span>
+          <span>Online</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 bg-white p-8 flex flex-col justify-start overflow-y-auto max-h-[calc(100vh-3rem)]">
+      
+      <!-- VARIANT A: Onboarding View -->
+      <div id="variant-a" class="variant space-y-6">
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight text-black mb-1">Boas-vindas ao PerGo!</h1>
+          <p class="text-sm text-notion-muted">Complete estes 4 passos básicos para começar a enviar mensagens de forma integrada.</p>
+        </div>
+
+        <!-- Onboarding Progress Alert -->
+        <div id="onboarding-completion-banner" class="bg-gray-50 border border-notion-border rounded-lg p-4 flex items-center justify-between hidden">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center">
+              <i data-lucide="sparkles" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h4 class="text-sm font-semibold text-black">Tudo pronto!</h4>
+              <p class="text-xs text-notion-muted">Você completou todas as tarefas iniciais.</p>
+            </div>
+          </div>
+          <button class="btn btn-sm btn-outline hover:bg-black hover:text-white transition-all text-xs" onclick="showVariant('b')">Ir para o Painel Operacional</button>
+        </div>
+
+        <!-- Checklist Accordion/Cards -->
+        <div class="space-y-3">
+          
+          <!-- Step 1 -->
+          <div class="border border-notion-border rounded-lg p-5 bg-white space-y-3 shadow-sm">
+            <div class="flex items-start gap-4">
+              <div id="step-badge-1" class="w-6 h-6 rounded-full bg-black text-white flex items-center justify-center font-bold text-xs shrink-0 step-badge">1</div>
+              <div class="flex-1">
+                <h3 id="step-title-1" class="text-sm font-semibold text-black mb-1">Criar sua primeira Chave de API</h3>
+                <p class="text-xs text-notion-muted">Necessária para fazer chamadas HTTP de integração com os seus sistemas ou IA.</p>
+                
+                <!-- Action / State 1 -->
+                <div id="step-action-1" class="pt-3">
+                  <button class="btn btn-sm btn-outline border-notion-border text-xs hover:bg-black hover:text-white transition-all" onclick="generateApiKey()">
+                    Gerar Chave de API
+                  </button>
+                </div>
+                <div id="step-success-1" class="pt-3 hidden">
+                  <div class="flex items-center gap-2 bg-gray-50 p-2.5 rounded border border-notion-border font-mono text-xs text-black">
+                    <span class="select-all">pg_live_2a79d8f1e83c74bc931f</span>
+                    <span class="badge badge-success badge-sm font-bold text-[9px] ml-auto uppercase">Ativa</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="border border-notion-border rounded-lg p-5 bg-white space-y-3 shadow-sm">
+            <div class="flex items-start gap-4">
+              <div id="step-badge-2" class="w-6 h-6 rounded-full bg-gray-200 text-notion-muted flex items-center justify-center font-bold text-xs shrink-0 step-badge">2</div>
+              <div class="flex-1">
+                <h3 id="step-title-2" class="text-sm font-semibold text-black mb-1">Conectar um Canal</h3>
+                <p class="text-xs text-notion-muted">Pareie o seu WhatsApp Web ou configure um Bot do Telegram.</p>
+                
+                <!-- Action / State 2 -->
+                <div id="step-action-2" class="pt-3 space-y-3">
+                  <div class="flex gap-2">
+                    <button class="btn btn-sm btn-outline border-notion-border text-xs hover:bg-black hover:text-white transition-all" onclick="showConnectForm('whatsapp')">WhatsApp Web (whatsmeow)</button>
+                    <button class="btn btn-sm btn-outline border-notion-border text-xs hover:bg-black hover:text-white transition-all" onclick="showConnectForm('telegram')">Telegram Bot</button>
+                  </div>
+
+                  <!-- WhatsApp Pairing View -->
+                  <div id="whatsapp-pairing-box" class="border border-notion-border p-4 rounded-md bg-gray-50 flex flex-col md:flex-row items-center gap-6 hidden">
+                    <div class="w-32 h-32 bg-white border border-notion-border p-2 flex items-center justify-center shrink-0">
+                      <!-- Mock QR Code -->
+                      <div class="w-full h-full bg-gray-100 flex flex-wrap items-center justify-center text-[10px] text-center font-mono">
+                        [ QR CODE MOCK ]
+                      </div>
+                    </div>
+                    <div class="space-y-2 text-center md:text-left">
+                      <h4 class="text-xs font-semibold text-black">Aguardando escaneamento...</h4>
+                      <p class="text-[11px] text-notion-muted max-w-xs">Abra o WhatsApp no celular, vá em Dispositivos Conectados e escaneie o código acima.</p>
+                      <button class="btn btn-xs btn-outline hover:bg-black hover:text-white font-bold transition-all" onclick="simulateScan()">Simular Escaneamento</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="step-success-2" class="pt-3 hidden">
+                  <div class="flex items-center gap-2.5 text-xs text-black bg-gray-50 border border-notion-border p-2.5 rounded">
+                    <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                    <span class="font-medium">WhatsApp Web Pareado: +55 (11) 99999-0001</span>
+                    <span class="text-notion-muted text-[10px] ml-auto">JID: 5511999990001@s.whatsapp.net</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="border border-notion-border rounded-lg p-5 bg-white space-y-3 shadow-sm">
+            <div class="flex items-start gap-4">
+              <div id="step-badge-3" class="w-6 h-6 rounded-full bg-gray-200 text-notion-muted flex items-center justify-center font-bold text-xs shrink-0 step-badge">3</div>
+              <div class="flex-1">
+                <h3 id="step-title-3" class="text-sm font-semibold text-black mb-1">Enviar uma Mensagem de Teste</h3>
+                <p class="text-xs text-notion-muted">Envie sua primeira mensagem usando o playground interativo.</p>
+                
+                <!-- Action / State 3 -->
+                <div id="step-action-3" class="pt-3 hidden">
+                  <div class="max-w-md bg-gray-50 border border-notion-border rounded p-4 space-y-3">
+                    <div>
+                      <label class="block text-[10px] uppercase font-bold text-notion-muted mb-1">Número do Destinatário</label>
+                      <input type="text" id="test-to-input" class="input input-sm input-bordered w-full text-xs font-mono border-notion-border rounded" placeholder="+5511988887777">
+                    </div>
+                    <div>
+                      <label class="block text-[10px] uppercase font-bold text-notion-muted mb-1">Mensagem</label>
+                      <textarea id="test-body-input" class="textarea textarea-sm textarea-bordered w-full text-xs border-notion-border rounded" rows="2" placeholder="Olá do PerGo!"></textarea>
+                    </div>
+                    <button class="btn btn-sm btn-outline border-notion-border text-xs w-full hover:bg-black hover:text-white transition-all" onclick="sendTestMessage()">
+                      Enviar Mensagem
+                    </button>
+                  </div>
+                </div>
+                <div id="step-success-3" class="pt-3 hidden">
+                  <div class="flex items-center gap-2 bg-gray-50 border border-notion-border p-2.5 rounded text-xs text-green-700">
+                    <i data-lucide="check-circle" class="w-4 h-4"></i>
+                    <span>Mensagem de teste enviada com sucesso! Código de status: 200 OK.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 4 -->
+          <div class="border border-notion-border rounded-lg p-5 bg-white space-y-3 shadow-sm">
+            <div class="flex items-start gap-4">
+              <div id="step-badge-4" class="w-6 h-6 rounded-full bg-gray-200 text-notion-muted flex items-center justify-center font-bold text-xs shrink-0 step-badge">4</div>
+              <div class="flex-1">
+                <h3 id="step-title-4" class="text-sm font-semibold text-black mb-1">Configurar seu Webhook de Entrada</h3>
+                <p class="text-xs text-notion-muted">URL onde o PerGo enviará as mensagens recebidas e atualizações de status.</p>
+                
+                <!-- Action / State 4 -->
+                <div id="step-action-4" class="pt-3 hidden">
+                  <div class="flex gap-2 max-w-md">
+                    <input type="text" id="webhook-url-input" class="input input-sm input-bordered flex-1 text-xs border-notion-border rounded" placeholder="https://api.meusite.com/webhooks">
+                    <button class="btn btn-sm btn-outline border-notion-border text-xs hover:bg-black hover:text-white transition-all" onclick="saveWebhook()">Salvar</button>
+                  </div>
+                </div>
+                <div id="step-success-4" class="pt-3 hidden">
+                  <div class="flex items-center gap-2 bg-gray-50 border border-notion-border p-2.5 rounded text-xs text-black">
+                    <span class="font-medium">Webhook configurado:</span>
+                    <span class="font-mono text-notion-muted overflow-hidden text-ellipsis whitespace-nowrap max-w-xs" id="display-webhook-url"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- VARIANT B: Operational Dashboard View -->
+      <div id="variant-b" class="variant space-y-8" style="display: none;">
+        <!-- Header Title -->
+        <div class="flex items-center justify-between pb-4 border-b border-notion-border">
+          <div>
+            <h1 class="text-2xl font-bold tracking-tight text-black mb-1">Painel Operacional</h1>
+            <p class="text-sm text-notion-muted">Métricas e conexões ativas do seu workspace.</p>
+          </div>
+          <!-- Simulator Button -->
+          <button class="btn btn-sm btn-outline border-notion-border hover:bg-black hover:text-white transition-all text-xs" onclick="simulateIncomingMessage()">
+            Simular Mensagem Recebida
+          </button>
+        </div>
+
+        <!-- Connections Hub (Multi-Instance) -->
+        <div class="space-y-3">
+          <h2 class="text-sm font-bold uppercase tracking-wider text-notion-muted">Canais Conectados (3)</h2>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            <div class="border border-notion-border rounded-lg p-4 bg-white space-y-2 shadow-sm">
+              <div class="flex items-center justify-between">
+                <span class="badge badge-sm badge-success font-bold text-[9px] uppercase">Conectado</span>
+                <i data-lucide="message-square" class="w-4 h-4 text-notion-muted"></i>
+              </div>
+              <div>
+                <h3 class="text-sm font-bold text-black">+55 (11) 99999-0001</h3>
+                <p class="text-xs text-notion-muted">WhatsApp Web (whatsmeow)</p>
+              </div>
+              <div class="text-[10px] text-notion-muted font-mono pt-1">
+                JID: 5511999990001@s.w.net
+              </div>
+            </div>
+
+            <div class="border border-notion-border rounded-lg p-4 bg-white space-y-2 shadow-sm">
+              <div class="flex items-center justify-between">
+                <span class="badge badge-sm badge-success font-bold text-[9px] uppercase">Conectado</span>
+                <i data-lucide="send" class="w-4 h-4 text-notion-muted"></i>
+              </div>
+              <div>
+                <h3 class="text-sm font-bold text-black">@pergo_notificacoes_bot</h3>
+                <p class="text-xs text-notion-muted">Telegram Bot API</p>
+              </div>
+              <div class="text-[10px] text-notion-muted font-mono pt-1">
+                ID: 98124982
+              </div>
+            </div>
+
+            <div class="border border-notion-border rounded-lg p-4 bg-white space-y-2 shadow-sm">
+              <div class="flex items-center justify-between">
+                <span class="badge badge-sm badge-outline border-notion-border font-bold text-[9px] uppercase text-notion-muted">Padrão</span>
+                <i data-lucide="globe" class="w-4 h-4 text-notion-muted"></i>
+              </div>
+              <div>
+                <h3 class="text-sm font-bold text-black">WABA Business Platform</h3>
+                <p class="text-xs text-notion-muted">WhatsApp Cloud API</p>
+              </div>
+              <div class="text-[10px] text-notion-muted font-mono pt-1">
+                ID: 1092491290234
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Telemetry Metrics Grid -->
+        <div class="space-y-3">
+          <h2 class="text-sm font-bold uppercase tracking-wider text-notion-muted">Telemetria (Últimas 24h)</h2>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            <div class="border border-notion-border rounded-lg p-4 bg-white space-y-1 shadow-sm">
+              <span class="text-xs text-notion-muted">Volume de Mensagens</span>
+              <div class="text-2xl font-bold text-black">12.845</div>
+              <div class="text-[10px] text-green-600 font-medium">99.8% entregues com sucesso</div>
+            </div>
+
+            <div class="border border-notion-border rounded-lg p-4 bg-white space-y-1 shadow-sm">
+              <span class="text-xs text-notion-muted">Latência de Ingestão</span>
+              <div class="text-2xl font-bold text-black">14ms</div>
+              <div class="text-[10px] text-notion-muted font-mono">p99: 42ms | Broker: NATS</div>
+            </div>
+
+            <div class="border border-notion-border rounded-lg p-4 bg-white space-y-1 shadow-sm">
+              <span class="text-xs text-notion-muted">Uso de Memória (WebSockets)</span>
+              <div class="text-2xl font-bold text-black">82MB</div>
+              <div class="text-[10px] text-notion-muted">3 conexões ativas na VPS</div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Recent Logs Table -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-bold uppercase tracking-wider text-notion-muted">Logs de Auditoria Recentes</h2>
+            <a href="#" class="text-xs text-black font-semibold hover:underline">Ver tudo</a>
+          </div>
+          
+          <div class="border border-notion-border rounded-lg bg-white overflow-hidden shadow-sm">
+            <table class="table table-xs w-full text-xs">
+              <thead>
+                <tr class="bg-gray-50 border-b border-notion-border text-notion-muted text-[10px] uppercase font-bold">
+                  <th class="py-2.5 px-4">Status</th>
+                  <th>Remetente</th>
+                  <th>Destinatário</th>
+                  <th>Mensagem</th>
+                  <th>Timestamp</th>
+                  <th class="text-right px-4">Trace-ID</th>
+                </tr>
+              </thead>
+              <tbody id="logs-tbody" class="divide-y divide-notion-border">
+                <tr class="hover:bg-gray-50">
+                  <td class="py-2.5 px-4 font-bold text-green-600"><span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>ENTREGUE</span></td>
+                  <td>+5511999990001</td>
+                  <td>+5511988887777</td>
+                  <td class="max-w-[200px] truncate">Olá do PerGo! Mensagem de teste de envio.</td>
+                  <td class="text-notion-muted font-mono">2026-06-29 23:14:15</td>
+                  <td class="text-right font-mono text-notion-muted px-4">tr_89af3b1</td>
+                </tr>
+                <tr class="hover:bg-gray-50">
+                  <td class="py-2.5 px-4 font-bold text-green-600"><span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>ENTREGUE</span></td>
+                  <td>@pergo_bot</td>
+                  <td>chat_841029</td>
+                  <td class="max-w-[200px] truncate">Seu código de login é 9410.</td>
+                  <td class="text-notion-muted font-mono">2026-06-29 23:10:02</td>
+                  <td class="text-right font-mono text-notion-muted px-4">tr_12ea4d9</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Sketch Utility Toolbar -->
+  <div id="sketch-tools" style="position:fixed;bottom:12px;right:12px;z-index:9999;font-family:system-ui;font-size:12px;background:rgba(0,0,0,0.85);color:white;padding:8px 12px;border-radius:8px;opacity:0.6;transition:opacity 0.2s;display:flex;align-items:center;gap:12px;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'">
+    <div class="flex items-center gap-1.5">
+      <i data-lucide="palette" class="w-3.5 h-3.5"></i>
+      <span>Monocromático (Notion)</span>
+    </div>
+  </div>
+
+  <!-- Interactivity Script -->
+  <script>
+    lucide.createIcons();
+
+    // Show/Hide Variants
+    function showVariant(id) {
+      document.querySelectorAll('.variant').forEach(v => v.style.display = 'none');
+      document.querySelectorAll('.variant-tab').forEach(t => t.classList.remove('active'));
+      
+      document.getElementById('variant-' + id).style.display = 'block';
+      document.getElementById('tab-' + id).classList.add('active');
+      lucide.createIcons();
+    }
+
+    // Interactive States for Onboarding Checklist
+    let apiGenerated = false;
+    let channelConnected = false;
+    let messageSent = false;
+    let webhookSaved = false;
+
+    function generateApiKey() {
+      apiGenerated = true;
+      document.getElementById('step-action-1').classList.add('hidden');
+      document.getElementById('step-success-1').classList.remove('hidden');
+      
+      // Update badge
+      const badge = document.getElementById('step-badge-1');
+      badge.innerHTML = '✓';
+      badge.classList.remove('bg-black');
+      badge.classList.add('bg-green-500', 'text-white');
+      
+      document.getElementById('step-title-1').classList.add('completed-step');
+
+      // Unlock step 2 badge visually
+      document.getElementById('step-badge-2').classList.remove('bg-gray-200', 'text-notion-muted');
+      document.getElementById('step-badge-2').classList.add('bg-black', 'text-white');
+
+      checkAllCompleted();
+    }
+
+    function showConnectForm(type) {
+      if (type === 'whatsapp') {
+        document.getElementById('whatsapp-pairing-box').classList.remove('hidden');
+      }
+    }
+
+    function simulateScan() {
+      channelConnected = true;
+      document.getElementById('step-action-2').classList.add('hidden');
+      document.getElementById('whatsapp-pairing-box').classList.add('hidden');
+      document.getElementById('step-success-2').classList.remove('hidden');
+      
+      // Update badge
+      const badge = document.getElementById('step-badge-2');
+      badge.innerHTML = '✓';
+      badge.classList.remove('bg-black');
+      badge.classList.add('bg-green-500', 'text-white');
+      
+      document.getElementById('step-title-2').classList.add('completed-step');
+
+      // Update sidebar counter
+      document.getElementById('sidebar-conn-count').innerHTML = '1';
+      document.getElementById('sidebar-conn-count').classList.add('badge-success');
+
+      // Unlock Step 3 Action
+      document.getElementById('step-badge-3').classList.remove('bg-gray-200', 'text-notion-muted');
+      document.getElementById('step-badge-3').classList.add('bg-black', 'text-white');
+      document.getElementById('step-action-3').classList.remove('hidden');
+
+      checkAllCompleted();
+    }
+
+    function sendTestMessage() {
+      const to = document.getElementById('test-to-input').value;
+      if (!to) {
+        alert('Por favor, insira o número do destinatário!');
+        return;
+      }
+
+      messageSent = true;
+      document.getElementById('step-action-3').classList.add('hidden');
+      document.getElementById('step-success-3').classList.remove('hidden');
+
+      // Update badge
+      const badge = document.getElementById('step-badge-3');
+      badge.innerHTML = '✓';
+      badge.classList.remove('bg-black');
+      badge.classList.add('bg-green-500', 'text-white');
+      
+      document.getElementById('step-title-3').classList.add('completed-step');
+
+      // Unlock Step 4 Action
+      document.getElementById('step-badge-4').classList.remove('bg-gray-200', 'text-notion-muted');
+      document.getElementById('step-badge-4').classList.add('bg-black', 'text-white');
+      document.getElementById('step-action-4').classList.remove('hidden');
+
+      checkAllCompleted();
+    }
+
+    function saveWebhook() {
+      const url = document.getElementById('webhook-url-input').value;
+      if (!url) {
+        alert('Por favor, insira a URL do webhook!');
+        return;
+      }
+
+      webhookSaved = true;
+      document.getElementById('step-action-4').classList.add('hidden');
+      document.getElementById('step-success-4').classList.remove('hidden');
+      document.getElementById('display-webhook-url').innerText = url;
+
+      // Update badge
+      const badge = document.getElementById('step-badge-4');
+      badge.innerHTML = '✓';
+      badge.classList.remove('bg-black');
+      badge.classList.add('bg-green-500', 'text-white');
+      
+      document.getElementById('step-title-4').classList.add('completed-step');
+
+      checkAllCompleted();
+    }
+
+    function checkAllCompleted() {
+      if (apiGenerated && channelConnected && messageSent && webhookSaved) {
+        document.getElementById('onboarding-completion-banner').classList.remove('hidden');
+        lucide.createIcons();
+      }
+    }
+
+    // Interactive webhook message simulation for Variant B
+    function simulateIncomingMessage() {
+      const tbody = document.getElementById('logs-tbody');
+      const tr = document.createElement('tr');
+      tr.className = 'hover:bg-gray-50 bg-green-50/50 transition-all duration-500';
+      
+      const now = new Date();
+      const timeStr = now.toISOString().slice(0, 19).replace('T', ' ');
+      
+      tr.innerHTML = `
+        <td class="py-2.5 px-4 font-bold text-blue-600"><span class="flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>RECEBIDO</span></td>
+        <td>+5511988887777</td>
+        <td>+5511999990001</td>
+        <td class="max-w-[200px] truncate">Mensagem simulada via API às ${now.toLocaleTimeString()}</td>
+        <td class="text-notion-muted font-mono">${timeStr}</td>
+        <td class="text-right font-mono text-notion-muted px-4">tr_in_${Math.random().toString(36).substr(2, 7)}</td>
+      `;
+
+      tbody.insertBefore(tr, tbody.firstChild);
+
+      // Flash background color animation
+      setTimeout(() => {
+        tr.classList.remove('bg-green-50/50');
+      }, 2000);
+    }
+  </script>
+</body>
+</html>
