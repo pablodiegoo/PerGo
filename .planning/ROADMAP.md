@@ -174,6 +174,17 @@ Note: Phase 2 and Phase 3 are independent after Phase 1 and may execute in paral
 | 6. Webhook Delivery & DLQ | 1/1 | Complete    | 2026-06-27 |
 | 7. Media & Inbound | 4/4 | Complete    | 2026-06-27 |
 
+### Phase 8: Multi-Instance Connections & Dashboard UI
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 7
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 8 to break down)
+
 ---
 *Roadmap created: 2026-06-25*
 *Granularity: standard | Mode: mvp | Phase convention: sequential*

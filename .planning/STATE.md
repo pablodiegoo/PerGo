@@ -89,6 +89,7 @@ Recent decisions affecting current work:
 ### Roadmap Evolution
 
 - Phase 07.1 inserted after Phase 7: Close gap: v1.0 audit gaps (URGENT)
+- Phase 8 added: Multi-Instance Connections & Dashboard UI
 
 ## Deferred Items
 
