@@ -110,3 +110,15 @@ func (r *ActiveSession) DisconnectByJID(jid string) {
 	}
 	delete(r.sessions, jid)
 }
+
+// GetClient retrieves the WhatsAppClient for a given JID string.
+func (r *ActiveSession) GetClient(jid string) *whatsapp.WhatsAppClient {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	s, ok := r.sessions[jid]
+	if !ok {
+		return nil
+	}
+	return s.Client
+}
+

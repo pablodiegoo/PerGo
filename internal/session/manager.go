@@ -176,10 +176,8 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *Device) error {
 		Cancel:   cancel,
 	}
 
-	// Register session and dispatcher atomically
+	// Register session atomically
 	m.registry.Add(sess)
-	adapter := whatsapp.NewWhatsAppAdapter(wc, m.s3Client)
-	m.dispatchers.Register("whatsapp", adapter)
 
 	// Register event handler to update recipient_sessions on incoming messages
 	wc.Client().AddEventHandler(func(evt interface{}) {

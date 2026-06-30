@@ -22,7 +22,7 @@ type WindowChecker interface {
 
 // WABAAdapter implements channel.Dispatcher for WhatsApp Cloud (WABA) REST API.
 type WABAAdapter struct {
-	credentialsRepo *repository.CredentialsRepository
+	connectionsRepo *repository.ConnectionRepository
 	client          *http.Client
 	baseURL         string
 	windowChecker   WindowChecker
@@ -91,12 +91,12 @@ type MetaErrorResponse struct {
 }
 
 // NewWABAAdapter creates a new WABAAdapter.
-func NewWABAAdapter(credentialsRepo *repository.CredentialsRepository, client *http.Client, windowChecker WindowChecker, externalBaseURL string) *WABAAdapter {
+func NewWABAAdapter(connectionsRepo *repository.ConnectionRepository, client *http.Client, windowChecker WindowChecker, externalBaseURL string) *WABAAdapter {
 	if client == nil {
 		client = http.DefaultClient
 	}
 	return &WABAAdapter{
-		credentialsRepo: credentialsRepo,
+		connectionsRepo: connectionsRepo,
 		client:          client,
 		baseURL:         "https://graph.facebook.com/v18.0",
 		windowChecker:   windowChecker,
@@ -116,10 +116,10 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 		return "", channel.NewTerminalError(err)
 	}
 
-	credsBytes, err := a.credentialsRepo.Get(ctx, workspaceID, "whatsapp_cloud")
+	credsBytes, err := a.connectionsRepo.GetCredentials(ctx, m.ConnectionID)
 	if err != nil {
-		if errors.Is(err, repository.ErrCredentialsNotFound) {
-			return "", channel.NewTerminalError(fmt.Errorf("credentials not found: %w", err))
+		if errors.Is(err, repository.ErrConnectionNotFound) {
+			return "", channel.NewTerminalError(fmt.Errorf("connection credentials not found: %w", err))
 		}
 		return "", err
 	}

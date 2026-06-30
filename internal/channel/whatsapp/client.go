@@ -18,6 +18,8 @@ import (
 type ClientConfig struct {
 	DB        *sql.DB
 	WAVersion string // e.g. "2.3000.1025000000"
+	JID       *types.JID
+	ProxyURL  string
 }
 
 // WhatsAppClient wraps a whatsmeow client with event handlers and lifecycle
@@ -34,7 +36,13 @@ type WhatsAppClient struct {
 func NewWhatsAppClient(cfg ClientConfig) (*WhatsAppClient, error) {
 	container := sqlstore.NewWithDB(cfg.DB, "postgres", waLog.Noop)
 
-	deviceStore, err := container.GetFirstDevice(context.Background())
+	var deviceStore *store.Device
+	var err error
+	if cfg.JID != nil && !cfg.JID.IsEmpty() {
+		deviceStore, err = container.GetDevice(context.Background(), *cfg.JID)
+	} else {
+		deviceStore, err = container.GetFirstDevice(context.Background())
+	}
 	if err != nil || deviceStore == nil {
 		deviceStore = container.NewDevice()
 	}
@@ -42,6 +50,12 @@ func NewWhatsAppClient(cfg ClientConfig) (*WhatsAppClient, error) {
 	clientLog := slog.With("component", "whatsapp")
 
 	cli := whatsmeow.NewClient(deviceStore, waLog.Noop)
+
+	if cfg.ProxyURL != "" {
+		if err := ConfigureProxy(cli, cfg.ProxyURL); err != nil {
+			clientLog.Warn("whatsapp: failed to configure proxy", "url", cfg.ProxyURL, "error", err)
+		}
+	}
 
 	if cfg.WAVersion != "" {
 		if ver, err := store.ParseVersion(cfg.WAVersion); err == nil {

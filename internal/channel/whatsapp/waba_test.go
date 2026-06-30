@@ -68,7 +68,7 @@ func TestWABADispatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create encryptor: %v", err)
 	}
-	credsRepo := repository.NewCredentialsRepository(pool, enc)
+	connectionsRepo := repository.NewConnectionRepository(pool, enc)
 	wsRepo := repository.NewWorkspaceRepository(pool)
 
 	// Create workspace
@@ -86,7 +86,16 @@ func TestWABADispatch(t *testing.T) {
 		Token:         "test_access_token_abc123",
 	}
 	configBytes, _ := json.Marshal(wabaConfig)
-	err = credsRepo.Save(ctx, ws.ID, "whatsapp_cloud", configBytes)
+	connID := uuid.New()
+	err = connectionsRepo.Create(ctx, &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    ws.ID,
+		Name:           "WABA",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+12345_phone_id",
+		Status:         "active",
+		Credentials:    configBytes,
+	})
 	if err != nil {
 		t.Fatalf("failed to save WABA credentials: %v", err)
 	}
@@ -128,12 +137,14 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
-			To:   "+5511999999999",
-			Body: "Hello from PerGo!",
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
+			To:             "+5511999999999",
+			Body:           "Hello from PerGo!",
 		}
 
 		_, err := adapter.Dispatch(tenantCtx, payload)
@@ -167,11 +178,13 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
-			To: "+5511999999999",
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
+			To:             "+5511999999999",
 			Metadata: map[string]string{
 				"template_name":     "welcome_test",
 				"template_language": "pt_BR",
@@ -211,10 +224,12 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
 			To:           "+5511999999999",
 			TemplateName: "welcome_test_new",
 			Language:     "en_US",
@@ -241,10 +256,15 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
-		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
+			To:             "+12345",
+			Body:           "hi",
+		})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -260,10 +280,15 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
-		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
+			To:             "+12345",
+			Body:           "hi",
+		})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -279,10 +304,15 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
-		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
+			To:             "+12345",
+			Body:           "hi",
+		})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -293,9 +323,14 @@ func TestWABADispatch(t *testing.T) {
 
 	t.Run("Local Window Checker - Expired/Missing", func(t *testing.T) {
 		mockChecker := &mockWABAWindowChecker{open: false}
-		adapter := NewWABAAdapter(credsRepo, nil, mockChecker, "")
+		adapter := NewWABAAdapter(connectionsRepo, nil, mockChecker, "")
 
-		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
+			To:             "+12345",
+			Body:           "hi",
+		})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -315,10 +350,15 @@ func TestWABADispatch(t *testing.T) {
 		defer server.Close()
 
 		mockChecker := &mockWABAWindowChecker{open: true}
-		adapter := NewWABAAdapter(credsRepo, nil, mockChecker, "")
+		adapter := NewWABAAdapter(connectionsRepo, nil, mockChecker, "")
 		adapter.SetBaseURL(server.URL)
 
-		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "+12345", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
+			To:             "+12345",
+			Body:           "hi",
+		})
 		if err != nil {
 			t.Fatalf("expected nil error, got: %v", err)
 		}
@@ -361,10 +401,12 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(credsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
 			To: "+5511999999999",
 			Media: &domain.Media{
 				MediaURL:  "/media/workspace123/hash123.png",
@@ -396,11 +438,11 @@ func TestWABA_MediaExternalURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create encryptor: %v", err)
 	}
-	credsRepo := repository.NewCredentialsRepository(pool, enc)
+	connectionsRepo := repository.NewConnectionRepository(pool, enc)
 	wsID := uuid.New()
 	tenantCtx := tenant.WithWorkspaceID(context.Background(), wsID)
 	
-	// Create test workspace to satisfy FK constraint on channel_credentials
+	// Create test workspace to satisfy FK constraint on connections
 	_, err = pool.Exec(context.Background(), "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ($1, $2, now(), now())", wsID, "test-workspace-"+wsID.String())
 	if err != nil {
 		t.Fatalf("failed to create test workspace for FK: %v", err)
@@ -412,7 +454,16 @@ func TestWABA_MediaExternalURL(t *testing.T) {
 		WABAAccountID: "waba_123",
 	}
 	credsJSON, _ := json.Marshal(creds)
-	err = credsRepo.Save(tenantCtx, wsID, "whatsapp_cloud", credsJSON)
+	connID := uuid.New()
+	err = connectionsRepo.Create(context.Background(), &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    wsID,
+		Name:           "WABA",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+12345",
+		Status:         "active",
+		Credentials:    credsJSON,
+	})
 	if err != nil {
 		t.Fatalf("failed to save credentials: %v", err)
 	}
@@ -434,11 +485,13 @@ func TestWABA_MediaExternalURL(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter := NewWABAAdapter(credsRepo, nil, nil, "https://example.com")
+	adapter := NewWABAAdapter(connectionsRepo, nil, nil, "https://example.com")
 	adapter.SetBaseURL(server.URL)
 
 	payload := &channel.MessagePayload{
-		To: "+5511999999999",
+		ConnectionID:   connID,
+		SenderIdentity: "+12345",
+		To:             "+5511999999999",
 		Media: &domain.Media{
 			MediaURL:  "/media/workspace123/hash123.png",
 			MediaType: "image",

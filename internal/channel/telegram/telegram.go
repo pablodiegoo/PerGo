@@ -19,7 +19,7 @@ import (
 
 // TelegramAdapter implements channel.Dispatcher for Telegram Bot API.
 type TelegramAdapter struct {
-	credentialsRepo *repository.CredentialsRepository
+	connectionsRepo *repository.ConnectionRepository
 	client          *http.Client
 	baseURL         string
 	s3Client        *storage.S3Client
@@ -43,12 +43,12 @@ type TelegramErrorResponse struct {
 }
 
 // NewTelegramAdapter creates a new TelegramAdapter.
-func NewTelegramAdapter(credentialsRepo *repository.CredentialsRepository, client *http.Client, s3Client *storage.S3Client) *TelegramAdapter {
+func NewTelegramAdapter(connectionsRepo *repository.ConnectionRepository, client *http.Client, s3Client *storage.S3Client) *TelegramAdapter {
 	if client == nil {
 		client = http.DefaultClient
 	}
 	return &TelegramAdapter{
-		credentialsRepo: credentialsRepo,
+		connectionsRepo: connectionsRepo,
 		client:          client,
 		baseURL:         "https://api.telegram.org",
 		s3Client:        s3Client,
@@ -62,15 +62,15 @@ func (a *TelegramAdapter) SetBaseURL(url string) {
 
 // Dispatch sends a message through the Telegram Bot API.
 func (a *TelegramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (string, error) {
-	workspaceID, err := tenant.RequireWorkspaceID(ctx)
+	_, err := tenant.RequireWorkspaceID(ctx)
 	if err != nil {
 		return "", channel.NewTerminalError(err)
 	}
 
-	credsBytes, err := a.credentialsRepo.Get(ctx, workspaceID, "telegram")
+	credsBytes, err := a.connectionsRepo.GetCredentials(ctx, m.ConnectionID)
 	if err != nil {
-		if errors.Is(err, repository.ErrCredentialsNotFound) {
-			return "", channel.NewTerminalError(fmt.Errorf("credentials not found: %w", err))
+		if errors.Is(err, repository.ErrConnectionNotFound) {
+			return "", channel.NewTerminalError(fmt.Errorf("connection credentials not found: %w", err))
 		}
 		return "", err
 	}

@@ -68,7 +68,7 @@ func TestTelegramDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create encryptor: %v", err)
 	}
-	credsRepo := repository.NewCredentialsRepository(pool, enc)
+	connectionsRepo := repository.NewConnectionRepository(pool, enc)
 	wsRepo := repository.NewWorkspaceRepository(pool)
 
 	// Create workspace
@@ -85,7 +85,16 @@ func TestTelegramDispatch(t *testing.T) {
 		Token: "123456:ABC-DEF_test_token",
 	}
 	configBytes, _ := json.Marshal(telegramConfig)
-	err = credsRepo.Save(ctx, ws.ID, "telegram", configBytes)
+	connID := uuid.New()
+	err = connectionsRepo.Create(ctx, &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    ws.ID,
+		Name:           "Telegram",
+		Channel:        "telegram",
+		SenderIdentity: "@test_bot",
+		Status:         "active",
+		Credentials:    configBytes,
+	})
 	if err != nil {
 		t.Fatalf("failed to save Telegram credentials: %v", err)
 	}
@@ -121,12 +130,14 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(credsRepo, nil, nil)
+		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
-			To:   "987654321",
-			Body: "Hello Telegram!",
+			ConnectionID:   connID,
+			SenderIdentity: "@test_bot",
+			To:             "987654321",
+			Body:           "Hello Telegram!",
 		}
 
 		_, err := adapter.Dispatch(tenantCtx, payload)
@@ -142,10 +153,15 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(credsRepo, nil, nil)
+		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
-		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "invalid_chat", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "@test_bot",
+			To:             "invalid_chat",
+			Body:           "hi",
+		})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -161,10 +177,15 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(credsRepo, nil, nil)
+		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
-		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "blocked_chat", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "@test_bot",
+			To:             "blocked_chat",
+			Body:           "hi",
+		})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -180,10 +201,15 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(credsRepo, nil, nil)
+		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
 		adapter.SetBaseURL(server.URL)
 
-		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{To: "987654321", Body: "hi"})
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "@test_bot",
+			To:             "987654321",
+			Body:           "hi",
+		})
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
@@ -246,10 +272,12 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(credsRepo, nil, s3Client)
+		adapter := NewTelegramAdapter(connectionsRepo, nil, s3Client)
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "@test_bot",
 			To: "987654321",
 			Media: &domain.Media{
 				MediaURL:  "/media/" + ws.ID.String() + "/hash123.png",

@@ -125,18 +125,23 @@ func main() {
 	}
 
 	credentialsRepo := repository.NewCredentialsRepository(pool, encryptor)
+	connectionRepo := repository.NewConnectionRepository(pool, encryptor)
 	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
 	windowChecker := session.NewWindowChecker(recipientSessionRepo)
 
 	// --- REST Adapters ---
-	wabaAdapter := whatsapp.NewWABAAdapter(credentialsRepo, nil, windowChecker, cfg.ExternalURL)
-	telegramAdapter := telegram.NewTelegramAdapter(credentialsRepo, nil, s3Client)
+	wabaAdapter := whatsapp.NewWABAAdapter(connectionRepo, nil, windowChecker, cfg.ExternalURL)
+	telegramAdapter := telegram.NewTelegramAdapter(connectionRepo, nil, s3Client)
+	whatsAppAdapter := whatsapp.NewWhatsAppAdapter(nil, s3Client)
 
 	// --- Worker (reads from JetStream, dispatches with retry/TTL/dedup) ---
 	sessionRegistry := session.NewActiveSession()
+	whatsAppAdapter.SetSessionFinder(sessionRegistry)
+
 	dispatcherRegistry := channel.NewRegistry(nil) // populated by session manager
 	dispatcherRegistry.Register("whatsapp_cloud", wabaAdapter)
 	dispatcherRegistry.Register("telegram", telegramAdapter)
+	dispatcherRegistry.Register("whatsapp", whatsAppAdapter)
 
 	// --- Audit writer ---
 	auditWriter := audit.NewWriter(pool, 5000, 2)
@@ -252,9 +257,10 @@ func main() {
 
 	// --- Message handler (POST /messages) ---
 	messageHandler := &handler.MessageHandler{
-		Publisher:  publisher,
-		QueueDepth: queueDepth,
-		S3Client:   s3Client,
+		Publisher:      publisher,
+		QueueDepth:     queueDepth,
+		S3Client:       s3Client,
+		ConnectionRepo: connectionRepo,
 	}
 	messageHandler.RegisterRoutes(e, middleware.RateLimiterMiddleware(rateLimiter))
 

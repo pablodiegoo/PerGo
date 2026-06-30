@@ -25,13 +25,19 @@ const (
 	maxStagger = 3 * time.Second
 )
 
+// SessionFinder defines the lookup interface for active WhatsApp client sessions.
+type SessionFinder interface {
+	GetClient(jid string) *WhatsAppClient
+}
+
 // WhatsAppAdapter implements channel.Dispatcher for WhatsApp Web via whatsmeow.
 // It adds staggered dispatch (1-3s random delay) before each send to
 // minimize account suspension risk.
 type WhatsAppAdapter struct {
-	client   *WhatsAppClient
-	log      *slog.Logger
-	s3Client *storage.S3Client
+	client        *WhatsAppClient
+	sessionFinder SessionFinder
+	log           *slog.Logger
+	s3Client      *storage.S3Client
 }
 
 // NewWhatsAppAdapter creates a dispatcher backed by the given WhatsApp client.
@@ -43,6 +49,11 @@ func NewWhatsAppAdapter(client *WhatsAppClient, s3Client *storage.S3Client) *Wha
 	}
 }
 
+// SetSessionFinder sets the session finder for dynamic client routing.
+func (a *WhatsAppAdapter) SetSessionFinder(finder SessionFinder) {
+	a.sessionFinder = finder
+}
+
 // Dispatch sends a text or media message via WhatsApp Web with staggered delay.
 // The recipient in payload.To should be a phone number (digits only or
 // with country code). It's converted to a JID with @s.whatsapp.net suffix.
@@ -50,8 +61,18 @@ func NewWhatsAppAdapter(client *WhatsAppClient, s3Client *storage.S3Client) *Wha
 // Returns channel.TerminalError for 403/logged-out errors (non-retryable).
 // Returns regular error for transient failures (retryable).
 func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (string, error) {
-	if a.client == nil || a.client.Client() == nil {
-		return "", fmt.Errorf("whatsapp: client not connected")
+	var wc *WhatsAppClient
+	if a.sessionFinder != nil {
+		wc = a.sessionFinder.GetClient(m.SenderIdentity)
+	} else {
+		wc = a.client
+	}
+
+	if wc == nil || wc.Client() == nil {
+		if m.SenderIdentity == "" {
+			return "", fmt.Errorf("whatsapp: client not connected")
+		}
+		return "", fmt.Errorf("whatsapp: client not connected for sender identity: %s", m.SenderIdentity)
 	}
 
 	// Staggered dispatch: random delay before send
@@ -116,7 +137,7 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 			return "", channel.NewTerminalError(fmt.Errorf("whatsapp: unsupported media type %s", m.Media.MediaType))
 		}
 
-		resp, err := a.client.Client().Upload(ctx, dataBytes, uploadType)
+		resp, err := wc.Client().Upload(ctx, dataBytes, uploadType)
 		if err != nil {
 			return "", fmt.Errorf("whatsapp upload to CDN failed: %w", err)
 		}
@@ -182,7 +203,7 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 		msg.Conversation = &body
 	}
 
-	respSend, err := a.client.Client().SendMessage(ctx, recipientJID, &msg)
+	respSend, err := wc.Client().SendMessage(ctx, recipientJID, &msg)
 	if err != nil {
 		a.log.Error("whatsapp: send failed",
 			"error", err,

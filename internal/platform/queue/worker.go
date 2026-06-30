@@ -366,16 +366,18 @@ func (w *Worker) dispatchToChannel(ctx context.Context, channelName string, qMsg
 	}
 
 	return dispatcher.Dispatch(ctx, &channel.MessagePayload{
-		MessageID:    qMsg.TraceID,
-		TraceID:      qMsg.TraceID,
-		To:           qMsg.To,
-		Channel:      channelName,
-		Body:         qMsg.Body,
-		Media:        qMsg.Media,
-		Metadata:     qMsg.Metadata,
-		TemplateName: qMsg.TemplateName,
-		Language:     qMsg.Language,
-		Components:   convertTemplateComponents(qMsg.Components),
+		MessageID:      qMsg.TraceID,
+		ConnectionID:   qMsg.ConnectionID,
+		SenderIdentity: qMsg.SenderIdentity,
+		TraceID:        qMsg.TraceID,
+		To:             qMsg.To,
+		Channel:        channelName,
+		Body:           qMsg.Body,
+		Media:          qMsg.Media,
+		Metadata:       qMsg.Metadata,
+		TemplateName:   qMsg.TemplateName,
+		Language:       qMsg.Language,
+		Components:     convertTemplateComponents(qMsg.Components),
 	})
 }
 
