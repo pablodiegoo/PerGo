@@ -145,3 +145,13 @@ func (wc *WhatsAppClient) Connect() error {
 func (wc *WhatsAppClient) Disconnect() {
 	wc.client.Disconnect()
 }
+
+// ConfigureProxy sets up SOCKS5/HTTP proxy for whatsmeow client connection.
+func ConfigureProxy(client *whatsmeow.Client, proxyStr string) error {
+	if proxyStr == "" {
+		client.SetProxy(nil)
+		return nil
+	}
+	return client.SetProxyAddress(proxyStr)
+}
+
