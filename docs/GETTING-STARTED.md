@@ -70,3 +70,51 @@ Na primeira inicialização, o PerGo executará automaticamente as migrações e
 4. Clique no Workspace criado para acessar a tela de detalhes:
    * **Gerar API Key:** Clique em *Generate Key* e anote a chave gerada. Você usará essa chave no cabeçalho `Authorization: Bearer <key>` para enviar mensagens pela API REST do PerGo.
    * **Configurar Canais:** Adicione as credenciais de envio para o Telegram Bot, WhatsApp Cloud ou conecte o WhatsApp Web escaneando o QR Code gerado pelo painel.
+
+---
+
+## Problemas Comuns de Configuração (Common Setup Issues)
+
+Abaixo estão listados alguns problemas frequentes durante a configuração inicial do ambiente e como resolvê-los:
+
+1. **Falha de Conexão com o Banco de Dados (`dial tcp 127.0.0.1:5432` ou `5433: connect: connection refused`)**
+   * **Causa:** O container do PostgreSQL não está em execução ou a porta especificada em `PERGO_DATABASE_URL` no seu arquivo `.env` está incorreta. O arquivo [docker-compose.yml](file:///home/pablo/Coding/PerGo/docker-compose.yml) do projeto mapeia a porta interna do banco (`5432`) para a porta `5433` no host do desenvolvedor para evitar conflitos com serviços locais do PostgreSQL.
+   * **Solução:** Certifique-se de inicializar a infraestrutura utilizando `make infra`. No arquivo `.env`, garanta que a string de conexão está configurada para a porta do host correta (por padrão, `5433` em desenvolvimento local):
+     ```env
+     PERGO_DATABASE_URL=postgres://postgres:postgres@localhost:5433/pergo?sslmode=disable
+     ```
+
+2. **Falha de Conexão com o Broker NATS (`nats: connect: connection refused`)**
+   * **Causa:** O broker do NATS com JetStream ativo não está rodando localmente ou a variável `PERGO_NATS_URL` aponta para uma porta/endereço incorreto.
+   * **Solução:** Certifique-se de que os containers locais foram iniciados corretamente com o comando `make infra`. Verifique se o NATS está respondendo na porta padrão local `4222`.
+
+3. **Comando `air` ou `templ` não encontrado ao rodar `make dev`**
+   * **Causa:** As ferramentas de compilação e hot-reload não foram instaladas globalmente no Go ou o diretório de binários do Go (`GOBIN`) não está configurado na variável de ambiente `PATH` do seu terminal.
+   * **Solução:** Primeiro, certifique-se de executar os comandos de instalação indicados na seção de pré-requisitos. Depois, adicione o caminho do seu workspace de Go ao `PATH` do sistema:
+     ```bash
+     export PATH=$PATH:$(go env GOPATH)/bin
+     ```
+
+4. **Erro de compilação dos arquivos `.templ`**
+   * **Causa:** Erros de sintaxe ou arquivos autogerados inconsistentes na pasta `templates/`.
+   * **Solução:** Tente rodar `make generate` diretamente para ver as mensagens de erro detalhadas do compilador do Templ. Isso ajuda a isolar problemas de compilação de UI antes de tentar rodar a aplicação em desenvolvimento.
+
+5. **Aviso ou erro de chave KEK (`PERGO_KEK_BASE64`) inválida**
+   * **Causa:** A variável `PERGO_KEK_BASE64` não foi configurada ou o valor fornecido não decodifica para uma chave de exatamente 32 bytes (256 bits) necessários para o algoritmo AES-256-GCM.
+   * **Solução:** Em ambiente de desenvolvimento local, o PerGo avisa no log e automaticamente carrega uma chave padrão insegura de 32 bytes para fins de teste. Para ambientes de staging ou produção, gere uma chave criptograficamente segura usando:
+     ```bash
+     openssl rand -base64 32
+     ```
+     E configure-a na variável de ambiente `PERGO_KEK_BASE64`.
+
+---
+
+## Próximos Passos (Next Steps)
+
+Com a aplicação rodando localmente e a console administrativa configurada, siga para os seguintes guias para aprofundar-se no projeto:
+
+* **Desenvolvimento Interno:** Consulte o [Guia de Desenvolvimento](file:///home/pablo/Coding/PerGo/docs/DEVELOPMENT.md) para entender a arquitetura do projeto, os princípios de design de código, a estrutura de diretórios e como criar componentes de UI ou novos conectores de canal.
+* **Testando a Aplicação:** Consulte o [Guia de Testes](file:///home/pablo/Coding/PerGo/docs/TESTING.md) para aprender a rodar testes unitários, testes com race detector e testes de integração de ponta a ponta com o banco de dados e NATS JetStream.
+* **Detalhamento de Configurações:** Consulte o guia sobre a [Configuração do Sistema](file:///home/pablo/Coding/PerGo/docs/CONFIGURATION.md) para ver todas as opções de customização e variáveis de ambiente disponíveis.
+* **Documentação de Canais:** Acesse o guia de [Canais e Credenciais](file:///home/pablo/Coding/PerGo/docs/CHANNELS.md) para obter instruções passo a passo sobre a configuração do WhatsApp Web, WhatsApp Cloud (WABA) e Telegram.
+* **Referência da API REST:** Veja o guia de referência da [API REST](file:///home/pablo/Coding/PerGo/docs/API.md) para aprender a disparar mensagens omnichannel via payload JSON unificado.
