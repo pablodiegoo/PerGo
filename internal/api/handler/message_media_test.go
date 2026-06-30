@@ -29,8 +29,9 @@ func TestMessageHandler_CreateWithMedia(t *testing.T) {
 	e := echo.New()
 	pub := &mockPublisher{}
 	h := &MessageHandler{
-		Publisher: pub,
-		S3Client:  s3Client,
+		Publisher:      pub,
+		S3Client:       s3Client,
+		ConnectionRepo: defaultMockConnectionRepo(),
 	}
 	h.RegisterRoutes(e)
 

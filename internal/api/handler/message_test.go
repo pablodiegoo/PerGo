@@ -14,7 +14,59 @@ import (
 	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/repository"
 )
+
+type mockConnectionRepo struct {
+	GetBySenderIdentityFunc     func(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error)
+	GetDefaultChannelConnectionFunc func(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error)
+}
+
+func (m *mockConnectionRepo) GetBySenderIdentity(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error) {
+	if m.GetBySenderIdentityFunc != nil {
+		return m.GetBySenderIdentityFunc(ctx, workspaceID, senderIdentity)
+	}
+	return nil, repository.ErrConnectionNotFound
+}
+
+func (m *mockConnectionRepo) GetDefaultChannelConnection(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error) {
+	if m.GetDefaultChannelConnectionFunc != nil {
+		return m.GetDefaultChannelConnectionFunc(ctx, workspaceID, channel)
+	}
+	return nil, repository.ErrConnectionNotFound
+}
+
+func defaultMockConnectionRepo() *mockConnectionRepo {
+	return &mockConnectionRepo{
+		GetDefaultChannelConnectionFunc: func(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error) {
+			return &repository.Connection{
+				ID:             uuid.New(),
+				WorkspaceID:    workspaceID,
+				Name:           "default " + channel,
+				Channel:        channel,
+				SenderIdentity: "+1234567890",
+				Status:         "active",
+				IsDefault:      true,
+			}, nil
+		},
+		GetBySenderIdentityFunc: func(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error) {
+			return &repository.Connection{
+				ID:             uuid.New(),
+				WorkspaceID:    workspaceID,
+				Name:           "custom conn",
+				Channel:        "whatsapp",
+				SenderIdentity: senderIdentity,
+				Status:         "active",
+			}, nil
+		},
+	}
+}
+
+func newTestMessageHandler() *MessageHandler {
+	return &MessageHandler{
+		ConnectionRepo: defaultMockConnectionRepo(),
+	}
+}
 
 // testContext returns a context with trace_id and workspace_id injected.
 func testContext(traceID string, workspaceID uuid.UUID) context.Context {
@@ -26,7 +78,7 @@ func testContext(traceID string, workspaceID uuid.UUID) context.Context {
 
 func TestCreateMessageValid(t *testing.T) {
 	e := echo.New()
-	h := &MessageHandler{}
+	h := newTestMessageHandler()
 	h.RegisterRoutes(e)
 
 	traceID := uuid.New().String()
@@ -68,7 +120,7 @@ func TestCreateMessageValid(t *testing.T) {
 
 func TestCreateMessageInvalidJSON(t *testing.T) {
 	e := echo.New()
-	h := &MessageHandler{}
+	h := newTestMessageHandler()
 	h.RegisterRoutes(e)
 
 	traceID := uuid.New().String()
@@ -98,7 +150,7 @@ func TestCreateMessageInvalidJSON(t *testing.T) {
 
 func TestCreateMessageMissingTo(t *testing.T) {
 	e := echo.New()
-	h := &MessageHandler{}
+	h := newTestMessageHandler()
 	h.RegisterRoutes(e)
 
 	traceID := uuid.New().String()
@@ -139,7 +191,7 @@ func TestCreateMessageMissingTo(t *testing.T) {
 
 func TestCreateMessageInvalidChannel(t *testing.T) {
 	e := echo.New()
-	h := &MessageHandler{}
+	h := newTestMessageHandler()
 	h.RegisterRoutes(e)
 
 	traceID := uuid.New().String()
@@ -176,7 +228,7 @@ func TestCreateMessageInvalidChannel(t *testing.T) {
 
 func TestCreateMessageZeroTTL(t *testing.T) {
 	e := echo.New()
-	h := &MessageHandler{}
+	h := newTestMessageHandler()
 	h.RegisterRoutes(e)
 
 	traceID := uuid.New().String()
@@ -213,7 +265,7 @@ func TestCreateMessageZeroTTL(t *testing.T) {
 
 func TestCreateMessageTraceHeader(t *testing.T) {
 	e := echo.New()
-	h := &MessageHandler{}
+	h := newTestMessageHandler()
 	h.RegisterRoutes(e)
 
 	traceID := "custom-trace-id-12345"
@@ -240,7 +292,7 @@ func TestCreateMessageTraceHeader(t *testing.T) {
 func TestCreateMessageMissingAuth(t *testing.T) {
 	// Test without auth middleware — handler still works (auth is separate)
 	e := echo.New()
-	h := &MessageHandler{}
+	h := newTestMessageHandler()
 	h.RegisterRoutes(e)
 
 	traceID := uuid.New().String()
@@ -266,7 +318,8 @@ func TestCreateMessageMissingAuth(t *testing.T) {
 func TestCreateMessageQueueFull(t *testing.T) {
 	e := echo.New()
 	qdt := middleware.NewQueueDepthTracker()
-	h := &MessageHandler{QueueDepth: qdt}
+	h := newTestMessageHandler()
+	h.QueueDepth = qdt
 	h.RegisterRoutes(e)
 
 	wsID := uuid.New()
@@ -306,7 +359,8 @@ func TestCreateMessageQueueFull(t *testing.T) {
 func TestCreateMessageQueueNotFull(t *testing.T) {
 	e := echo.New()
 	qdt := middleware.NewQueueDepthTracker()
-	h := &MessageHandler{QueueDepth: qdt}
+	h := newTestMessageHandler()
+	h.QueueDepth = qdt
 	h.RegisterRoutes(e)
 
 	wsID := uuid.New()
@@ -332,7 +386,8 @@ func TestCreateMessageQueueNotFull(t *testing.T) {
 func TestCreateMessageQueueDepthIncremented(t *testing.T) {
 	e := echo.New()
 	qdt := middleware.NewQueueDepthTracker()
-	h := &MessageHandler{QueueDepth: qdt}
+	h := newTestMessageHandler()
+	h.QueueDepth = qdt
 	h.RegisterRoutes(e)
 
 	wsID := uuid.New()
@@ -360,7 +415,8 @@ func TestCreateMessageRateLimited(t *testing.T) {
 	e := echo.New()
 	rl := middleware.NewRateLimiter(2, 1) // 2 req/s, burst 1
 	qdt := middleware.NewQueueDepthTracker()
-	h := &MessageHandler{QueueDepth: qdt}
+	h := newTestMessageHandler()
+	h.QueueDepth = qdt
 	h.RegisterRoutes(e, middleware.RateLimiterMiddleware(rl))
 
 	wsID := uuid.New()
@@ -415,7 +471,8 @@ func (m *mockPublisher) Publish(ctx context.Context, subject string, data []byte
 func TestCreateMessageWithFallbackChannels(t *testing.T) {
 	e := echo.New()
 	pub := &mockPublisher{}
-	h := &MessageHandler{Publisher: pub}
+	h := newTestMessageHandler()
+	h.Publisher = pub
 	h.RegisterRoutes(e)
 
 	traceID := uuid.New().String()
@@ -455,7 +512,7 @@ func TestCreateMessageWithFallbackChannels(t *testing.T) {
 
 func TestCreateMessageInvalidFallbackChannels(t *testing.T) {
 	e := echo.New()
-	h := &MessageHandler{}
+	h := newTestMessageHandler()
 	h.RegisterRoutes(e)
 
 	tests := []struct {
@@ -511,3 +568,119 @@ func TestCreateMessageInvalidFallbackChannels(t *testing.T) {
 		})
 	}
 }
+
+func TestCreateMessageWithFrom(t *testing.T) {
+	e := echo.New()
+	pub := &mockPublisher{}
+	h := newTestMessageHandler()
+	h.Publisher = pub
+	h.RegisterRoutes(e)
+
+	traceID := uuid.New().String()
+	wsID := uuid.New()
+
+	body := `{"to":"+1234567890","channel":"whatsapp","body":"Hello","from":"+1234567890"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(testContext(traceID, wsID))
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var qMsg domain.QueueMessage
+	if err := json.Unmarshal(pub.data, &qMsg); err != nil {
+		t.Fatalf("failed to unmarshal published data: %v", err)
+	}
+
+	if qMsg.SenderIdentity != "+1234567890" {
+		t.Errorf("expected SenderIdentity '+1234567890', got %q", qMsg.SenderIdentity)
+	}
+	if qMsg.ConnectionID == uuid.Nil {
+		t.Error("expected non-nil resolved ConnectionID")
+	}
+}
+
+func TestCreateMessageRouteNotFound(t *testing.T) {
+	e := echo.New()
+	h := newTestMessageHandler()
+	// Override with a mock repo that returns errors for lookups
+	h.ConnectionRepo = &mockConnectionRepo{
+		GetBySenderIdentityFunc: func(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error) {
+			return nil, repository.ErrConnectionNotFound
+		},
+		GetDefaultChannelConnectionFunc: func(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error) {
+			return nil, repository.ErrConnectionNotFound
+		},
+	}
+	h.RegisterRoutes(e)
+
+	traceID := uuid.New().String()
+	wsID := uuid.New()
+
+	body := `{"to":"+1234567890","channel":"whatsapp","body":"Hello","from":"+9999999"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(testContext(traceID, wsID))
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp domain.ErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if resp.Code != "route_not_found" {
+		t.Errorf("expected code 'route_not_found', got %q", resp.Code)
+	}
+}
+
+func TestCreateMessageChannelMismatch(t *testing.T) {
+	e := echo.New()
+	h := newTestMessageHandler()
+	// Override mock repo to return a connection with a channel that doesn't match requested
+	h.ConnectionRepo = &mockConnectionRepo{
+		GetBySenderIdentityFunc: func(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error) {
+			return &repository.Connection{
+				ID:             uuid.New(),
+				WorkspaceID:    workspaceID,
+				Channel:        "telegram", // mismatches requested 'whatsapp'
+				SenderIdentity: senderIdentity,
+			}, nil
+		},
+	}
+	h.RegisterRoutes(e)
+
+	traceID := uuid.New().String()
+	wsID := uuid.New()
+
+	body := `{"to":"+1234567890","channel":"whatsapp","body":"Hello","from":"@some_bot"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(testContext(traceID, wsID))
+	rec := httptest.NewRecorder()
+
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp domain.ErrorResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	if resp.Code != "route_not_found" {
+		t.Errorf("expected code 'route_not_found', got %q", resp.Code)
+	}
+}
+

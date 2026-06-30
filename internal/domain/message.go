@@ -39,6 +39,7 @@ type Media struct {
 // CreateMessageRequest is the JSON payload for POST /messages.
 type CreateMessageRequest struct {
 	To               string              `json:"to"`
+	From             string              `json:"from,omitempty"`
 	Channel          string              `json:"channel"`
 	Body             string              `json:"body"`
 	Media            *Media              `json:"media,omitempty"`
@@ -53,6 +54,8 @@ type CreateMessageRequest struct {
 // QueueMessage wraps the published payload for JetStream queues.
 type QueueMessage struct {
 	WorkspaceID      uuid.UUID           `json:"workspace_id"`
+	ConnectionID     uuid.UUID           `json:"connection_id"`
+	SenderIdentity   string              `json:"sender_identity"`
 	TraceID          string              `json:"trace_id"`
 	To               string              `json:"to"`
 	Channel          string              `json:"channel"`

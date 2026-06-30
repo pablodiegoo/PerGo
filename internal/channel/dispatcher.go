@@ -9,22 +9,25 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/domain"
 )
 
 // MessagePayload is the channel-layer message contract, separate from the
 // API's CreateMessageRequest. It carries all fields needed for dispatch.
 type MessagePayload struct {
-	MessageID    string
-	TraceID      string
-	To           string
-	Channel      string
-	Body         string
-	Media        *domain.Media
-	Metadata     map[string]string
-	TemplateName string
-	Language     string
-	Components   []TemplateComponent
+	MessageID      string
+	ConnectionID   uuid.UUID
+	SenderIdentity string
+	TraceID        string
+	To             string
+	Channel        string
+	Body           string
+	Media          *domain.Media
+	Metadata       map[string]string
+	TemplateName   string
+	Language       string
+	Components     []TemplateComponent
 }
 
 // TemplateComponent represents a template component inside MessagePayload.

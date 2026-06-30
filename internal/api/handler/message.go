@@ -15,6 +15,7 @@ import (
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // Publisher defines the interface for publishing messages to a queue.
@@ -23,11 +24,18 @@ type Publisher interface {
 	Publish(ctx context.Context, subject string, data []byte, traceID string) error
 }
 
+// ConnectionFinder abstracts querying connection details for routing.
+type ConnectionFinder interface {
+	GetBySenderIdentity(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error)
+	GetDefaultChannelConnection(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error)
+}
+
 // MessageHandler holds dependencies for the POST /messages endpoint.
 type MessageHandler struct {
-	Publisher  Publisher
-	QueueDepth *middleware.QueueDepthTracker
-	S3Client   *storage.S3Client
+	Publisher      Publisher
+	QueueDepth     *middleware.QueueDepthTracker
+	S3Client       *storage.S3Client
+	ConnectionRepo ConnectionFinder
 }
 
 // RegisterRoutes wires the message endpoints onto the Echo router.
@@ -127,10 +135,50 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 	// Queue status
 	queuedAt := time.Now().UTC()
 
+	if h.ConnectionRepo == nil {
+		return c.JSON(http.StatusInternalServerError, domain.ErrorResponse{
+			Code:    "internal_error",
+			Message: "route resolver is not configured",
+		})
+	}
+
+	var connID uuid.UUID
+	var senderIdentity string
+	var conn *repository.Connection
+	var err error
+
+	if req.From != "" {
+		conn, err = h.ConnectionRepo.GetBySenderIdentity(c.Request().Context(), workspaceID, req.From)
+		if err != nil {
+			return c.JSON(http.StatusUnprocessableEntity, domain.ErrorResponse{
+				Code:    "route_not_found",
+				Message: "no matching connection route resolved for the specified sender identity",
+			})
+		}
+		if conn.Channel != req.Channel {
+			return c.JSON(http.StatusBadRequest, domain.ErrorResponse{
+				Code:    "route_not_found",
+				Message: "connection channel does not match request channel",
+			})
+		}
+	} else {
+		conn, err = h.ConnectionRepo.GetDefaultChannelConnection(c.Request().Context(), workspaceID, req.Channel)
+		if err != nil {
+			return c.JSON(http.StatusUnprocessableEntity, domain.ErrorResponse{
+				Code:    "route_not_found",
+				Message: "no default connection found for channel",
+			})
+		}
+	}
+	connID = conn.ID
+	senderIdentity = conn.SenderIdentity
+
 	// Publish to JetStream (if publisher is wired)
 	if h.Publisher != nil {
 		qMsg := domain.QueueMessage{
 			WorkspaceID:      workspaceID,
+			ConnectionID:     connID,
+			SenderIdentity:   senderIdentity,
 			TraceID:          traceID,
 			To:               req.To,
 			Channel:          req.Channel,
