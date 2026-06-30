@@ -300,11 +300,17 @@ func main() {
 
 	// Admin dashboard
 	dashboardHandler := &admin.DashboardHandler{
-		Pool:       pool,
-		Workspaces: wsRepo,
-		Audit:      auditQuerier,
+		Pool:        pool,
+		Workspaces:  wsRepo,
+		Audit:       auditQuerier,
+		APIKeys:     apiKeyRepo,
+		Connections: connectionRepo,
+		Publisher:   publisher,
 	}
 	adminGroup.GET("/", dashboardHandler.Index)
+	adminGroup.POST("/webhook/simulate", dashboardHandler.SimulateWebhook)
+	adminGroup.POST("/workspaces/active", dashboardHandler.SelectWorkspace)
+	adminGroup.GET("/workspaces/selector", dashboardHandler.WorkspaceSelector)
 
 	// Workspace management routes
 	workspaceHandler := &admin.WorkspaceHandler{

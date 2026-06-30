@@ -8,6 +8,8 @@ package layout
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
+import "github.com/pablojhp.pergo/internal/repository"
+
 func Sidebar() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -29,7 +31,105 @@ func Sidebar() templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<nav class=\"sidebar\"><div class=\"sidebar-header\"><h2>PerGo</h2></div><ul class=\"sidebar-nav\"><li><a href=\"/admin/\" class=\"nav-item\">Dashboard</a></li><li><a href=\"/admin/workspaces\" class=\"nav-item\">Workspaces</a></li><li><a href=\"/admin/devices\" class=\"nav-item\">Devices</a></li><li><a href=\"/admin/telemetry\" class=\"nav-item\">Telemetry</a></li><li><span class=\"nav-section-title\" style=\"display: block; padding: 0.5rem 1rem 0.2rem 1rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted); opacity: 0.7; letter-spacing: 0.05em;\">Audit Logs</span><ul style=\"list-style: none; padding-left: 0.75rem;\"><li><a href=\"/admin/audit/inbound\" class=\"nav-item\" style=\"padding: 0.25rem 1rem; font-size: 0.9rem;\">Inbound</a></li><li><a href=\"/admin/audit/outbound\" class=\"nav-item\" style=\"padding: 0.25rem 1rem; font-size: 0.9rem;\">Outbound</a></li></ul></li><li><span class=\"nav-section-title\" style=\"display: block; padding: 0.5rem 1rem 0.2rem 1rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted); opacity: 0.7; letter-spacing: 0.05em;\">Inboxes</span><ul style=\"list-style: none; padding-left: 0.75rem;\"><li><a href=\"/admin/inbox/whatsapp\" class=\"nav-item\" style=\"padding: 0.25rem 1rem; font-size: 0.9rem;\">WhatsApp Web</a></li><li><a href=\"/admin/inbox/whatsapp_cloud\" class=\"nav-item\" style=\"padding: 0.25rem 1rem; font-size: 0.9rem;\">WhatsApp Cloud</a></li><li><a href=\"/admin/inbox/telegram\" class=\"nav-item\" style=\"padding: 0.25rem 1rem; font-size: 0.9rem;\">Telegram</a></li></ul></li><li><a href=\"/admin/webhooks\" class=\"nav-item\"><span>Webhooks & DLQ</span> <span id=\"sidebar-dlq-badge\" hx-get=\"/admin/webhooks/dlq/badge\" hx-trigger=\"load, every 10s\" hx-swap=\"outerHTML\"></span></a></li><li><a href=\"/admin/playground\" class=\"nav-item\">Playground</a></li></ul><div class=\"sidebar-footer\"><form method=\"POST\" action=\"/admin/logout\"><button type=\"submit\" class=\"nav-item logout-btn\">Logout</button></form></div></nav>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<nav class=\"sidebar\"><div class=\"sidebar-header flex justify-between items-center px-4 py-3 border-b border-zinc-200\"><h2 class=\"text-lg font-bold tracking-tight text-zinc-900\">PerGo</h2><button type=\"button\" class=\"btn btn-ghost btn-xs text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 p-1\" onclick=\"document.querySelector('.sidebar').classList.toggle('collapsed')\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 6h16M4 12h16M4 18h7\"></path></svg></button></div><div id=\"sidebar-workspace-selector\" hx-get=\"/admin/workspaces/selector\" hx-trigger=\"load\" hx-swap=\"outerHTML\"></div><ul class=\"sidebar-nav\"><li><a href=\"/admin/\" class=\"nav-item\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 inline mr-2\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6\"></path></svg> <span>Dashboard</span></a></li><li><a href=\"/admin/workspaces\" class=\"nav-item\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 inline mr-2\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4\"></path></svg> <span>Workspaces</span></a></li><li><a href=\"/admin/devices\" class=\"nav-item\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 inline mr-2\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z\"></path></svg> <span>Devices</span></a></li><li><a href=\"/admin/telemetry\" class=\"nav-item\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 inline mr-2\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z\"></path></svg> <span>Telemetry</span></a></li><li><span class=\"nav-section-title\" style=\"display: block; padding: 0.5rem 1rem 0.2rem 1rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted); opacity: 0.7; letter-spacing: 0.05em;\">Audit Logs</span><ul style=\"list-style: none; padding-left: 0.75rem;\"><li><a href=\"/admin/audit/inbound\" class=\"nav-item\" style=\"padding: 0.25rem 1rem; font-size: 0.9rem;\">Inbound</a></li><li><a href=\"/admin/audit/outbound\" class=\"nav-item\" style=\"padding: 0.25rem 1rem; font-size: 0.9rem;\">Outbound</a></li></ul></li><li><span class=\"nav-section-title\" style=\"display: block; padding: 0.5rem 1rem 0.2rem 1rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--color-text-muted); opacity: 0.7; letter-spacing: 0.05em;\">Inboxes</span><ul style=\"list-style: none; padding-left: 0.75rem;\"><li><a href=\"/admin/inbox/whatsapp\" class=\"nav-item\" style=\"padding: 0.25rem 1rem; font-size: 0.9rem;\">WhatsApp Web</a></li><li><a href=\"/admin/inbox/whatsapp_cloud\" class=\"nav-item\" style=\"padding: 0.25rem 1rem; font-size: 0.9rem;\">WhatsApp Cloud</a></li><li><a href=\"/admin/inbox/telegram\" class=\"nav-item\" style=\"padding: 0.25rem 1rem; font-size: 0.9rem;\">Telegram</a></li></ul></li><li><a href=\"/admin/webhooks\" class=\"nav-item\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 inline mr-2\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1\"></path></svg> <span>Webhooks & DLQ</span> <span id=\"sidebar-dlq-badge\" hx-get=\"/admin/webhooks/dlq/badge\" hx-trigger=\"load, every 10s\" hx-swap=\"outerHTML\"></span></a></li><li><a href=\"/admin/playground\" class=\"nav-item\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 inline mr-2\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4\"></path></svg> <span>Playground</span></a></li></ul><div class=\"sidebar-footer\"><form method=\"POST\" action=\"/admin/logout\"><button type=\"submit\" class=\"nav-item logout-btn\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 inline mr-2\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1\"></path></svg> <span>Logout</span></button></form></div></nav>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func WorkspaceSelector(activeWorkspace *repository.Workspace, workspaces []repository.Workspace) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var2 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var2 == nil {
+			templ_7745c5c3_Var2 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div id=\"sidebar-workspace-selector\" class=\"px-4 py-2 border-b border-zinc-200\"><label class=\"block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1\">Workspace</label> <select name=\"workspace_id\" hx-post=\"/admin/workspaces/active\" hx-trigger=\"change\" hx-swap=\"none\" onchange=\"window.location.reload()\" class=\"select select-bordered select-xs w-full max-w-xs font-medium text-zinc-800 bg-white border-zinc-200 focus:outline-none\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		for _, ws := range workspaces {
+			if activeWorkspace != nil && ws.ID == activeWorkspace.ID {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<option value=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var3 string
+				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(ws.ID.String())
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 100, Col: 35}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" selected>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var4 string
+				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(ws.Name)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 100, Col: 56}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</option>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<option value=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var5 string
+				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(ws.ID.String())
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 102, Col: 35}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var6 string
+				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(ws.Name)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 102, Col: 47}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</option>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</select></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
