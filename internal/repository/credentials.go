@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -14,7 +15,7 @@ import (
 // ErrCredentialsNotFound is returned when credentials cannot be found.
 var ErrCredentialsNotFound = errors.New("credentials not found")
 
-// CredentialsRepository provides CRUD operations for channel credentials.
+// CredentialsRepository provides CRUD operations for channel credentials, shimmed on top of connections table.
 type CredentialsRepository struct {
 	pool      *pgxpool.Pool
 	encryptor *crypto.Encryptor
@@ -28,7 +29,7 @@ func NewCredentialsRepository(pool *pgxpool.Pool, encryptor *crypto.Encryptor) *
 	}
 }
 
-// Save encrypts the credentials payload and saves or updates it in the database.
+// Save encrypts the credentials payload and saves or updates it in the connections table.
 func (r *CredentialsRepository) Save(ctx context.Context, workspaceID uuid.UUID, channel string, plaintext []byte) error {
 	if len(plaintext) == 0 {
 		return errors.New("credentials payload cannot be empty")
@@ -39,24 +40,53 @@ func (r *CredentialsRepository) Save(ctx context.Context, workspaceID uuid.UUID,
 		return err
 	}
 
-	_, err = r.pool.Exec(ctx,
-		`INSERT INTO channel_credentials (workspace_id, channel, credentials, key_id, key_version, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, now())
-		 ON CONFLICT (workspace_id, channel)
-		 DO UPDATE SET credentials = EXCLUDED.credentials, key_id = EXCLUDED.key_id, key_version = EXCLUDED.key_version, updated_at = now()`,
-		workspaceID, channel, ciphertext, keyID, keyVersion,
-	)
+	// Check if a connection already exists for this workspace and channel (legacy uniqueness)
+	var connID uuid.UUID
+	err = r.pool.QueryRow(ctx,
+		`SELECT id FROM connections WHERE workspace_id = $1 AND channel = $2 LIMIT 1`,
+		workspaceID, channel,
+	).Scan(&connID)
+
+	if err == nil {
+		// Update existing connection's credentials
+		_, err = r.pool.Exec(ctx,
+			`UPDATE connections 
+			 SET credentials = $2, key_id = $3, key_version = $4, updated_at = now() 
+			 WHERE id = $1`,
+			connID, ciphertext, keyID, keyVersion,
+		)
+		return err
+	}
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Insert new connection
+		name := "WhatsApp WABA"
+		if channel == "telegram" {
+			name = "Telegram Bot"
+		}
+		newID := uuid.New()
+		senderIdentity := fmt.Sprintf("legacy_%s_%s", channel, newID.String())
+		_, err = r.pool.Exec(ctx,
+			`INSERT INTO connections (
+				id, workspace_id, name, channel, sender_identity, status, is_default, 
+				credentials, key_id, key_version, created_at, updated_at
+			 ) VALUES ($1, $2, $3, $4, $5, 'active', TRUE, $6, $7, $8, now(), now())`,
+			newID, workspaceID, name, channel, senderIdentity, ciphertext, keyID, keyVersion,
+		)
+		return err
+	}
+
 	return err
 }
 
-// Get retrieves the credentials from the database and decrypts them.
+// Get retrieves the credentials from the connections table and decrypts them.
 func (r *CredentialsRepository) Get(ctx context.Context, workspaceID uuid.UUID, channel string) ([]byte, error) {
 	var ciphertext []byte
 	var keyID string
 	var keyVersion int
 
 	err := r.pool.QueryRow(ctx,
-		`SELECT credentials, key_id, key_version FROM channel_credentials WHERE workspace_id = $1 AND channel = $2`,
+		`SELECT credentials, key_id, key_version FROM connections WHERE workspace_id = $1 AND channel = $2 LIMIT 1`,
 		workspaceID, channel,
 	).Scan(&ciphertext, &keyID, &keyVersion)
 	if err != nil {
@@ -66,13 +96,17 @@ func (r *CredentialsRepository) Get(ctx context.Context, workspaceID uuid.UUID, 
 		return nil, err
 	}
 
+	if len(ciphertext) == 0 {
+		return nil, ErrCredentialsNotFound
+	}
+
 	return r.encryptor.Decrypt(ciphertext)
 }
 
 // Delete removes credentials for a workspace and channel.
 func (r *CredentialsRepository) Delete(ctx context.Context, workspaceID uuid.UUID, channel string) error {
 	_, err := r.pool.Exec(ctx,
-		`DELETE FROM channel_credentials WHERE workspace_id = $1 AND channel = $2`,
+		`DELETE FROM connections WHERE workspace_id = $1 AND channel = $2`,
 		workspaceID, channel,
 	)
 	return err

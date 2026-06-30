@@ -55,10 +55,17 @@ func TestConnectionMigration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to get absolute path for migrations: %v", err)
 	}
+	if _, err := os.Stat(dir); err != nil {
+		wd, _ := os.Getwd()
+		t.Fatalf("os.Stat failed for %s (wd: %s): %v", dir, wd, err)
+	}
 
 	if err := goose.SetDialect("postgres"); err != nil {
 		t.Fatalf("failed to set goose dialect: %v", err)
 	}
+
+	// Reset base FS to local OS filesystem to avoid side-effects from tests that set it to embed.FS
+	goose.SetBaseFS(nil)
 
 	// Clean up existing migration test workspaces/devices/credentials to avoid conflicts
 	_, _ = db.ExecContext(ctx, "DELETE FROM audit_logs")

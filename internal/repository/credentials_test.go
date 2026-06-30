@@ -96,7 +96,7 @@ func TestCredentialsRepository(t *testing.T) {
 	// 4. Verify DB content is encrypted (does not match plaintext)
 	var dbCredentials []byte
 	err = pool.QueryRow(ctx,
-		"SELECT credentials FROM channel_credentials WHERE workspace_id = $1 AND channel = $2",
+		"SELECT credentials FROM connections WHERE workspace_id = $1 AND channel = $2",
 		ws.ID, channelName,
 	).Scan(&dbCredentials)
 	if err != nil {
