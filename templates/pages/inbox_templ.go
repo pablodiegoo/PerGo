@@ -77,7 +77,7 @@ func InboxContent(conversations []repository.ConversationSummary, unreadMap map[
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"inbox-shell flex h-full w-full overflow-hidden\"><!-- Left panel: conversation list --><div class=\"inbox-sidebar w-80 flex-shrink-0 border-r border-zinc-200 flex flex-col bg-white h-full overflow-hidden\"><!-- Header --><div class=\"inbox-sidebar-header flex items-center justify-between px-4 py-3 border-b border-zinc-200\"><h1 class=\"text-base font-bold text-zinc-900\">Inbox</h1>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"inbox-shell flex h-full w-full overflow-hidden\"><!-- Left panel: conversation list --><div class=\"inbox-sidebar w-80 lg:w-80 md:w-72 flex-shrink-0 border-r border-zinc-200 flex flex-col bg-white h-full overflow-hidden\"><!-- Header --><div class=\"inbox-sidebar-header flex items-center justify-between px-4 py-3 border-b border-zinc-200\"><h1 class=\"text-base font-bold text-zinc-900\">Inbox</h1>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

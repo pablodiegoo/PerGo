@@ -228,6 +228,39 @@ body { font-family: var(--font-sans); color: var(--color-text); background: var(
   background: #dc2626;
 }
 
+/* Inbox: remove content padding so inbox-shell fills the area edge-to-edge */
+.content:has(.inbox-shell) {
+  padding: 0;
+}
+
+/* Responsive inbox sidebar (conversation list) */
+.inbox-sidebar {
+  width: 320px;
+}
+@media (max-width: 1024px) {
+  .inbox-sidebar {
+    width: 280px;
+  }
+}
+@media (max-width: 768px) {
+  .inbox-sidebar {
+    width: 100%;
+    border-right: none !important;
+  }
+  .inbox-shell {
+    flex-direction: column;
+  }
+  .chat-panel {
+    display: none;
+  }
+  .chat-panel.active {
+    display: flex;
+  }
+  .inbox-sidebar.collapsed-mobile {
+    display: none;
+  }
+}
+
 @keyframes modalFadeIn {
   from { opacity: 0; }
   to { opacity: 1; }

@@ -26,7 +26,7 @@ templ InboxPage(conversations []repository.ConversationSummary, unreadMap map[st
 templ InboxContent(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int) {
 	<div class="inbox-shell flex h-full w-full overflow-hidden">
 		<!-- Left panel: conversation list -->
-		<div class="inbox-sidebar w-80 flex-shrink-0 border-r border-zinc-200 flex flex-col bg-white h-full overflow-hidden">
+		<div class="inbox-sidebar w-80 lg:w-80 md:w-72 flex-shrink-0 border-r border-zinc-200 flex flex-col bg-white h-full overflow-hidden">
 			<!-- Header -->
 			<div class="inbox-sidebar-header flex items-center justify-between px-4 py-3 border-b border-zinc-200">
 				<h1 class="text-base font-bold text-zinc-900">Inbox</h1>
