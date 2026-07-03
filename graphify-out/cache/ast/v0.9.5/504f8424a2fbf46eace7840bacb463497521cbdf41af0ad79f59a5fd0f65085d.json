@@ -1,0 +1,1 @@
+{"nodes": [{"id": "pkg_github_com_aws_aws_sdk_go_v2", "label": "github.com/aws/aws-sdk-go-v2", "file_type": "code", "type": "package", "ecosystem": "go", "source_file": "internal/mocks/aws-sdk-go-v2/go.mod", "source_location": "L1"}], "edges": []}
