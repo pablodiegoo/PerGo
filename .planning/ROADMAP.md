@@ -191,6 +191,17 @@ Plans:
 
 - [x] 08-03-PLAN.md — Notion-Style Dashboard UI, Dynamic Onboarding & Limit Enforcement
 
+### Phase 9: Conversational Inbox
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 8
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 9 to break down)
+
 ---
 *Roadmap created: 2026-06-25*
 *Granularity: standard | Mode: mvp | Phase convention: sequential*
