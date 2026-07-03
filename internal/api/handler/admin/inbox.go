@@ -1,13 +1,19 @@
 package admin
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/components"
 	"github.com/pablojhp.pergo/templates/layout"
@@ -16,9 +22,11 @@ import (
 
 // InboxHandler holds dependencies for the conversational inbox.
 type InboxHandler struct {
-	Repo         *repository.AuditRepository
-	Sessions     *repository.RecipientSessionRepository
-	Workspaces   *repository.WorkspaceRepository
+	Repo        *repository.AuditRepository
+	Sessions    *repository.RecipientSessionRepository
+	Workspaces  *repository.WorkspaceRepository
+	Connections *repository.ConnectionRepository
+	Publisher   *queue.JetStreamPublisher
 }
 
 // resolveWorkspaceID reads the active workspace from the cookie.
@@ -123,18 +131,19 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		_ = h.Sessions.UpdateLastReadAt(ctx, workspaceID, from, channel, to, time.Now().UTC())
 	}
 
-	// Load the thread messages
+	// Load the thread messages (full history — no cursor)
 	messages, err := h.Repo.ListThread(ctx, workspaceID, from, channel, to, nil)
 	if err != nil {
 		return c.HTML(http.StatusInternalServerError, `<div class="p-4 text-red-500">Erro ao carregar conversa.</div>`)
 	}
 
-	// Render a simple thread view
-	c.Response().Header().Set("Content-Type", "text/html; charset=utf-8")
-	return c.HTML(http.StatusOK, renderChatPanel(from, channel, to, messages))
+	return mw.Render(c, http.StatusOK, components.ChatPanel(from, channel, to, messages))
 }
 
 // PollMessages handles GET /admin/inbox/messages — returns new messages for incremental chat polling.
+// Uses a UUID cursor (after_id) to return only messages newer than the last rendered one.
+// If new messages belong to a different conversation than the open one (different from/channel/to),
+// sets HX-Trigger to showToast so the page can display a notification.
 func (h *InboxHandler) PollMessages(c *echo.Context) error {
 	ctx := c.Request().Context()
 	workspaceID := resolveWorkspaceID(c)
@@ -145,7 +154,7 @@ func (h *InboxHandler) PollMessages(c *echo.Context) error {
 	afterIDStr := c.QueryParam("after_id")
 
 	var afterID *uuid.UUID
-	if afterIDStr != "" {
+	if afterIDStr != "" && afterIDStr != "LAST_ID" {
 		id, err := uuid.Parse(afterIDStr)
 		if err == nil {
 			afterID = &id
@@ -158,85 +167,118 @@ func (h *InboxHandler) PollMessages(c *echo.Context) error {
 	}
 
 	if len(messages) == 0 {
+		// Check if there are new messages from OTHER conversations — trigger toast if so.
+		if from != "" && workspaceID != uuid.Nil {
+			h.checkBackgroundMessages(c, ctx, workspaceID, from, channel, to)
+		}
 		return c.String(http.StatusNoContent, "")
 	}
 
-	html := ""
-	for _, m := range messages {
-		html += renderMessage(m)
+	// Update last_read_at since operator is actively viewing this conversation
+	if h.Sessions != nil && workspaceID != uuid.Nil {
+		_ = h.Sessions.UpdateLastReadAt(ctx, workspaceID, from, channel, to, time.Now().UTC())
 	}
-	return c.HTML(http.StatusOK, html)
+
+	// Render new message bubbles
+	return mw.Render(c, http.StatusOK, components.MessageBubbleList(messages))
 }
 
-// SendMessage handles POST /admin/inbox/send — placeholder for outbound reply enqueuing.
+// checkBackgroundMessages checks if any OTHER conversation has new unread messages
+// and, if so, fires a showToast HX-Trigger header on the response.
+func (h *InboxHandler) checkBackgroundMessages(c *echo.Context, ctx context.Context, workspaceID uuid.UUID, openFrom, openChannel, openTo string) {
+	if h.Repo == nil {
+		return
+	}
+	conversations, err := h.Repo.ListConversations(ctx, workspaceID, "")
+	if err != nil {
+		return
+	}
+
+	for _, conv := range conversations {
+		// Skip the currently open conversation
+		if conv.From == openFrom && conv.Channel == openChannel && conv.RecipientIdentity == openTo {
+			continue
+		}
+		// Check unread state for this background conversation
+		if h.Sessions == nil {
+			continue
+		}
+		session, sErr := h.Sessions.Get(ctx, workspaceID, conv.From, conv.Channel, conv.RecipientIdentity)
+		isUnread := false
+		if sErr != nil {
+			isUnread = true
+		} else if session.LastReadAt == nil || conv.LastMessageTime.After(*session.LastReadAt) {
+			isUnread = true
+		}
+		if isUnread {
+			// Fire toast for this background contact
+			trigger := fmt.Sprintf(`{"showToast":{"text":"Nova mensagem de %s"}}`, jsonEscape(conv.From))
+			c.Response().Header().Set("HX-Trigger", trigger)
+			return
+		}
+	}
+}
+
+// SendMessage handles POST /admin/inbox/send — enqueues an outbound reply via NATS JetStream.
+// Form params: contact (maps to to), channel, recipient_identity (maps to sender_identity), body.
 func (h *InboxHandler) SendMessage(c *echo.Context) error {
-	return c.HTML(http.StatusNotImplemented, `<div class="p-2 text-zinc-400 text-xs">Envio de mensagens ainda não implementado.</div>`)
-}
+	ctx := c.Request().Context()
+	workspaceID := resolveWorkspaceID(c)
 
-// renderChatPanel builds the chat thread HTML for a conversation.
-func renderChatPanel(from, channel, to string, messages []repository.ThreadMessage) string {
-	channelLabel := channel
-	switch channel {
-	case "whatsapp":
-		channelLabel = "WhatsApp Web"
-	case "whatsapp_cloud":
-		channelLabel = "WhatsApp Cloud"
-	case "telegram":
-		channelLabel = "Telegram"
-	}
+	contact := c.FormValue("contact")           // the recipient phone/chat ID (to field)
+	channel := c.FormValue("channel")            // whatsapp / whatsapp_cloud / telegram
+	recipientIdentity := c.FormValue("recipient_identity") // the bot/phone identity (sender_identity)
+	body := strings.TrimSpace(c.FormValue("body"))
 
-	html := `<div class="chat-thread flex flex-col h-full">` +
-		`<div class="chat-thread-header flex items-center gap-3 px-4 py-3 border-b border-zinc-200 bg-white flex-shrink-0">` +
-		`<div class="h-9 w-9 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm">` +
-		safeInitial(from) +
-		`</div>` +
-		`<div>` +
-		`<p class="font-semibold text-sm text-zinc-900">` + escapeHTML(from) + `</p>` +
-		`<p class="text-xs text-zinc-400">` + channelLabel + ` · via ` + escapeHTML(to) + `</p>` +
-		`</div>` +
-		`</div>` +
-		`<div id="chat-messages" class="chat-messages flex-1 overflow-y-auto px-4 py-3 space-y-3 flex flex-col">`
-
-	for _, m := range messages {
-		html += renderMessage(m)
-	}
-
-	if len(messages) == 0 {
-		html += `<div class="text-center text-zinc-400 text-sm py-8">Nenhuma mensagem encontrada.</div>`
-	}
-
-	html += `</div>` +
-		`<div class="chat-input-area px-4 py-3 border-t border-zinc-200 bg-white flex-shrink-0">` +
-		`<p class="text-xs text-zinc-400 text-center">Respostas em breve — funcionalidade em desenvolvimento.</p>` +
-		`</div>` +
-		`</div>`
-
-	return html
-}
-
-// renderMessage renders a single message bubble as HTML.
-func renderMessage(m repository.ThreadMessage) string {
-	isInbound := m.Direction == "inbound"
-	timeStr := m.CreatedAt.Format("15:04")
-	body := m.Body
+	// Validate
 	if body == "" {
-		body = "[mídia ou mensagem especial]"
+		return c.HTML(http.StatusBadRequest, `<span class="text-red-400">Mensagem não pode ser vazia.</span>`)
+	}
+	if contact == "" || channel == "" {
+		return c.HTML(http.StatusBadRequest, `<span class="text-red-400">Parâmetros inválidos.</span>`)
 	}
 
-	if isInbound {
-		return `<div class="msg-wrap flex justify-start">` +
-			`<div class="msg-bubble max-w-xs lg:max-w-md bg-white border border-zinc-200 rounded-lg rounded-tl-none px-3 py-2 shadow-sm">` +
-			`<p class="text-sm text-zinc-800">` + escapeHTML(body) + `</p>` +
-			`<p class="text-xs text-zinc-400 text-right mt-1">` + timeStr + `</p>` +
-			`</div>` +
-			`</div>`
+	if workspaceID == uuid.Nil {
+		return c.HTML(http.StatusBadRequest, `<span class="text-red-400">Workspace não selecionado.</span>`)
 	}
-	return `<div class="msg-wrap flex justify-end">` +
-		`<div class="msg-bubble max-w-xs lg:max-w-md bg-indigo-600 text-white rounded-lg rounded-tr-none px-3 py-2 shadow-sm">` +
-		`<p class="text-sm">` + escapeHTML(body) + `</p>` +
-		`<p class="text-xs text-indigo-200 text-right mt-1">` + timeStr + `</p>` +
-		`</div>` +
-		`</div>`
+
+	// Resolve connection via sender identity
+	var connectionID uuid.UUID
+	if h.Connections != nil && recipientIdentity != "" {
+		conn, err := h.Connections.GetBySenderIdentity(ctx, workspaceID, recipientIdentity)
+		if err == nil {
+			connectionID = conn.ID
+		}
+	}
+
+	// Build and publish QueueMessage
+	traceID := "inbox-" + uuid.New().String()
+	qMsg := domain.QueueMessage{
+		WorkspaceID:    workspaceID,
+		ConnectionID:   connectionID,
+		SenderIdentity: recipientIdentity,
+		TraceID:        traceID,
+		To:             contact,
+		Channel:        channel,
+		Body:           body,
+		QueuedAt:       time.Now().UTC(),
+	}
+
+	if h.Publisher == nil {
+		return c.HTML(http.StatusServiceUnavailable, `<span class="text-red-400">Publisher não disponível.</span>`)
+	}
+
+	data, err := json.Marshal(qMsg)
+	if err != nil {
+		return c.HTML(http.StatusInternalServerError, `<span class="text-red-400">Erro interno ao serializar mensagem.</span>`)
+	}
+
+	if err := h.Publisher.Publish(ctx, "messages.outbound", data, traceID); err != nil {
+		return c.HTML(http.StatusInternalServerError, `<span class="text-red-400">Erro ao enviar mensagem: `+escapeHTML(err.Error())+`</span>`)
+	}
+
+	// Return 204 so HTMX clears the status and re-polls naturally
+	return c.NoContent(http.StatusNoContent)
 }
 
 // safeInitial returns the first character of a string, uppercased, safely.
@@ -272,4 +314,15 @@ func escapeHTML(s string) string {
 		}
 	}
 	return string(result)
+}
+
+// jsonEscape escapes a string for safe inclusion in a JSON value (not full JSON encoder,
+// but sufficient for simple display names without newlines or unusual chars).
+func jsonEscape(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return ""
+	}
+	// Marshal returns JSON with surrounding quotes; strip them
+	return string(b[1 : len(b)-1])
 }

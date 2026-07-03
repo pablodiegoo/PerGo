@@ -45,3 +45,11 @@ func msgBody(body string) string {
 	}
 	return body
 }
+
+// MessageBubbleList renders a list of message bubbles — used by PollMessages
+// to return incremental updates (hx-swap="beforeend" onto #chat-messages).
+templ MessageBubbleList(messages []repository.ThreadMessage) {
+	for _, m := range messages {
+		@MessageBubble(m)
+	}
+}

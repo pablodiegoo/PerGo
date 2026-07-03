@@ -361,9 +361,11 @@ func main() {
 
 	// Inbox routes
 	inboxHandler := &admin.InboxHandler{
-		Repo:       auditRepo,
-		Sessions:   recipientSessionRepo,
-		Workspaces: wsRepo,
+		Repo:        auditRepo,
+		Sessions:    recipientSessionRepo,
+		Workspaces:  wsRepo,
+		Connections: connectionRepo,
+		Publisher:   publisher,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
 	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)
