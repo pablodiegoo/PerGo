@@ -1,0 +1,144 @@
+package components
+
+import (
+	"fmt"
+
+	"github.com/pablojhp.pergo/internal/repository"
+)
+
+// channelLabelStr returns a human-readable display name for a channel (plain string, for use in Go expressions).
+func channelLabelStr(channel string) string {
+	switch channel {
+	case "whatsapp":
+		return "WhatsApp Web"
+	case "whatsapp_cloud":
+		return "WhatsApp Cloud"
+	case "telegram":
+		return "Telegram"
+	default:
+		return channel
+	}
+}
+
+// safeInitialStr returns the first rune of s, uppercase, as a string.
+func safeInitialStr(s string) string {
+	runes := []rune(s)
+	if len(runes) == 0 {
+		return "?"
+	}
+	r := runes[0]
+	if r >= 'a' && r <= 'z' {
+		r -= 32
+	}
+	return string(r)
+}
+
+// ChatPanel renders the full chat thread view for a selected conversation.
+// It includes:
+//   - A header with contact avatar, name, channel info, and the recipient identity.
+//   - A scrollable message history viewport that polls /admin/inbox/messages every 3s,
+//     appending new bubbles via hx-swap="beforeend". The last message ID is tracked
+//     in a hidden input updated by JavaScript after each poll.
+//   - An auto-grow textarea with Enter-to-send (Shift+Enter inserts a newline).
+templ ChatPanel(from, channel, to string, messages []repository.ThreadMessage) {
+	<div class="chat-thread flex flex-col h-full" id="chat-panel-inner">
+		<!-- Header -->
+		<div class="chat-thread-header flex items-center gap-3 px-4 py-3 border-b border-zinc-200 bg-white flex-shrink-0">
+			<div class="h-9 w-9 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm select-none">
+				{ safeInitialStr(from) }
+			</div>
+			<div>
+				<p class="font-semibold text-sm text-zinc-900">{ from }</p>
+				<p class="text-xs text-zinc-400">{ channelLabelStr(channel) } · via { to }</p>
+			</div>
+		</div>
+		<!-- Message viewport -->
+		<div
+			id="chat-messages"
+			class="chat-messages flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2"
+		>
+			if len(messages) == 0 {
+				<div class="text-center text-zinc-400 text-sm py-8 select-none">Nenhuma mensagem encontrada.</div>
+			}
+			for _, m := range messages {
+				@MessageBubble(m)
+			}
+		</div>
+		<!-- Invisible polling sentinel — appends new bubbles every 3s after last message ID -->
+		<div
+			id="chat-poll-anchor"
+			hx-get={ fmt.Sprintf("/admin/inbox/messages?from=%s&channel=%s&to=%s&after_id=LAST_ID", from, channel, to) }
+			hx-target="#chat-messages"
+			hx-swap="beforeend"
+			hx-trigger="every 3s"
+		></div>
+		<!-- Send form -->
+		<div class="chat-input-area px-4 py-3 border-t border-zinc-200 bg-white flex-shrink-0">
+			<form
+				id="chat-send-form"
+				hx-post="/admin/inbox/send"
+				hx-target="#chat-send-status"
+				hx-swap="innerHTML"
+				hx-on::after-request="if(event.detail.successful){document.getElementById('chat-textarea').value='';document.getElementById('chat-textarea').style.height='40px';}"
+			>
+				<input type="hidden" name="contact" value={ from }/>
+				<input type="hidden" name="channel" value={ channel }/>
+				<input type="hidden" name="recipient_identity" value={ to }/>
+				<div class="flex items-end gap-2">
+					<textarea
+						id="chat-textarea"
+						name="body"
+						placeholder="Digite uma mensagem… (Enter para enviar, Shift+Enter para nova linha)"
+						rows="1"
+						class="flex-1 resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-shadow overflow-hidden"
+						style="min-height:40px;max-height:160px;"
+						onInput="this.style.height='40px';this.style.height=Math.min(this.scrollHeight,160)+'px';"
+						onKeyDown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();if(this.value.trim()){htmx.trigger(this.closest('form'),'submit');}}"
+					></textarea>
+					<button
+						type="submit"
+						class="flex-shrink-0 h-10 w-10 rounded-full bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 flex items-center justify-center text-white transition-colors shadow-sm"
+						aria-label="Enviar"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+						</svg>
+					</button>
+				</div>
+				<div id="chat-send-status" class="mt-1 text-xs text-zinc-400 min-h-[16px]"></div>
+			</form>
+		</div>
+	</div>
+	<!-- Client-side: track last message ID for the polling anchor -->
+	<script>
+		(function() {
+			function updatePollAnchor() {
+				var bubbles = document.querySelectorAll('#chat-messages [data-msg-id]');
+				if (bubbles.length === 0) return;
+				var lastID = bubbles[bubbles.length - 1].getAttribute('data-msg-id');
+				var anchor = document.getElementById('chat-poll-anchor');
+				if (!anchor) return;
+				var baseURL = anchor.getAttribute('hx-get') || '';
+				// Replace placeholder or previous UUID
+				anchor.setAttribute('hx-get', baseURL.replace(/after_id=[^&]*/, 'after_id=' + lastID));
+				htmx.process(anchor);
+			}
+
+			// Run once on load
+			document.addEventListener('DOMContentLoaded', updatePollAnchor);
+
+			// Re-run after each HTMX swap (new messages appended)
+			document.addEventListener('htmx:afterSwap', function(evt) {
+				if (evt.target && evt.target.id === 'chat-messages') {
+					updatePollAnchor();
+					// Scroll to bottom
+					evt.target.scrollTop = evt.target.scrollHeight;
+				}
+			});
+
+			// Initial scroll to bottom
+			var vp = document.getElementById('chat-messages');
+			if (vp) { vp.scrollTop = vp.scrollHeight; }
+		})();
+	</script>
+}

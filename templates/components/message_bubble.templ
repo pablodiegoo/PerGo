@@ -1,0 +1,47 @@
+package components
+
+import "github.com/pablojhp.pergo/internal/repository"
+
+// MessageBubble renders a single message bubble.
+//   - Inbound: left-aligned white card with contact initials avatar on the left.
+//   - Outbound: right-aligned blue (#3b82f6) card with delivery checkmarks on the right.
+templ MessageBubble(m repository.ThreadMessage) {
+	if m.Direction == "inbound" {
+		<div class="msg-wrap flex items-end gap-2 justify-start" data-msg-id={ m.ID.String() }>
+			<!-- Contact avatar -->
+			<div class="flex-shrink-0 h-7 w-7 rounded-full bg-gradient-to-br from-zinc-300 to-zinc-400 flex items-center justify-center text-zinc-700 font-semibold text-xs select-none">
+				?
+			</div>
+			<!-- Bubble -->
+			<div class="msg-bubble max-w-xs lg:max-w-md bg-white border border-zinc-200 rounded-2xl rounded-bl-none px-3 py-2 shadow-sm">
+				<p class="text-sm text-zinc-800 whitespace-pre-wrap break-words">{ msgBody(m.Body) }</p>
+				<p class="text-xs text-zinc-400 text-right mt-1">{ m.CreatedAt.Format("15:04") }</p>
+			</div>
+		</div>
+	} else {
+		<div class="msg-wrap flex items-end gap-2 justify-end" data-msg-id={ m.ID.String() }>
+			<!-- Bubble -->
+			<div class="msg-bubble max-w-xs lg:max-w-md rounded-2xl rounded-br-none px-3 py-2 shadow-sm" style="background-color:#3b82f6;">
+				<p class="text-sm text-white whitespace-pre-wrap break-words">{ msgBody(m.Body) }</p>
+				<div class="flex items-center justify-end gap-1 mt-1">
+					<p class="text-xs text-blue-200">{ m.CreatedAt.Format("15:04") }</p>
+					<!-- Double checkmarks indicating sent -->
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+					</svg>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-200 -ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+					</svg>
+				</div>
+			</div>
+		</div>
+	}
+}
+
+// msgBody returns the display body, replacing empty strings with a placeholder.
+func msgBody(body string) string {
+	if body == "" {
+		return "[mídia ou mensagem especial]"
+	}
+	return body
+}

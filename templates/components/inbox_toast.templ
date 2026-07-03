@@ -1,0 +1,60 @@
+package components
+
+// InboxToast renders a top-center fixed toast notification.
+// It auto-dismisses itself after 3.5 seconds using a CSS animation and JavaScript.
+// Triggered by the HX-Trigger "showToast" event from PollMessages handler.
+//
+// Usage: set hx-on:showToast on the polling sentinel to swap this component into
+// a dedicated #inbox-toast-container div in the page.
+templ InboxToast(text string) {
+	<div
+		id="inbox-toast"
+		class="inbox-toast"
+		role="status"
+		aria-live="polite"
+		style="
+			position: fixed;
+			top: 1.5rem;
+			left: 50%;
+			transform: translateX(-50%);
+			z-index: 9999;
+			display: flex;
+			align-items: center;
+			gap: 0.5rem;
+			background: rgba(30,30,40,0.95);
+			color: #fff;
+			padding: 0.6rem 1.2rem;
+			border-radius: 9999px;
+			font-size: 0.875rem;
+			font-weight: 500;
+			box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+			animation: toastIn 0.25s cubic-bezier(0.34,1.56,0.64,1) forwards;
+			backdrop-filter: blur(8px);
+			pointer-events: none;
+		"
+	>
+		<!-- Bell icon -->
+		<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="flex-shrink:0;">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+		</svg>
+		{ text }
+	</div>
+	<style>
+		@keyframes toastIn {
+			from { opacity: 0; transform: translateX(-50%) translateY(-12px) scale(0.95); }
+			to   { opacity: 1; transform: translateX(-50%) translateY(0)      scale(1); }
+		}
+	</style>
+	<script>
+		(function() {
+			var el = document.getElementById('inbox-toast');
+			if (!el) return;
+			setTimeout(function() {
+				el.style.transition = 'opacity 0.4s ease, transform 0.4s ease';
+				el.style.opacity = '0';
+				el.style.transform = 'translateX(-50%) translateY(-8px) scale(0.95)';
+				setTimeout(function() { if (el.parentNode) el.parentNode.removeChild(el); }, 420);
+			}, 3500);
+		})();
+	</script>
+}
