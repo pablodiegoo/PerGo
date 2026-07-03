@@ -52,7 +52,6 @@ BEGIN
         PERFORM create_monthly_partition('2026-07-01'::date);
     END IF;
 END $$;
--- +goose End
 -- +goose StatementEnd
 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_inbound_grouping

@@ -28,22 +28,23 @@ func TestRecipientSessionRepository(t *testing.T) {
 
 	recipient := "+1234567890"
 	channelName := "whatsapp_cloud"
+	recipientIdentity := "+5511999990001"
 	now := time.Now().Truncate(time.Microsecond).UTC() // Postgres timestamptz truncation
 
 	// Get non-existent session
-	_, err = repo.Get(ctx, ws.ID, recipient, channelName)
+	_, err = repo.Get(ctx, ws.ID, recipient, channelName, recipientIdentity)
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Errorf("expected ErrSessionNotFound, got: %v", err)
 	}
 
 	// Upsert session
-	err = repo.Upsert(ctx, ws.ID, recipient, channelName, now)
+	err = repo.Upsert(ctx, ws.ID, recipient, channelName, recipientIdentity, now)
 	if err != nil {
 		t.Fatalf("failed to upsert session: %v", err)
 	}
 
 	// Get existing session
-	sess, err := repo.Get(ctx, ws.ID, recipient, channelName)
+	sess, err := repo.Get(ctx, ws.ID, recipient, channelName, recipientIdentity)
 	if err != nil {
 		t.Fatalf("failed to get session: %v", err)
 	}
@@ -57,18 +58,21 @@ func TestRecipientSessionRepository(t *testing.T) {
 	if sess.Channel != channelName {
 		t.Errorf("got Channel %s, want %s", sess.Channel, channelName)
 	}
+	if sess.RecipientIdentity != recipientIdentity {
+		t.Errorf("got RecipientIdentity %s, want %s", sess.RecipientIdentity, recipientIdentity)
+	}
 	if !sess.LastInboundAt.Equal(now) {
 		t.Errorf("got LastInboundAt %v, want %v", sess.LastInboundAt, now)
 	}
 
 	// Upsert again to update timestamp
 	newTime := now.Add(1 * time.Hour)
-	err = repo.Upsert(ctx, ws.ID, recipient, channelName, newTime)
+	err = repo.Upsert(ctx, ws.ID, recipient, channelName, recipientIdentity, newTime)
 	if err != nil {
 		t.Fatalf("failed to update/upsert session: %v", err)
 	}
 
-	sess2, err := repo.Get(ctx, ws.ID, recipient, channelName)
+	sess2, err := repo.Get(ctx, ws.ID, recipient, channelName, recipientIdentity)
 	if err != nil {
 		t.Fatalf("failed to get updated session: %v", err)
 	}

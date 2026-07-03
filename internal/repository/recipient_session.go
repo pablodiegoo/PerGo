@@ -15,10 +15,11 @@ var ErrSessionNotFound = errors.New("recipient session not found")
 
 // RecipientSession represents a communication session with a recipient on a channel.
 type RecipientSession struct {
-	WorkspaceID    uuid.UUID
-	RecipientPhone string
-	Channel        string
-	LastInboundAt  time.Time
+	WorkspaceID       uuid.UUID
+	RecipientPhone    string
+	Channel           string
+	RecipientIdentity string
+	LastInboundAt     time.Time
 }
 
 // RecipientSessionRepository provides operations for managing recipient sessions.
@@ -32,26 +33,26 @@ func NewRecipientSessionRepository(pool *pgxpool.Pool) *RecipientSessionReposito
 }
 
 // Upsert inserts or updates a recipient session setting last_inbound_at to the given/current time.
-func (r *RecipientSessionRepository) Upsert(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, lastInboundAt time.Time) error {
+func (r *RecipientSessionRepository) Upsert(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string, lastInboundAt time.Time) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO recipient_sessions (workspace_id, recipient_phone, channel, last_inbound_at)
-		 VALUES ($1, $2, $3, $4)
-		 ON CONFLICT (workspace_id, recipient_phone, channel)
+		`INSERT INTO recipient_sessions (workspace_id, recipient_phone, channel, recipient_identity, last_inbound_at)
+		 VALUES ($1, $2, $3, $4, $5)
+		 ON CONFLICT (workspace_id, recipient_phone, channel, recipient_identity)
 		 DO UPDATE SET last_inbound_at = EXCLUDED.last_inbound_at`,
-		workspaceID, recipientPhone, channel, lastInboundAt,
+		workspaceID, recipientPhone, channel, recipientIdentity, lastInboundAt,
 	)
 	return err
 }
 
-// Get retrieves a recipient session by workspace ID, recipient phone/ID, and channel.
-func (r *RecipientSessionRepository) Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string) (*RecipientSession, error) {
+// Get retrieves a recipient session by workspace ID, recipient phone/ID, channel, and recipient identity.
+func (r *RecipientSessionRepository) Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*RecipientSession, error) {
 	var s RecipientSession
 	err := r.pool.QueryRow(ctx,
-		`SELECT workspace_id, recipient_phone, channel, last_inbound_at 
+		`SELECT workspace_id, recipient_phone, channel, recipient_identity, last_inbound_at 
 		 FROM recipient_sessions 
-		 WHERE workspace_id = $1 AND recipient_phone = $2 AND channel = $3`,
-		workspaceID, recipientPhone, channel,
-	).Scan(&s.WorkspaceID, &s.RecipientPhone, &s.Channel, &s.LastInboundAt)
+		 WHERE workspace_id = $1 AND recipient_phone = $2 AND channel = $3 AND recipient_identity = $4`,
+		workspaceID, recipientPhone, channel, recipientIdentity,
+	).Scan(&s.WorkspaceID, &s.RecipientPhone, &s.Channel, &s.RecipientIdentity, &s.LastInboundAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrSessionNotFound
