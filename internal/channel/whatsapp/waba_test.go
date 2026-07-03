@@ -233,10 +233,10 @@ func TestWABADispatch(t *testing.T) {
 			To:             "+5511999999999",
 			TemplateName:   "welcome_test_new",
 			Language:       "en_US",
-			Components: []channel.TemplateComponent{
+			Components: []domain.TemplateComponent{
 				{
 					Type: "body",
-					Parameters: []channel.TemplateParameter{
+					Parameters: []domain.TemplateParameter{
 						{Type: "text", Text: "Alice"},
 					},
 				},

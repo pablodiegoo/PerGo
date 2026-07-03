@@ -377,31 +377,8 @@ func (w *Worker) dispatchToChannel(ctx context.Context, channelName string, qMsg
 		Metadata:       qMsg.Metadata,
 		TemplateName:   qMsg.TemplateName,
 		Language:       qMsg.Language,
-		Components:     convertTemplateComponents(qMsg.Components),
+		Components:     qMsg.Components,
 	})
-}
-
-func convertTemplateComponents(components []domain.TemplateComponent) []channel.TemplateComponent {
-	if components == nil {
-		return nil
-	}
-	res := make([]channel.TemplateComponent, len(components))
-	for i, c := range components {
-		res[i] = channel.TemplateComponent{
-			Type: c.Type,
-		}
-		if c.Parameters != nil {
-			params := make([]channel.TemplateParameter, len(c.Parameters))
-			for j, p := range c.Parameters {
-				params[j] = channel.TemplateParameter{
-					Type: p.Type,
-					Text: p.Text,
-				}
-			}
-			res[i].Parameters = params
-		}
-	}
-	return res
 }
 
 // handleFailure NAKs the message with exponential backoff or marks as terminal failure.
