@@ -16,7 +16,6 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/components"
-	"github.com/pablojhp.pergo/templates/layout"
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
@@ -95,7 +94,7 @@ func (h *InboxHandler) View(c *echo.Context) error {
 	if mw.IsHTMX(c) {
 		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, channelFilter, unreadCount))
 	}
-	return mw.Render(c, http.StatusOK, layout.Base("Inbox", inboxPage))
+	return mw.Render(c, http.StatusOK, inboxPage)
 }
 
 // PollConversations handles GET /admin/inbox/conversations/poll — returns the conversation list fragment for 5s polling.
