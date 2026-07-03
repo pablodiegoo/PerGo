@@ -1,6 +1,6 @@
 {
   "runtime": "antigravity",
-  "model_profile": "adaptative",
+  "model_profile": "adaptive",
   "model_profile_overrides": {
     "pi": {
       "opus": "zai/glm-5.2",
