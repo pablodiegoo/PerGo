@@ -197,7 +197,7 @@ func (r *AuditRepository) ListConversations(ctx context.Context, workspaceID uui
 			WHERE workspace_id = $1 
 			  AND event_type = 'inbound_message'
 		)
-		SELECT contact, channel, recipient_identity, COALESCE(body, ''), created_at, total_count
+		SELECT contact, channel, COALESCE(recipient_identity, ''), COALESCE(body, ''), created_at, total_count
 		FROM RankedConversations
 		WHERE rn = 1
 		  AND ($2 = '' OR channel = $2)
