@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+
 // ErrSessionNotFound is returned when a recipient session cannot be found.
 var ErrSessionNotFound = errors.New("recipient session not found")
 
@@ -20,6 +21,7 @@ type RecipientSession struct {
 	Channel           string
 	RecipientIdentity string
 	LastInboundAt     time.Time
+	LastReadAt        *time.Time
 }
 
 // RecipientSessionRepository provides operations for managing recipient sessions.
@@ -48,11 +50,11 @@ func (r *RecipientSessionRepository) Upsert(ctx context.Context, workspaceID uui
 func (r *RecipientSessionRepository) Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*RecipientSession, error) {
 	var s RecipientSession
 	err := r.pool.QueryRow(ctx,
-		`SELECT workspace_id, recipient_phone, channel, recipient_identity, last_inbound_at 
+		`SELECT workspace_id, recipient_phone, channel, recipient_identity, last_inbound_at, last_read_at
 		 FROM recipient_sessions 
 		 WHERE workspace_id = $1 AND recipient_phone = $2 AND channel = $3 AND recipient_identity = $4`,
 		workspaceID, recipientPhone, channel, recipientIdentity,
-	).Scan(&s.WorkspaceID, &s.RecipientPhone, &s.Channel, &s.RecipientIdentity, &s.LastInboundAt)
+	).Scan(&s.WorkspaceID, &s.RecipientPhone, &s.Channel, &s.RecipientIdentity, &s.LastInboundAt, &s.LastReadAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrSessionNotFound
@@ -60,4 +62,15 @@ func (r *RecipientSessionRepository) Get(ctx context.Context, workspaceID uuid.U
 		return nil, err
 	}
 	return &s, nil
+}
+
+// UpdateLastReadAt updates the last_read_at timestamp for a specific recipient session.
+func (r *RecipientSessionRepository) UpdateLastReadAt(ctx context.Context, workspaceID uuid.UUID, recipientPhone, channel, recipientIdentity string, lastReadAt time.Time) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE recipient_sessions
+		 SET last_read_at = $5
+		 WHERE workspace_id = $1 AND recipient_phone = $2 AND channel = $3 AND recipient_identity = $4`,
+		workspaceID, recipientPhone, channel, recipientIdentity, lastReadAt,
+	)
+	return err
 }
