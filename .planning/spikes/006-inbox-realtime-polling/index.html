@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Spike 006 — Inbox: Realtime Polling</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"></script>
+  <style>
+    body { font-family:'Inter',system-ui,sans-serif; }
+    .layout { display:flex; height:100vh; overflow:hidden; }
+    .sidebar { width:220px; min-width:220px; }
+    .conv-panel { width:300px; min-width:300px; }
+    .chat-panel { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+
+    .nav-item.active { background:#e4e4e7; color:#18181b; font-weight:600; }
+    .conv-item { cursor:pointer; transition:background 0.12s; border-bottom:1px solid #f4f4f5; }
+    .conv-item:hover { background:#f4f4f5; }
+    .conv-item.selected { background:#eff6ff; border-left:3px solid #3b82f6; }
+
+    .channel-badge { font-size:10px; padding:1px 6px; border-radius:9999px; font-weight:600; }
+    .badge-whatsapp { background:#dcfce7; color:#16a34a; }
+    .badge-waba { background:#d1fae5; color:#059669; }
+    .badge-telegram { background:#dbeafe; color:#2563eb; }
+    .unread-dot { width:7px; height:7px; border-radius:50%; background:#3b82f6; flex-shrink:0; }
+    .filter-tab { padding:3px 10px; border-radius:6px; font-size:11px; font-weight:500; cursor:pointer; transition:all 0.12s; color:#71717a; }
+    .filter-tab.active { background:white; color:#18181b; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
+
+    .messages-area { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:10px; background:#f8fafc; }
+    .msg-row { display:flex; align-items:flex-end; gap:8px; }
+    .msg-row.inbound { justify-content:flex-start; }
+    .msg-row.outbound { justify-content:flex-end; }
+    .avatar { width:28px; height:28px; border-radius:50%; background:#d1d5db; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; color:#6b7280; flex-shrink:0; }
+    .bubble { max-width:68%; padding:8px 12px; border-radius:12px; font-size:13px; line-height:1.45; }
+    .bubble.inbound { background:white; color:#1a1a2e; border-bottom-left-radius:3px; box-shadow:0 1px 2px rgba(0,0,0,0.07); }
+    .bubble.outbound { background:#3b82f6; color:white; border-bottom-right-radius:3px; }
+    .bubble .time { font-size:10px; opacity:0.55; margin-top:3px; display:block; text-align:right; }
+    .date-divider { text-align:center; margin:4px 0; }
+    .date-divider span { background:#e2e8f0; color:#64748b; font-size:11px; padding:2px 10px; border-radius:99px; }
+
+    .input-area { background:white; border-top:1px solid #e4e7ec; padding:10px 14px; display:flex; align-items:flex-end; gap:8px; }
+    .msg-input { flex:1; resize:none; border:1px solid #e2e8f0; border-radius:20px; padding:8px 14px; font-size:13px; outline:none; max-height:100px; line-height:1.4; }
+    .msg-input:focus { border-color:#93c5fd; }
+    .send-btn { width:36px; height:36px; border-radius:50%; background:#3b82f6; color:white; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background 0.15s; }
+    .send-btn:hover { background:#2563eb; }
+
+    /* ── Polling / realtime indicators ── */
+    .poll-indicator { display:flex; align-items:center; gap:5px; font-size:11px; color:#94a3b8; }
+    .poll-dot { width:6px; height:6px; border-radius:50%; background:#10b981; }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+    .poll-dot.pulsing { animation:pulse 1.5s ease-in-out infinite; }
+
+    /* New message toast */
+    #new-msg-toast { position:fixed; top:16px; left:50%; transform:translateX(-50%) translateY(-80px); background:#1e293b; color:white; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:500; transition:transform 0.3s ease; z-index:100; display:flex; align-items:center; gap:8px; }
+    #new-msg-toast.show { transform:translateX(-50%) translateY(0); }
+    #new-msg-toast svg { color:#10b981; }
+
+    @keyframes slideIn { from{opacity:0;transform:translateY(8px);} to{opacity:1;transform:translateY(0);} }
+    .msg-row { animation:slideIn 0.2s ease-out; }
+    .msg-row.new-arrival .bubble { outline:2px solid #93c5fd; outline-offset:2px; }
+
+    /* Activity log (spike observability) */
+    #activity-log { position:fixed; bottom:0; right:0; width:280px; background:#0f172a; color:#94a3b8; font-size:11px; font-family:monospace; max-height:180px; overflow-y:auto; padding:8px; border-top-left-radius:8px; opacity:0.9; z-index:50; }
+    #activity-log .log-entry { padding:2px 0; border-bottom:1px solid #1e293b; }
+    #activity-log .log-entry.new { color:#10b981; }
+    #activity-log .log-entry.poll { color:#6366f1; }
+    #activity-log .log-entry.send { color:#f59e0b; }
+    #toggle-log { position:fixed; bottom:180px; right:0; background:#0f172a; color:#6366f1; font-size:11px; padding:3px 8px; border-radius:4px 0 0 4px; cursor:pointer; z-index:51; }
+  </style>
+</head>
+<body>
+
+<!-- New message toast -->
+<div id="new-msg-toast">
+  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+  <span id="toast-text">Nova mensagem</span>
+</div>
+
+<!-- Activity log (observability for this spike) -->
+<div id="toggle-log" onclick="toggleLog()">📊 Log</div>
+<div id="activity-log">
+  <div style="color:#6366f1;margin-bottom:4px;font-weight:bold;">⚡ Spike 006 Activity Log</div>
+</div>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar bg-zinc-50 border-r border-zinc-200 flex flex-col justify-between shrink-0 h-screen">
+    <div>
+      <div class="flex justify-between items-center px-4 py-3 border-b border-zinc-200">
+        <h2 class="text-lg font-bold tracking-tight text-zinc-900">PerGo</h2>
+      </div>
+      <div class="px-4 py-2 border-b border-zinc-200">
+        <label class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Workspace</label>
+        <div class="text-sm font-medium text-zinc-700">Acme Corp</div>
+      </div>
+      <ul class="p-3 space-y-1">
+        <li><a href="#" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 transition-all">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          <span>Visão Geral</span>
+        </a></li>
+        <li><a href="#" class="nav-item active flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-all">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          <span>Inbox</span>
+          <span id="unread-badge" class="ml-auto bg-blue-500 text-white text-xs rounded-full px-1.5 py-0.5 font-bold">3</span>
+        </a></li>
+        <li><a href="#" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 transition-all">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+          <span>Conexões</span>
+        </a></li>
+      </ul>
+    </div>
+    <div class="p-3 border-t border-zinc-200">
+      <a href="#" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 transition-all">
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        <span>Logout</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- CONVERSATION LIST -->
+  <div class="conv-panel bg-white border-r border-zinc-200 flex flex-col h-screen overflow-hidden">
+    <div class="px-4 py-3 border-b border-zinc-200 flex items-center justify-between">
+      <div>
+        <h1 class="text-base font-bold text-zinc-900">Inbox</h1>
+        <p class="text-xs text-zinc-400 mt-0.5">Conversas recentes</p>
+      </div>
+      <!-- Polling indicator -->
+      <div class="poll-indicator">
+        <div id="poll-dot" class="poll-dot pulsing"></div>
+        <span id="poll-label">ao vivo</span>
+      </div>
+    </div>
+    <div class="px-3 py-2 border-b border-zinc-100">
+      <input type="text" placeholder="Buscar..." 
+             class="input input-sm input-bordered w-full text-sm bg-zinc-50 border-zinc-200 focus:bg-white"
+             oninput="filterConversations(this.value)"/>
+    </div>
+    <div class="px-3 py-2 border-b border-zinc-100 bg-zinc-50">
+      <div class="flex gap-1 bg-zinc-100 rounded-lg p-1">
+        <button class="filter-tab active" onclick="filterChannel('all',this)">Todos</button>
+        <button class="filter-tab" onclick="filterChannel('whatsapp',this)">WA Web</button>
+        <button class="filter-tab" onclick="filterChannel('whatsapp_cloud',this)">WABA</button>
+        <button class="filter-tab" onclick="filterChannel('telegram',this)">Telegram</button>
+      </div>
+    </div>
+    <div id="conv-list" class="overflow-y-auto flex-1"></div>
+  </div>
+
+  <!-- CHAT PANEL -->
+  <div id="chat-panel" class="chat-panel">
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;background:#f8fafc;color:#94a3b8;">
+      <p class="text-sm font-medium">Selecione uma conversa</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Mock data ─────────────────────────────────────────────────────────────
+const CONVERSATIONS = [
+  { id:'c1', from:'+55 11 99999-0001', name:'Carlos Mendes', channel:'whatsapp', preview:'Oi! Queria saber sobre o status do pedido #4422', lastAt:'14:51', unread:true },
+  { id:'c2', from:'+55 21 98888-0202', name:'Ana Lima',      channel:'whatsapp_cloud', preview:'Perfeito, pode confirmar o horário?', lastAt:'14:23', unread:true },
+  { id:'c3', from:'@pedro_silva',       name:'Pedro Silva',   channel:'telegram', preview:'Obrigado! Já recebi.', lastAt:'13:45', unread:false },
+  { id:'c4', from:'+55 31 97777-0303', name:'Mariana Costa', channel:'whatsapp', preview:'Ok, vou aguardar seu retorno então 👍', lastAt:'12:10', unread:true },
+];
+
+const MESSAGES = {
+  c1: [
+    { id:1, dir:'inbound',  text:'Oi! Queria saber sobre o status do pedido #4422', time:'14:30', date:'Hoje' },
+    { id:2, dir:'outbound', text:'Olá Carlos! Deixa eu verificar aqui para você.', time:'14:32' },
+    { id:3, dir:'outbound', text:'Seu pedido #4422 está em separação, previsão de envio hoje às 18h.', time:'14:33' },
+    { id:4, dir:'inbound',  text:'Ótimo! Tem como me mandar o código de rastreio quando enviar?', time:'14:35' },
+    { id:5, dir:'outbound', text:'Claro! Assim que despachado você recebe o rastreio aqui 📦', time:'14:36' },
+  ],
+  c2: [
+    { id:1, dir:'inbound',  text:'Boa tarde! Quero reagendar minha consulta.', time:'14:00', date:'Hoje' },
+    { id:2, dir:'outbound', text:'Boa tarde Ana! Para qual dia você prefere?', time:'14:05' },
+    { id:3, dir:'inbound',  text:'Sexta-feira de manhã seria ótimo.', time:'14:08' },
+    { id:4, dir:'outbound', text:'Feito! Agendado para sexta às 10h30. ✅', time:'14:15' },
+  ],
+  c3: [
+    { id:1, dir:'inbound',  text:'Boa tarde, recebi meu produto mas veio com defeito.', time:'10:00', date:'Hoje' },
+    { id:2, dir:'outbound', text:'Olá Pedro! Pode descrever o defeito?', time:'10:05' },
+    { id:3, dir:'inbound',  text:'Obrigado! Já recebi.', time:'13:45' },
+  ],
+  c4: [
+    { id:1, dir:'inbound',  text:'Olá, gostaria de saber sobre o prazo de entrega.', time:'11:50', date:'Hoje' },
+    { id:2, dir:'outbound', text:'Olá Mariana! Para qual cidade seria a entrega?', time:'11:55' },
+    { id:3, dir:'inbound',  text:'Ok, vou aguardar seu retorno então 👍', time:'12:10' },
+  ],
+};
+
+// ── Simulated incoming messages (mimics the server pushing new inbound msgs) ──
+// In production: GET /admin/inbox/:convId/messages?after=<lastMsgId> polls this
+const SIMULATED_INBOUND = [
+  { convId:'c1', delay:8000,  text:'Tá, pode me passar o rastreio quando tiver?', from:'Carlos Mendes' },
+  { convId:'c2', delay:14000, text:'Pode confirmar meu nome na agenda?', from:'Ana Lima' },
+  { convId:'c1', delay:22000, text:'Oi, passou o horário... ainda vai enviar hoje?', from:'Carlos Mendes' },
+  { convId:'c4', delay:30000, text:'Oi! Já tem resposta sobre o prazo?', from:'Mariana Costa' },
+];
+
+const CHANNEL_LABELS = {
+  whatsapp:       { label:'WA Web', cls:'badge-whatsapp' },
+  whatsapp_cloud: { label:'WABA',   cls:'badge-waba' },
+  telegram:       { label:'Telegram', cls:'badge-telegram' },
+};
+
+let activeChannel = 'all';
+let searchQuery   = '';
+let selectedId    = null;
+let nextMsgId     = 100;
+let pollInterval  = null;
+let logVisible    = true;
+const POLL_MS     = 3000; // Simulates hx-trigger="every 3s"
+let lastPollAt    = null;
+
+// ── Activity log (spike observability) ───────────────────────────────────
+function addLog(type, msg) {
+  const log  = document.getElementById('activity-log');
+  const time = new Date().toTimeString().slice(0,8);
+  const div  = document.createElement('div');
+  div.className = `log-entry ${type}`;
+  div.textContent = `[${time}] ${msg}`;
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
+}
+function toggleLog() {
+  logVisible = !logVisible;
+  document.getElementById('activity-log').style.display = logVisible ? 'block' : 'none';
+  document.getElementById('toggle-log').style.bottom = logVisible ? '180px' : '0';
+}
+
+// ── Toast notification ───────────────────────────────────────────────────
+function showToast(text) {
+  const t = document.getElementById('new-msg-toast');
+  document.getElementById('toast-text').textContent = text;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3500);
+}
+
+// ── Unread badge ─────────────────────────────────────────────────────────
+function updateUnreadBadge() {
+  const count = CONVERSATIONS.filter(c => c.unread).length;
+  const badge = document.getElementById('unread-badge');
+  badge.textContent = count;
+  badge.style.display = count > 0 ? '' : 'none';
+}
+
+// ── Render conversation list ──────────────────────────────────────────────
+function renderList() {
+  const list = document.getElementById('conv-list');
+  const filtered = CONVERSATIONS.filter(c => {
+    const matchCh = activeChannel === 'all' || c.channel === activeChannel;
+    const q = searchQuery.toLowerCase();
+    return matchCh && (!q || c.name.toLowerCase().includes(q) || c.from.toLowerCase().includes(q) || c.preview.toLowerCase().includes(q));
+  });
+
+  list.innerHTML = filtered.map(c => {
+    const badge = CHANNEL_LABELS[c.channel];
+    return `
+      <div class="conv-item px-4 py-3 ${c.id === selectedId ? 'selected' : ''}" onclick="openChat('${c.id}')">
+        <div class="flex items-start gap-3">
+          <div class="w-9 h-9 rounded-full bg-zinc-200 flex items-center justify-center text-sm font-bold text-zinc-600 flex-shrink-0">
+            ${c.name.charAt(0)}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-semibold text-zinc-900 truncate">${c.name}</span>
+              <span class="text-xs text-zinc-400 ml-2 flex-shrink-0">${c.lastAt}</span>
+            </div>
+            <div class="flex items-center gap-1 mt-0.5">
+              <span class="channel-badge ${badge.cls}">${badge.label}</span>
+              <span class="text-xs text-zinc-400 truncate">${c.from}</span>
+            </div>
+            <div class="flex items-center justify-between mt-1">
+              <p class="text-xs text-zinc-500 truncate flex-1">${c.preview}</p>
+              ${c.unread ? '<div class="unread-dot ml-2"></div>' : ''}
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }).join('') || `<div style="padding:32px;text-align:center;color:#a1a1aa;font-size:13px;">Nenhuma conversa</div>`;
+
+  updateUnreadBadge();
+}
+
+// ── Open chat ─────────────────────────────────────────────────────────────
+function openChat(id) {
+  selectedId = id;
+  const conv = CONVERSATIONS.find(c => c.id === id);
+  conv.unread = false;
+  renderList();
+  renderChatPanel(conv);
+  startPolling(id);
+}
+
+function renderChatPanel(conv) {
+  const msgs  = MESSAGES[conv.id] || [];
+  const badge = CHANNEL_LABELS[conv.channel];
+  document.getElementById('chat-panel').innerHTML = `
+    <div style="background:white;border-bottom:1px solid #e4e7ec;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-full bg-zinc-200 flex items-center justify-center text-sm font-bold text-zinc-600">${conv.name.charAt(0)}</div>
+        <div>
+          <div class="text-sm font-semibold text-zinc-900">${conv.name}</div>
+          <div class="flex items-center gap-1">
+            <span class="channel-badge ${badge.cls}">${badge.label}</span>
+            <span class="text-xs text-zinc-400">${conv.from}</span>
+          </div>
+        </div>
+      </div>
+      <div class="poll-indicator text-xs text-zinc-400" id="poll-status">
+        <div class="poll-dot pulsing"></div>
+        <span>polling a cada ${POLL_MS/1000}s</span>
+      </div>
+    </div>
+    <div id="messages-area" class="messages-area">${renderMessages(msgs)}</div>
+    <div class="input-area">
+      <textarea id="msg-input" class="msg-input" rows="1" placeholder="Digite uma mensagem..."
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage('${conv.id}')}"
+        oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+      <button class="send-btn" onclick="sendMessage('${conv.id}')">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+      </button>
+    </div>`;
+  scrollToBottom();
+  addLog('poll', `Chat aberto: ${conv.name}. Polling iniciado.`);
+}
+
+function renderMessages(msgs) {
+  let html = ''; let lastDate = null;
+  msgs.forEach(m => {
+    if (m.date && m.date !== lastDate) {
+      html += `<div class="date-divider"><span>${m.date}</span></div>`;
+      lastDate = m.date;
+    }
+    if (m.dir === 'inbound') {
+      html += `<div class="msg-row inbound"><div class="avatar">C</div><div class="bubble inbound">${m.text}<span class="time">${m.time}</span></div></div>`;
+    } else {
+      html += `<div class="msg-row outbound"><div class="bubble outbound">${m.text}<span class="time">${m.time} ✓✓</span></div></div>`;
+    }
+  });
+  return html;
+}
+
+// ── Polling simulation ────────────────────────────────────────────────────
+// In real HTMX implementation:
+//   <div id="messages-area" hx-get="/admin/inbox/c1/messages?after={{lastMsgId}}"
+//        hx-trigger="every 3s" hx-swap="beforeend">
+// The server returns only NEW messages as HTML fragments.
+// Here we simulate that behavior with JS.
+
+function startPolling(convId) {
+  if (pollInterval) clearInterval(pollInterval);
+  pollInterval = setInterval(() => simulatePoll(convId), POLL_MS);
+  addLog('poll', `Poll interval set: ${POLL_MS}ms for conv ${convId}`);
+}
+
+function simulatePoll(convId) {
+  lastPollAt = new Date();
+  const label = document.getElementById('poll-status');
+  if (label) {
+    label.innerHTML = `<div class="poll-dot" style="background:#6366f1"></div><span>verificando...</span>`;
+    setTimeout(() => {
+      if (document.getElementById('poll-status')) {
+        document.getElementById('poll-status').innerHTML = `<div class="poll-dot pulsing"></div><span>polling a cada ${POLL_MS/1000}s</span>`;
+      }
+    }, 400);
+  }
+  addLog('poll', `GET /admin/inbox/${convId}/messages?after=last → 0 novas msgs`);
+}
+
+// ── Simulate inbound messages arriving ───────────────────────────────────
+SIMULATED_INBOUND.forEach(sim => {
+  setTimeout(() => injectInboundMessage(sim), sim.delay);
+});
+
+function injectInboundMessage({ convId, text, from }) {
+  const now  = new Date();
+  const time = now.toTimeString().slice(0,5);
+  const msg  = { id: nextMsgId++, dir:'inbound', text, time };
+
+  if (!MESSAGES[convId]) MESSAGES[convId] = [];
+  MESSAGES[convId].push(msg);
+
+  const conv = CONVERSATIONS.find(c => c.id === convId);
+  if (!conv) return;
+
+  conv.preview = text;
+  conv.lastAt  = time;
+
+  if (convId !== selectedId) {
+    // Not in view: mark unread, show toast
+    conv.unread = true;
+    renderList();
+    showToast(`Nova msg de ${from}: "${text.slice(0,35)}..."`);
+    addLog('new', `NOVA MSG (fora do chat): ${from} → "${text.slice(0,40)}"`);
+  } else {
+    // In view: append bubble (simulates HTMX hx-swap="beforeend" response)
+    renderList();
+    addLog('new', `NOVA MSG (poll detectou): ${from} → "${text.slice(0,40)}"`);
+    const area = document.getElementById('messages-area');
+    if (area) {
+      const div = document.createElement('div');
+      div.className = 'msg-row inbound new-arrival';
+      div.innerHTML = `<div class="avatar">${from.charAt(0)}</div><div class="bubble inbound">${escapeHtml(text)}<span class="time">${time}</span></div>`;
+      area.appendChild(div);
+      scrollToBottom();
+      // Remove highlight after 2s
+      setTimeout(() => div.classList.remove('new-arrival'), 2000);
+      // Update poll log
+      addLog('poll', `GET /admin/inbox/${convId}/messages?after=${msg.id-1} → 1 nova msg appended`);
+    }
+  }
+}
+
+function sendMessage(convId) {
+  const input = document.getElementById('msg-input');
+  const text  = input.value.trim();
+  if (!text) return;
+  const now  = new Date();
+  const time = now.toTimeString().slice(0,5);
+  const msg  = { id: nextMsgId++, dir:'outbound', text, time };
+  if (!MESSAGES[convId]) MESSAGES[convId] = [];
+  MESSAGES[convId].push(msg);
+  const conv = CONVERSATIONS.find(c => c.id === convId);
+  conv.preview = text; conv.lastAt = time;
+  renderList();
+  const area = document.getElementById('messages-area');
+  if (area) {
+    const div = document.createElement('div');
+    div.className = 'msg-row outbound';
+    div.innerHTML = `<div class="bubble outbound">${escapeHtml(text)}<span class="time">${time} ✓</span></div>`;
+    area.appendChild(div);
+  }
+  input.value = ''; input.style.height = 'auto';
+  scrollToBottom();
+  addLog('send', `ENVIADO → "${text.slice(0,40)}"`);
+}
+
+function scrollToBottom() {
+  setTimeout(() => { const a = document.getElementById('messages-area'); if(a) a.scrollTop = a.scrollHeight; }, 50);
+}
+function escapeHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function filterChannel(ch, btn) { activeChannel=ch; document.querySelectorAll('.filter-tab').forEach(t=>t.classList.remove('active')); btn.classList.add('active'); renderList(); }
+function filterConversations(q) { searchQuery=q; renderList(); }
+
+// Boot
+renderList();
+openChat('c1');
+addLog('poll', 'Spike 006 iniciado. 4 mensagens simuladas vão chegar em 8s, 14s, 22s, 30s.');
+</script>
+</body>
+</html>
