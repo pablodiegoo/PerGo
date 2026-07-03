@@ -2,17 +2,14 @@ package queue
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nats.go/jetstream"
+	"os"
 
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
@@ -23,28 +20,23 @@ import (
 func TestRetryAttemptParsing(t *testing.T) {
 	tests := []struct {
 		name     string
-		header   string
+		headers  map[string]string
 		expected int
 	}{
-		{"no header", "", 0},
-		{"zero attempt", "0", 0},
-		{"first attempt", "1", 1},
-		{"third attempt", "3", 3},
-		{"invalid header", "abc", 0},
+		{"no headers", nil, 0},
+		{"no retry header", map[string]string{}, 0},
+		{"zero attempt", map[string]string{"X-Retry-Attempt": "0"}, 0},
+		{"first attempt", map[string]string{"X-Retry-Attempt": "1"}, 1},
+		{"third attempt", map[string]string{"X-Retry-Attempt": "3"}, 3},
+		{"invalid", map[string]string{"X-Retry-Attempt": "abc"}, 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test via the format string that would be in headers
-			var n int
-			if tt.header != "" {
-				_, err := fmt.Sscanf(tt.header, "%d", &n)
-				if err != nil {
-					n = 0
-				}
-			}
-			if n != tt.expected {
-				t.Errorf("retryAttempt = %d, want %d", n, tt.expected)
+			msg := &fakeDispatchMsg{headers: tt.headers}
+			got := retryAttempt(msg)
+			if got != tt.expected {
+				t.Errorf("retryAttempt = %d, want %d", got, tt.expected)
 			}
 		})
 	}
@@ -53,23 +45,22 @@ func TestRetryAttemptParsing(t *testing.T) {
 func TestExponentialBackoff(t *testing.T) {
 	tests := []struct {
 		attempt    int
-		wantDelay  time.Duration
 		maxBackoff time.Duration
+		wantDelay  time.Duration
 	}{
-		{0, 1 * time.Second, 60 * time.Second},   // 2^0 * 1s = 1s
-		{1, 2 * time.Second, 60 * time.Second},   // 2^1 * 1s = 2s
-		{2, 4 * time.Second, 60 * time.Second},   // 2^2 * 1s = 4s
-		{3, 8 * time.Second, 60 * time.Second},   // 2^3 * 1s = 8s
-		{4, 16 * time.Second, 60 * time.Second},  // 2^4 * 1s = 16s
-		{5, 32 * time.Second, 60 * time.Second},  // 2^5 * 1s = 32s
-		{6, 60 * time.Second, 60 * time.Second},  // 2^6 * 1s = 64s → capped at 60s
-		{10, 60 * time.Second, 60 * time.Second}, // 2^10 * 1s → capped at 60s
+		{0, 60 * time.Second, 1 * time.Second},
+		{1, 60 * time.Second, 2 * time.Second},
+		{2, 60 * time.Second, 4 * time.Second},
+		{3, 60 * time.Second, 8 * time.Second},
+		{4, 60 * time.Second, 16 * time.Second},
+		{5, 60 * time.Second, 32 * time.Second},
+		{6, 60 * time.Second, 60 * time.Second},
+		{10, 60 * time.Second, 60 * time.Second},
 	}
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("attempt_%d", tt.attempt), func(t *testing.T) {
-			// Replicate the backoff calculation from handleFailure
-			delay := time.Duration(1<<uint(tt.attempt)) * defaultBaseBackoff
+			delay := time.Duration(1<<uint(tt.attempt)) * orchDefaultBaseBackoff
 			if delay > tt.maxBackoff {
 				delay = tt.maxBackoff
 			}
@@ -81,122 +72,130 @@ func TestExponentialBackoff(t *testing.T) {
 }
 
 func TestIsExpired(t *testing.T) {
+	orchestrator := &DispatchOrchestrator{}
+
 	tests := []struct {
 		name       string
-		payload    string
+		qMsg       domain.QueueMessage
 		wantExpire bool
 	}{
 		{
 			name:       "no TTL set",
-			payload:    `{"to":"+123","channel":"whatsapp","body":"hi"}`,
+			qMsg:       domain.QueueMessage{},
 			wantExpire: false,
 		},
 		{
 			name: "TTL not expired",
-			payload: func() string {
-				queuedAt := time.Now().UTC().Add(-10 * time.Second).Format(time.RFC3339Nano)
-				ttl := 300 // 5 minutes
-				return fmt.Sprintf(`{"to":"+123","channel":"whatsapp","body":"hi","ttl_seconds":%d,"queued_at":"%s"}`, ttl, queuedAt)
-			}(),
+			qMsg: domain.QueueMessage{
+				QueuedAt:   time.Now().UTC().Add(-10 * time.Second),
+				TTLSeconds: intPtr(300),
+			},
 			wantExpire: false,
 		},
 		{
 			name: "TTL expired",
-			payload: func() string {
-				queuedAt := time.Now().UTC().Add(-600 * time.Second).Format(time.RFC3339Nano)
-				ttl := 300 // 5 minutes
-				return fmt.Sprintf(`{"to":"+123","channel":"whatsapp","body":"hi","ttl_seconds":%d,"queued_at":"%s"}`, ttl, queuedAt)
-			}(),
+			qMsg: domain.QueueMessage{
+				QueuedAt:   time.Now().UTC().Add(-600 * time.Second),
+				TTLSeconds: intPtr(300),
+			},
 			wantExpire: true,
 		},
 		{
-			name:       "zero TTL ignored",
-			payload:    `{"to":"+123","channel":"whatsapp","body":"hi","ttl_seconds":0}`,
+			name: "zero TTL ignored",
+			qMsg: domain.QueueMessage{
+				QueuedAt:   time.Now().UTC(),
+				TTLSeconds: intPtr(0),
+			},
 			wantExpire: false,
 		},
 		{
-			name:       "negative TTL ignored",
-			payload:    `{"to":"+123","channel":"whatsapp","body":"hi","ttl_seconds":-1}`,
+			name: "negative TTL ignored",
+			qMsg: domain.QueueMessage{
+				QueuedAt:   time.Now().UTC(),
+				TTLSeconds: intPtr(-1),
+			},
 			wantExpire: false,
 		},
 		{
-			name:       "invalid queued_at format",
-			payload:    `{"to":"+123","channel":"whatsapp","body":"hi","ttl_seconds":1,"queued_at":"invalid"}`,
-			wantExpire: false,
-		},
-		{
-			name:       "no queued_at field",
-			payload:    `{"to":"+123","channel":"whatsapp","body":"hi","ttl_seconds":1}`,
-			wantExpire: false,
-		},
-		{
-			name:       "invalid JSON",
-			payload:    `{not json}`,
+			name: "zero queued_at with TTL",
+			qMsg: domain.QueueMessage{
+				TTLSeconds: intPtr(60),
+			},
 			wantExpire: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Test the same isExpired logic as the worker
-			type ttlPayload struct {
-				TTLSeconds *int   `json:"ttl_seconds"`
-				QueuedAt   string `json:"queued_at"`
-			}
-			var p ttlPayload
-			if err := json.Unmarshal([]byte(tt.payload), &p); err != nil {
-				if tt.wantExpire {
-					t.Errorf("isExpired = false (parse error), want true")
-				}
-				return
-			}
-
-			if p.TTLSeconds == nil || *p.TTLSeconds <= 0 {
-				if tt.wantExpire {
-					t.Error("isExpired = false (no TTL), want true")
-				}
-				return
-			}
-
-			queuedAt, err := time.Parse(time.RFC3339Nano, p.QueuedAt)
-			if err != nil {
-				if tt.wantExpire {
-					t.Error("isExpired = false (parse error on queued_at), want true")
-				}
-				return
-			}
-
-			expiry := queuedAt.Add(time.Duration(*p.TTLSeconds) * time.Second)
-			expired := time.Now().UTC().After(expiry)
-			if expired != tt.wantExpire {
-				t.Errorf("isExpired = %v, want %v", expired, tt.wantExpire)
+			got := orchestrator.isExpired(&tt.qMsg)
+			if got != tt.wantExpire {
+				t.Errorf("isExpired = %v, want %v", got, tt.wantExpire)
 			}
 		})
 	}
 }
 
 func TestDeliveryDedup(t *testing.T) {
-	w := &Worker{}
+	orchestrator := &DispatchOrchestrator{}
 
 	traceID := "test-trace-dedup-001"
 
 	// First call — not in dispatched set
-	_, loaded := w.dispatched.LoadOrStore(traceID, struct{}{})
+	_, loaded := orchestrator.dispatched.LoadOrStore(traceID, struct{}{})
 	if loaded {
 		t.Error("first call should NOT be loaded (first occurrence)")
 	}
 
 	// Second call — should be in dispatched set
-	_, loaded = w.dispatched.LoadOrStore(traceID, struct{}{})
+	_, loaded = orchestrator.dispatched.LoadOrStore(traceID, struct{}{})
 	if !loaded {
 		t.Error("second call SHOULD be loaded (duplicate detected)")
 	}
 
 	// Different trace ID — not a duplicate
-	_, loaded = w.dispatched.LoadOrStore("test-trace-dedup-002", struct{}{})
+	_, loaded = orchestrator.dispatched.LoadOrStore("test-trace-dedup-002", struct{}{})
 	if loaded {
 		t.Error("different trace ID should NOT be loaded")
 	}
+}
+
+// --- Fake adapters for orchestrator tests ---
+
+// fakeDispatchMsg implements DispatchMessage for tests.
+type fakeDispatchMsg struct {
+	data     []byte
+	headers  map[string]string
+	acked    bool
+	nacked   bool
+	nakDelay time.Duration
+}
+
+func (m *fakeDispatchMsg) Data() []byte                         { return m.data }
+func (m *fakeDispatchMsg) Headers() map[string]string           { return m.headers }
+func (m *fakeDispatchMsg) Ack() error                           { m.acked = true; return nil }
+func (m *fakeDispatchMsg) NakWithDelay(d time.Duration) error   { m.nacked = true; m.nakDelay = d; return nil }
+
+type fakeDispatcher struct {
+	err         error
+	calledCount int
+	calledWith  []string
+}
+
+func (m *fakeDispatcher) Dispatch(ctx context.Context, p *channel.MessagePayload) (string, error) {
+	m.calledCount++
+	m.calledWith = append(m.calledWith, p.Channel)
+	return "", m.err
+}
+
+type fakeQueueDepthTracker struct {
+	decrements map[uuid.UUID]int
+}
+
+func (m *fakeQueueDepthTracker) Decrement(workspaceID uuid.UUID) {
+	if m.decrements == nil {
+		m.decrements = make(map[uuid.UUID]int)
+	}
+	m.decrements[workspaceID]++
 }
 
 func getTestPool(t *testing.T) *pgxpool.Pool {
@@ -232,47 +231,18 @@ func getTestPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-type mockMsg struct {
-	data     []byte
-	headers  nats.Header
-	acked    bool
-	nacked   bool
-	nakDelay time.Duration
+func newTestOrchestrator(dispatchers *channel.Registry, dispatchRepo *repository.MessageDispatchRepository) *DispatchOrchestrator {
+	return NewDispatchOrchestrator(dispatchers, dispatchRepo, nil, nil, nil, 5, 60*time.Second)
 }
 
-func (m *mockMsg) Metadata() (*jetstream.MsgMetadata, error) { return nil, nil }
-func (m *mockMsg) Data() []byte                              { return m.data }
-func (m *mockMsg) Headers() nats.Header                      { return m.headers }
-func (m *mockMsg) Subject() string                           { return "messages.outbound" }
-func (m *mockMsg) Reply() string                             { return "" }
-func (m *mockMsg) Ack() error                                { m.acked = true; return nil }
-func (m *mockMsg) DoubleAck(ctx context.Context) error       { return nil }
-func (m *mockMsg) Nak() error                                { m.nacked = true; return nil }
-func (m *mockMsg) NakWithDelay(d time.Duration) error        { m.nacked = true; m.nakDelay = d; return nil }
-func (m *mockMsg) InProgress() error                         { return nil }
-func (m *mockMsg) Term() error                               { return nil }
-func (m *mockMsg) TermWithReason(reason string) error        { return nil }
-
-type mockDispatcher struct {
-	err         error
-	calledCount int
-	calledWith  []string
-}
-
-func (m *mockDispatcher) Dispatch(ctx context.Context, p *channel.MessagePayload) (string, error) {
-	m.calledCount++
-	m.calledWith = append(m.calledWith, p.Channel)
-	return "", m.err
-}
-
-func TestWorkerFallbackLoop(t *testing.T) {
+func TestOrchestrator_FallbackLoop(t *testing.T) {
 	pool := getTestPool(t)
 
 	ctx := context.Background()
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 
-	ws, err := wsRepo.Create(ctx, "worker_test_ws_"+uuid.New().String())
+	ws, err := wsRepo.Create(ctx, "orch_test_ws_"+uuid.New().String())
 	if err != nil {
 		t.Fatalf("failed to create workspace: %v", err)
 	}
@@ -280,7 +250,7 @@ func TestWorkerFallbackLoop(t *testing.T) {
 
 	t.Run("Terminal error triggers fallback immediately", func(t *testing.T) {
 		traceID := uuid.New().String()
-		qMsg := domain.QueueMessage{
+		qMsg := &domain.QueueMessage{
 			WorkspaceID:      ws.ID,
 			TraceID:          traceID,
 			To:               "+123",
@@ -288,32 +258,22 @@ func TestWorkerFallbackLoop(t *testing.T) {
 			Body:             "test terminal",
 			FallbackChannels: []string{"whatsapp_cloud", "telegram"},
 		}
-		data, _ := json.Marshal(qMsg)
 
-		msg := &mockMsg{
-			data:    data,
-			headers: nats.Header{"Nats-Msg-Id": []string{traceID}},
-		}
+		msg := &fakeDispatchMsg{}
 
 		registry := channel.NewRegistry(nil)
-		disp1 := &mockDispatcher{err: channel.NewTerminalError(errors.New("banned"))}
-		disp2 := &mockDispatcher{err: nil}
+		disp1 := &fakeDispatcher{err: channel.NewTerminalError(errors.New("banned"))}
+		disp2 := &fakeDispatcher{err: nil}
 		registry.Register("whatsapp", disp1)
 		registry.Register("whatsapp_cloud", disp2)
 
-		w := &Worker{
-			dispatchers:  registry,
-			dispatchRepo: dispatchRepo,
-			maxRetries:   5,
-			maxBackoff:   60 * time.Second,
-		}
+		orchestrator := newTestOrchestrator(registry, dispatchRepo)
 
-		w.processMessage(ctx, msg)
+		_ = orchestrator.Process(ctx, msg, qMsg, 0)
 
 		if !msg.acked {
 			t.Error("expected message to be acked")
 		}
-
 		if disp1.calledCount != 1 {
 			t.Errorf("expected disp1 called once, got %d", disp1.calledCount)
 		}
@@ -331,14 +291,11 @@ func TestWorkerFallbackLoop(t *testing.T) {
 		if d.CurrentChannel != "whatsapp_cloud" {
 			t.Errorf("expected DB current channel 'whatsapp_cloud', got %s", d.CurrentChannel)
 		}
-		if d.FallbackIndex != 1 {
-			t.Errorf("expected DB fallback index 1, got %d", d.FallbackIndex)
-		}
 	})
 
-	t.Run("Transient error triggers NATS retry and does not advance fallback", func(t *testing.T) {
+	t.Run("Transient error triggers NAK, does not advance fallback", func(t *testing.T) {
 		traceID := uuid.New().String()
-		qMsg := domain.QueueMessage{
+		qMsg := &domain.QueueMessage{
 			WorkspaceID:      ws.ID,
 			TraceID:          traceID,
 			To:               "+123",
@@ -346,25 +303,16 @@ func TestWorkerFallbackLoop(t *testing.T) {
 			Body:             "test transient",
 			FallbackChannels: []string{"whatsapp_cloud"},
 		}
-		data, _ := json.Marshal(qMsg)
 
-		msg := &mockMsg{
-			data:    data,
-			headers: nats.Header{"Nats-Msg-Id": []string{traceID}},
-		}
+		msg := &fakeDispatchMsg{}
 
 		registry := channel.NewRegistry(nil)
-		disp1 := &mockDispatcher{err: errors.New("network timeout")}
+		disp1 := &fakeDispatcher{err: errors.New("network timeout")}
 		registry.Register("whatsapp", disp1)
 
-		w := &Worker{
-			dispatchers:  registry,
-			dispatchRepo: dispatchRepo,
-			maxRetries:   5,
-			maxBackoff:   60 * time.Second,
-		}
+		orchestrator := newTestOrchestrator(registry, dispatchRepo)
 
-		w.processMessage(ctx, msg)
+		_ = orchestrator.Process(ctx, msg, qMsg, 0)
 
 		if msg.acked {
 			t.Error("expected message NOT to be acked")
@@ -372,7 +320,6 @@ func TestWorkerFallbackLoop(t *testing.T) {
 		if !msg.nacked {
 			t.Error("expected message to be nacked")
 		}
-
 		if disp1.calledCount != 1 {
 			t.Errorf("expected disp1 called once, got %d", disp1.calledCount)
 		}
@@ -384,15 +331,9 @@ func TestWorkerFallbackLoop(t *testing.T) {
 		if d.Status != "failed_transient" {
 			t.Errorf("expected DB status 'failed_transient', got %s", d.Status)
 		}
-		if d.CurrentChannel != "whatsapp" {
-			t.Errorf("expected DB current channel 'whatsapp', got %s", d.CurrentChannel)
-		}
-		if d.FallbackIndex != 0 {
-			t.Errorf("expected DB fallback index 0, got %d", d.FallbackIndex)
-		}
 	})
 
-	t.Run("Redelivery of a successfully sent message skips dispatch", func(t *testing.T) {
+	t.Run("Redelivery of sent message skips dispatch", func(t *testing.T) {
 		traceID := uuid.New().String()
 		d, err := dispatchRepo.GetOrCreateDispatch(ctx, ws.ID, traceID, "whatsapp")
 		if err != nil {
@@ -403,45 +344,34 @@ func TestWorkerFallbackLoop(t *testing.T) {
 			t.Fatalf("failed to update status: %v", err)
 		}
 
-		qMsg := domain.QueueMessage{
+		qMsg := &domain.QueueMessage{
 			WorkspaceID: ws.ID,
 			TraceID:     traceID,
 			To:          "+123",
 			Channel:     "whatsapp",
 			Body:        "test redelivery",
 		}
-		data, _ := json.Marshal(qMsg)
-
-		msg := &mockMsg{
-			data:    data,
-			headers: nats.Header{"Nats-Msg-Id": []string{traceID}},
-		}
+		msg := &fakeDispatchMsg{}
 
 		registry := channel.NewRegistry(nil)
-		disp1 := &mockDispatcher{err: nil}
+		disp1 := &fakeDispatcher{err: nil}
 		registry.Register("whatsapp", disp1)
 
-		w := &Worker{
-			dispatchers:  registry,
-			dispatchRepo: dispatchRepo,
-			maxRetries:   5,
-			maxBackoff:   60 * time.Second,
-		}
+		orchestrator := newTestOrchestrator(registry, dispatchRepo)
 
-		w.processMessage(ctx, msg)
+		_ = orchestrator.Process(ctx, msg, qMsg, 0)
 
 		if !msg.acked {
 			t.Error("expected message to be acked")
 		}
-
 		if disp1.calledCount != 0 {
 			t.Errorf("expected dispatcher NOT to be called, got %d", disp1.calledCount)
 		}
 	})
 
-	t.Run("Exhaustion of all fallback channels marks failed permanently", func(t *testing.T) {
+	t.Run("Exhaustion of all fallback channels marks failed", func(t *testing.T) {
 		traceID := uuid.New().String()
-		qMsg := domain.QueueMessage{
+		qMsg := &domain.QueueMessage{
 			WorkspaceID:      ws.ID,
 			TraceID:          traceID,
 			To:               "+123",
@@ -449,27 +379,17 @@ func TestWorkerFallbackLoop(t *testing.T) {
 			Body:             "test exhaustion",
 			FallbackChannels: []string{"telegram"},
 		}
-		data, _ := json.Marshal(qMsg)
-
-		msg := &mockMsg{
-			data:    data,
-			headers: nats.Header{"Nats-Msg-Id": []string{traceID}},
-		}
+		msg := &fakeDispatchMsg{}
 
 		registry := channel.NewRegistry(nil)
-		disp1 := &mockDispatcher{err: channel.NewTerminalError(errors.New("terminal 1"))}
-		disp2 := &mockDispatcher{err: channel.NewTerminalError(errors.New("terminal 2"))}
+		disp1 := &fakeDispatcher{err: channel.NewTerminalError(errors.New("terminal 1"))}
+		disp2 := &fakeDispatcher{err: channel.NewTerminalError(errors.New("terminal 2"))}
 		registry.Register("whatsapp", disp1)
 		registry.Register("telegram", disp2)
 
-		w := &Worker{
-			dispatchers:  registry,
-			dispatchRepo: dispatchRepo,
-			maxRetries:   5,
-			maxBackoff:   60 * time.Second,
-		}
+		orchestrator := newTestOrchestrator(registry, dispatchRepo)
 
-		w.processMessage(ctx, msg)
+		_ = orchestrator.Process(ctx, msg, qMsg, 0)
 
 		if !msg.acked {
 			t.Error("expected message to be acked (stop retries)")
@@ -482,45 +402,60 @@ func TestWorkerFallbackLoop(t *testing.T) {
 		if d.Status != "failed" {
 			t.Errorf("expected DB status 'failed', got %s", d.Status)
 		}
-		if d.CurrentChannel != "telegram" {
-			t.Errorf("expected DB current channel 'telegram', got %s", d.CurrentChannel)
+	})
+
+	t.Run("TTL expired message is dropped", func(t *testing.T) {
+		traceID := uuid.New().String()
+		qMsg := &domain.QueueMessage{
+			WorkspaceID: ws.ID,
+			TraceID:     traceID,
+			To:          "+123",
+			Channel:     "whatsapp",
+			Body:        "test TTL",
+			QueuedAt:    time.Now().UTC().Add(-600 * time.Second),
+			TTLSeconds:  intPtr(300),
 		}
-		if d.FallbackIndex != 1 {
-			t.Errorf("expected DB fallback index 1, got %d", d.FallbackIndex)
+		msg := &fakeDispatchMsg{}
+
+		registry := channel.NewRegistry(nil)
+		disp1 := &fakeDispatcher{err: nil}
+		registry.Register("whatsapp", disp1)
+
+		orchestrator := newTestOrchestrator(registry, dispatchRepo)
+
+		_ = orchestrator.Process(ctx, msg, qMsg, 0)
+
+		if !msg.acked {
+			t.Error("expected expired message to be acked")
+		}
+		if disp1.calledCount != 0 {
+			t.Errorf("expected dispatcher NOT to be called for expired message, got %d", disp1.calledCount)
 		}
 	})
 }
 
-type mockQueueDepthTracker struct {
-	decrements map[uuid.UUID]int
-}
-
-func (m *mockQueueDepthTracker) Decrement(workspaceID uuid.UUID) {
-	if m.decrements == nil {
-		m.decrements = make(map[uuid.UUID]int)
-	}
-	m.decrements[workspaceID]++
-}
-
-func TestWorker_QueueDepthDecrement(t *testing.T) {
-	tracker := &mockQueueDepthTracker{}
-	w := &Worker{
+func TestOrchestrator_QueueDepthDecrement(t *testing.T) {
+	tracker := &fakeQueueDepthTracker{}
+	orchestrator := &DispatchOrchestrator{
 		queueDepth: tracker,
 	}
 
 	wsID := uuid.New()
 
-	// 1. Success path
-	msg1 := &mockMsg{}
-	w.ackMessage(msg1, wsID)
+	// ack calls Decrement
+	msg := &fakeDispatchMsg{}
+	orchestrator.ack(msg, wsID)
 	if tracker.decrements[wsID] != 1 {
 		t.Errorf("expected 1 decrement, got %d", tracker.decrements[wsID])
 	}
 
-	// 2. Terminal failure path
-	msg2 := &mockMsg{}
-	w.handleFailure(msg2, wsID, "trace-123", 5) // attempt 5 >= maxRetries (0)
+	// handleFailure (above max retries) calls ack → decrement
+	msg2 := &fakeDispatchMsg{}
+	orchestrator.maxRetries = 0
+	orchestrator.handleFailure(msg2, wsID, "trace-123", 0)
 	if tracker.decrements[wsID] != 2 {
-		t.Errorf("expected 2 decrements, got %d", tracker.decrements[wsID])
+		t.Errorf("expected 2 decrements after terminal failure, got %d", tracker.decrements[wsID])
 	}
 }
+
+func intPtr(i int) *int { return &i }

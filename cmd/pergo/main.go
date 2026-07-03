@@ -151,7 +151,8 @@ func main() {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	sessionManager := session.NewManager(db, deviceRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", recipientSessionRepo, s3Client, dedupRepo, publisher, auditWriter, wsRepo)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
-	worker := queue.NewWorker(ctx, consumer, 5, 60*time.Second, dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter)
+	orchestrator := queue.NewDispatchOrchestrator(dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter, 5, 60*time.Second)
+	worker := queue.NewWorker(ctx, consumer, orchestrator)
 	slog.Info("message worker started", "consumer", "worker-1")
 
 	// --- Webhook Worker ---
