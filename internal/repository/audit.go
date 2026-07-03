@@ -161,3 +161,113 @@ func (r *AuditRepository) ListAll(ctx context.Context, filters AuditFilters) ([]
 
 	return entries, nil
 }
+
+// ConversationSummary represents a conversation view aggregate.
+type ConversationSummary struct {
+	From              string    `json:"from"`
+	Channel           string    `json:"channel"`
+	RecipientIdentity string    `json:"recipient_identity"`
+	LastMessageBody   string    `json:"last_message_body"`
+	LastMessageTime   time.Time `json:"last_message_time"`
+	TotalMessageCount int64     `json:"total_message_count"`
+}
+
+// ThreadMessage represents a single message in a chronological conversation thread.
+type ThreadMessage struct {
+	ID        uuid.UUID `json:"id"`
+	TraceID   string    `json:"trace_id"`
+	Direction string    `json:"direction"` // "inbound" or "outbound"
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ListConversations lists all conversation summaries grouped by (from, channel, to) inside audit logs.
+func (r *AuditRepository) ListConversations(ctx context.Context, workspaceID uuid.UUID, channelFilter string) ([]ConversationSummary, error) {
+	query := `
+		WITH RankedConversations AS (
+			SELECT 
+				payload->>'from' AS contact,
+				payload->>'channel' AS channel,
+				payload->>'to' AS recipient_identity,
+				payload->>'body' AS body,
+				created_at,
+				ROW_NUMBER() OVER(PARTITION BY payload->>'from', payload->>'channel', payload->>'to' ORDER BY created_at DESC) as rn,
+				COUNT(*) OVER(PARTITION BY payload->>'from', payload->>'channel', payload->>'to') as total_count
+			FROM audit_logs
+			WHERE workspace_id = $1 
+			  AND event_type = 'inbound_message'
+		)
+		SELECT contact, channel, recipient_identity, COALESCE(body, ''), created_at, total_count
+		FROM RankedConversations
+		WHERE rn = 1
+		  AND ($2 = '' OR channel = $2)
+		ORDER BY created_at DESC
+	`
+
+	rows, err := r.pool.Query(ctx, query, workspaceID, channelFilter)
+	if err != nil {
+		return nil, fmt.Errorf("query conversations list: %w", err)
+	}
+	defer rows.Close()
+
+	var summaries []ConversationSummary
+	for rows.Next() {
+		var s ConversationSummary
+		if err := rows.Scan(&s.From, &s.Channel, &s.RecipientIdentity, &s.LastMessageBody, &s.LastMessageTime, &s.TotalMessageCount); err != nil {
+			return nil, fmt.Errorf("scan conversation summary: %w", err)
+		}
+		summaries = append(summaries, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate conversations: %w", err)
+	}
+
+	return summaries, nil
+}
+
+// ListThread performs a UNION between inbound and outbound messages matching the contact, channel, and recipient identity, ordered chronologically.
+func (r *AuditRepository) ListThread(ctx context.Context, workspaceID uuid.UUID, contact, channel, recipientIdentity string, afterID *uuid.UUID) ([]ThreadMessage, error) {
+	query := `
+		SELECT id, trace_id, 'inbound' AS direction, COALESCE(payload->>'body', '') AS body, created_at
+		FROM audit_logs
+		WHERE workspace_id = $1
+		  AND event_type = 'inbound_message'
+		  AND payload->>'from' = $2
+		  AND payload->>'channel' = $3
+		  AND payload->>'to' = $4
+		  AND ($5::uuid IS NULL OR id > $5::uuid)
+
+		UNION ALL
+
+		SELECT id, trace_id, 'outbound' AS direction, COALESCE(payload->'request'->>'body', '') AS body, created_at
+		FROM audit_logs
+		WHERE workspace_id = $1
+		  AND event_type = 'outbound_message'
+		  AND payload->'request'->>'to' = $2
+		  AND payload->'request'->>'channel' = $3
+		  AND payload->'request'->>'sender_identity' = $4
+		  AND ($5::uuid IS NULL OR id > $5::uuid)
+
+		ORDER BY created_at ASC
+	`
+
+	rows, err := r.pool.Query(ctx, query, workspaceID, contact, channel, recipientIdentity, afterID)
+	if err != nil {
+		return nil, fmt.Errorf("query thread messages: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []ThreadMessage
+	for rows.Next() {
+		var m ThreadMessage
+		if err := rows.Scan(&m.ID, &m.TraceID, &m.Direction, &m.Body, &m.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan thread message: %w", err)
+		}
+		messages = append(messages, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate thread messages: %w", err)
+	}
+
+	return messages, nil
+}
