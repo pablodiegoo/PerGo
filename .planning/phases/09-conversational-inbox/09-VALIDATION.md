@@ -38,12 +38,20 @@ created: 2026-07-03
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 09-01-01 | 01 | 1 | INBD-03 | — | N/A | unit | `go test -v ./internal/session/...` | ✅ | ⬜ pending |
-| 09-01-02 | 01 | 1 | INBD-03 | — | N/A | unit | `go test -v ./internal/api/handler/admin/...` | ✅ | ⬜ pending |
-| 09-02-01 | 02 | 1 | ADMIN-01 | — | N/A | unit | `go test -v ./internal/repository/...` | ✅ | ⬜ pending |
-| 09-02-02 | 02 | 1 | ADMIN-01 | — | N/A | unit | `go test -v ./internal/repository/...` | ✅ | ⬜ pending |
-| 09-03-01 | 03 | 2 | ADMIN-02 | — | N/A | unit | `go test -v ./internal/api/handler/admin/...` | ✅ | ⬜ pending |
-| 09-03-02 | 03 | 2 | ADMIN-02 | — | N/A | unit | `go test -v ./internal/api/handler/admin/...` | ✅ | ⬜ pending |
+| migration_recipient_sessions_to_column | 01 | 1 | INBD-03 | — | N/A | unit | `go test -v ./internal/repository/...` | ✅ | ⬜ pending |
+| enrich_whatsapp_inbound | 01 | 1 | INBD-01, INBD-03 | — | N/A | unit | `go test -v ./internal/session/...` | ✅ | ⬜ pending |
+| enrich_telegram_waba_inbound | 01 | 1 | INBD-01, INBD-02, INBD-03 | — | N/A | unit | `go test -v ./internal/api/handler/...` | ✅ | ⬜ pending |
+| implement_audit_queries | 01 | 1 | ADMIN-01 | — | N/A | unit | `go test -v ./internal/repository/...` | ✅ | ⬜ pending |
+| migration_inbox_read_status | 02 | 2 | ADMIN-01 | — | N/A | unit | `go test -v ./internal/repository/...` | ✅ | ⬜ pending |
+| register_inbox_routes | 02 | 2 | ADMIN-01 | — | N/A | unit | `go build ./...` | ✅ | ⬜ pending |
+| update_sidebar_navigation | 02 | 2 | ADMIN-01 | — | N/A | unit | `go build ./...` | ✅ | ⬜ pending |
+| create_conversation_templates | 02 | 2 | ADMIN-01 | — | N/A | unit | `templ generate` | ✅ | ⬜ pending |
+| implement_conversations_handler | 02 | 2 | ADMIN-01 | — | N/A | unit | `go test -v ./internal/api/handler/admin/...` | ✅ | ⬜ pending |
+| create_chat_panel_templates | 03 | 3 | ADMIN-01 | — | N/A | unit | `templ generate` | ✅ | ⬜ pending |
+| implement_chat_panel_handler | 03 | 3 | ADMIN-01 | — | N/A | unit | `go test -v ./internal/api/handler/admin/...` | ✅ | ⬜ pending |
+| implement_live_polling_handler | 03 | 3 | ADMIN-02 | — | N/A | unit | `go test -v ./internal/api/handler/admin/...` | ✅ | ⬜ pending |
+| implement_send_message_handler | 03 | 3 | ADMIN-01 | — | N/A | unit | `go test -v ./internal/api/handler/admin/...` | ✅ | ⬜ pending |
+| create_inbox_integration_tests | 03 | 3 | ADMIN-01, ADMIN-02 | — | N/A | integration | `go test -v ./internal/api/handler/admin/...` | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
