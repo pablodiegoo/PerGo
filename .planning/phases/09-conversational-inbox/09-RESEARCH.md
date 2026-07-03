@@ -10,7 +10,7 @@ To plan and implement Phase 9 (Conversational Inbox) successfully, there are sev
 2. **Correct SQL JSONB Paths:** Outbound audit logs wrap the message inside a `"request"` JSON key (unlike inbound logs). Queries for outbound messages must check `payload->'request'->>'to'` and `payload->'request'->>'body'`, whereas inbound logs use `payload->>'from'` and `payload->>'body'`.
 3. **Address the Multi-Instance Isolation Gap:** To prevent merging conversations from different WhatsApp Web instances or Telegram bots into a single thread, we must introduce the recipient identity (`to` or `recipient_identity`) into the inbound message audit logs.
 4. **Implement Two-Tier HTMX Polling (D-07):** Wire up a 3-second poll for the active chat panel (appending only new messages using a UUID cursor) and a 5-second poll for the conversation list panel.
-5. **Database-Free Read/Unread State:** Track read/unread states via a lightweight, database-free cookie (`pergo-inbox-read-state`) containing a JSON map of `contact:last_read_timestamp`.
+5. **Database-Driven Read/Unread State:** Track read/unread states via a server-side `last_read_at` column in the `recipient_sessions` table to support multi-operator synchronization and avoid 4KB browser cookie limits.
 
 ---
 
