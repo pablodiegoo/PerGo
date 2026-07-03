@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Spike 005 — Inbox: Chat View (Split Pane)</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- HTMX: simulates the real implementation pattern -->
+  <script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .layout { display: flex; height: 100vh; overflow: hidden; }
+    .sidebar { width: 220px; min-width: 220px; }
+    .conv-panel { width: 300px; min-width: 300px; }
+    .chat-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    .nav-item.active { background: #e4e4e7; color: #18181b; font-weight: 600; }
+    .conv-item { cursor: pointer; transition: background 0.12s; border-bottom: 1px solid #f4f4f5; }
+    .conv-item:hover { background: #f4f4f5; }
+    .conv-item.selected { background: #eff6ff; border-left: 3px solid #3b82f6; }
+
+    .channel-badge { font-size: 10px; padding: 1px 6px; border-radius: 9999px; font-weight: 600; }
+    .badge-whatsapp { background: #dcfce7; color: #16a34a; }
+    .badge-waba { background: #d1fae5; color: #059669; }
+    .badge-telegram { background: #dbeafe; color: #2563eb; }
+    .unread-dot { width: 7px; height: 7px; border-radius: 50%; background: #3b82f6; flex-shrink: 0; }
+
+    .filter-tab { padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; transition: all 0.12s; color: #71717a; }
+    .filter-tab.active { background: white; color: #18181b; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+    /* Chat bubbles */
+    .messages-area { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; background: #f8fafc; }
+    .msg-row { display: flex; align-items: flex-end; gap: 8px; }
+    .msg-row.inbound { justify-content: flex-start; }
+    .msg-row.outbound { justify-content: flex-end; }
+    .avatar { width: 28px; height: 28px; border-radius: 50%; background: #d1d5db; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #6b7280; flex-shrink: 0; }
+    .bubble { max-width: 68%; padding: 8px 12px; border-radius: 12px; font-size: 13px; line-height: 1.45; position: relative; }
+    .bubble.inbound { background: white; color: #1a1a2e; border-bottom-left-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,0.07); }
+    .bubble.outbound { background: #3b82f6; color: white; border-bottom-right-radius: 3px; }
+    .bubble .time { font-size: 10px; opacity: 0.55; margin-top: 3px; display: block; text-align: right; }
+    .bubble .status { font-size: 10px; opacity: 0.7; }
+    .date-divider { text-align: center; margin: 4px 0; }
+    .date-divider span { background: #e2e8f0; color: #64748b; font-size: 11px; padding: 2px 10px; border-radius: 99px; }
+
+    /* Message input area */
+    .input-area { background: white; border-top: 1px solid #e4e7ec; padding: 10px 14px; display: flex; gap-10px; align-items: flex-end; gap: 8px; }
+    .msg-input { flex: 1; resize: none; border: 1px solid #e2e8f0; border-radius: 20px; padding: 8px 14px; font-size: 13px; outline: none; max-height: 100px; line-height: 1.4; }
+    .msg-input:focus { border-color: #93c5fd; }
+    .send-btn { width: 36px; height: 36px; border-radius: 50%; background: #3b82f6; color: white; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s; }
+    .send-btn:hover { background: #2563eb; }
+
+    .chat-placeholder { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8fafc; color: #94a3b8; }
+
+    /* New message animation */
+    @keyframes slideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .msg-row { animation: slideIn 0.2s ease-out; }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- ── SIDEBAR ─────────────────────────────────────────── -->
+  <nav class="sidebar bg-zinc-50 border-r border-zinc-200 flex flex-col justify-between shrink-0 h-screen sticky top-0">
+    <div>
+      <div class="flex justify-between items-center px-4 py-3 border-b border-zinc-200">
+        <h2 class="text-lg font-bold tracking-tight text-zinc-900">PerGo</h2>
+      </div>
+      <div class="px-4 py-2 border-b border-zinc-200">
+        <label class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Workspace</label>
+        <div class="text-sm font-medium text-zinc-700">Acme Corp</div>
+      </div>
+      <ul class="p-3 space-y-1">
+        <li><a href="#" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 transition-all">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          <span>Visão Geral</span>
+        </a></li>
+        <li><a href="#" class="nav-item active flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-all">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+          <span>Inbox</span>
+          <span class="ml-auto bg-blue-500 text-white text-xs rounded-full px-1.5 py-0.5 font-bold">3</span>
+        </a></li>
+        <li><a href="#" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 transition-all">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+          <span>Conexões</span>
+        </a></li>
+        <li><a href="#" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 transition-all">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          <span>Logs de Auditoria</span>
+        </a></li>
+      </ul>
+    </div>
+    <div class="p-3 border-t border-zinc-200">
+      <a href="#" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 transition-all">
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        <span>Logout</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- ── CONVERSATION LIST ────────────────────────────────── -->
+  <div class="conv-panel bg-white border-r border-zinc-200 flex flex-col h-screen overflow-hidden">
+    <div class="px-4 py-3 border-b border-zinc-200">
+      <h1 class="text-base font-bold text-zinc-900">Inbox</h1>
+      <p class="text-xs text-zinc-400 mt-0.5">Conversas recentes</p>
+    </div>
+    <div class="px-3 py-2 border-b border-zinc-100">
+      <input type="text" placeholder="Buscar..." 
+             class="input input-sm input-bordered w-full text-sm bg-zinc-50 border-zinc-200 focus:bg-white"
+             oninput="filterConversations(this.value)"/>
+    </div>
+    <div class="px-3 py-2 border-b border-zinc-100 bg-zinc-50">
+      <div class="flex gap-1 bg-zinc-100 rounded-lg p-1">
+        <button class="filter-tab active" onclick="filterChannel('all',this)">Todos</button>
+        <button class="filter-tab" onclick="filterChannel('whatsapp',this)">WA Web</button>
+        <button class="filter-tab" onclick="filterChannel('whatsapp_cloud',this)">WABA</button>
+        <button class="filter-tab" onclick="filterChannel('telegram',this)">Telegram</button>
+      </div>
+    </div>
+    <div id="conv-list" class="overflow-y-auto flex-1"></div>
+  </div>
+
+  <!-- ── CHAT PANEL ───────────────────────────────────────── -->
+  <div id="chat-panel" class="chat-panel">
+    <div class="chat-placeholder">
+      <svg class="h-14 w-14 mb-3 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+      </svg>
+      <p class="text-sm font-medium">Selecione uma conversa</p>
+      <p class="text-xs mt-1">Use o painel ao lado para abrir o chat</p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Mock conversations ────────────────────────────────────────────────────
+const CONVERSATIONS = [
+  { id:'c1', from:'+55 11 99999-0001', name:'Carlos Mendes', channel:'whatsapp', preview:'Oi! Queria saber sobre o status do pedido #4422', lastAt:'14:51', unread:true },
+  { id:'c2', from:'+55 21 98888-0202', name:'Ana Lima',     channel:'whatsapp_cloud', preview:'Perfeito, pode confirmar o horário?', lastAt:'14:23', unread:true },
+  { id:'c3', from:'@pedro_silva',      name:'Pedro Silva',  channel:'telegram', preview:'Obrigado! Já recebi.', lastAt:'13:45', unread:false },
+  { id:'c4', from:'+55 31 97777-0303', name:'Mariana Costa',channel:'whatsapp', preview:'Ok, vou aguardar seu retorno então 👍', lastAt:'12:10', unread:true },
+  { id:'c5', from:'+55 41 96666-0404', name:'João Fernandes',channel:'whatsapp_cloud', preview:'Preciso de uma segunda via da nota fiscal', lastAt:'11:33', unread:false },
+  { id:'c6', from:'@beatriz_r',        name:'Beatriz Rocha',channel:'telegram', preview:'Quando abre o suporte de manhã?', lastAt:'Ontem', unread:false },
+];
+
+// ── Mock message threads ──────────────────────────────────────────────────
+// direction: 'inbound' = received from contact, 'outbound' = sent by operator
+const MESSAGES = {
+  c1: [
+    { dir:'inbound',  text:'Oi! Queria saber sobre o status do pedido #4422', time:'14:30', date:'Hoje' },
+    { dir:'outbound', text:'Olá Carlos! Deixa eu verificar aqui para você.', time:'14:32' },
+    { dir:'outbound', text:'Seu pedido #4422 está em separação no estoque, previsão de envio hoje às 18h.', time:'14:33' },
+    { dir:'inbound',  text:'Ótimo! Tem como me mandar o código de rastreio quando enviar?', time:'14:35' },
+    { dir:'outbound', text:'Claro! Assim que o pedido for despachado você recebe aqui mesmo o rastreio 📦', time:'14:36' },
+    { dir:'inbound',  text:'Perfeito, obrigado pela atenção!', time:'14:48' },
+    { dir:'inbound',  text:'Oi! Queria saber sobre o status do pedido #4422', time:'14:51', new:true },
+  ],
+  c2: [
+    { dir:'inbound',  text:'Boa tarde! Quero reagendar minha consulta.', time:'14:00', date:'Hoje' },
+    { dir:'outbound', text:'Boa tarde Ana! Para qual dia você prefere?', time:'14:05' },
+    { dir:'inbound',  text:'Sexta-feira de manhã seria ótimo.', time:'14:08' },
+    { dir:'outbound', text:'Temos horário às 9h ou 10h30 na sexta. Qual prefere?', time:'14:10' },
+    { dir:'inbound',  text:'10h30 por favor!', time:'14:12' },
+    { dir:'outbound', text:'Feito! Consulta agendada para sexta às 10h30. ✅', time:'14:15' },
+    { dir:'inbound',  text:'Perfeito, pode confirmar o horário?', time:'14:23', new:true },
+  ],
+  c3: [
+    { dir:'inbound',  text:'Boa tarde, recebi meu produto mas veio com defeito.', time:'10:00', date:'Hoje' },
+    { dir:'outbound', text:'Olá Pedro, sinto muito pelo ocorrido! Pode descrever o defeito?', time:'10:05' },
+    { dir:'inbound',  text:'A tela tem um risco bem visível na parte superior.', time:'10:08' },
+    { dir:'outbound', text:'Entendi. Vou abrir uma troca para você. Qual seu endereço para coleta?', time:'10:12' },
+    { dir:'inbound',  text:'Rua das Flores 123, São Paulo – SP', time:'10:15' },
+    { dir:'outbound', text:'Perfeito. A coleta está agendada para amanhã entre 14h e 18h.', time:'10:20' },
+    { dir:'inbound',  text:'Obrigado! Já recebi.', time:'13:45' },
+  ],
+  c4: [
+    { dir:'inbound',  text:'Olá, gostaria de saber sobre o prazo de entrega.', time:'11:50', date:'Hoje' },
+    { dir:'outbound', text:'Olá Mariana! Para qual cidade seria a entrega?', time:'11:55' },
+    { dir:'inbound',  text:'Belo Horizonte, MG', time:'12:00' },
+    { dir:'outbound', text:'Para BH o prazo é de 3 a 5 dias úteis. Deseja continuar com o pedido?', time:'12:05' },
+    { dir:'inbound',  text:'Ok, vou aguardar seu retorno então 👍', time:'12:10', new:true },
+  ],
+  c5: [],
+  c6: [],
+};
+
+const CHANNEL_LABELS = {
+  whatsapp:       { label:'WA Web',    cls:'badge-whatsapp' },
+  whatsapp_cloud: { label:'WABA',      cls:'badge-waba' },
+  telegram:       { label:'Telegram',  cls:'badge-telegram' },
+};
+
+let activeChannel = 'all';
+let searchQuery   = '';
+let selectedId    = null;
+
+// ── Render conversation list ──────────────────────────────────────────────
+function renderList() {
+  const list = document.getElementById('conv-list');
+  const filtered = CONVERSATIONS.filter(c => {
+    const matchCh = activeChannel === 'all' || c.channel === activeChannel;
+    const q = searchQuery.toLowerCase();
+    return matchCh && (!q || c.name.toLowerCase().includes(q) || c.from.toLowerCase().includes(q) || c.preview.toLowerCase().includes(q));
+  });
+
+  if (!filtered.length) {
+    list.innerHTML = `<div style="padding:32px;text-align:center;color:#a1a1aa;font-size:13px;">Nenhuma conversa encontrada</div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(c => {
+    const badge = CHANNEL_LABELS[c.channel];
+    return `
+      <div class="conv-item px-4 py-3 ${c.id === selectedId ? 'selected' : ''}" onclick="openChat('${c.id}')">
+        <div class="flex items-start gap-3">
+          <div class="w-9 h-9 rounded-full bg-zinc-200 flex items-center justify-center text-sm font-bold text-zinc-600 flex-shrink-0">
+            ${c.name.charAt(0)}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-semibold text-zinc-900 truncate">${c.name}</span>
+              <span class="text-xs text-zinc-400 ml-2 flex-shrink-0">${c.lastAt}</span>
+            </div>
+            <div class="flex items-center gap-1 mt-0.5">
+              <span class="channel-badge ${badge.cls}">${badge.label}</span>
+              <span class="text-xs text-zinc-400 truncate">${c.from}</span>
+            </div>
+            <div class="flex items-center justify-between mt-1">
+              <p class="text-xs text-zinc-500 truncate flex-1">${c.preview}</p>
+              ${c.unread ? '<div class="unread-dot ml-2"></div>' : ''}
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Open chat panel for a conversation ───────────────────────────────────
+function openChat(id) {
+  selectedId = id;
+  const conv = CONVERSATIONS.find(c => c.id === id);
+  conv.unread = false;
+  renderList();
+
+  const msgs   = MESSAGES[id] || [];
+  const badge  = CHANNEL_LABELS[conv.channel];
+  const panel  = document.getElementById('chat-panel');
+
+  panel.innerHTML = `
+    <!-- Chat header -->
+    <div style="background:white;border-bottom:1px solid #e4e7ec;padding:10px 16px;display:flex;align-items:center;gap:10px;">
+      <div class="w-8 h-8 rounded-full bg-zinc-200 flex items-center justify-center text-sm font-bold text-zinc-600">
+        ${conv.name.charAt(0)}
+      </div>
+      <div>
+        <div class="text-sm font-semibold text-zinc-900">${conv.name}</div>
+        <div class="flex items-center gap-1.5">
+          <span class="channel-badge ${badge.cls}">${badge.label}</span>
+          <span class="text-xs text-zinc-400">${conv.from}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Messages area -->
+    <div id="messages-area" class="messages-area">
+      ${renderMessages(msgs)}
+    </div>
+
+    <!-- Input area -->
+    <div class="input-area">
+      <textarea id="msg-input" class="msg-input" rows="1" placeholder="Digite uma mensagem..."
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage('${id}')}"
+        oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+      <button class="send-btn" onclick="sendMessage('${id}')">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+        </svg>
+      </button>
+    </div>`;
+
+  scrollToBottom();
+}
+
+function renderMessages(msgs) {
+  let html = '';
+  let lastDate = null;
+  msgs.forEach(m => {
+    if (m.date && m.date !== lastDate) {
+      html += `<div class="date-divider"><span>${m.date}</span></div>`;
+      lastDate = m.date;
+    }
+    if (m.dir === 'inbound') {
+      html += `
+        <div class="msg-row inbound">
+          <div class="avatar">C</div>
+          <div class="bubble inbound">
+            ${m.text}
+            <span class="time">${m.time}</span>
+          </div>
+        </div>`;
+    } else {
+      html += `
+        <div class="msg-row outbound">
+          <div class="bubble outbound">
+            ${m.text}
+            <span class="time">${m.time} <span class="status">✓✓</span></span>
+          </div>
+        </div>`;
+    }
+  });
+  return html;
+}
+
+function sendMessage(convId) {
+  const input = document.getElementById('msg-input');
+  const text  = input.value.trim();
+  if (!text) return;
+
+  const now = new Date();
+  const time = now.toTimeString().slice(0,5);
+  const newMsg = { dir:'outbound', text, time };
+
+  if (!MESSAGES[convId]) MESSAGES[convId] = [];
+  MESSAGES[convId].push(newMsg);
+
+  // Update preview in conversation list
+  const conv = CONVERSATIONS.find(c => c.id === convId);
+  conv.preview = text;
+  conv.lastAt  = time;
+  renderList();
+
+  // Append bubble to messages area
+  const area = document.getElementById('messages-area');
+  const div  = document.createElement('div');
+  div.innerHTML = `
+    <div class="msg-row outbound">
+      <div class="bubble outbound">
+        ${escapeHtml(text)}
+        <span class="time">${time} <span class="status">✓</span></span>
+      </div>
+    </div>`;
+  area.appendChild(div.firstElementChild);
+
+  input.value = '';
+  input.style.height = 'auto';
+  scrollToBottom();
+}
+
+function scrollToBottom() {
+  setTimeout(() => {
+    const area = document.getElementById('messages-area');
+    if (area) area.scrollTop = area.scrollHeight;
+  }, 50);
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function filterChannel(ch, btn) {
+  activeChannel = ch;
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  renderList();
+}
+
+function filterConversations(q) {
+  searchQuery = q;
+  renderList();
+}
+
+// Initial render — auto-open first conversation for demo
+renderList();
+openChat('c1');
+</script>
+</body>
+</html>
