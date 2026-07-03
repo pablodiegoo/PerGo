@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Spike 004 — Inbox: Conversation List</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet"/>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .sidebar { width: 220px; min-width: 220px; }
+    .conv-list { width: 320px; min-width: 320px; }
+    .layout { display: flex; height: 100vh; overflow: hidden; }
+    .content { flex: 1; display: flex; flex-direction: column; }
+    .nav-item.active { background: #e4e4e7; color: #18181b; font-weight: 600; }
+    .conv-item { cursor: pointer; transition: background 0.15s; border-bottom: 1px solid #f4f4f5; }
+    .conv-item:hover { background: #f4f4f5; }
+    .conv-item.selected { background: #eff6ff; border-left: 3px solid #3b82f6; }
+    .channel-badge { font-size: 10px; padding: 1px 6px; border-radius: 9999px; font-weight: 600; }
+    .badge-whatsapp { background: #dcfce7; color: #16a34a; }
+    .badge-waba { background: #d1fae5; color: #059669; }
+    .badge-telegram { background: #dbeafe; color: #2563eb; }
+    .unread-dot { width: 8px; height: 8px; border-radius: 50%; background: #3b82f6; flex-shrink: 0; }
+    .filter-tab { padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s; color: #71717a; }
+    .filter-tab.active { background: white; color: #18181b; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #a1a1aa; }
+    .placeholder-chat { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fafafa; color: #a1a1aa; }
+  </style>
+</head>
+<body class="bg-zinc-100">
+
+<div class="layout">
+  <!-- SIDEBAR (PerGo style) -->
+  <nav class="sidebar bg-zinc-50 border-r border-zinc-200 flex flex-col justify-between shrink-0 h-screen sticky top-0">
+    <div>
+      <div class="flex justify-between items-center px-4 py-3 border-b border-zinc-200">
+        <h2 class="text-lg font-bold tracking-tight text-zinc-900">PerGo</h2>
+      </div>
+      <div class="px-4 py-2 border-b border-zinc-200">
+        <label class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Workspace</label>
+        <div class="text-sm font-medium text-zinc-700">Acme Corp</div>
+      </div>
+      <ul class="p-3 space-y-1">
+        <li>
+          <a href="#" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900 transition-all">
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+            <span>Visão Geral</span>
+          </a>
+        </li>
+        <li>
+          <a href="#" class="nav-item active flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-all">
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+            <span>Inbox</span>
+            <span class="ml-auto bg-blue-500 text-white text-xs rounded-full px-1.5 py-0.5 font-bold">3</span>
+          </a>
+        </li>
+        <li>
+          <a href="#" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900 transition-all">
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+            <span>Conexões</span>
+          </a>
+        </li>
+        <li>
+          <a href="#" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900 transition-all">
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            <span>Logs de Auditoria</span>
+          </a>
+        </li>
+        <li>
+          <a href="#" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900 transition-all">
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            <span>Configurações</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+    <div class="p-3 border-t border-zinc-200">
+      <a href="#" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900 transition-all">
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        <span>Logout</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- CONVERSATION LIST PANEL -->
+  <div class="conv-list bg-white border-r border-zinc-200 flex flex-col h-screen overflow-hidden">
+    <!-- Header -->
+    <div class="px-4 py-3 border-b border-zinc-200">
+      <h1 class="text-base font-bold text-zinc-900">Inbox</h1>
+      <p class="text-xs text-zinc-400 mt-0.5">Conversas recentes</p>
+    </div>
+
+    <!-- Search -->
+    <div class="px-3 py-2 border-b border-zinc-100">
+      <input type="text" placeholder="Buscar conversa..." 
+             class="input input-sm input-bordered w-full text-sm bg-zinc-50 border-zinc-200 focus:bg-white"
+             oninput="filterConversations(this.value)"/>
+    </div>
+
+    <!-- Channel filter tabs -->
+    <div class="px-3 py-2 border-b border-zinc-100 bg-zinc-50">
+      <div class="flex gap-1 bg-zinc-100 rounded-lg p-1 flex-wrap">
+        <button class="filter-tab active" onclick="filterChannel('all', this)">Todos</button>
+        <button class="filter-tab" onclick="filterChannel('whatsapp', this)">WA Web</button>
+        <button class="filter-tab" onclick="filterChannel('whatsapp_cloud', this)">WABA</button>
+        <button class="filter-tab" onclick="filterChannel('telegram', this)">Telegram</button>
+      </div>
+    </div>
+
+    <!-- Conversation list -->
+    <div id="conv-list" class="overflow-y-auto flex-1">
+      <!-- Injected by JS below -->
+    </div>
+  </div>
+
+  <!-- MAIN AREA: placeholder for chat (Spike 005 will fill this) -->
+  <div class="placeholder-chat flex-1">
+    <svg class="h-16 w-16 mb-4 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+    </svg>
+    <p class="text-sm font-medium">Selecione uma conversa</p>
+    <p class="text-xs mt-1">Clique em uma conversa à esquerda para abrir o chat</p>
+  </div>
+</div>
+
+<script>
+// ── Mock data: derived from audit_logs grouped by (from, channel) ──────────
+// In production this comes from:
+//   SELECT from, channel, MAX(created_at) as last_at, COUNT(*) as msg_count,
+//          (SELECT body FROM audit_logs WHERE from=$1 AND channel=$2 ORDER BY created_at DESC LIMIT 1) as preview
+//   FROM audit_logs WHERE event_type='inbound_message' AND workspace_id=$3
+//   GROUP BY from, channel ORDER BY last_at DESC
+
+const CONVERSATIONS = [
+  {
+    id: 'c1',
+    from: '+55 11 99999-0001',
+    name: 'Carlos Mendes',
+    channel: 'whatsapp',
+    preview: 'Oi! Queria saber sobre o status do pedido #4422',
+    lastAt: '14:51',
+    unread: true,
+    msgCount: 7,
+  },
+  {
+    id: 'c2',
+    from: '+55 21 98888-0202',
+    name: 'Ana Lima',
+    channel: 'whatsapp_cloud',
+    preview: 'Perfeito, pode confirmar o horário?',
+    lastAt: '14:23',
+    unread: true,
+    msgCount: 3,
+  },
+  {
+    id: 'c3',
+    from: '@pedro_silva',
+    name: 'Pedro Silva',
+    channel: 'telegram',
+    preview: 'Obrigado! Já recebi.',
+    lastAt: '13:45',
+    unread: false,
+    msgCount: 12,
+  },
+  {
+    id: 'c4',
+    from: '+55 31 97777-0303',
+    name: 'Mariana Costa',
+    channel: 'whatsapp',
+    preview: 'Ok, vou aguardar seu retorno então 👍',
+    lastAt: '12:10',
+    unread: true,
+    msgCount: 2,
+  },
+  {
+    id: 'c5',
+    from: '+55 41 96666-0404',
+    name: 'João Fernandes',
+    channel: 'whatsapp_cloud',
+    preview: 'Preciso de uma segunda via da nota fiscal',
+    lastAt: '11:33',
+    unread: false,
+    msgCount: 5,
+  },
+  {
+    id: 'c6',
+    from: '@beatriz_r',
+    name: 'Beatriz Rocha',
+    channel: 'telegram',
+    preview: 'Quando abre o suporte de manhã?',
+    lastAt: 'Ontem',
+    unread: false,
+    msgCount: 1,
+  },
+  {
+    id: 'c7',
+    from: '+55 11 95555-0505',
+    name: 'Rafael Souza',
+    channel: 'whatsapp',
+    preview: 'Qual o prazo de entrega para SP?',
+    lastAt: 'Ontem',
+    unread: false,
+    msgCount: 4,
+  },
+];
+
+const CHANNEL_LABELS = {
+  whatsapp: { label: 'WA Web', cls: 'badge-whatsapp' },
+  whatsapp_cloud: { label: 'WABA', cls: 'badge-waba' },
+  telegram: { label: 'Telegram', cls: 'badge-telegram' },
+};
+
+let activeChannel = 'all';
+let searchQuery = '';
+let selectedId = null;
+
+function renderList() {
+  const list = document.getElementById('conv-list');
+  const filtered = CONVERSATIONS.filter(c => {
+    const matchChannel = activeChannel === 'all' || c.channel === activeChannel;
+    const q = searchQuery.toLowerCase();
+    const matchSearch = !q || c.name.toLowerCase().includes(q) || c.from.toLowerCase().includes(q) || c.preview.toLowerCase().includes(q);
+    return matchChannel && matchSearch;
+  });
+
+  if (filtered.length === 0) {
+    list.innerHTML = `
+      <div class="empty-state" style="height:200px">
+        <svg class="h-10 w-10 mb-2 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+        </svg>
+        <p class="text-sm">Nenhuma conversa encontrada</p>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = filtered.map(c => {
+    const badge = CHANNEL_LABELS[c.channel];
+    const isSelected = c.id === selectedId;
+    return `
+      <div class="conv-item px-4 py-3 ${isSelected ? 'selected' : ''}" onclick="selectConv('${c.id}')">
+        <div class="flex items-start gap-3">
+          <div class="relative flex-shrink-0">
+            <div class="w-9 h-9 rounded-full bg-zinc-200 flex items-center justify-center text-sm font-bold text-zinc-600">
+              ${c.name.charAt(0)}
+            </div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-sm font-semibold text-zinc-900 truncate">${c.name}</span>
+              <span class="text-xs text-zinc-400 flex-shrink-0">${c.lastAt}</span>
+            </div>
+            <div class="flex items-center gap-1.5 mt-0.5">
+              <span class="channel-badge ${badge.cls}">${badge.label}</span>
+              <span class="text-xs text-zinc-400 truncate">${c.from}</span>
+            </div>
+            <div class="flex items-center justify-between mt-1">
+              <p class="text-xs text-zinc-500 truncate flex-1">${c.preview}</p>
+              ${c.unread ? '<div class="unread-dot ml-2"></div>' : ''}
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function selectConv(id) {
+  selectedId = id;
+  renderList();
+  const conv = CONVERSATIONS.find(c => c.id === id);
+  // Mark it as read
+  conv.unread = false;
+  // In Spike 005, this triggers the chat pane to load via HTMX
+  document.querySelector('.placeholder-chat p.font-medium').textContent = `Conversa com ${conv.name}`;
+  document.querySelector('.placeholder-chat p.text-xs').textContent = `Canal: ${CHANNEL_LABELS[conv.channel].label} · ${conv.msgCount} mensagens — Chat view será o Spike 005 →`;
+}
+
+function filterChannel(channel, btn) {
+  activeChannel = channel;
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  renderList();
+}
+
+function filterConversations(query) {
+  searchQuery = query;
+  renderList();
+}
+
+// Initial render
+renderList();
+</script>
+</body>
+</html>

@@ -7,6 +7,11 @@ Redesign the PerGo channel credentials and devices architecture to support multi
 - Must support multiple configurations of the same channel type per workspace.
 - The public API `POST /api/v1/messages` must allow selecting the sender via a `from` field (matching phone number or bot username) or defaulting to a primary connection.
 - Outbound dispatch routing must locate and load credentials/sessions dynamically without requiring application restarts.
+- Inbox must show conversations grouped by sender (from + channel) derived from audit_logs GROUP BY — no new table needed for MVP
+- Chat view must use split-pane layout (sidebar | conversation list | chat panel) with HTMX partial replacement
+- Message bubbles: inbound = left-aligned white, outbound = right-aligned blue
+- Realtime updates via HTMX polling: chat panel at 3s (append-only with ID cursor), conversation list at 5s (full-replace)
+- Unread notifications for background conversations via toast — no browser notification API for MVP
 
 ## Spikes
 
@@ -15,3 +20,6 @@ Redesign the PerGo channel credentials and devices architecture to support multi
 | 001 | multi-instance-schema | standard | Given a workspace with multiple configurations, when migrated to a unified connections schema, then we can store and encrypt distinct credentials/sessions cleanly. | VALIDATED | db, schema |
 | 002 | api-routing-payload | standard | Given a message request, when multiple instances exist, then we can route it dynamically via the `from` field with fallback support. | VALIDATED | api, routing |
 | 003 | dynamic-adapter-registry | standard | Given a running server, when connection credentials change, then the registry can dynamically instantiate/update dispatchers in memory. | VALIDATED | concurrency, registry |
+| 004 | inbox-conversation-list | standard | Given inbound messages in audit_logs, when operator opens Inbox, then conversations grouped by sender with channel filter tabs | VALIDATED | ui, inbox, admin |
+| 005 | inbox-chat-view | standard | Given a selected conversation, when operator clicks it, then split-pane chat loads with alternating bubbles via HTMX | VALIDATED | ui, inbox, chat, htmx |
+| 006 | inbox-realtime-polling | standard | Given chat is open, when new inbound arrives, then panel updates within 3s without user action | VALIDATED | ui, inbox, realtime, polling |
