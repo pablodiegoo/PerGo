@@ -1,37 +1,32 @@
 ---
-status: testing
+status: complete
 phase: 09-conversational-inbox
 source: [09-VERIFICATION.md]
 started: 2026-07-03T18:00:00Z
-updated: 2026-07-03T18:00:00Z
+updated: 2026-07-03T23:30:00Z
 ---
 
 ## Current Test
 
-number: 2
-name: In-page Toast notifications on background events
-expected: |
-  With one chat open, send a simulated webhook to another connection;
-  verify a toast notification pops up top-center and auto-dismisses in ~3.5 seconds.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
 ### 1. Split-pane dynamic layout scrolling and styling
 expected: Verify responsive three-column layout, conversation list scrolling, chat panel message rendering, and alternating bubble alignment
 result: pass
-fix: commit 39723d7 — removed .content padding via :has(.inbox-shell), added responsive breakpoints for inbox-sidebar
+fix: commits 39723d7, c99c19e, 511b626 — removed double-wrapped Base layout + conflicting sticky class causing 240px gap
 
 ### 2. In-page Toast notifications on background events
 expected: With one chat open, send a simulated webhook to another connection; verify a toast notification pops up top-center and auto-dismisses in ~3.5 seconds
-result: pending
+result: pass
 
 ## Summary
 
 total: 2
-passed: 1
+passed: 2
 issues: 0
-pending: 1
+pending: 0
 skipped: 0
 blocked: 0
 
