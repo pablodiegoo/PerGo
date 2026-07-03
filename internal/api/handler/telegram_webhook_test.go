@@ -88,6 +88,7 @@ func TestTelegramWebhookHandler(t *testing.T) {
 	configPayload := map[string]string{
 		"token":        "bot123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
 		"secret_token": "my-secret-telegram-webhook-token",
+		"bot_username": "@testbot",
 	}
 	configBytes, _ := json.Marshal(configPayload)
 	err = credsRepo.Save(ctx, ws.ID, "telegram", configBytes)
@@ -160,7 +161,7 @@ func TestTelegramWebhookHandler(t *testing.T) {
 		}
 
 		// Verify upsert in DB
-		sess, err := sessRepo.Get(ctx, ws.ID, "987654321", "telegram")
+		sess, err := sessRepo.Get(ctx, ws.ID, "987654321", "telegram", "@testbot")
 		if err != nil {
 			t.Fatalf("failed to retrieve upserted session: %v", err)
 		}

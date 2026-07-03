@@ -10,27 +10,28 @@ import (
 )
 
 type mockSessionReader struct {
-	getFn func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string) (*repository.RecipientSession, error)
+	getFn func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error)
 }
 
-func (m *mockSessionReader) Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string) (*repository.RecipientSession, error) {
-	return m.getFn(ctx, workspaceID, recipientPhone, channel)
+func (m *mockSessionReader) Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
+	return m.getFn(ctx, workspaceID, recipientPhone, channel, recipientIdentity)
 }
 
 func TestWindowChecker_IsWindowOpen(t *testing.T) {
 	wsID := uuid.New()
 	phone := "+1234567890"
 	channelName := "whatsapp_cloud"
+	recIdentity := "5511999999999"
 
 	tests := []struct {
 		name     string
-		mockGet  func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string) (*repository.RecipientSession, error)
+		mockGet  func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error)
 		wantOpen bool
 		wantErr  bool
 	}{
 		{
 			name: "Session not found (expired/missing)",
-			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string) (*repository.RecipientSession, error) {
+			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
 				return nil, repository.ErrSessionNotFound
 			},
 			wantOpen: false,
@@ -38,7 +39,7 @@ func TestWindowChecker_IsWindowOpen(t *testing.T) {
 		},
 		{
 			name: "DB error",
-			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string) (*repository.RecipientSession, error) {
+			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
 				return nil, repository.ErrCredentialsNotFound // some other error
 			},
 			wantOpen: false,
@@ -46,7 +47,7 @@ func TestWindowChecker_IsWindowOpen(t *testing.T) {
 		},
 		{
 			name: "Window open (last inbound 1 hour ago)",
-			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string) (*repository.RecipientSession, error) {
+			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
 				return &repository.RecipientSession{
 					WorkspaceID:    workspaceID,
 					RecipientPhone: recipientPhone,
@@ -59,7 +60,7 @@ func TestWindowChecker_IsWindowOpen(t *testing.T) {
 		},
 		{
 			name: "Window closed (last inbound 25 hours ago)",
-			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string) (*repository.RecipientSession, error) {
+			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
 				return &repository.RecipientSession{
 					WorkspaceID:    workspaceID,
 					RecipientPhone: recipientPhone,
@@ -77,7 +78,7 @@ func TestWindowChecker_IsWindowOpen(t *testing.T) {
 			mockReader := &mockSessionReader{getFn: tt.mockGet}
 			checker := NewWindowChecker(mockReader)
 
-			open, err := checker.IsWindowOpen(context.Background(), wsID, phone, channelName)
+			open, err := checker.IsWindowOpen(context.Background(), wsID, phone, channelName, recIdentity)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("IsWindowOpen() error = %v, wantErr %v", err, tt.wantErr)
 			}

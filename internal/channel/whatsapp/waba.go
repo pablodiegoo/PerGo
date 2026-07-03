@@ -17,7 +17,7 @@ import (
 
 // WindowChecker defines the interface for checking if a customer service window is open.
 type WindowChecker interface {
-	IsWindowOpen(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string) (bool, error)
+	IsWindowOpen(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (bool, error)
 }
 
 // WABAAdapter implements channel.Dispatcher for WhatsApp Cloud (WABA) REST API.
@@ -115,7 +115,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 		return "", channel.NewTerminalError(err)
 	}
 
-	credsBytes, err := a.connectionsRepo.GetCredentials(ctx, m.ConnectionID)
+	conn, err := a.connectionsRepo.GetByID(ctx, m.ConnectionID)
 	if err != nil {
 		if errors.Is(err, repository.ErrConnectionNotFound) {
 			return "", channel.NewTerminalError(fmt.Errorf("connection credentials not found: %w", err))
@@ -124,7 +124,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 	}
 
 	var config WABAConfig
-	if err := json.Unmarshal(credsBytes, &config); err != nil {
+	if err := json.Unmarshal(conn.Credentials, &config); err != nil {
 		return "", channel.NewTerminalError(fmt.Errorf("invalid credentials format: %w", err))
 	}
 
@@ -145,7 +145,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 
 	if templateName == "" {
 		if a.windowChecker != nil {
-			open, err := a.windowChecker.IsWindowOpen(ctx, workspaceID, m.To, "whatsapp_cloud")
+			open, err := a.windowChecker.IsWindowOpen(ctx, workspaceID, m.To, "whatsapp_cloud", conn.SenderIdentity)
 			if err != nil {
 				return "", err
 			}

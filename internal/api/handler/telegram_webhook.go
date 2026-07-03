@@ -120,6 +120,7 @@ type telegramChat struct {
 type telegramConfig struct {
 	Token       string `json:"token"`
 	SecretToken string `json:"secret_token"`
+	BotUsername string `json:"bot_username"`
 }
 
 // Handle processes the incoming Telegram webhook POST request.
@@ -180,8 +181,13 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 			}
 		}
 
+		botUsername := config.BotUsername
+		if botUsername == "" {
+			botUsername = "@bot"
+		}
+
 		// Upsert recipient session
-		err = h.recipientSessionRepo.Upsert(ctx, workspaceID, chatIDStr, "telegram", time.Now().UTC())
+		err = h.recipientSessionRepo.Upsert(ctx, workspaceID, chatIDStr, "telegram", botUsername, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -201,6 +207,7 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 			Timestamp:   time.Now().UTC().Format(time.RFC3339),
 			WorkspaceID: workspaceID.String(),
 			From:        chatIDStr,
+			To:          botUsername,
 		}
 
 		if update.Message.Text != "" {

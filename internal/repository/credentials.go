@@ -2,13 +2,13 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-
 )
 
 // ErrCredentialsNotFound is returned when credentials cannot be found.
@@ -39,6 +39,16 @@ func (r *CredentialsRepository) Save(ctx context.Context, workspaceID uuid.UUID,
 		return err
 	}
 
+	var senderIdentity string
+	if channel == "telegram" {
+		var tgCfg struct {
+			BotUsername string `json:"bot_username"`
+		}
+		if err := json.Unmarshal(plaintext, &tgCfg); err == nil && tgCfg.BotUsername != "" {
+			senderIdentity = tgCfg.BotUsername
+		}
+	}
+
 	// Check if a connection already exists for this workspace and channel (legacy uniqueness)
 	var connID uuid.UUID
 	err = r.pool.QueryRow(ctx,
@@ -50,9 +60,9 @@ func (r *CredentialsRepository) Save(ctx context.Context, workspaceID uuid.UUID,
 		// Update existing connection's credentials
 		_, err = r.pool.Exec(ctx,
 			`UPDATE connections 
-			 SET credentials = $2, key_id = $3, key_version = $4, updated_at = now() 
+			 SET credentials = $2, key_id = $3, key_version = $4, sender_identity = COALESCE(NULLIF($5, ''), sender_identity), updated_at = now() 
 			 WHERE id = $1`,
-			connID, ciphertext, keyID, keyVersion,
+			connID, ciphertext, keyID, keyVersion, senderIdentity,
 		)
 		return err
 	}
@@ -64,7 +74,9 @@ func (r *CredentialsRepository) Save(ctx context.Context, workspaceID uuid.UUID,
 			name = "Telegram Bot"
 		}
 		newID := uuid.New()
-		senderIdentity := fmt.Sprintf("legacy_%s_%s", channel, newID.String())
+		if senderIdentity == "" {
+			senderIdentity = fmt.Sprintf("legacy_%s_%s", channel, newID.String())
+		}
 		_, err = r.pool.Exec(ctx,
 			`INSERT INTO connections (
 				id, workspace_id, name, channel, sender_identity, status, is_default, 

@@ -11,7 +11,7 @@ import (
 // RecipientSessionReader defines the interface for retrieving recipient sessions,
 // facilitating unit testing of WindowChecker without a database connection.
 type RecipientSessionReader interface {
-	Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string) (*repository.RecipientSession, error)
+	Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error)
 }
 
 // WindowChecker checks if the 24-hour customer service window is open.
@@ -26,8 +26,8 @@ func NewWindowChecker(repo RecipientSessionReader) *WindowChecker {
 
 // IsWindowOpen checks if a message can be sent to the recipient on the given channel
 // under the 24-hour customer service window rule.
-func (w *WindowChecker) IsWindowOpen(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string) (bool, error) {
-	sess, err := w.repo.Get(ctx, workspaceID, recipientPhone, channel)
+func (w *WindowChecker) IsWindowOpen(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (bool, error) {
+	sess, err := w.repo.Get(ctx, workspaceID, recipientPhone, channel, recipientIdentity)
 	if err != nil {
 		if err == repository.ErrSessionNotFound {
 			return false, nil

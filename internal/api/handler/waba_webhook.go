@@ -30,6 +30,7 @@ type InboundEventPayload struct {
 	Timestamp   string           `json:"timestamp"`
 	WorkspaceID string           `json:"workspace_id"`
 	From        string           `json:"from"`
+	To          string           `json:"to"`
 	Body        string           `json:"body,omitempty"`
 	Media       *InboundMedia    `json:"media,omitempty"`
 	Location    *InboundLocation `json:"location,omitempty"`
@@ -239,8 +240,13 @@ func (h *WABAWebhookHandler) HandlePost(c *echo.Context) error {
 					continue
 				}
 
+				recipientIdentity := change.Value.Metadata.DisplayPhoneNumber
+				if recipientIdentity == "" {
+					recipientIdentity = change.Value.Metadata.PhoneNumberID
+				}
+
 				// Upsert recipient session for window tracking
-				_ = h.sessRepo.Upsert(ctx, workspaceID, msg.From, "whatsapp_cloud", time.Now().UTC())
+				_ = h.sessRepo.Upsert(ctx, workspaceID, msg.From, "whatsapp_cloud", recipientIdentity, time.Now().UTC())
 
 				// Extract contents
 				traceID := uuid.New().String()
@@ -252,6 +258,7 @@ func (h *WABAWebhookHandler) HandlePost(c *echo.Context) error {
 					Timestamp:   time.Now().UTC().Format(time.RFC3339),
 					WorkspaceID: workspaceID.String(),
 					From:        msg.From,
+					To:          recipientIdentity,
 				}
 
 				if msg.Text != nil {
