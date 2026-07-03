@@ -9,7 +9,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/pablojhp.pergo/internal/platform/crypto"
 )
 
 // ErrCredentialsNotFound is returned when credentials cannot be found.
@@ -18,14 +17,14 @@ var ErrCredentialsNotFound = errors.New("credentials not found")
 // CredentialsRepository provides CRUD operations for channel credentials, shimmed on top of connections table.
 type CredentialsRepository struct {
 	pool      *pgxpool.Pool
-	encryptor *crypto.Encryptor
+	provider CredentialProvider
 }
 
 // NewCredentialsRepository creates a new CredentialsRepository.
-func NewCredentialsRepository(pool *pgxpool.Pool, encryptor *crypto.Encryptor) *CredentialsRepository {
+func NewCredentialsRepository(pool *pgxpool.Pool, provider CredentialProvider) *CredentialsRepository {
 	return &CredentialsRepository{
-		pool:      pool,
-		encryptor: encryptor,
+		pool:     pool,
+		provider: provider,
 	}
 }
 
@@ -35,7 +34,7 @@ func (r *CredentialsRepository) Save(ctx context.Context, workspaceID uuid.UUID,
 		return errors.New("credentials payload cannot be empty")
 	}
 
-	ciphertext, keyID, keyVersion, err := r.encryptor.Encrypt(plaintext)
+	ciphertext, keyID, keyVersion, err := r.provider.Encrypt(plaintext)
 	if err != nil {
 		return err
 	}
@@ -100,7 +99,7 @@ func (r *CredentialsRepository) Get(ctx context.Context, workspaceID uuid.UUID, 
 		return nil, ErrCredentialsNotFound
 	}
 
-	return r.encryptor.Decrypt(ciphertext)
+	return r.provider.Decrypt(ciphertext)
 }
 
 // Delete removes credentials for a workspace and channel.

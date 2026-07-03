@@ -10,8 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/pablojhp.pergo/internal/platform/crypto"
 )
 
 // ErrConnectionNotFound is returned when a connection cannot be found.
@@ -39,14 +37,14 @@ type Connection struct {
 // ConnectionRepository manages CRUD operations and credentials crypto for Connection.
 type ConnectionRepository struct {
 	pool      *pgxpool.Pool
-	encryptor *crypto.Encryptor
+	provider CredentialProvider
 }
 
 // NewConnectionRepository creates a new ConnectionRepository.
-func NewConnectionRepository(pool *pgxpool.Pool, encryptor *crypto.Encryptor) *ConnectionRepository {
+func NewConnectionRepository(pool *pgxpool.Pool, provider CredentialProvider) *ConnectionRepository {
 	return &ConnectionRepository{
-		pool:      pool,
-		encryptor: encryptor,
+		pool:     pool,
+		provider: provider,
 	}
 }
 
@@ -62,7 +60,7 @@ func (r *ConnectionRepository) Create(ctx context.Context, c *Connection) error 
 
 	if len(c.Credentials) > 0 {
 		var err error
-		ciphertext, keyID, keyVersion, err = r.encryptor.Encrypt(c.Credentials)
+		ciphertext, keyID, keyVersion, err = r.provider.Encrypt(c.Credentials)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt credentials on create: %w", err)
 		}
@@ -224,7 +222,7 @@ func (r *ConnectionRepository) SaveCredentials(ctx context.Context, id uuid.UUID
 		return errors.New("credentials payload cannot be empty")
 	}
 
-	ciphertext, keyID, keyVersion, err := r.encryptor.Encrypt(plaintext)
+	ciphertext, keyID, keyVersion, err := r.provider.Encrypt(plaintext)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt credentials: %w", err)
 	}
@@ -258,7 +256,7 @@ func (r *ConnectionRepository) GetCredentials(ctx context.Context, id uuid.UUID)
 		return nil, nil
 	}
 
-	return r.encryptor.Decrypt(ciphertext)
+	return r.provider.Decrypt(ciphertext)
 }
 
 func (r *ConnectionRepository) scanAndDecrypt(row pgx.Row) (*Connection, error) {
@@ -295,7 +293,7 @@ func (r *ConnectionRepository) scanAndDecrypt(row pgx.Row) (*Connection, error) 
 	}
 
 	if len(ciphertext) > 0 {
-		plaintext, err := r.encryptor.Decrypt(ciphertext)
+		plaintext, err := r.provider.Decrypt(ciphertext)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decrypt credentials: %w", err)
 		}
@@ -336,7 +334,7 @@ func (r *ConnectionRepository) scanRowAndDecrypt(rows pgx.Rows) (*Connection, er
 	}
 
 	if len(ciphertext) > 0 {
-		plaintext, err := r.encryptor.Decrypt(ciphertext)
+		plaintext, err := r.provider.Decrypt(ciphertext)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decrypt credentials: %w", err)
 		}
