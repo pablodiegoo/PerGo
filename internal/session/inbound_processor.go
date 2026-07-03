@@ -87,12 +87,13 @@ func (p *InboundProcessor) Handle(
 	mediaMeta *MediaMeta,
 	workspaceID uuid.UUID,
 	senderJID string,
+	recipientIdentity string,
 ) {
 	messageID := v.Info.ID
 
 	// 1. Recipient Session Tracking
 	if p.recipientSessionRepo != nil {
-		_ = p.recipientSessionRepo.Upsert(ctx, workspaceID, senderJID, "whatsapp", time.Now().UTC())
+		_ = p.recipientSessionRepo.Upsert(ctx, workspaceID, senderJID, "whatsapp", recipientIdentity, time.Now().UTC())
 	}
 
 	// 2. Deduplication check
@@ -126,6 +127,7 @@ func (p *InboundProcessor) Handle(
 		Timestamp   string           `json:"timestamp"`
 		WorkspaceID string           `json:"workspace_id"`
 		From        string           `json:"from"`
+		To          string           `json:"to"`
 		Body        string           `json:"body,omitempty"`
 		Media       *InboundMedia    `json:"media,omitempty"`
 		Location    *InboundLocation `json:"location,omitempty"`
@@ -138,6 +140,7 @@ func (p *InboundProcessor) Handle(
 		Timestamp:   time.Now().UTC().Format(time.RFC3339),
 		WorkspaceID: workspaceID.String(),
 		From:        senderJID,
+		To:          recipientIdentity,
 	}
 
 	// Extract Text/Body

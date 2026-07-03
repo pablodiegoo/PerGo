@@ -215,7 +215,11 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *Device) error {
 
 			// Delegate to processor
 			if m.inboundProcessor != nil {
-				m.inboundProcessor.Handle(ctxBg, v, mediaBytes, mediaMeta, d.WorkspaceID, senderJID)
+				recipientIdentity := d.Phone
+				if recipientIdentity == "" {
+					recipientIdentity = d.JID
+				}
+				m.inboundProcessor.Handle(ctxBg, v, mediaBytes, mediaMeta, d.WorkspaceID, senderJID, recipientIdentity)
 			}
 		}
 	})
