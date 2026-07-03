@@ -91,11 +91,6 @@ func TestDeviceHandler_StartPairing_LimitExceeded(t *testing.T) {
 		nil,
 		"",
 		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
 	)
 
 	h := &admin.DeviceHandler{

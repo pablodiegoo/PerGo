@@ -26,12 +26,7 @@ func TestStartPairing_LimitExceeded(t *testing.T) {
 		registry,
 		nil, // dispatchers
 		"",  // waVersion
-		nil, // recipientSessionRepo
-		nil, // s3Client
-		nil, // dedupRepo
-		nil, // publisher
-		nil, // auditWriter
-		nil, // wsRepo
+		nil, // inboundProcessor
 	)
 
 	ctx := context.Background()
