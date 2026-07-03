@@ -3,7 +3,7 @@ package layout
 import "github.com/pablojhp.pergo/internal/repository"
 
 templ Sidebar() {
-	<nav class="sidebar bg-zinc-50 border-r border-zinc-200 flex flex-col justify-between shrink-0 h-screen sticky top-0 font-sans">
+	<nav class="sidebar bg-zinc-50 border-r border-zinc-200 flex flex-col justify-between shrink-0 h-screen font-sans">
 		<div class="sidebar-header flex justify-between items-center px-4 py-3 border-b border-zinc-200">
 			<h2 class="text-lg font-bold tracking-tight text-zinc-900">PerGo</h2>
 			<button type="button" class="btn btn-ghost btn-xs text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 p-1" onclick="document.querySelector('.sidebar').classList.toggle('collapsed')">
