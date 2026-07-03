@@ -32,6 +32,7 @@ human_items: 2 pending
 ## Plan Deliverables Verified
 
 ### Plan 01 — Data Layer
+
 | Deliverable | Status |
 |-------------|--------|
 | Migration 013 (recipient_identity, compound PK, index) | ✅ Exists |
@@ -44,6 +45,7 @@ human_items: 2 pending
 | Multi-instance window checker isolation | ✅ `window.go` |
 
 ### Plan 02 — UI Shell
+
 | Deliverable | Status |
 |-------------|--------|
 | Migration 014 (last_read_at) | ✅ Exists |
@@ -56,6 +58,7 @@ human_items: 2 pending
 | Routes registered in main.go | ✅ 5 routes at `/admin/inbox*` |
 
 ### Plan 03 — Interactive Chat
+
 | Deliverable | Status |
 |-------------|--------|
 | ChatPanel templ (3s polling, auto-grow textarea) | ✅ `chat_panel.templ` |
