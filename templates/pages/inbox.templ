@@ -1,9 +1,14 @@
 package pages
 
 import (
+	"fmt"
+
+	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/components"
 	"github.com/pablojhp.pergo/templates/layout"
 )
 
+// InboxMessage kept for backward compatibility during transition.
 type InboxMessage struct {
 	TraceID   string
 	From      string
@@ -11,56 +16,48 @@ type InboxMessage struct {
 	CreatedAt string
 }
 
-templ InboxPage(channel string, channelName string, entries []InboxMessage) {
-	@layout.Base("Inbox - "+channelName, InboxPageContent(channel, channelName, entries))
+// InboxPage renders the full split-pane inbox page with sidebar, conversation list, and chat panel.
+templ InboxPage(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int) {
+	@layout.Base("Inbox", InboxContent(conversations, unreadMap, activeChannel, unreadCount))
 }
 
-templ InboxPageContent(channel string, channelName string, entries []InboxMessage) {
-	<div class="page-header flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-		<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Inbox: { channelName }</h1>
-		<div class="tabs tabs-boxed bg-zinc-100 p-1 rounded-lg inline-flex">
-			if channel == "whatsapp" {
-				<a href="/admin/inbox/whatsapp" class="tab tab-active bg-white text-zinc-900 shadow-sm rounded-md font-semibold px-4 py-1.5 text-sm">WhatsApp Web</a>
-			} else {
-				<a href="/admin/inbox/whatsapp" class="tab text-zinc-500 hover:text-zinc-900 px-4 py-1.5 text-sm">WhatsApp Web</a>
-			}
-			if channel == "whatsapp_cloud" {
-				<a href="/admin/inbox/whatsapp_cloud" class="tab tab-active bg-white text-zinc-900 shadow-sm rounded-md font-semibold px-4 py-1.5 text-sm">WhatsApp Cloud</a>
-			} else {
-				<a href="/admin/inbox/whatsapp_cloud" class="tab text-zinc-500 hover:text-zinc-900 px-4 py-1.5 text-sm">WhatsApp Cloud</a>
-			}
-			if channel == "telegram" {
-				<a href="/admin/inbox/telegram" class="tab tab-active bg-white text-zinc-900 shadow-sm rounded-md font-semibold px-4 py-1.5 text-sm">Telegram</a>
-			} else {
-				<a href="/admin/inbox/telegram" class="tab text-zinc-500 hover:text-zinc-900 px-4 py-1.5 text-sm">Telegram</a>
-			}
+// InboxContent renders the split-pane layout (conversation list + chat panel).
+// Used both for full-page render and HTMX partial swap.
+templ InboxContent(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int) {
+	<div class="inbox-shell flex h-full w-full overflow-hidden">
+		<!-- Left panel: conversation list -->
+		<div class="inbox-sidebar w-80 flex-shrink-0 border-r border-zinc-200 flex flex-col bg-white h-full overflow-hidden">
+			<!-- Header -->
+			<div class="inbox-sidebar-header flex items-center justify-between px-4 py-3 border-b border-zinc-200">
+				<h1 class="text-base font-bold text-zinc-900">Inbox</h1>
+				if unreadCount > 0 {
+					<span class="badge-unread text-xs font-bold bg-blue-500 text-white px-2 py-0.5 rounded-full">{ fmt.Sprintf("%d", unreadCount) }</span>
+				}
+			</div>
+			<!-- Search bar (static UI, future enhancement) -->
+			<div class="inbox-search px-3 py-2 border-b border-zinc-100">
+				<div class="relative">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-2.5 top-2 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+					</svg>
+					<input type="search" placeholder="Buscar conversa…" class="w-full pl-8 pr-3 py-1.5 text-sm border border-zinc-200 rounded-md bg-zinc-50 text-zinc-700 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-transparent" disabled/>
+				</div>
+			</div>
+			<!-- Conversation list with polling -->
+			@components.ConvList(conversations, unreadMap, activeChannel, unreadCount)
 		</div>
-	</div>
-	<div class="section">
-		<table class="table">
-			<thead>
-				<tr>
-					<th>Timestamp</th>
-					<th>From</th>
-					<th>Message</th>
-					<th>Trace ID</th>
-				</tr>
-			</thead>
-			<tbody>
-				for _, entry := range entries {
-					<tr>
-						<td>{ entry.CreatedAt }</td>
-						<td><strong>{ entry.From }</strong></td>
-						<td>{ entry.Body }</td>
-						<td><small>{ entry.TraceID }</small></td>
-					</tr>
-				}
-				if len(entries) == 0 {
-					<tr>
-						<td colspan="4" class="empty-state">No messages received in this channel yet.</td>
-					</tr>
-				}
-			</tbody>
-		</table>
+		<!-- Right panel: chat view -->
+		<div id="chat-panel" class="chat-panel flex-1 flex flex-col items-center justify-center bg-zinc-50 h-full overflow-hidden">
+			<!-- Placeholder when no chat is selected -->
+			<div class="chat-placeholder flex flex-col items-center gap-4 text-zinc-400 select-none">
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+				</svg>
+				<div class="text-center">
+					<p class="font-semibold text-zinc-500">Selecione uma conversa</p>
+					<p class="text-sm mt-1">Escolha uma conversa à esquerda para visualizar o histórico.</p>
+				</div>
+			</div>
+		</div>
 	</div>
 }

@@ -1,0 +1,88 @@
+package components
+
+import (
+	"fmt"
+	"github.com/pablojhp.pergo/internal/repository"
+)
+
+// channelIcon returns an SVG icon string for a channel name.
+func channelIcon(channel string) string {
+	switch channel {
+	case "whatsapp":
+		// WhatsApp logo (simplified)
+		return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="h-3 w-3 fill-current"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.132.558 4.13 1.528 5.864L.057 23.18a.5.5 0 00.61.61l5.316-1.47A11.95 11.95 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.9 0-3.68-.51-5.2-1.4L2 21.9l1.3-4.8A9.96 9.96 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>`
+	case "whatsapp_cloud":
+		return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="h-3 w-3 fill-current text-green-600"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.132.558 4.13 1.528 5.864L.057 23.18a.5.5 0 00.61.61l5.316-1.47A11.95 11.95 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 22c-1.9 0-3.68-.51-5.2-1.4L2 21.9l1.3-4.8A9.96 9.96 0 012 12C2 6.477 6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/></svg>`
+	case "telegram":
+		return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="h-3 w-3 fill-current text-blue-500"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.96 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>`
+	default:
+		return `<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>`
+	}
+}
+
+// channelLabel returns a human-readable display name for a channel.
+func channelLabel(channel string) string {
+	switch channel {
+	case "whatsapp":
+		return "WhatsApp Web"
+	case "whatsapp_cloud":
+		return "WhatsApp Cloud"
+	case "telegram":
+		return "Telegram"
+	default:
+		return channel
+	}
+}
+
+// truncate shortens a string to maxLen characters, appending "…" if needed.
+func truncate(s string, maxLen int) string {
+	if len([]rune(s)) <= maxLen {
+		return s
+	}
+	runes := []rune(s)
+	return string(runes[:maxLen]) + "…"
+}
+
+// ConvItem renders a single conversation item in the conversation list.
+// Clicking it triggers an HTMX GET to /admin/inbox/chat targeting #chat-panel.
+templ ConvItem(conv repository.ConversationSummary, unread bool) {
+	<div
+		class={ "conv-item flex items-start gap-3 px-4 py-3 cursor-pointer border-b border-zinc-100 hover:bg-zinc-50 transition-colors relative", templ.KV("bg-white", !unread), templ.KV("bg-blue-50/60", unread) }
+		hx-get={ fmt.Sprintf("/admin/inbox/chat?from=%s&channel=%s&to=%s", conv.From, conv.Channel, conv.RecipientIdentity) }
+		hx-target="#chat-panel"
+		hx-swap="innerHTML"
+		hx-push-url="true"
+		id={ "conv-" + conv.From + "-" + conv.Channel }
+	>
+		<!-- Avatar -->
+		<div class="conv-avatar flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm select-none">
+			if len([]rune(conv.From)) > 0 {
+				{ string([]rune(conv.From)[:1]) }
+			} else {
+				{ "?" }
+			}
+		</div>
+		<!-- Body -->
+		<div class="conv-body flex-1 min-w-0">
+			<div class="flex items-center justify-between gap-1 mb-0.5">
+				<span class="conv-from font-semibold text-sm text-zinc-900 truncate">{ conv.From }</span>
+				<span class="conv-time text-xs text-zinc-400 flex-shrink-0">{ conv.LastMessageTime.Format("15:04") }</span>
+			</div>
+			<div class="flex items-center justify-between gap-1">
+				<span class="conv-preview text-xs text-zinc-500 truncate">{ truncate(conv.LastMessageBody, 48) }</span>
+				<div class="flex items-center gap-1 flex-shrink-0">
+					<!-- Channel badge -->
+					<span class={ "channel-badge inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium", templ.KV("bg-green-100 text-green-700", conv.Channel == "whatsapp" || conv.Channel == "whatsapp_cloud"), templ.KV("bg-blue-100 text-blue-700", conv.Channel == "telegram") }>
+						@templ.Raw(channelIcon(conv.Channel))
+					</span>
+					<!-- Unread indicator -->
+					if unread {
+						<span class="unread-dot h-2 w-2 rounded-full bg-blue-500 flex-shrink-0"></span>
+					}
+				</div>
+			</div>
+			<!-- Via (recipient identity) -->
+			<div class="conv-via text-xs text-zinc-400 truncate mt-0.5">via { conv.RecipientIdentity }</div>
+		</div>
+	</div>
+}

@@ -1,0 +1,73 @@
+package components
+
+import (
+	"fmt"
+	"github.com/pablojhp.pergo/internal/repository"
+)
+
+// ConvList renders the conversation list with channel filter tabs and a polling trigger.
+// It is used both in the full-page initial render and as an HTMX fragment for 5s polling.
+templ ConvList(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int) {
+	<div
+		id="conv-list"
+		hx-get="/admin/inbox/conversations/poll"
+		hx-trigger="every 5s"
+		hx-swap="outerHTML"
+		class="conv-list flex flex-col h-full"
+	>
+		<!-- Channel filter tabs -->
+		<div class="conv-filters flex items-center gap-1 px-3 py-2 border-b border-zinc-200 bg-white">
+			<a
+				href="/admin/inbox"
+				class={ "filter-tab text-xs font-medium px-2 py-1 rounded transition-colors", templ.KV("bg-zinc-900 text-white", activeChannel == ""), templ.KV("text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100", activeChannel != "") }
+			>Todos</a>
+			<a
+				href="/admin/inbox?channel=whatsapp"
+				class={ "filter-tab text-xs font-medium px-2 py-1 rounded transition-colors", templ.KV("bg-zinc-900 text-white", activeChannel == "whatsapp"), templ.KV("text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100", activeChannel != "whatsapp") }
+			>WA Web</a>
+			<a
+				href="/admin/inbox?channel=whatsapp_cloud"
+				class={ "filter-tab text-xs font-medium px-2 py-1 rounded transition-colors", templ.KV("bg-zinc-900 text-white", activeChannel == "whatsapp_cloud"), templ.KV("text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100", activeChannel != "whatsapp_cloud") }
+			>WA Cloud</a>
+			<a
+				href="/admin/inbox?channel=telegram"
+				class={ "filter-tab text-xs font-medium px-2 py-1 rounded transition-colors", templ.KV("bg-zinc-900 text-white", activeChannel == "telegram"), templ.KV("text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100", activeChannel != "telegram") }
+			>Telegram</a>
+		</div>
+		<!-- Conversation items -->
+		<div class="conv-items flex-1 overflow-y-auto">
+			for _, conv := range conversations {
+				@ConvItem(conv, unreadMap[convKey(conv)])
+			}
+			if len(conversations) == 0 {
+				<div class="conv-empty flex flex-col items-center justify-center py-16 text-zinc-400">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mb-3 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+					</svg>
+					<p class="text-sm font-medium">Nenhuma conversa ainda</p>
+					<p class="text-xs mt-1">As mensagens recebidas aparecem aqui.</p>
+				</div>
+			}
+		</div>
+	</div>
+	<!-- Out-of-band badge update for sidebar -->
+	@InboxUnreadBadge(unreadCount)
+}
+
+// InboxUnreadBadge renders the unread badge for the sidebar (supports hx-swap-oob).
+templ InboxUnreadBadge(count int) {
+	<span
+		id="inbox-unread-badge"
+		hx-swap-oob="true"
+		class={ "inbox-badge ml-auto text-xs font-bold px-1.5 py-0.5 rounded-full", templ.KV("bg-blue-500 text-white", count > 0), templ.KV("hidden", count == 0) }
+	>
+		if count > 0 {
+			{ fmt.Sprintf("%d", count) }
+		}
+	</span>
+}
+
+// convKey generates a unique key for a conversation used in unread map lookups.
+func convKey(conv repository.ConversationSummary) string {
+	return conv.From + "|" + conv.Channel + "|" + conv.RecipientIdentity
+}
