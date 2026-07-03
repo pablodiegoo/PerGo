@@ -1,81 +1,275 @@
 package admin
 
 import (
-	"encoding/json"
 	"net/http"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/components"
 	"github.com/pablojhp.pergo/templates/layout"
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
-// InboxHandler holds dependencies for channel inboxes.
+// InboxHandler holds dependencies for the conversational inbox.
 type InboxHandler struct {
-	Repo *repository.AuditRepository
+	Repo         *repository.AuditRepository
+	Sessions     *repository.RecipientSessionRepository
+	Workspaces   *repository.WorkspaceRepository
 }
 
-type inboundPayload struct {
-	From string `json:"from"`
-	Body string `json:"body"`
+// resolveWorkspaceID reads the active workspace from the cookie.
+// Returns uuid.Nil if not set or invalid; callers should handle gracefully.
+func resolveWorkspaceID(c *echo.Context) uuid.UUID {
+	cookie, err := c.Cookie("pergo-active-workspace")
+	if err != nil || cookie == nil || cookie.Value == "" {
+		return uuid.Nil
+	}
+	id, err := uuid.Parse(cookie.Value)
+	if err != nil {
+		return uuid.Nil
+	}
+	return id
 }
 
-// View handles GET /admin/inbox/:channel
-func (h *InboxHandler) View(c *echo.Context) error {
+// loadConversations fetches conversations and computes unread state.
+// Returns conversations, unreadMap keyed by "from|channel|recipientIdentity", and total unread count.
+func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID, channelFilter string) ([]repository.ConversationSummary, map[string]bool, int, error) {
 	ctx := c.Request().Context()
-	channelName, err := echo.PathParam[string](c, "channel")
+
+	conversations, err := h.Repo.ListConversations(ctx, workspaceID, channelFilter)
 	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid channel")
+		return nil, nil, 0, err
 	}
 
-	// Normalize channel name for database matching
-	dbChannel := channelName
-	displayName := channelName
-	switch channelName {
-	case "whatsapp":
-		displayName = "WhatsApp Web"
-	case "whatsapp_cloud":
-		displayName = "WhatsApp Cloud"
-	case "telegram":
-		displayName = "Telegram"
-	}
+	unreadMap := make(map[string]bool, len(conversations))
+	unreadCount := 0
 
-	filters := repository.AuditFilters{
-		EventType: "inbound_message",
-		Channel:   dbChannel,
-		Page:      1,
-		PageSize:  100, // Display last 100 messages
-	}
-
-	auditEntries, _, err := h.Repo.ListFiltered(ctx, filters)
-	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to load inbox messages")
-	}
-
-	var inboxMessages []pages.InboxMessage
-	for _, entry := range auditEntries {
-		var p inboundPayload
-		_ = json.Unmarshal(entry.Payload, &p)
-
-		bodyText := p.Body
-		if bodyText == "" {
-			bodyText = "[Media or special message]"
+	for _, conv := range conversations {
+		isUnread := false
+		if h.Sessions != nil {
+			session, sErr := h.Sessions.Get(ctx, workspaceID, conv.From, conv.Channel, conv.RecipientIdentity)
+			if sErr == nil {
+				// Unread if session has never been read, or if last message is after last read
+				if session.LastReadAt == nil || conv.LastMessageTime.After(*session.LastReadAt) {
+					isUnread = true
+				}
+			} else {
+				// Session doesn't exist yet — treat as unread
+				isUnread = true
+			}
 		}
-
-		inboxMessages = append(inboxMessages, pages.InboxMessage{
-			TraceID:   entry.TraceID,
-			From:      p.From,
-			Body:      bodyText,
-			CreatedAt: entry.CreatedAt.Format("2006-01-02 15:04:05"),
-		})
+		key := conv.From + "|" + conv.Channel + "|" + conv.RecipientIdentity
+		unreadMap[key] = isUnread
+		if isUnread {
+			unreadCount++
+		}
 	}
 
-	inboxPage := pages.InboxPage(dbChannel, displayName, inboxMessages)
+	return conversations, unreadMap, unreadCount, nil
+}
+
+// View handles GET /admin/inbox — renders the full split-pane inbox page.
+func (h *InboxHandler) View(c *echo.Context) error {
+	workspaceID := resolveWorkspaceID(c)
+	channelFilter := c.QueryParam("channel")
+
+	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, channelFilter)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to load conversations: "+err.Error())
+	}
+
+	inboxPage := pages.InboxPage(conversations, unreadMap, channelFilter, unreadCount)
 
 	if mw.IsHTMX(c) {
-		return mw.Render(c, http.StatusOK, pages.InboxPageContent(dbChannel, displayName, inboxMessages))
+		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, channelFilter, unreadCount))
 	}
-	return mw.Render(c, http.StatusOK, layout.Base("Inbox - "+displayName, inboxPage))
+	return mw.Render(c, http.StatusOK, layout.Base("Inbox", inboxPage))
+}
+
+// PollConversations handles GET /admin/inbox/conversations/poll — returns the conversation list fragment for 5s polling.
+// The response includes the conv-list fragment plus an OOB badge update for the sidebar.
+func (h *InboxHandler) PollConversations(c *echo.Context) error {
+	workspaceID := resolveWorkspaceID(c)
+	channelFilter := c.QueryParam("channel")
+
+	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, channelFilter)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to load conversations")
+	}
+
+	return mw.Render(c, http.StatusOK, components.ConvList(conversations, unreadMap, channelFilter, unreadCount))
+}
+
+// ChatPanel handles GET /admin/inbox/chat — returns the chat history panel for a contact.
+// Query params: from, channel, to (recipient identity).
+func (h *InboxHandler) ChatPanel(c *echo.Context) error {
+	ctx := c.Request().Context()
+	workspaceID := resolveWorkspaceID(c)
+
+	from := c.QueryParam("from")
+	channel := c.QueryParam("channel")
+	to := c.QueryParam("to")
+
+	if from == "" || channel == "" {
+		return c.HTML(http.StatusBadRequest, `<div class="p-4 text-red-500">Parâmetros inválidos: from e channel são obrigatórios.</div>`)
+	}
+
+	// Mark conversation as read
+	if h.Sessions != nil && workspaceID != uuid.Nil {
+		_ = h.Sessions.UpdateLastReadAt(ctx, workspaceID, from, channel, to, time.Now().UTC())
+	}
+
+	// Load the thread messages
+	messages, err := h.Repo.ListThread(ctx, workspaceID, from, channel, to, nil)
+	if err != nil {
+		return c.HTML(http.StatusInternalServerError, `<div class="p-4 text-red-500">Erro ao carregar conversa.</div>`)
+	}
+
+	// Render a simple thread view
+	c.Response().Header().Set("Content-Type", "text/html; charset=utf-8")
+	return c.HTML(http.StatusOK, renderChatPanel(from, channel, to, messages))
+}
+
+// PollMessages handles GET /admin/inbox/messages — returns new messages for incremental chat polling.
+func (h *InboxHandler) PollMessages(c *echo.Context) error {
+	ctx := c.Request().Context()
+	workspaceID := resolveWorkspaceID(c)
+
+	from := c.QueryParam("from")
+	channel := c.QueryParam("channel")
+	to := c.QueryParam("to")
+	afterIDStr := c.QueryParam("after_id")
+
+	var afterID *uuid.UUID
+	if afterIDStr != "" {
+		id, err := uuid.Parse(afterIDStr)
+		if err == nil {
+			afterID = &id
+		}
+	}
+
+	messages, err := h.Repo.ListThread(ctx, workspaceID, from, channel, to, afterID)
+	if err != nil {
+		return c.HTML(http.StatusInternalServerError, `<div class="p-2 text-red-500 text-xs">Erro ao buscar mensagens.</div>`)
+	}
+
+	if len(messages) == 0 {
+		return c.String(http.StatusNoContent, "")
+	}
+
+	html := ""
+	for _, m := range messages {
+		html += renderMessage(m)
+	}
+	return c.HTML(http.StatusOK, html)
+}
+
+// SendMessage handles POST /admin/inbox/send — placeholder for outbound reply enqueuing.
+func (h *InboxHandler) SendMessage(c *echo.Context) error {
+	return c.HTML(http.StatusNotImplemented, `<div class="p-2 text-zinc-400 text-xs">Envio de mensagens ainda não implementado.</div>`)
+}
+
+// renderChatPanel builds the chat thread HTML for a conversation.
+func renderChatPanel(from, channel, to string, messages []repository.ThreadMessage) string {
+	channelLabel := channel
+	switch channel {
+	case "whatsapp":
+		channelLabel = "WhatsApp Web"
+	case "whatsapp_cloud":
+		channelLabel = "WhatsApp Cloud"
+	case "telegram":
+		channelLabel = "Telegram"
+	}
+
+	html := `<div class="chat-thread flex flex-col h-full">` +
+		`<div class="chat-thread-header flex items-center gap-3 px-4 py-3 border-b border-zinc-200 bg-white flex-shrink-0">` +
+		`<div class="h-9 w-9 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm">` +
+		safeInitial(from) +
+		`</div>` +
+		`<div>` +
+		`<p class="font-semibold text-sm text-zinc-900">` + escapeHTML(from) + `</p>` +
+		`<p class="text-xs text-zinc-400">` + channelLabel + ` · via ` + escapeHTML(to) + `</p>` +
+		`</div>` +
+		`</div>` +
+		`<div id="chat-messages" class="chat-messages flex-1 overflow-y-auto px-4 py-3 space-y-3 flex flex-col">`
+
+	for _, m := range messages {
+		html += renderMessage(m)
+	}
+
+	if len(messages) == 0 {
+		html += `<div class="text-center text-zinc-400 text-sm py-8">Nenhuma mensagem encontrada.</div>`
+	}
+
+	html += `</div>` +
+		`<div class="chat-input-area px-4 py-3 border-t border-zinc-200 bg-white flex-shrink-0">` +
+		`<p class="text-xs text-zinc-400 text-center">Respostas em breve — funcionalidade em desenvolvimento.</p>` +
+		`</div>` +
+		`</div>`
+
+	return html
+}
+
+// renderMessage renders a single message bubble as HTML.
+func renderMessage(m repository.ThreadMessage) string {
+	isInbound := m.Direction == "inbound"
+	timeStr := m.CreatedAt.Format("15:04")
+	body := m.Body
+	if body == "" {
+		body = "[mídia ou mensagem especial]"
+	}
+
+	if isInbound {
+		return `<div class="msg-wrap flex justify-start">` +
+			`<div class="msg-bubble max-w-xs lg:max-w-md bg-white border border-zinc-200 rounded-lg rounded-tl-none px-3 py-2 shadow-sm">` +
+			`<p class="text-sm text-zinc-800">` + escapeHTML(body) + `</p>` +
+			`<p class="text-xs text-zinc-400 text-right mt-1">` + timeStr + `</p>` +
+			`</div>` +
+			`</div>`
+	}
+	return `<div class="msg-wrap flex justify-end">` +
+		`<div class="msg-bubble max-w-xs lg:max-w-md bg-indigo-600 text-white rounded-lg rounded-tr-none px-3 py-2 shadow-sm">` +
+		`<p class="text-sm">` + escapeHTML(body) + `</p>` +
+		`<p class="text-xs text-indigo-200 text-right mt-1">` + timeStr + `</p>` +
+		`</div>` +
+		`</div>`
+}
+
+// safeInitial returns the first character of a string, uppercased, safely.
+func safeInitial(s string) string {
+	runes := []rune(s)
+	if len(runes) == 0 {
+		return "?"
+	}
+	r := runes[0]
+	if r >= 'a' && r <= 'z' {
+		r -= 32
+	}
+	return string(r)
+}
+
+// escapeHTML performs minimal HTML escaping to prevent XSS in string-concatenated HTML.
+func escapeHTML(s string) string {
+	result := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '&':
+			result = append(result, []byte("&amp;")...)
+		case '<':
+			result = append(result, []byte("&lt;")...)
+		case '>':
+			result = append(result, []byte("&gt;")...)
+		case '"':
+			result = append(result, []byte("&#34;")...)
+		case '\'':
+			result = append(result, []byte("&#39;")...)
+		default:
+			result = append(result, s[i])
+		}
+	}
+	return string(result)
 }

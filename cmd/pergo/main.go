@@ -360,8 +360,16 @@ func main() {
 	adminGroup.GET("/audit/outbound/export", auditHandler.ExportOutboundCSV)
 
 	// Inbox routes
-	inboxHandler := &admin.InboxHandler{Repo: auditRepo}
-	adminGroup.GET("/inbox/:channel", inboxHandler.View)
+	inboxHandler := &admin.InboxHandler{
+		Repo:       auditRepo,
+		Sessions:   recipientSessionRepo,
+		Workspaces: wsRepo,
+	}
+	adminGroup.GET("/inbox", inboxHandler.View)
+	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)
+	adminGroup.GET("/inbox/chat", inboxHandler.ChatPanel)
+	adminGroup.GET("/inbox/messages", inboxHandler.PollMessages)
+	adminGroup.POST("/inbox/send", inboxHandler.SendMessage)
 
 	// Device management routes (WhatsApp Web pairing & session control)
 	deviceHandler := &admin.DeviceHandler{
