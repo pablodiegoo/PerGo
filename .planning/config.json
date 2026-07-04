@@ -1,10 +1,15 @@
 {
-  "runtime": "antigravity",
+  "runtime": "pi",
   "model_profile": "adaptive",
   "model_profile_overrides": {
     "pi": {
       "opus": "zai/glm-5.2",
-      "sonnet": "opencode-go/minimax-v3",
+      "sonnet": "opencode-go/deepseek-v4-pro",
+      "haiku": "opencode-go/mimo-v2.5"
+    },
+    "opencode": {
+      "opus": "zai/glm-5.2",
+      "sonnet": "opencode-go/deepseek-v4-pro",
       "haiku": "opencode-go/mimo-v2.5"
     },
     "antigravity": {
@@ -15,8 +20,8 @@
   },
   "model_overrides_commented": {
     "gsd-executor": "opencode-go/mimo-v2.5",
-    "gsd-plan-checker": "opencode-go/minimax-v3",
-    "gsd-nyquist-auditor": "opencode-go/minimax-v3"
+    "gsd-plan-checker": "opencode-go/deepseek-v4-pro",
+    "gsd-nyquist-auditor": "opencode-go/deepseek-v4-pro"
   },
   "commit_docs": true,
   "parallelization": true,
