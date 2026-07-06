@@ -9,14 +9,13 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 import (
-	"github.com/pablojhp.pergo/internal/session"
+	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/components"
 	"github.com/pablojhp.pergo/templates/layout"
 )
 
-// DeviceListPage renders the full device management page with layout.
-// DeviceListPage renders the full device management page with layout.
-func DeviceListPage(devices []*session.Device) templ.Component {
+// DeviceListPage renders the full connection management page with layout.
+func DeviceListPage(connections []*repository.Connection) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -37,7 +36,7 @@ func DeviceListPage(devices []*session.Device) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = layout.Base("Conexões", DeviceListContent(devices)).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = layout.Base("Conexões", DeviceListContent(connections)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -45,8 +44,8 @@ func DeviceListPage(devices []*session.Device) templ.Component {
 	})
 }
 
-// DeviceListContent renders the device list content (HTMX fragment or full page body).
-func DeviceListContent(devices []*session.Device) templ.Component {
+// DeviceListContent renders the connection list content (HTMX fragment or full page body).
+func DeviceListContent(connections []*repository.Connection) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -67,23 +66,15 @@ func DeviceListContent(devices []*session.Device) templ.Component {
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6\"><h1 class=\"text-2xl font-bold tracking-tight text-zinc-900\">Conexões</h1><button class=\"btn btn-black bg-black text-white hover:bg-zinc-800 border-none btn-sm\" hx-get=\"/admin/devices/pair-form\" hx-target=\"#pair-form-area\" hx-swap=\"innerHTML\">Link WhatsApp Web</button></div><div id=\"pair-form-area\" class=\"mb-6\"></div><div class=\"section bg-white border border-zinc-200 rounded-lg p-5 shadow-sm mb-6\"><h2 class=\"text-sm font-bold text-zinc-500 uppercase tracking-wider mb-4\">Dispositivos WhatsApp Web Ativos</h2><table class=\"table w-full text-zinc-700\" id=\"device-table\"><thead><tr class=\"bg-zinc-50 text-zinc-500 border-b border-zinc-200\"><th class=\"px-4 py-2 text-left text-xs font-semibold uppercase\">JID</th><th class=\"px-4 py-2 text-left text-xs font-semibold uppercase\">Phone</th><th class=\"px-4 py-2 text-left text-xs font-semibold uppercase\">Status</th><th class=\"px-4 py-2 text-left text-xs font-semibold uppercase\">Workspace</th><th class=\"px-4 py-2 text-left text-xs font-semibold uppercase\">Actions</th></tr></thead> <tbody id=\"device-list-body\" class=\"divide-y divide-zinc-200\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"page-header flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6\"><h1 class=\"text-2xl font-bold tracking-tight text-zinc-900\">Conexões</h1><button class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition\" hx-get=\"/admin/devices/pair-form\" hx-target=\"body\" hx-swap=\"beforeend\">Nova Conexão</button></div><div id=\"connections-table-container\" class=\"section bg-white border border-zinc-200 rounded-lg p-5 shadow-sm mb-6\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		for _, d := range devices {
-			templ_7745c5c3_Err = components.DeviceCard(d).Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
+		templ_7745c5c3_Err = ConnectionTable(connections).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
 		}
-		if len(devices) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<tr><td colspan=\"5\" class=\"px-4 py-6 text-center text-zinc-400 italic\">Nenhum dispositivo emparelhado. Clique em \"Link WhatsApp Web\" para começar.</td></tr>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</tbody></table></div><div class=\"section bg-white border border-zinc-200 rounded-lg p-5 shadow-sm\"><h2 class=\"text-sm font-bold text-zinc-500 uppercase tracking-wider mb-4\">Caixas de Entrada por Canal (Inboxes)</h2><div class=\"grid grid-cols-1 md:grid-cols-3 gap-4\"><div class=\"bg-zinc-50 border border-zinc-200 rounded-lg p-4 flex flex-col justify-between gap-4\"><div><h3 class=\"font-bold text-zinc-900 text-sm\">WhatsApp Web</h3><p class=\"text-xs text-zinc-400 mt-1\">Mensagens recebidas no WhatsApp Web emparelhado.</p></div><div><a href=\"/admin/inbox/whatsapp\" class=\"btn btn-xs btn-outline border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center\">Abrir Inbox</a></div></div><div class=\"bg-zinc-50 border border-zinc-200 rounded-lg p-4 flex flex-col justify-between gap-4\"><div><h3 class=\"font-bold text-zinc-900 text-sm\">WhatsApp Cloud</h3><p class=\"text-xs text-zinc-400 mt-1\">Mensagens recebidas via API Oficial (WABA).</p></div><div><a href=\"/admin/inbox/whatsapp_cloud\" class=\"btn btn-xs btn-outline border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center\">Abrir Inbox</a></div></div><div class=\"bg-zinc-50 border border-zinc-200 rounded-lg p-4 flex flex-col justify-between gap-4\"><div><h3 class=\"font-bold text-zinc-900 text-sm\">Telegram</h3><p class=\"text-xs text-zinc-400 mt-1\">Mensagens recebidas via bot do Telegram.</p></div><div><a href=\"/admin/inbox/telegram\" class=\"btn btn-xs btn-outline border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center\">Abrir Inbox</a></div></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</div><div class=\"section bg-white border border-zinc-200 rounded-lg p-5 shadow-sm\"><h2 class=\"text-sm font-bold text-zinc-500 uppercase tracking-wider mb-4\">Caixas de Entrada por Canal (Inboxes)</h2><div class=\"grid grid-cols-1 md:grid-cols-3 gap-4\"><div class=\"bg-zinc-50 border border-zinc-200 rounded-lg p-4 flex flex-col justify-between gap-4\"><div><h3 class=\"font-bold text-zinc-900 text-sm\">WhatsApp Web</h3><p class=\"text-xs text-zinc-400 mt-1\">Mensagens recebidas no WhatsApp Web emparelhado.</p></div><div><a href=\"/admin/inbox?channel=whatsapp\" class=\"btn btn-xs btn-outline border border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center py-1 rounded block\">Abrir Inbox</a></div></div><div class=\"bg-zinc-50 border border-zinc-200 rounded-lg p-4 flex flex-col justify-between gap-4\"><div><h3 class=\"font-bold text-zinc-900 text-sm\">WhatsApp Cloud</h3><p class=\"text-xs text-zinc-400 mt-1\">Mensagens recebidas via API Oficial (WABA).</p></div><div><a href=\"/admin/inbox?channel=whatsapp_cloud\" class=\"btn btn-xs btn-outline border border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center py-1 rounded block\">Abrir Inbox</a></div></div><div class=\"bg-zinc-50 border border-zinc-200 rounded-lg p-4 flex flex-col justify-between gap-4\"><div><h3 class=\"font-bold text-zinc-900 text-sm\">Telegram</h3><p class=\"text-xs text-zinc-400 mt-1\">Mensagens recebidas via bot do Telegram.</p></div><div><a href=\"/admin/inbox?channel=telegram\" class=\"btn btn-xs btn-outline border border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center py-1 rounded block\">Abrir Inbox</a></div></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -91,9 +82,8 @@ func DeviceListContent(devices []*session.Device) templ.Component {
 	})
 }
 
-// PairForm renders the QR pairing initiation form.
-// Triggered by the "Link Device" button via HTMX.
-func PairForm() templ.Component {
+// ConnectionTable renders the connection list table.
+func ConnectionTable(connections []*repository.Connection) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -114,15 +104,23 @@ func PairForm() templ.Component {
 			templ_7745c5c3_Var3 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<div class=\"pair-form card\"><h3>Link WhatsApp Device</h3>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<table class=\"table w-full text-zinc-700\" id=\"device-table\"><thead><tr class=\"bg-zinc-50 text-zinc-500 border-b border-zinc-200\"><th class=\"px-4 py-2 text-left text-xs font-semibold uppercase\">Nome</th><th class=\"px-4 py-2 text-left text-xs font-semibold uppercase\">Canal</th><th class=\"px-4 py-2 text-left text-xs font-semibold uppercase\">Status</th><th class=\"px-4 py-2 text-left text-xs font-semibold uppercase\">Identidade</th><th class=\"px-4 py-2 text-left text-xs font-semibold uppercase\">Conectado Desde</th><th class=\"px-4 py-2 text-left text-xs font-semibold uppercase\">Ações</th></tr></thead> <tbody id=\"device-list-body\" class=\"divide-y divide-zinc-200\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = components.BanWarning().Render(ctx, templ_7745c5c3_Buffer)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
+		for _, conn := range connections {
+			templ_7745c5c3_Err = ConnectionRow(conn).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<form hx-post=\"/admin/devices/pair\" hx-target=\"#qr-area\" hx-swap=\"innerHTML\"><div class=\"form-group\"><label for=\"phone\">Phone Number</label> <input id=\"phone\" name=\"phone\" type=\"tel\" class=\"form-control\" placeholder=\"+5511999999999\" required></div><button type=\"submit\" class=\"btn btn-primary\">Start Pairing</button></form><div id=\"qr-area\" class=\"qr-area\"></div></div>")
+		if len(connections) == 0 {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<tr><td colspan=\"6\" class=\"px-4 py-6 text-center text-zinc-400 italic\">Nenhuma conexão cadastrada. Clique em \"Nova Conexão\" para começar.</td></tr>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</tbody></table>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -130,12 +128,8 @@ func PairForm() templ.Component {
 	})
 }
 
-// QRFragment renders the current QR code state as an HTMX-refreshable fragment.
-// code: raw QR code string (empty if not yet available)
-// phone: phone number being paired
-// status: "pending", "paired", "error"
-// message: human-readable status message
-func QRFragment(code string, phone string, status string, message string) templ.Component {
+// ConnectionRow renders a single connection row inside the list table.
+func ConnectionRow(conn *repository.Connection) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -156,7 +150,278 @@ func QRFragment(code string, phone string, status string, message string) templ.
 			templ_7745c5c3_Var4 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div class=\"qr-fragment\" id=\"qr-area\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<tr class=\"device-row hover:bg-zinc-50/50\" id=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var5 string
+		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue("connection-row-" + conn.ID.String())
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 93, Col: 85}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\"><td class=\"px-4 py-3 font-semibold text-zinc-950\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var6 string
+		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Name)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 94, Col: 63}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</td><td class=\"px-4 py-3\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = ChannelIcon(conn.Channel).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</td><td class=\"px-4 py-3\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = ConnectionStatusBadge(conn.Status).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</td><td class=\"px-4 py-3 font-mono text-xs\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var7 string
+		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(conn.SenderIdentity)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 101, Col: 63}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</td><td class=\"px-4 py-3 text-sm text-zinc-500\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if conn.ConnectedSince != nil {
+			var templ_7745c5c3_Var8 string
+			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(conn.ConnectedSince.Format("2006-01-02 15:04:05"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 104, Col: 55}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "-")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</td><td class=\"px-4 py-3\"><div class=\"flex items-center gap-2\"><button class=\"btn btn-outline border border-zinc-300 text-zinc-700 hover:bg-zinc-50 btn-xs rounded-md px-2 py-0.5 text-xs font-semibold\" hx-get=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var9 string
+		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/devices/test?id=" + conn.ID.String())
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 113, Col: 58}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\" hx-target=\"body\" hx-swap=\"beforeend\">Testar</button> <button class=\"btn btn-danger btn-xs bg-red-600 hover:bg-red-700 text-white rounded-md px-2 py-0.5 text-xs font-semibold border-none\" hx-delete=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var10 string
+		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/devices/" + conn.ID.String())
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 121, Col: 53}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\" hx-target=\"#connections-table-container\" hx-swap=\"innerHTML\" hx-confirm=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var11 string
+		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue("Tem certeza que deseja excluir a conexão " + conn.Name + "?")
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 124, Col: 80}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\">Excluir</button></div></td></tr>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// ChannelIcon renders a styled badge/icon representing a channel.
+func ChannelIcon(channel string) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var12 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var12 == nil {
+			templ_7745c5c3_Var12 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		switch channel {
+		case "whatsapp":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<span class=\"inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200\">WhatsApp Web</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		case "whatsapp_cloud":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<span class=\"inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200\">WhatsApp Cloud</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		case "telegram":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<span class=\"inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-sky-50 text-sky-700 border border-sky-200\">Telegram</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		default:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<span class=\"inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-zinc-50 text-zinc-700 border border-zinc-200\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var13 string
+			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(channel)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 150, Col: 13}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		return nil
+	})
+}
+
+// ConnectionStatusBadge renders a status badge with matching color theme.
+func ConnectionStatusBadge(status string) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var14 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var14 == nil {
+			templ_7745c5c3_Var14 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		switch status {
+		case "connected", "active":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<span class=\"badge badge-success\">Conectado</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		case "disconnected":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<span class=\"badge badge-warning\">Desconectado</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		case "terminal":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<span class=\"badge badge-error\">Terminal</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		case "pending":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<span class=\"badge badge-info\">Pendente</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		default:
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<span class=\"badge badge-neutral\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var15 string
+			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(status)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 167, Col: 45}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		return nil
+	})
+}
+
+// PairForm renders the unified new connection modal form.
+func PairForm() templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var16 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var16 == nil {
+			templ_7745c5c3_Var16 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<div class=\"modal-backdrop\" onclick=\"this.closest('.modal-backdrop').remove()\"><div class=\"modal w-full max-w-lg\" onclick=\"event.stopPropagation()\"><div class=\"modal-header\"><h3>Nova Conexão</h3></div><div class=\"modal-body\"><div id=\"modal-error-container\"></div><form id=\"new-connection-form\" class=\"space-y-4\" hx-on::after-request=\"if(event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget')) this.closest('.modal-backdrop').remove()\"><div class=\"form-group mb-4\"><label for=\"new-conn-name\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Nome da Conexão</label> <input type=\"text\" id=\"new-conn-name\" name=\"name\" required class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\" placeholder=\"Ex: WhatsApp Suporte, Telegram Bot\"></div><div class=\"form-group mb-4\"><label for=\"new-channel-select\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Canal</label> <select id=\"new-channel-select\" name=\"channel\" required class=\"form-input w-full border border-zinc-300 rounded-md p-2 bg-white focus:outline-none focus:border-zinc-950\" onchange=\"updateChannelFields()\"><option value=\"whatsapp\">WhatsApp Web (Unofficial)</option> <option value=\"whatsapp_cloud\">WhatsApp Cloud (WABA)</option> <option value=\"telegram\">Telegram Bot</option></select></div><!-- WhatsApp Web Fields --><div id=\"fields-whatsapp\" class=\"space-y-4 mb-4\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -164,91 +429,318 @@ func QRFragment(code string, phone string, status string, message string) templ.
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<p class=\"qr-status\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<div class=\"form-group\"><label for=\"phone\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Número de Telefone</label> <input type=\"tel\" id=\"phone\" name=\"phone\" required class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\" placeholder=\"+5511999999999\"></div></div><!-- WABA Fields --><div id=\"fields-waba\" style=\"display: none;\" class=\"space-y-4 mb-4\"><div class=\"form-group\"><label for=\"waba_phone_number_id\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Phone Number ID</label> <input type=\"text\" id=\"waba_phone_number_id\" name=\"phone_number_id\" data-required=\"true\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div><div class=\"form-group\"><label for=\"waba_account_id\" class=\"block text-sm font-medium text-zinc-700 mb-1\">WABA Account ID</label> <input type=\"text\" id=\"waba_account_id\" name=\"waba_account_id\" data-required=\"true\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div><div class=\"form-group\"><label for=\"waba_token\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Meta API Token</label> <input type=\"password\" id=\"waba_token\" name=\"token\" data-required=\"true\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div><div class=\"form-group\"><label for=\"waba_verify_token\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Verify Token (Optional)</label> <input type=\"text\" id=\"waba_verify_token\" name=\"verify_token\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div></div><!-- Telegram Fields --><div id=\"fields-telegram\" style=\"display: none;\" class=\"space-y-4 mb-4\"><div class=\"form-group\"><label for=\"tg_token\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Bot Token</label> <input type=\"password\" id=\"tg_token\" name=\"token\" data-required=\"true\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div></div><div id=\"qr-area\" class=\"qr-area mt-4\"></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button type=\"button\" class=\"btn btn-secondary px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-medium\" onclick=\"this.closest('.modal-backdrop').remove()\">Cancelar</button> <button type=\"submit\" id=\"new-conn-submit-btn\" class=\"btn btn-primary bg-zinc-950 hover:bg-zinc-900 text-white px-4 py-2 rounded-md font-medium\">Salvar Conexão</button></div></form></div></div><script>\n\t\t\t(function() {\n\t\t\t\twindow.updateChannelFields = function() {\n\t\t\t\t\tconst channel = document.getElementById('new-channel-select').value;\n\t\t\t\t\tconst waWebFields = document.getElementById('fields-whatsapp');\n\t\t\t\t\tconst wabaFields = document.getElementById('fields-waba');\n\t\t\t\t\tconst tgFields = document.getElementById('fields-telegram');\n\t\t\t\t\tconst submitBtn = document.getElementById('new-conn-submit-btn');\n\n\t\t\t\t\t// Hide everything\n\t\t\t\t\twaWebFields.style.display = 'none';\n\t\t\t\t\twabaFields.style.display = 'none';\n\t\t\t\t\ttgFields.style.display = 'none';\n\n\t\t\t\t\t// Disable required for all dynamic fields\n\t\t\t\t\twabaFields.querySelectorAll('input').forEach(i => i.required = false);\n\t\t\t\t\ttgFields.querySelectorAll('input').forEach(i => i.required = false);\n\t\t\t\t\twaWebFields.querySelectorAll('input').forEach(i => i.required = false);\n\n\t\t\t\t\tif (channel === 'whatsapp') {\n\t\t\t\t\t\twaWebFields.style.display = 'block';\n\t\t\t\t\t\twaWebFields.querySelectorAll('input').forEach(i => i.required = true);\n\t\t\t\t\t\t\n\t\t\t\t\t\tsubmitBtn.innerText = 'Começar Emparelhamento';\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-post', '/admin/devices/pair');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-target', '#qr-area');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t\t\thtmx.process(submitBtn);\n\t\t\t\t\t} else if (channel === 'whatsapp_cloud') {\n\t\t\t\t\t\twabaFields.style.display = 'block';\n\t\t\t\t\t\twabaFields.querySelectorAll('input[data-required=\"true\"]').forEach(i => i.required = true);\n\t\t\t\t\t\t\n\t\t\t\t\t\tsubmitBtn.innerText = 'Salvar Conexão';\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-post', '/admin/devices/create');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-target', '#connections-table-container');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t\t\thtmx.process(submitBtn);\n\t\t\t\t\t} else if (channel === 'telegram') {\n\t\t\t\t\t\ttgFields.style.display = 'block';\n\t\t\t\t\t\ttgFields.querySelectorAll('input[data-required=\"true\"]').forEach(i => i.required = true);\n\t\t\t\t\t\t\n\t\t\t\t\t\tsubmitBtn.innerText = 'Salvar Conexão';\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-post', '/admin/devices/create');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-target', '#connections-table-container');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t\t\thtmx.process(submitBtn);\n\t\t\t\t\t}\n\t\t\t\t};\n\n\t\t\t\tupdateChannelFields();\n\t\t\t})();\n\t\t</script></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var5 string
-		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(message)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 124, Col: 32}
+		return nil
+	})
+}
+
+// QRFragment renders the current QR code state as an HTMX-refreshable fragment.
+func QRFragment(code string, phone string, status string, message string) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var17 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var17 == nil {
+			templ_7745c5c3_Var17 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<div class=\"qr-fragment\" id=\"qr-area\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</p>")
+		templ_7745c5c3_Err = components.BanWarning().Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<p class=\"qr-status mb-2 text-sm text-zinc-600\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var18 string
+		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(message)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 302, Col: 59}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</p>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		switch status {
 		case "pending":
 			if code != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"qr-container\"><p class=\"qr-hint\">Scan this code with WhatsApp on your phone:</p><div class=\"qr-code-raw\" data-qr=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<div class=\"qr-container bg-zinc-50 border border-zinc-200 rounded p-4 flex flex-col items-center\"><p class=\"qr-hint text-xs text-zinc-500 mb-2\">Escaneie o código abaixo com o WhatsApp do seu celular:</p><div class=\"qr-code-raw bg-white p-2 border border-zinc-300 rounded font-mono text-xs select-all break-all\" data-qr=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var6 string
-				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(code)
+				var templ_7745c5c3_Var19 string
+				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(code)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 132, Col: 21}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 310, Col: 21}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" aria-label=\"QR Code\"><p class=\"qr-code-text\"><code>")
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var7 string
-				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(code)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 135, Col: 43}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" aria-label=\"QR Code\"><code>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</code></p></div></div>")
+				var templ_7745c5c3_Var20 string
+				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(code)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 313, Col: 19}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</code></div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<div class=\"qr-loading\"><div class=\"spinner\"></div><p>Generating QR code...</p></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<div class=\"qr-loading flex flex-col items-center py-4\"><div class=\"spinner border-2 border-zinc-900 border-t-transparent rounded-full w-6 h-6 animate-spin mb-2\"></div><p class=\"text-xs text-zinc-500\">Gerando QR code...</p></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, " <div hx-get=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, " <div hx-get=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var8 string
-			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/devices/qr?phone=" + phone)
+			var templ_7745c5c3_Var21 string
+			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/devices/qr?phone=" + phone)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 145, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 323, Col: 48}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\" hx-trigger=\"every 5s\" hx-target=\"#qr-area\" hx-swap=\"innerHTML\"></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" hx-trigger=\"every 5s\" hx-target=\"#qr-area\" hx-swap=\"innerHTML\"></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		case "paired":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<div class=\"qr-success\"><p class=\"success-icon\">✅</p><p>Device paired successfully!</p><button class=\"btn btn-primary\" hx-get=\"/admin/devices\" hx-target=\"main\" hx-swap=\"innerHTML\">View Devices</button></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<div class=\"qr-success text-center py-4\"><p class=\"success-icon text-2xl mb-1\">✅</p><p class=\"text-sm font-semibold text-zinc-950\">Dispositivo pareado com sucesso!</p><button class=\"btn btn-primary mt-3 bg-zinc-950 hover:bg-zinc-900 text-white px-4 py-2 rounded-md font-medium\" hx-get=\"/admin/devices\" hx-target=\"main\" hx-swap=\"innerHTML\" onclick=\"this.closest('.modal-backdrop').remove()\">Ver Conexões</button></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		case "error":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<div class=\"qr-error\"><p class=\"error-icon\">❌</p><p>Pairing failed. Please try again.</p><button class=\"btn btn-secondary\" hx-get=\"/admin/devices/pair-form\" hx-target=\"#pair-form-area\" hx-swap=\"innerHTML\">Try Again</button></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<div class=\"qr-error text-center py-4\"><p class=\"error-icon text-2xl mb-1\">❌</p><p class=\"text-sm font-semibold text-zinc-950\">Falha no pareamento. Tente novamente.</p><button class=\"btn btn-secondary mt-3 px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-medium\" hx-get=\"/admin/devices/pair-form\" hx-target=\"body\" hx-swap=\"beforeend\" onclick=\"this.closest('.modal-backdrop').remove()\">Tentar Novamente</button></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// TestConnectionModal renders the modal to test message sending and view NATS streams.
+func TestConnectionModal(conn *repository.Connection) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var22 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var22 == nil {
+			templ_7745c5c3_Var22 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<script src=\"https://unpkg.com/htmx-ext-ws@2.0.1/ws.js\"></script><div class=\"modal-backdrop\" onclick=\"this.closest('.modal-backdrop').remove()\"><div class=\"modal w-full max-w-4xl\" onclick=\"event.stopPropagation()\"><div class=\"modal-header\"><h3>Testar Conexão: ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var23 string
+		templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Name)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 366, Col: 36}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</h3></div><div class=\"modal-body grid grid-cols-1 md:grid-cols-2 gap-6\"><!-- Left column: Send form --><div><div id=\"test-form-alert\"></div><form hx-post=\"/admin/devices/test\" hx-target=\"#test-form-alert\" hx-swap=\"innerHTML\" class=\"space-y-4\"><input type=\"hidden\" name=\"connection_id\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var24 string
+		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.ID.String())
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 378, Col: 72}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "\"><div class=\"mb-2\"><label class=\"block text-xs font-semibold uppercase tracking-wider text-zinc-400\">Canal</label><div class=\"mt-1 font-semibold text-zinc-900\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var25 string
+		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Channel)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 382, Col: 67}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</div></div><div class=\"mb-4\"><label class=\"block text-xs font-semibold uppercase tracking-wider text-zinc-400\">Identidade do Remetente</label><div class=\"mt-1 font-mono text-xs text-zinc-600\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var26 string
+		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(conn.SenderIdentity)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 387, Col: 78}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</div></div><div class=\"form-group mb-4\"><label for=\"test-to\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Destinatário</label> <input type=\"text\" name=\"to\" id=\"test-to\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\" placeholder=\"Ex: 5511999999999 or Telegram chat_id\" required></div><div class=\"form-group mb-4\"><label for=\"test-body\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Corpo da Mensagem</label> <textarea name=\"body\" id=\"test-body\" rows=\"4\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950 resize-y\" placeholder=\"Mensagem de teste do PerGo!\" required></textarea></div><button type=\"submit\" class=\"btn btn-primary w-full bg-zinc-950 hover:bg-zinc-900 text-white font-medium py-2 rounded-md\">Enviar Mensagem de Teste</button></form></div><!-- Right column: Live stream --><div hx-ext=\"ws\" ws-connect=\"/admin/devices/test/ws\" class=\"flex flex-col h-full border border-zinc-200 rounded-md p-4 bg-zinc-50\"><h4 class=\"text-xs font-bold text-zinc-700 uppercase tracking-wider mb-3 flex items-center gap-2\"><span class=\"w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse\"></span> Atividade em Tempo Real (NATS)</h4><div class=\"event-list flex-1 overflow-y-auto min-h-[250px] max-h-[350px] space-y-2\" id=\"playground-events\"><div class=\"text-center text-zinc-400 italic text-xs py-10\" id=\"playground-empty\">Nenhum evento recebido ainda. Envie um teste para ver logs em tempo real.</div></div></div></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button class=\"btn btn-secondary px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-medium\" onclick=\"this.closest('.modal-backdrop').remove()\">Fechar</button></div></div></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// TestEventRow renders a single event card for the WS feed.
+func TestEventRow(eventType string, badgeClass string, title string, timeStr string, details string) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var27 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var27 == nil {
+			templ_7745c5c3_Var27 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<div id=\"playground-empty\" hx-swap-oob=\"delete\"></div><div id=\"playground-events\" hx-swap-oob=\"afterbegin\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var28 = []any{"p-3 rounded-md border-l-4 text-xs font-mono mb-2 shadow-sm border-zinc-300 bg-white",
+			templ.KV("border-blue-500 bg-blue-50/30", eventType == "outbound"),
+			templ.KV("border-emerald-500 bg-emerald-50/30", eventType == "inbound"),
+			templ.KV("border-purple-500 bg-purple-50/30", eventType == "webhook")}
+		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var28...)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<div class=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var29 string
+		templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var28).String())
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 1, Col: 0}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "\"><div class=\"flex justify-between items-center mb-1\"><span class=\"font-bold uppercase tracking-wider text-[10px] text-zinc-500\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var30 string
+		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(eventType)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 450, Col: 90}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</span> <span class=\"text-zinc-400 text-[10px]\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var31 string
+		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(timeStr)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 451, Col: 53}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</span></div><strong class=\"text-zinc-900 block mb-1\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var32 string
+		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(title)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 453, Col: 51}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</strong><pre class=\"bg-zinc-950 text-zinc-200 p-2 rounded text-[10px] overflow-x-auto whitespace-pre-wrap max-h-32\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var33 string
+		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(details)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 454, Col: 120}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</pre></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

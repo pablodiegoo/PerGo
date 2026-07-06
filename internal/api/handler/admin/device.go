@@ -1,24 +1,41 @@
 package admin
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
+	"github.com/nats-io/nats.go"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/queue"
+	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
-// DeviceHandler handles admin operations for WhatsApp Web device management.
+// DeviceHandler handles admin operations for unified connections management.
 type DeviceHandler struct {
-	Repo     *session.DeviceRepository
-	Sessions *session.ActiveSession
-	Manager  *session.Manager
+	Repo          *session.DeviceRepository
+	Sessions      *session.ActiveSession
+	Manager       *session.Manager
+	Connections   *repository.ConnectionRepository
+	Publisher     *queue.JetStreamPublisher
+	NC            *nats.Conn
+	TemplatesRepo *repository.WABATemplateRepository
+	ExternalURL   string
 }
 
 // pairingState holds the current QR pairing state for a phone number.
@@ -31,32 +48,32 @@ type pairingState struct {
 }
 
 // pairingSessions holds in-memory pairing state keyed by phone number.
-// MVP: single-instance only (no distributed state).
 var (
 	pairingSessions   = make(map[string]*pairingState)
 	pairingSessionsMu sync.Mutex
 )
 
-// List renders the device management page or HTMX fragment.
+// List renders the unified connection management page or HTMX fragment.
 func (h *DeviceHandler) List(c *echo.Context) error {
-	devices, err := h.Repo.ListAll(c.Request().Context())
+	workspaceID := resolveWorkspaceID(c)
+	connections, err := h.Connections.ListByWorkspace(c.Request().Context(), workspaceID)
 	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to load devices")
+		return c.String(http.StatusInternalServerError, "failed to load connections: "+err.Error())
 	}
 
 	if mw.IsHTMX(c) {
-		return mw.Render(c, http.StatusOK, pages.DeviceListContent(devices))
+		return mw.Render(c, http.StatusOK, pages.DeviceListContent(connections))
 	}
-	return mw.Render(c, http.StatusOK, pages.DeviceListPage(devices))
+	return mw.Render(c, http.StatusOK, pages.DeviceListPage(connections))
 }
 
-// PairForm renders the QR pairing initiation form fragment.
-// GET /admin/devices/pair-form — HTMX-triggered by "Link Device" button.
+// PairForm renders the unified new connection modal fragment.
+// GET /admin/devices/pair-form
 func (h *DeviceHandler) PairForm(c *echo.Context) error {
 	return mw.Render(c, http.StatusOK, pages.PairForm())
 }
 
-// StartPairing begins the QR pairing flow for a new device.
+// StartPairing begins the QR pairing flow for a new WhatsApp Web connection.
 // POST /admin/devices/pair — expects form field "phone" or "connection_id"
 func (h *DeviceHandler) StartPairing(c *echo.Context) error {
 	phone := c.FormValue("phone")
@@ -77,9 +94,7 @@ func (h *DeviceHandler) StartPairing(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "phone number is required")
 	}
 
-	// Use a zero UUID as the workspace ID for single-tenant MVP.
-	// Multi-tenant deployments should extract this from the operator session.
-	wsID := uuid.Nil
+	wsID := resolveWorkspaceID(c)
 
 	// Initialize pairing state.
 	ps := &pairingState{status: "pending", message: "Waiting for QR code..."}
@@ -155,19 +170,494 @@ func (h *DeviceHandler) GetQR(c *echo.Context) error {
 	return mw.Render(c, http.StatusOK, pages.QRFragment(code, phone, status, message))
 }
 
-// Disconnect stops an active device session.
-// DELETE /admin/devices/:jid
+// Disconnect deletes a connection from the database and stops its active session if it is WhatsApp Web.
+// DELETE /admin/devices/:id
 func (h *DeviceHandler) Disconnect(c *echo.Context) error {
-	jidStr, err := echo.PathParam[string](c, "jid")
-	if err != nil || jidStr == "" {
-		return c.String(http.StatusBadRequest, "invalid JID")
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil || idStr == "" {
+		return c.String(http.StatusBadRequest, "invalid ID")
 	}
 
-	h.Sessions.DisconnectByJID(jidStr)
-
-	devices, err := h.Repo.ListAll(c.Request().Context())
+	id, err := uuid.Parse(idStr)
 	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to reload devices")
+		return c.String(http.StatusBadRequest, "invalid connection ID format")
 	}
-	return mw.Render(c, http.StatusOK, pages.DeviceListContent(devices))
+
+	ctx := c.Request().Context()
+	conn, err := h.Connections.GetByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, repository.ErrConnectionNotFound) {
+			return c.String(http.StatusNotFound, "connection not found")
+		}
+		return c.String(http.StatusInternalServerError, "failed to get connection")
+	}
+
+	// If WhatsApp Web, stop active session
+	if conn.Channel == "whatsapp" && conn.JID != nil && *conn.JID != "" {
+		h.Sessions.DisconnectByJID(*conn.JID)
+	}
+
+	// Delete from database
+	if err := h.Connections.Delete(ctx, id); err != nil {
+		return c.String(http.StatusInternalServerError, "failed to delete connection")
+	}
+
+	workspaceID := resolveWorkspaceID(c)
+	connections, err := h.Connections.ListByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to reload connections")
+	}
+
+	return mw.Render(c, http.StatusOK, pages.ConnectionTable(connections))
+}
+
+// Create handles creation of Telegram and WABA connections.
+// POST /admin/devices/create
+func (h *DeviceHandler) Create(c *echo.Context) error {
+	ctx := c.Request().Context()
+	workspaceID := resolveWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	name := c.FormValue("name")
+	channel := c.FormValue("channel")
+
+	if name == "" || channel == "" {
+		return c.String(http.StatusBadRequest, "name and channel are required")
+	}
+
+	var senderIdentity string
+	var credentialsJSON []byte
+	var validationErr error
+
+	if channel == "telegram" {
+		token := c.FormValue("token")
+		if token == "" {
+			return c.String(http.StatusBadRequest, "token is required for Telegram bot")
+		}
+
+		var botUsername string
+		botUsername, validationErr = h.validateTelegramToken(ctx, token)
+		if validationErr == nil {
+			senderIdentity = botUsername
+
+			secretToken := ""
+			if strings.HasPrefix(h.ExternalURL, "https://") {
+				secretToken = uuid.New().String()
+				webhookURL := fmt.Sprintf("%s/webhooks/telegram/%s", h.ExternalURL, workspaceID.String())
+				validationErr = h.registerTelegramWebhook(ctx, token, webhookURL, secretToken)
+			} else {
+				secretToken = "pergo_secret_token_" + workspaceID.String()
+			}
+
+			if validationErr == nil {
+				type storedTelegramConfig struct {
+					Token       string `json:"token"`
+					SecretToken string `json:"secret_token"`
+					BotUsername string `json:"bot_username"`
+				}
+				credentialsJSON, _ = json.Marshal(storedTelegramConfig{
+					Token:       token,
+					SecretToken: secretToken,
+					BotUsername: botUsername,
+				})
+			}
+		}
+	} else if channel == "whatsapp_cloud" {
+		phoneNumberID := c.FormValue("phone_number_id")
+		wabaAccountID := c.FormValue("waba_account_id")
+		token := c.FormValue("token")
+		verifyToken := c.FormValue("verify_token")
+
+		if phoneNumberID == "" || wabaAccountID == "" || token == "" {
+			return c.String(http.StatusBadRequest, "phone_number_id, waba_account_id, and token are required")
+		}
+
+		senderIdentity = phoneNumberID
+
+		wabaCfg := pages.WABAConfig{
+			PhoneNumberID: phoneNumberID,
+			Token:         token,
+			WABAAccountID: wabaAccountID,
+			VerifyToken:   verifyToken,
+		}
+
+		validationErr = h.syncTemplatesFromMeta(ctx, workspaceID, wabaCfg)
+		if validationErr == nil {
+			credentialsJSON, _ = json.Marshal(wabaCfg)
+		}
+	} else {
+		return c.String(http.StatusBadRequest, "unsupported channel type for synchronous creation")
+	}
+
+	if validationErr != nil {
+		c.Response().Header().Set("HX-Retarget", "#modal-error-container")
+		return c.HTML(http.StatusOK, fmt.Sprintf(`
+			<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">
+				<strong>Erro de Validação:</strong> %s
+			</div>
+		`, validationErr.Error()))
+	}
+
+	conn := &repository.Connection{
+		WorkspaceID:    workspaceID,
+		Name:           name,
+		Channel:        channel,
+		SenderIdentity: senderIdentity,
+		Status:         "connected",
+		Credentials:    credentialsJSON,
+	}
+
+	if err := h.Connections.Create(ctx, conn); err != nil {
+		c.Response().Header().Set("HX-Retarget", "#modal-error-container")
+		return c.HTML(http.StatusOK, fmt.Sprintf(`
+			<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">
+				<strong>Erro ao salvar conexão:</strong> %s
+			</div>
+		`, err.Error()))
+	}
+
+	connections, err := h.Connections.ListByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to reload connections")
+	}
+
+	return mw.Render(c, http.StatusOK, pages.ConnectionTable(connections))
+}
+
+// TestForm renders the connectivity test modal.
+// GET /admin/devices/test?id={id}
+func (h *DeviceHandler) TestForm(c *echo.Context) error {
+	idStr := c.QueryParam("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid connection ID")
+	}
+
+	conn, err := h.Connections.GetByID(c.Request().Context(), id)
+	if err != nil {
+		return c.String(http.StatusNotFound, "connection not found")
+	}
+
+	return mw.Render(c, http.StatusOK, pages.TestConnectionModal(conn))
+}
+
+// RunTest publishes a test outbound message to the messages.outbound JetStream subject.
+// POST /admin/devices/test
+func (h *DeviceHandler) RunTest(c *echo.Context) error {
+	connIDStr := c.FormValue("connection_id")
+	to := c.FormValue("to")
+	body := c.FormValue("body")
+
+	connID, err := uuid.Parse(connIDStr)
+	if err != nil {
+		return c.HTML(http.StatusOK, `<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">ID de Conexão inválido</div>`)
+	}
+
+	conn, err := h.Connections.GetByID(c.Request().Context(), connID)
+	if err != nil {
+		return c.HTML(http.StatusOK, `<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Conexão não encontrada</div>`)
+	}
+
+	traceID := "test-" + uuid.New().String()
+	qMsg := domain.QueueMessage{
+		WorkspaceID:    conn.WorkspaceID,
+		ConnectionID:   conn.ID,
+		SenderIdentity: conn.SenderIdentity,
+		TraceID:        traceID,
+		To:             to,
+		Channel:        conn.Channel,
+		Body:           body,
+		QueuedAt:       time.Now().UTC(),
+	}
+
+	payload, err := json.Marshal(qMsg)
+	if err != nil {
+		return c.HTML(http.StatusOK, fmt.Sprintf(`<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Erro ao serializar mensagem: %v</div>`, err))
+	}
+
+	err = h.Publisher.Publish(c.Request().Context(), "messages.outbound", payload, traceID)
+	if err != nil {
+		return c.HTML(http.StatusOK, fmt.Sprintf(`<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Erro ao publicar no NATS: %v</div>`, err))
+	}
+
+	return c.HTML(http.StatusOK, fmt.Sprintf(`
+		<div class="p-3 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-md text-sm">
+			<strong>Sucesso!</strong> Mensagem enviada para a fila de saída.<br/>
+			<span class="text-xs font-mono">Trace ID: %s</span>
+		</div>
+	`, traceID))
+}
+
+// WS upgrades the connection to WebSocket and streams NATS events live to the client.
+// GET /admin/devices/test/ws
+func (h *DeviceHandler) WS(c *echo.Context) error {
+	ws, err := websocket.Accept(c.Response(), c.Request(), &websocket.AcceptOptions{
+		InsecureSkipVerify: true,
+	})
+	if err != nil {
+		slog.Error("websocket accept failed in device test", "error", err)
+		return err
+	}
+	defer ws.Close(websocket.StatusInternalError, "closed")
+
+	ctx := c.Request().Context()
+
+	// Channel to receive NATS messages
+	ch := make(chan *nats.Msg, 128)
+
+	// Subscribe to outgoing messages
+	sub1, err := h.NC.ChanSubscribe("messages.>", ch)
+	if err != nil {
+		slog.Error("nats subscribe messages.> failed", "error", err)
+		return err
+	}
+	defer sub1.Unsubscribe()
+
+	// Subscribe to incoming webhook events
+	sub2, err := h.NC.ChanSubscribe("inbound.events.>", ch)
+	if err != nil {
+		slog.Error("nats subscribe inbound.events.> failed", "error", err)
+		return err
+	}
+	defer sub2.Unsubscribe()
+
+	// Subscribe to webhook delivery events
+	sub3, err := h.NC.ChanSubscribe("webhooks.events", ch)
+	if err != nil {
+		slog.Error("nats subscribe webhooks.events failed", "error", err)
+		return err
+	}
+	defer sub3.Unsubscribe()
+
+	slog.Info("device connectivity tester websocket connection established")
+
+	// Message read loop in separate goroutine to detect client disconnecting
+	errChan := make(chan error, 1)
+	go func() {
+		for {
+			_, _, err := ws.Read(ctx)
+			if err != nil {
+				errChan <- err
+				return
+			}
+		}
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-errChan:
+			slog.Info("device websocket closed by client", "error", err)
+			return nil
+		case m := <-ch:
+			var eventType, badgeClass, title string
+			var prettyJSON bytes.Buffer
+
+			subject := m.Subject
+			rawPayload := m.Data
+
+			if err := json.Indent(&prettyJSON, rawPayload, "", "  "); err != nil {
+				prettyJSON.Reset()
+				prettyJSON.Write(rawPayload)
+			}
+
+			if subject == "messages.outbound" {
+				eventType = "outbound"
+				badgeClass = "badge-secondary"
+				title = "Outbound Message Enqueued"
+			} else if subject == "webhooks.events" {
+				eventType = "webhook"
+				badgeClass = "badge-danger"
+				title = "Webhook Status Dispatched"
+			} else { // inbound.events.<workspace_id>
+				eventType = "inbound"
+				badgeClass = "badge-success"
+				title = "Inbound Message Received"
+			}
+
+			timeStr := time.Now().Format("15:04:05")
+
+			var buf bytes.Buffer
+			err := pages.TestEventRow(eventType, badgeClass, title, timeStr, prettyJSON.String()).Render(ctx, &buf)
+			if err != nil {
+				slog.Error("failed to render test event row", "error", err)
+				continue
+			}
+
+			err = ws.Write(ctx, websocket.MessageText, buf.Bytes())
+			if err != nil {
+				slog.Error("websocket write failed", "error", err)
+				return err
+			}
+		}
+	}
+}
+
+// --- helpers ---
+
+func (h *DeviceHandler) registerTelegramWebhook(ctx context.Context, token, webhookURL, secretToken string) error {
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/setWebhook?url=%s&secret_token=%s", token, webhookURL, secretToken)
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create Telegram webhook registration request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to connect to Telegram API for webhook registration: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Telegram webhook registration returned HTTP status %d", resp.StatusCode)
+	}
+
+	type tgWebhookResponse struct {
+		Ok          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	var tgResp tgWebhookResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tgResp); err != nil {
+		return fmt.Errorf("failed to decode Telegram webhook response: %w", err)
+	}
+
+	if !tgResp.Ok {
+		return fmt.Errorf("Telegram webhook registration failed: %s", tgResp.Description)
+	}
+
+	slog.Info("Telegram webhook registered successfully", "url", webhookURL)
+	return nil
+}
+
+func (h *DeviceHandler) validateTelegramToken(ctx context.Context, token string) (string, error) {
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/getMe", token)
+	client := &http.Client{Timeout: 5 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create Telegram API request: %w", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to connect to Telegram API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return "", errors.New("Telegram token is unauthorized/invalid")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("Telegram API returned HTTP status %d", resp.StatusCode)
+	}
+
+	type tgResponse struct {
+		Ok     bool `json:"ok"`
+		Result struct {
+			Username string `json:"username"`
+		} `json:"result"`
+	}
+	var tgResp tgResponse
+	dec := json.NewDecoder(resp.Body)
+	if err := dec.Decode(&tgResp); err != nil {
+		return "", fmt.Errorf("failed to parse Telegram response: %w", err)
+	}
+
+	if !tgResp.Ok {
+		return "", errors.New("Telegram API returned OK=false")
+	}
+
+	slog.Info("Telegram bot token validated successfully", "username", tgResp.Result.Username)
+	username := tgResp.Result.Username
+	if !strings.HasPrefix(username, "@") {
+		username = "@" + username
+	}
+	return username, nil
+}
+
+func (h *DeviceHandler) syncTemplatesFromMeta(ctx context.Context, workspaceID uuid.UUID, config pages.WABAConfig) error {
+	baseURL := "https://graph.facebook.com/v18.0"
+	metaURL := fmt.Sprintf("%s/%s/message_templates?limit=100", baseURL, config.WABAAccountID)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metaURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create Meta API request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+config.Token)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to connect to Meta API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response from Meta: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		type metaError struct {
+			Message string `json:"message"`
+			Code    int    `json:"code"`
+		}
+		type metaErrorResponse struct {
+			Error metaError `json:"error"`
+		}
+		var metaErr metaErrorResponse
+		if err := json.Unmarshal(respBytes, &metaErr); err == nil && metaErr.Error.Message != "" {
+			return fmt.Errorf("Meta API error: %s (code %d)", metaErr.Error.Message, metaErr.Error.Code)
+		}
+		return fmt.Errorf("Meta API returned HTTP status %d", resp.StatusCode)
+	}
+
+	type metaTemplate struct {
+		ID         string            `json:"id"`
+		Name       string            `json:"name"`
+		Language   string            `json:"language"`
+		Status     string            `json:"status"`
+		Category   string            `json:"category"`
+		Components []json.RawMessage `json:"components"`
+	}
+
+	type metaTemplatesResponse struct {
+		Data []metaTemplate `json:"data"`
+	}
+
+	var metaResp metaTemplatesResponse
+	if err := json.Unmarshal(respBytes, &metaResp); err != nil {
+		return fmt.Errorf("failed to parse Meta response: %w", err)
+	}
+
+	slog.Info("syncing templates from Meta", "count", len(metaResp.Data), "workspace_id", workspaceID)
+
+	for _, t := range metaResp.Data {
+		componentsJSON, err := json.Marshal(t.Components)
+		if err != nil {
+			slog.Error("failed to marshal components", "error", err, "template", t.Name)
+			continue
+		}
+
+		dbTmpl := &repository.WABATemplate{
+			WorkspaceID:    workspaceID,
+			MetaTemplateID: t.ID,
+			Name:           t.Name,
+			Language:       t.Language,
+			Status:         t.Status,
+			Category:       t.Category,
+			Components:     componentsJSON,
+		}
+
+		if h.TemplatesRepo != nil {
+			_, err = h.TemplatesRepo.Upsert(ctx, dbTmpl)
+			if err != nil {
+				slog.Error("failed to upsert template in local DB", "error", err, "template", t.Name)
+			}
+		}
+	}
+	return nil
 }

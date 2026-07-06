@@ -1,54 +1,31 @@
 package pages
 
 import (
-	"github.com/pablojhp.pergo/internal/session"
+	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/components"
 	"github.com/pablojhp.pergo/templates/layout"
 )
 
-// DeviceListPage renders the full device management page with layout.
-// DeviceListPage renders the full device management page with layout.
-templ DeviceListPage(devices []*session.Device) {
-	@layout.Base("Conexões", DeviceListContent(devices))
+// DeviceListPage renders the full connection management page with layout.
+templ DeviceListPage(connections []*repository.Connection) {
+	@layout.Base("Conexões", DeviceListContent(connections))
 }
 
-// DeviceListContent renders the device list content (HTMX fragment or full page body).
-templ DeviceListContent(devices []*session.Device) {
+// DeviceListContent renders the connection list content (HTMX fragment or full page body).
+templ DeviceListContent(connections []*repository.Connection) {
 	<div class="page-header flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
 		<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Conexões</h1>
 		<button
-			class="btn btn-black bg-black text-white hover:bg-zinc-800 border-none btn-sm"
+			class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition"
 			hx-get="/admin/devices/pair-form"
-			hx-target="#pair-form-area"
-			hx-swap="innerHTML"
+			hx-target="body"
+			hx-swap="beforeend"
 		>
-			Link WhatsApp Web
+			Nova Conexão
 		</button>
 	</div>
-	<div id="pair-form-area" class="mb-6"></div>
-	<div class="section bg-white border border-zinc-200 rounded-lg p-5 shadow-sm mb-6">
-		<h2 class="text-sm font-bold text-zinc-500 uppercase tracking-wider mb-4">Dispositivos WhatsApp Web Ativos</h2>
-		<table class="table w-full text-zinc-700" id="device-table">
-			<thead>
-				<tr class="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
-					<th class="px-4 py-2 text-left text-xs font-semibold uppercase">JID</th>
-					<th class="px-4 py-2 text-left text-xs font-semibold uppercase">Phone</th>
-					<th class="px-4 py-2 text-left text-xs font-semibold uppercase">Status</th>
-					<th class="px-4 py-2 text-left text-xs font-semibold uppercase">Workspace</th>
-					<th class="px-4 py-2 text-left text-xs font-semibold uppercase">Actions</th>
-				</tr>
-			</thead>
-			<tbody id="device-list-body" class="divide-y divide-zinc-200">
-				for _, d := range devices {
-					@components.DeviceCard(d)
-				}
-				if len(devices) == 0 {
-					<tr>
-						<td colspan="5" class="px-4 py-6 text-center text-zinc-400 italic">Nenhum dispositivo emparelhado. Clique em "Link WhatsApp Web" para começar.</td>
-					</tr>
-				}
-			</tbody>
-		</table>
+	<div id="connections-table-container" class="section bg-white border border-zinc-200 rounded-lg p-5 shadow-sm mb-6">
+		@ConnectionTable(connections)
 	</div>
 
 	<div class="section bg-white border border-zinc-200 rounded-lg p-5 shadow-sm">
@@ -60,7 +37,7 @@ templ DeviceListContent(devices []*session.Device) {
 					<p class="text-xs text-zinc-400 mt-1">Mensagens recebidas no WhatsApp Web emparelhado.</p>
 				</div>
 				<div>
-					<a href="/admin/inbox/whatsapp" class="btn btn-xs btn-outline border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center">Abrir Inbox</a>
+					<a href="/admin/inbox?channel=whatsapp" class="btn btn-xs btn-outline border border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center py-1 rounded block">Abrir Inbox</a>
 				</div>
 			</div>
 			<div class="bg-zinc-50 border border-zinc-200 rounded-lg p-4 flex flex-col justify-between gap-4">
@@ -69,7 +46,7 @@ templ DeviceListContent(devices []*session.Device) {
 					<p class="text-xs text-zinc-400 mt-1">Mensagens recebidas via API Oficial (WABA).</p>
 				</div>
 				<div>
-					<a href="/admin/inbox/whatsapp_cloud" class="btn btn-xs btn-outline border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center">Abrir Inbox</a>
+					<a href="/admin/inbox?channel=whatsapp_cloud" class="btn btn-xs btn-outline border border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center py-1 rounded block">Abrir Inbox</a>
 				</div>
 			</div>
 			<div class="bg-zinc-50 border border-zinc-200 rounded-lg p-4 flex flex-col justify-between gap-4">
@@ -78,67 +55,268 @@ templ DeviceListContent(devices []*session.Device) {
 					<p class="text-xs text-zinc-400 mt-1">Mensagens recebidas via bot do Telegram.</p>
 				</div>
 				<div>
-					<a href="/admin/inbox/telegram" class="btn btn-xs btn-outline border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center">Abrir Inbox</a>
+					<a href="/admin/inbox?channel=telegram" class="btn btn-xs btn-outline border border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center py-1 rounded block">Abrir Inbox</a>
 				</div>
 			</div>
 		</div>
 	</div>
 }
 
-// PairForm renders the QR pairing initiation form.
-// Triggered by the "Link Device" button via HTMX.
-templ PairForm() {
-	<div class="pair-form card">
-		<h3>Link WhatsApp Device</h3>
-		@components.BanWarning()
-		<form
-			hx-post="/admin/devices/pair"
-			hx-target="#qr-area"
-			hx-swap="innerHTML"
-		>
-			<div class="form-group">
-				<label for="phone">Phone Number</label>
-				<input
-					id="phone"
-					name="phone"
-					type="tel"
-					class="form-control"
-					placeholder="+5511999999999"
-					required
-				/>
+// ConnectionTable renders the connection list table.
+templ ConnectionTable(connections []*repository.Connection) {
+	<table class="table w-full text-zinc-700" id="device-table">
+		<thead>
+			<tr class="bg-zinc-50 text-zinc-500 border-b border-zinc-200">
+				<th class="px-4 py-2 text-left text-xs font-semibold uppercase">Nome</th>
+				<th class="px-4 py-2 text-left text-xs font-semibold uppercase">Canal</th>
+				<th class="px-4 py-2 text-left text-xs font-semibold uppercase">Status</th>
+				<th class="px-4 py-2 text-left text-xs font-semibold uppercase">Identidade</th>
+				<th class="px-4 py-2 text-left text-xs font-semibold uppercase">Conectado Desde</th>
+				<th class="px-4 py-2 text-left text-xs font-semibold uppercase">Ações</th>
+			</tr>
+		</thead>
+		<tbody id="device-list-body" class="divide-y divide-zinc-200">
+			for _, conn := range connections {
+				@ConnectionRow(conn)
+			}
+			if len(connections) == 0 {
+				<tr>
+					<td colspan="6" class="px-4 py-6 text-center text-zinc-400 italic">Nenhuma conexão cadastrada. Clique em "Nova Conexão" para começar.</td>
+				</tr>
+			}
+		</tbody>
+	</table>
+}
+
+// ConnectionRow renders a single connection row inside the list table.
+templ ConnectionRow(conn *repository.Connection) {
+	<tr class="device-row hover:bg-zinc-50/50" id={ "connection-row-" + conn.ID.String() }>
+		<td class="px-4 py-3 font-semibold text-zinc-950">{ conn.Name }</td>
+		<td class="px-4 py-3">
+			@ChannelIcon(conn.Channel)
+		</td>
+		<td class="px-4 py-3">
+			@ConnectionStatusBadge(conn.Status)
+		</td>
+		<td class="px-4 py-3 font-mono text-xs">{ conn.SenderIdentity }</td>
+		<td class="px-4 py-3 text-sm text-zinc-500">
+			if conn.ConnectedSince != nil {
+				{ conn.ConnectedSince.Format("2006-01-02 15:04:05") }
+			} else {
+				-
+			}
+		</td>
+		<td class="px-4 py-3">
+			<div class="flex items-center gap-2">
+				<button
+					class="btn btn-outline border border-zinc-300 text-zinc-700 hover:bg-zinc-50 btn-xs rounded-md px-2 py-0.5 text-xs font-semibold"
+					hx-get={ "/admin/devices/test?id=" + conn.ID.String() }
+					hx-target="body"
+					hx-swap="beforeend"
+				>
+					Testar
+				</button>
+				<button
+					class="btn btn-danger btn-xs bg-red-600 hover:bg-red-700 text-white rounded-md px-2 py-0.5 text-xs font-semibold border-none"
+					hx-delete={ "/admin/devices/" + conn.ID.String() }
+					hx-target="#connections-table-container"
+					hx-swap="innerHTML"
+					hx-confirm={ "Tem certeza que deseja excluir a conexão " + conn.Name + "?" }
+				>
+					Excluir
+				</button>
 			</div>
-			<button type="submit" class="btn btn-primary">Start Pairing</button>
-		</form>
-		<div id="qr-area" class="qr-area"></div>
+		</td>
+	</tr>
+}
+
+// ChannelIcon renders a styled badge/icon representing a channel.
+templ ChannelIcon(channel string) {
+	switch channel {
+		case "whatsapp":
+			<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+				WhatsApp Web
+			</span>
+		case "whatsapp_cloud":
+			<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+				WhatsApp Cloud
+			</span>
+		case "telegram":
+			<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-sky-50 text-sky-700 border border-sky-200">
+				Telegram
+			</span>
+		default:
+			<span class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs font-medium bg-zinc-50 text-zinc-700 border border-zinc-200">
+				{ channel }
+			</span>
+	}
+}
+
+// ConnectionStatusBadge renders a status badge with matching color theme.
+templ ConnectionStatusBadge(status string) {
+	switch status {
+		case "connected", "active":
+			<span class="badge badge-success">Conectado</span>
+		case "disconnected":
+			<span class="badge badge-warning">Desconectado</span>
+		case "terminal":
+			<span class="badge badge-error">Terminal</span>
+		case "pending":
+			<span class="badge badge-info">Pendente</span>
+		default:
+			<span class="badge badge-neutral">{ status }</span>
+	}
+}
+
+// PairForm renders the unified new connection modal form.
+templ PairForm() {
+	<div class="modal-backdrop" onclick="this.closest('.modal-backdrop').remove()">
+		<div class="modal w-full max-w-lg" onclick="event.stopPropagation()">
+			<div class="modal-header">
+				<h3>Nova Conexão</h3>
+			</div>
+			<div class="modal-body">
+				<div id="modal-error-container"></div>
+				<form id="new-connection-form" class="space-y-4" hx-on::after-request="if(event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget')) this.closest('.modal-backdrop').remove()">
+					<div class="form-group mb-4">
+						<label for="new-conn-name" class="block text-sm font-medium text-zinc-700 mb-1">Nome da Conexão</label>
+						<input type="text" id="new-conn-name" name="name" required class="form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950" placeholder="Ex: WhatsApp Suporte, Telegram Bot"/>
+					</div>
+
+					<div class="form-group mb-4">
+						<label for="new-channel-select" class="block text-sm font-medium text-zinc-700 mb-1">Canal</label>
+						<select id="new-channel-select" name="channel" required class="form-input w-full border border-zinc-300 rounded-md p-2 bg-white focus:outline-none focus:border-zinc-950" onchange="updateChannelFields()">
+							<option value="whatsapp">WhatsApp Web (Unofficial)</option>
+							<option value="whatsapp_cloud">WhatsApp Cloud (WABA)</option>
+							<option value="telegram">Telegram Bot</option>
+						</select>
+					</div>
+
+					<!-- WhatsApp Web Fields -->
+					<div id="fields-whatsapp" class="space-y-4 mb-4">
+						@components.BanWarning()
+						<div class="form-group">
+							<label for="phone" class="block text-sm font-medium text-zinc-700 mb-1">Número de Telefone</label>
+							<input type="tel" id="phone" name="phone" required class="form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950" placeholder="+5511999999999"/>
+						</div>
+					</div>
+
+					<!-- WABA Fields -->
+					<div id="fields-waba" style="display: none;" class="space-y-4 mb-4">
+						<div class="form-group">
+							<label for="waba_phone_number_id" class="block text-sm font-medium text-zinc-700 mb-1">Phone Number ID</label>
+							<input type="text" id="waba_phone_number_id" name="phone_number_id" data-required="true" class="form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950"/>
+						</div>
+						<div class="form-group">
+							<label for="waba_account_id" class="block text-sm font-medium text-zinc-700 mb-1">WABA Account ID</label>
+							<input type="text" id="waba_account_id" name="waba_account_id" data-required="true" class="form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950"/>
+						</div>
+						<div class="form-group">
+							<label for="waba_token" class="block text-sm font-medium text-zinc-700 mb-1">Meta API Token</label>
+							<input type="password" id="waba_token" name="token" data-required="true" class="form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950"/>
+						</div>
+						<div class="form-group">
+							<label for="waba_verify_token" class="block text-sm font-medium text-zinc-700 mb-1">Verify Token (Optional)</label>
+							<input type="text" id="waba_verify_token" name="verify_token" class="form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950"/>
+						</div>
+					</div>
+
+					<!-- Telegram Fields -->
+					<div id="fields-telegram" style="display: none;" class="space-y-4 mb-4">
+						<div class="form-group">
+							<label for="tg_token" class="block text-sm font-medium text-zinc-700 mb-1">Bot Token</label>
+							<input type="password" id="tg_token" name="token" data-required="true" class="form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950"/>
+						</div>
+					</div>
+
+					<div id="qr-area" class="qr-area mt-4"></div>
+
+					<div class="modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6">
+						<button type="button" class="btn btn-secondary px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-medium" onclick="this.closest('.modal-backdrop').remove()">Cancelar</button>
+						<button type="submit" id="new-conn-submit-btn" class="btn btn-primary bg-zinc-950 hover:bg-zinc-900 text-white px-4 py-2 rounded-md font-medium">
+							Salvar Conexão
+						</button>
+					</div>
+				</form>
+			</div>
+		</div>
+		<script>
+			(function() {
+				window.updateChannelFields = function() {
+					const channel = document.getElementById('new-channel-select').value;
+					const waWebFields = document.getElementById('fields-whatsapp');
+					const wabaFields = document.getElementById('fields-waba');
+					const tgFields = document.getElementById('fields-telegram');
+					const submitBtn = document.getElementById('new-conn-submit-btn');
+
+					// Hide everything
+					waWebFields.style.display = 'none';
+					wabaFields.style.display = 'none';
+					tgFields.style.display = 'none';
+
+					// Disable required for all dynamic fields
+					wabaFields.querySelectorAll('input').forEach(i => i.required = false);
+					tgFields.querySelectorAll('input').forEach(i => i.required = false);
+					waWebFields.querySelectorAll('input').forEach(i => i.required = false);
+
+					if (channel === 'whatsapp') {
+						waWebFields.style.display = 'block';
+						waWebFields.querySelectorAll('input').forEach(i => i.required = true);
+						
+						submitBtn.innerText = 'Começar Emparelhamento';
+						submitBtn.setAttribute('hx-post', '/admin/devices/pair');
+						submitBtn.setAttribute('hx-target', '#qr-area');
+						submitBtn.setAttribute('hx-swap', 'innerHTML');
+						htmx.process(submitBtn);
+					} else if (channel === 'whatsapp_cloud') {
+						wabaFields.style.display = 'block';
+						wabaFields.querySelectorAll('input[data-required="true"]').forEach(i => i.required = true);
+						
+						submitBtn.innerText = 'Salvar Conexão';
+						submitBtn.setAttribute('hx-post', '/admin/devices/create');
+						submitBtn.setAttribute('hx-target', '#connections-table-container');
+						submitBtn.setAttribute('hx-swap', 'innerHTML');
+						htmx.process(submitBtn);
+					} else if (channel === 'telegram') {
+						tgFields.style.display = 'block';
+						tgFields.querySelectorAll('input[data-required="true"]').forEach(i => i.required = true);
+						
+						submitBtn.innerText = 'Salvar Conexão';
+						submitBtn.setAttribute('hx-post', '/admin/devices/create');
+						submitBtn.setAttribute('hx-target', '#connections-table-container');
+						submitBtn.setAttribute('hx-swap', 'innerHTML');
+						htmx.process(submitBtn);
+					}
+				};
+
+				updateChannelFields();
+			})();
+		</script>
 	</div>
 }
 
 // QRFragment renders the current QR code state as an HTMX-refreshable fragment.
-// code: raw QR code string (empty if not yet available)
-// phone: phone number being paired
-// status: "pending", "paired", "error"
-// message: human-readable status message
 templ QRFragment(code string, phone string, status string, message string) {
 	<div class="qr-fragment" id="qr-area">
 		@components.BanWarning()
-		<p class="qr-status">{ message }</p>
+		<p class="qr-status mb-2 text-sm text-zinc-600">{ message }</p>
 		switch status {
 			case "pending":
 				if code != "" {
-					<div class="qr-container">
-						<p class="qr-hint">Scan this code with WhatsApp on your phone:</p>
+					<div class="qr-container bg-zinc-50 border border-zinc-200 rounded p-4 flex flex-col items-center">
+						<p class="qr-hint text-xs text-zinc-500 mb-2">Escaneie o código abaixo com o WhatsApp do seu celular:</p>
 						<div
-							class="qr-code-raw"
+							class="qr-code-raw bg-white p-2 border border-zinc-300 rounded font-mono text-xs select-all break-all"
 							data-qr={ code }
 							aria-label="QR Code"
 						>
-							<p class="qr-code-text"><code>{ code }</code></p>
+							<code>{ code }</code>
 						</div>
 					</div>
 				} else {
-					<div class="qr-loading">
-						<div class="spinner"></div>
-						<p>Generating QR code...</p>
+					<div class="qr-loading flex flex-col items-center py-4">
+						<div class="spinner border-2 border-zinc-900 border-t-transparent rounded-full w-6 h-6 animate-spin mb-2"></div>
+						<p class="text-xs text-zinc-500">Gerando QR code...</p>
 					</div>
 				}
 				<div
@@ -148,31 +326,132 @@ templ QRFragment(code string, phone string, status string, message string) {
 					hx-swap="innerHTML"
 				></div>
 			case "paired":
-				<div class="qr-success">
-					<p class="success-icon">✅</p>
-					<p>Device paired successfully!</p>
+				<div class="qr-success text-center py-4">
+					<p class="success-icon text-2xl mb-1">✅</p>
+					<p class="text-sm font-semibold text-zinc-950">Dispositivo pareado com sucesso!</p>
 					<button
-						class="btn btn-primary"
+						class="btn btn-primary mt-3 bg-zinc-950 hover:bg-zinc-900 text-white px-4 py-2 rounded-md font-medium"
 						hx-get="/admin/devices"
 						hx-target="main"
 						hx-swap="innerHTML"
+						onclick="this.closest('.modal-backdrop').remove()"
 					>
-						View Devices
+						Ver Conexões
 					</button>
 				</div>
 			case "error":
-				<div class="qr-error">
-					<p class="error-icon">❌</p>
-					<p>Pairing failed. Please try again.</p>
+				<div class="qr-error text-center py-4">
+					<p class="error-icon text-2xl mb-1">❌</p>
+					<p class="text-sm font-semibold text-zinc-950">Falha no pareamento. Tente novamente.</p>
 					<button
-						class="btn btn-secondary"
+						class="btn btn-secondary mt-3 px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-medium"
 						hx-get="/admin/devices/pair-form"
-						hx-target="#pair-form-area"
-						hx-swap="innerHTML"
+						hx-target="body"
+						hx-swap="beforeend"
+						onclick="this.closest('.modal-backdrop').remove()"
 					>
-						Try Again
+						Tentar Novamente
 					</button>
 				</div>
 		}
+	</div>
+}
+
+// TestConnectionModal renders the modal to test message sending and view NATS streams.
+templ TestConnectionModal(conn *repository.Connection) {
+	<script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js"></script>
+	<div class="modal-backdrop" onclick="this.closest('.modal-backdrop').remove()">
+		<div class="modal w-full max-w-4xl" onclick="event.stopPropagation()">
+			<div class="modal-header">
+				<h3>Testar Conexão: { conn.Name }</h3>
+			</div>
+			<div class="modal-body grid grid-cols-1 md:grid-cols-2 gap-6">
+				<!-- Left column: Send form -->
+				<div>
+					<div id="test-form-alert"></div>
+					<form
+						hx-post="/admin/devices/test"
+						hx-target="#test-form-alert"
+						hx-swap="innerHTML"
+						class="space-y-4"
+					>
+						<input type="hidden" name="connection_id" value={ conn.ID.String() }/>
+
+						<div class="mb-2">
+							<label class="block text-xs font-semibold uppercase tracking-wider text-zinc-400">Canal</label>
+							<div class="mt-1 font-semibold text-zinc-900">{ conn.Channel }</div>
+						</div>
+
+						<div class="mb-4">
+							<label class="block text-xs font-semibold uppercase tracking-wider text-zinc-400">Identidade do Remetente</label>
+							<div class="mt-1 font-mono text-xs text-zinc-600">{ conn.SenderIdentity }</div>
+						</div>
+
+						<div class="form-group mb-4">
+							<label for="test-to" class="block text-sm font-medium text-zinc-700 mb-1">Destinatário</label>
+							<input
+								type="text"
+								name="to"
+								id="test-to"
+								class="form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950"
+								placeholder="Ex: 5511999999999 or Telegram chat_id"
+								required
+							/>
+						</div>
+
+						<div class="form-group mb-4">
+							<label for="test-body" class="block text-sm font-medium text-zinc-700 mb-1">Corpo da Mensagem</label>
+							<textarea
+								name="body"
+								id="test-body"
+								rows="4"
+								class="form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950 resize-y"
+								placeholder="Mensagem de teste do PerGo!"
+								required
+							></textarea>
+						</div>
+
+						<button type="submit" class="btn btn-primary w-full bg-zinc-950 hover:bg-zinc-900 text-white font-medium py-2 rounded-md">
+							Enviar Mensagem de Teste
+						</button>
+					</form>
+				</div>
+
+				<!-- Right column: Live stream -->
+				<div hx-ext="ws" ws-connect="/admin/devices/test/ws" class="flex flex-col h-full border border-zinc-200 rounded-md p-4 bg-zinc-50">
+					<h4 class="text-xs font-bold text-zinc-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+						<span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+						Atividade em Tempo Real (NATS)
+					</h4>
+					
+					<div class="event-list flex-1 overflow-y-auto min-h-[250px] max-h-[350px] space-y-2" id="playground-events">
+						<div class="text-center text-zinc-400 italic text-xs py-10" id="playground-empty">
+							Nenhum evento recebido ainda. Envie um teste para ver logs em tempo real.
+						</div>
+					</div>
+				</div>
+			</div>
+			<div class="modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6">
+				<button class="btn btn-secondary px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-medium" onclick="this.closest('.modal-backdrop').remove()">Fechar</button>
+			</div>
+		</div>
+	</div>
+}
+
+// TestEventRow renders a single event card for the WS feed.
+templ TestEventRow(eventType string, badgeClass string, title string, timeStr string, details string) {
+	<div id="playground-empty" hx-swap-oob="delete"></div>
+	<div id="playground-events" hx-swap-oob="afterbegin">
+		<div class={ "p-3 rounded-md border-l-4 text-xs font-mono mb-2 shadow-sm border-zinc-300 bg-white",
+			templ.KV("border-blue-500 bg-blue-50/30", eventType == "outbound"),
+			templ.KV("border-emerald-500 bg-emerald-50/30", eventType == "inbound"),
+			templ.KV("border-purple-500 bg-purple-50/30", eventType == "webhook") }>
+			<div class="flex justify-between items-center mb-1">
+				<span class="font-bold uppercase tracking-wider text-[10px] text-zinc-500">{ eventType }</span>
+				<span class="text-zinc-400 text-[10px]">{ timeStr }</span>
+			</div>
+			<strong class="text-zinc-900 block mb-1">{ title }</strong>
+			<pre class="bg-zinc-950 text-zinc-200 p-2 rounded text-[10px] overflow-x-auto whitespace-pre-wrap max-h-32">{ details }</pre>
+		</div>
 	</div>
 }

@@ -373,17 +373,26 @@ func main() {
 	adminGroup.GET("/inbox/messages", inboxHandler.PollMessages)
 	adminGroup.POST("/inbox/send", inboxHandler.SendMessage)
 
-	// Device management routes (WhatsApp Web pairing & session control)
+	// Device/Connection management routes
 	deviceHandler := &admin.DeviceHandler{
-		Repo:     deviceRepo,
-		Sessions: sessionRegistry,
-		Manager:  sessionManager,
+		Repo:          deviceRepo,
+		Sessions:      sessionRegistry,
+		Manager:       sessionManager,
+		Connections:   connectionRepo,
+		Publisher:     publisher,
+		NC:            nc,
+		TemplatesRepo: wabaTemplateRepo,
+		ExternalURL:   cfg.ExternalURL,
 	}
 	adminGroup.GET("/devices", deviceHandler.List)
 	adminGroup.GET("/devices/pair-form", deviceHandler.PairForm)
 	adminGroup.POST("/devices/pair", deviceHandler.StartPairing)
 	adminGroup.GET("/devices/qr", deviceHandler.GetQR)
-	adminGroup.DELETE("/devices/:jid", deviceHandler.Disconnect)
+	adminGroup.DELETE("/devices/:id", deviceHandler.Disconnect)
+	adminGroup.POST("/devices/create", deviceHandler.Create)
+	adminGroup.GET("/devices/test", deviceHandler.TestForm)
+	adminGroup.POST("/devices/test", deviceHandler.RunTest)
+	adminGroup.GET("/devices/test/ws", deviceHandler.WS)
 
 	// Telemetry page (system health: sessions, NATS, uptime)
 	telemetryHandler := &admin.TelemetryHandler{
@@ -414,14 +423,7 @@ func main() {
 	adminGroup.POST("/workspaces/:workspace_id/webhooks/config", webhookHandler.SaveConfig)
 	adminGroup.DELETE("/workspaces/:workspace_id/webhooks/config", webhookHandler.DeleteConfig)
 
-	// Developer Playground
-	playgroundHandler := admin.NewPlaygroundHandler(wsRepo, publisher, nc, wabaTemplateRepo, s3Client)
-	adminGroup.GET("/playground", playgroundHandler.Page)
-	adminGroup.POST("/playground/send", playgroundHandler.Send)
-	adminGroup.GET("/playground/ws", playgroundHandler.WS)
-	adminGroup.GET("/playground/templates", playgroundHandler.GetTemplates)
-	adminGroup.GET("/playground/templates/details", playgroundHandler.GetTemplateDetails)
-	adminGroup.POST("/playground/upload", playgroundHandler.Upload)
+
 
 	// Static files
 	e.Static("/static", "static")
