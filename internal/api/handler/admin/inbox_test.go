@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
@@ -204,10 +206,202 @@ func TestInboxHandler_ChatPanel_MissingParams(t *testing.T) {
 	}
 }
 
-// TestInboxHandler_PollMessages_NoContent verifies the cursor guard for LAST_ID placeholder.
-// Full polling behavior requires a live DB and is covered by integration tests.
+// TestInboxHandler_PollMessages_NoContent verifies that a poll request with no new messages returns 204 No Content.
 func TestInboxHandler_PollMessages_NoContent(t *testing.T) {
-	t.Skip("Polling with nil repo requires interface mocking — covered by integration test")
+	dsn := os.Getenv("PERGO_DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@localhost:5433/pergo?sslmode=disable"
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		// Try fallback to port 5432
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+		pool, err = pgxpool.New(ctx, dsn)
+		if err != nil {
+			t.Skip("PostgreSQL not available for testing")
+		}
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		// Try fallback to port 5432 if the initial pool connection didn't error out but ping failed
+		pool.Close()
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+		pool, err = pgxpool.New(ctx, dsn)
+		if err != nil {
+			t.Skip("PostgreSQL not available for testing")
+		}
+		if err := pool.Ping(ctx); err != nil {
+			t.Skip("PostgreSQL ping failed")
+		}
+	}
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	auditRepo := repository.NewAuditRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "Inbox Test Workspace No Content")
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() {
+		_, _ = pool.Exec(ctx, "DELETE FROM workspaces WHERE id = $1", ws.ID)
+	}()
+
+	insertInbound := func(id uuid.UUID, from, channel, to, body string, createdAt time.Time) uuid.UUID {
+		payload := map[string]any{
+			"event":        "inbound_message",
+			"trace_id":     uuid.New().String(),
+			"message_id":   uuid.New().String(),
+			"channel":      channel,
+			"timestamp":    createdAt.Format(time.RFC3339),
+			"workspace_id": ws.ID.String(),
+			"from":         from,
+			"to":           to,
+			"body":         body,
+		}
+		payloadBytes, _ := json.Marshal(payload)
+		_, err := pool.Exec(ctx, `
+			INSERT INTO audit_logs (id, workspace_id, trace_id, event_type, payload, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, id, ws.ID, payload["trace_id"], "inbound_message", payloadBytes, createdAt)
+		if err != nil {
+			t.Fatalf("failed to insert inbound log: %v", err)
+		}
+		return id
+	}
+
+	now := time.Now().UTC()
+	msgID1 := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	insertInbound(msgID1, "contact1", "telegram", "bot1", "Old Message", now.Add(-5*time.Minute))
+
+	h := &admin.InboxHandler{
+		Repo: auditRepo,
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/admin/inbox/messages?from=contact1&channel=telegram&to=bot1&after_id="+msgID1.String(), nil)
+	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err = h.PollMessages(c)
+	if err != nil {
+		t.Fatalf("PollMessages failed: %v", err)
+	}
+
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected 204 No Content, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestInboxHandler_PollMessages_NewMessages verifies that a poll request returning new messages contains rendered bubble and OOB anchor with cursor.
+func TestInboxHandler_PollMessages_NewMessages(t *testing.T) {
+	dsn := os.Getenv("PERGO_DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@localhost:5433/pergo?sslmode=disable"
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		// Try fallback to port 5432
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+		pool, err = pgxpool.New(ctx, dsn)
+		if err != nil {
+			t.Skip("PostgreSQL not available for testing")
+		}
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		// Try fallback to port 5432 if the initial pool connection didn't error out but ping failed
+		pool.Close()
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+		pool, err = pgxpool.New(ctx, dsn)
+		if err != nil {
+			t.Skip("PostgreSQL not available for testing")
+		}
+		if err := pool.Ping(ctx); err != nil {
+			t.Skip("PostgreSQL ping failed")
+		}
+	}
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	auditRepo := repository.NewAuditRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "Inbox Test Workspace New Messages")
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() {
+		_, _ = pool.Exec(ctx, "DELETE FROM workspaces WHERE id = $1", ws.ID)
+	}()
+
+	insertInbound := func(id uuid.UUID, from, channel, to, body string, createdAt time.Time) uuid.UUID {
+		payload := map[string]any{
+			"event":        "inbound_message",
+			"trace_id":     uuid.New().String(),
+			"message_id":   uuid.New().String(),
+			"channel":      channel,
+			"timestamp":    createdAt.Format(time.RFC3339),
+			"workspace_id": ws.ID.String(),
+			"from":         from,
+			"to":           to,
+			"body":         body,
+		}
+		payloadBytes, _ := json.Marshal(payload)
+		_, err := pool.Exec(ctx, `
+			INSERT INTO audit_logs (id, workspace_id, trace_id, event_type, payload, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, id, ws.ID, payload["trace_id"], "inbound_message", payloadBytes, createdAt)
+		if err != nil {
+			t.Fatalf("failed to insert inbound log: %v", err)
+		}
+		return id
+	}
+
+	now := time.Now().UTC()
+	msgID1 := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	msgID2 := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	insertInbound(msgID1, "contact1", "telegram", "bot1", "Old Message", now.Add(-10*time.Minute))
+	insertInbound(msgID2, "contact1", "telegram", "bot1", "New Message Body", now.Add(-5*time.Minute))
+
+	h := &admin.InboxHandler{
+		Repo: auditRepo,
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/admin/inbox/messages?from=contact1&channel=telegram&to=bot1&after_id="+msgID1.String(), nil)
+	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err = h.PollMessages(c)
+	if err != nil {
+		t.Fatalf("PollMessages failed: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "New Message Body") {
+		t.Errorf("expected body to contain 'New Message Body', got: %s", body)
+	}
+
+	if !strings.Contains(body, `id="chat-poll-anchor"`) {
+		t.Errorf("expected body to contain '#chat-poll-anchor', got: %s", body)
+	}
+
+	expectedAfterIDParam := "after_id=" + msgID2.String()
+	if !strings.Contains(body, expectedAfterIDParam) {
+		t.Errorf("expected body to contain '%s', got: %s", expectedAfterIDParam, body)
+	}
+
+	if !strings.Contains(body, `hx-swap-oob="true"`) {
+		t.Errorf("expected body to contain 'hx-swap-oob=\"true\"', got: %s", body)
+	}
 }
 
 // TestInboxHandler_SendMessage_QueueMessagePayload verifies that the published
