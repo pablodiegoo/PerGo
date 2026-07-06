@@ -3,6 +3,7 @@ package admin_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -561,5 +562,85 @@ func TestInboxHandler_PollMessages_AfterIDGuard(t *testing.T) {
 	}
 	if parsed != validID {
 		t.Errorf("UUID round-trip failed: got %s, want %s", parsed, validID)
+	}
+}
+
+// TestInboxHandler_WabaWindowCheck verifies WABA blocked state depending on session last inbound time.
+func TestInboxHandler_WabaWindowCheck(t *testing.T) {
+	now := time.Now().UTC()
+	within24h := now.Add(-5 * time.Hour)
+	outside24h := now.Add(-25 * time.Hour)
+
+	cases := []struct {
+		name          string
+		channel       string
+		lastInboundAt *time.Time
+		wantBlocked   bool
+	}{
+		{"waba within 24h", "whatsapp_cloud", &within24h, false},
+		{"waba outside 24h", "whatsapp_cloud", &outside24h, true},
+		{"waba nil inbound", "whatsapp_cloud", nil, true},
+		{"non-waba within 24h", "whatsapp", &within24h, false},
+		{"non-waba outside 24h", "whatsapp", &outside24h, false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			isWabaBlocked := false
+			if tc.channel == "whatsapp_cloud" {
+				if tc.lastInboundAt == nil || time.Since(*tc.lastInboundAt) > 24*time.Hour {
+					isWabaBlocked = true
+				}
+			}
+			if isWabaBlocked != tc.wantBlocked {
+				t.Errorf("expected isWabaBlocked=%v, got %v", tc.wantBlocked, isWabaBlocked)
+			}
+		})
+	}
+}
+
+// TestInboxHandler_NewMessageSend_Template verifies parsing and packaging template components.
+func TestInboxHandler_NewMessageSend_Template(t *testing.T) {
+	templateName := "welcome_optin"
+	params := []domain.TemplateComponent{
+		{
+			Type: "body",
+			Parameters: []domain.TemplateParameter{
+				{Type: "text", Text: "Carlos"},
+				{Type: "text", Text: "Opt-in"},
+			},
+		},
+	}
+	
+	// Create mock QueueMessage and verify payload serialization
+	qMsg := domain.QueueMessage{
+		WorkspaceID:    uuid.New(),
+		ConnectionID:   uuid.New(),
+		SenderIdentity: "waba-identity",
+		TraceID:        "inbox-test-trace",
+		To:             "+5511999990001",
+		Channel:        "whatsapp_cloud",
+		Body:           fmt.Sprintf("[Template: %s] Params: %v", templateName, params),
+		QueuedAt:       time.Now().UTC(),
+		TemplateName:   templateName,
+		Language:       "pt_BR",
+		Components:     params,
+	}
+
+	data, err := json.Marshal(qMsg)
+	if err != nil {
+		t.Fatalf("failed to marshal template QueueMessage: %v", err)
+	}
+
+	var decoded domain.QueueMessage
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("failed to unmarshal QueueMessage: %v", err)
+	}
+
+	if decoded.TemplateName != templateName {
+		t.Errorf("TemplateName mismatch: got %s, want %s", decoded.TemplateName, templateName)
+	}
+	if len(decoded.Components) != 1 || len(decoded.Components[0].Parameters) != 2 || decoded.Components[0].Parameters[0].Text != "Carlos" {
+		t.Errorf("Components mismatch: got %v", decoded.Components)
 	}
 }

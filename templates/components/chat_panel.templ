@@ -45,10 +45,9 @@ func getLastMessageID(messages []repository.ThreadMessage) string {
 // It includes:
 //   - A header with contact avatar, name, channel info, and the recipient identity.
 //   - A scrollable message history viewport that polls /admin/inbox/messages every 3s,
-//     appending new bubbles via hx-swap="beforeend". The last message ID is tracked
-//     in a hidden input updated by JavaScript after each poll.
+//     appending new bubbles via hx-swap="beforeend".
 //   - An auto-grow textarea with Enter-to-send (Shift+Enter inserts a newline).
-templ ChatPanel(from, channel, to string, messages []repository.ThreadMessage) {
+templ ChatPanel(from, channel, to string, messages []repository.ThreadMessage, isWabaBlocked bool) {
 	<div class="chat-thread flex flex-col h-full" id="chat-panel-inner">
 		<!-- Header -->
 		<div class="chat-thread-header flex items-center gap-3 px-4 py-3 border-b border-zinc-200 bg-white flex-shrink-0">
@@ -60,10 +59,18 @@ templ ChatPanel(from, channel, to string, messages []repository.ThreadMessage) {
 				<p class="text-xs text-zinc-400">{ channelLabelStr(channel) } · via { to }</p>
 			</div>
 		</div>
+
+		<!-- WABA 24h Block Warning Banner -->
+		if channel == "whatsapp_cloud" && isWabaBlocked {
+			<div class="px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-800 text-xs font-semibold flex items-center gap-1.5 flex-shrink-0">
+				<span>⚠️ Janela de atendimento (24h) fechada para este contato. Somente envios de Templates Meta são autorizados.</span>
+			</div>
+		}
+
 		<!-- Message viewport -->
 		<div
 			id="chat-messages"
-			class="chat-messages flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2"
+			class="chat-messages flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2 bg-zinc-50"
 		>
 			if len(messages) == 0 {
 				<div class="text-center text-zinc-400 text-sm py-8 select-none">Nenhuma mensagem encontrada.</div>
@@ -79,6 +86,7 @@ templ ChatPanel(from, channel, to string, messages []repository.ThreadMessage) {
 			hx-target="#chat-messages"
 			hx-swap="beforeend scroll:bottom"
 			hx-trigger="every 3s"
+			class="hidden"
 		></div>
 		<!-- Send form -->
 		<div class="chat-input-area px-4 py-3 border-t border-zinc-200 bg-white flex-shrink-0">
@@ -93,19 +101,44 @@ templ ChatPanel(from, channel, to string, messages []repository.ThreadMessage) {
 				<input type="hidden" name="channel" value={ channel }/>
 				<input type="hidden" name="recipient_identity" value={ to }/>
 				<div class="flex items-end gap-2">
+					<!-- WABA Template button -->
+					if channel == "whatsapp_cloud" {
+						<button
+							type="button"
+							class="h-10 px-3 border border-zinc-200 rounded-lg text-zinc-700 bg-white hover:bg-zinc-50 text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 shadow-sm transition-colors"
+							hx-get={ fmt.Sprintf("/admin/inbox/new-message-modal?type=template_only&from=%s&channel=whatsapp_cloud&to=%s", from, to) }
+							hx-target="#modal-container"
+							hx-swap="innerHTML"
+							onclick="setTimeout(openModal, 50)"
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+							</svg>
+							<span>Templates</span>
+						</button>
+					}
+
 					<textarea
 						id="chat-textarea"
 						name="body"
-						placeholder="Digite uma mensagem… (Enter para enviar, Shift+Enter para nova linha)"
+						if channel == "whatsapp_cloud" && isWabaBlocked {
+							disabled
+							placeholder="A janela de 24h fechou. Utilize o botão 'Templates' para reabrir."
+						} else {
+							placeholder="Digite uma mensagem… (Enter para enviar)"
+						}
 						rows="1"
-						class="flex-1 resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-shadow overflow-hidden"
+						class="flex-1 resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-shadow overflow-hidden disabled:opacity-50"
 						style="min-height:40px;max-height:160px;"
 						onInput="this.style.height='40px';this.style.height=Math.min(this.scrollHeight,160)+'px';"
-						onKeyDown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();if(this.value.trim()){htmx.trigger(this.closest('form'),'submit');}}"
+						onKeyDown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();if(!this.disabled && this.value.trim()){htmx.trigger(this.closest('form'),'submit');}}"
 					></textarea>
 					<button
 						type="submit"
-						class="flex-shrink-0 h-10 w-10 rounded-full bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 flex items-center justify-center text-white transition-colors shadow-sm"
+						if channel == "whatsapp_cloud" && isWabaBlocked {
+							disabled
+						}
+						class="flex-shrink-0 h-10 w-10 rounded-full bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 flex items-center justify-center text-white transition-colors shadow-sm disabled:opacity-50"
 						aria-label="Enviar"
 					>
 						<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

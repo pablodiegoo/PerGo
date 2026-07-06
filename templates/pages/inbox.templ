@@ -29,10 +29,24 @@ templ InboxContent(conversations []repository.ConversationSummary, unreadMap map
 		<div class="inbox-sidebar w-80 lg:w-80 md:w-72 flex-shrink-0 border-r border-zinc-200 flex flex-col bg-white h-full overflow-hidden">
 			<!-- Header -->
 			<div class="inbox-sidebar-header flex items-center justify-between px-4 py-3 border-b border-zinc-200">
-				<h1 class="text-base font-bold text-zinc-900">Inbox</h1>
-				if unreadCount > 0 {
-					<span class="badge-unread text-xs font-bold bg-blue-500 text-white px-2 py-0.5 rounded-full">{ fmt.Sprintf("%d", unreadCount) }</span>
-				}
+				<div class="flex items-center gap-2">
+					<h1 class="text-base font-bold text-zinc-900">Inbox</h1>
+					if unreadCount > 0 {
+						<span class="badge-unread text-xs font-bold bg-blue-500 text-white px-2 py-0.5 rounded-full">{ fmt.Sprintf("%d", unreadCount) }</span>
+					}
+				</div>
+				<button
+					class="p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-50 text-zinc-600 hover:text-zinc-900 transition-colors shadow-sm flex items-center justify-center"
+					hx-get="/admin/inbox/new-message-modal"
+					hx-target="#modal-container"
+					hx-swap="innerHTML"
+					onclick="setTimeout(openModal, 50)"
+					title="Novo Chat"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+					</svg>
+				</button>
 			</div>
 			<!-- Search bar (static UI, future enhancement) -->
 			<div class="inbox-search px-3 py-2 border-b border-zinc-100">

@@ -26,6 +26,7 @@ type InboxHandler struct {
 	Workspaces  *repository.WorkspaceRepository
 	Connections *repository.ConnectionRepository
 	Publisher   *queue.JetStreamPublisher
+	Templates   *repository.WABATemplateRepository
 }
 
 // resolveWorkspaceID reads the active workspace from the cookie.
@@ -136,7 +137,17 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		return c.HTML(http.StatusInternalServerError, `<div class="p-4 text-red-500">Erro ao carregar conversa.</div>`)
 	}
 
-	return mw.Render(c, http.StatusOK, components.ChatPanel(from, channel, to, messages))
+	isWabaBlocked := false
+	if channel == "whatsapp_cloud" && workspaceID != uuid.Nil {
+		session, sErr := h.Sessions.Get(ctx, workspaceID, from, channel, to)
+		if sErr != nil {
+			isWabaBlocked = true
+		} else if session.LastInboundAt.IsZero() || time.Since(session.LastInboundAt) > 24*time.Hour {
+			isWabaBlocked = true
+		}
+	}
+
+	return mw.Render(c, http.StatusOK, components.ChatPanel(from, channel, to, messages, isWabaBlocked))
 }
 
 // PollMessages handles GET /admin/inbox/messages — returns new messages for incremental chat polling.
@@ -164,6 +175,17 @@ func (h *InboxHandler) PollMessages(c *echo.Context) error {
 	if err != nil {
 		return c.HTML(http.StatusInternalServerError, `<div class="p-2 text-red-500 text-xs">Erro ao buscar mensagens.</div>`)
 	}
+
+	isWabaBlocked := false
+	if channel == "whatsapp_cloud" && workspaceID != uuid.Nil {
+		session, sErr := h.Sessions.Get(ctx, workspaceID, from, channel, to)
+		if sErr != nil {
+			isWabaBlocked = true
+		} else if session.LastInboundAt.IsZero() || time.Since(session.LastInboundAt) > 24*time.Hour {
+			isWabaBlocked = true
+		}
+	}
+	_ = isWabaBlocked
 
 	if len(messages) == 0 {
 		// Check if there are new messages from OTHER conversations — trigger toast if so.
@@ -281,6 +303,148 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 
 	// Return 204 so HTMX clears the status and re-polls naturally
 	return c.NoContent(http.StatusNoContent)
+}
+
+// NewMessageModal renders the new message/template compose modal.
+func (h *InboxHandler) NewMessageModal(c *echo.Context) error {
+	ctx := c.Request().Context()
+	workspaceID := resolveWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	modalType := c.QueryParam("type")
+	fromContact := c.QueryParam("from")
+	channel := c.QueryParam("channel")
+	to := c.QueryParam("to")
+
+	isTemplateOnly := modalType == "template_only"
+
+	var templates []repository.WABATemplate
+	if h.Templates != nil {
+		var err error
+		templates, err = h.Templates.ListByWorkspace(ctx, workspaceID)
+		if err != nil {
+			// Non-blocking log
+		}
+	}
+
+	return mw.Render(c, http.StatusOK, components.NewChatModal(templates, fromContact, isTemplateOnly, channel, to))
+}
+
+// NewMessageSend enqueues template messages or initializes a new chat.
+func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
+	ctx := c.Request().Context()
+	workspaceID := resolveWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	to := c.FormValue("to")
+	channel := c.FormValue("channel")
+	isTemplate := c.FormValue("is_template") == "true"
+	recipientIdentity := c.FormValue("recipient_identity")
+
+	var body string
+	var templateName string
+	var componentsList []domain.TemplateComponent
+
+	if isTemplate {
+		templateName = c.FormValue("template_name")
+		if templateName == "" {
+			return c.String(http.StatusBadRequest, "template_name is required")
+		}
+		// Read params
+		var params []domain.TemplateParameter
+		for i := 1; i <= 3; i++ {
+			val := c.FormValue(fmt.Sprintf("param_%d", i))
+			if val != "" {
+				params = append(params, domain.TemplateParameter{
+					Type: "text",
+					Text: val,
+				})
+			}
+		}
+		componentsList = []domain.TemplateComponent{
+			{
+				Type:       "body",
+				Parameters: params,
+			},
+		}
+		body = fmt.Sprintf("[Template: %s] Params: %v", templateName, params)
+	} else {
+		body = strings.TrimSpace(c.FormValue("body"))
+		if body == "" {
+			return c.String(http.StatusBadRequest, "body cannot be empty")
+		}
+	}
+
+	// Resolve connection via sender identity/channel
+	var connectionID uuid.UUID
+	var senderIdentity string
+	if h.Connections != nil {
+		if recipientIdentity != "" {
+			conn, err := h.Connections.GetBySenderIdentity(ctx, workspaceID, recipientIdentity)
+			if err == nil {
+				connectionID = conn.ID
+				senderIdentity = conn.SenderIdentity
+			}
+		} else {
+			// Find first connected connection for the requested channel in workspace
+			conns, err := h.Connections.ListByWorkspace(ctx, workspaceID)
+			if err == nil {
+				for _, conn := range conns {
+					if conn.Channel == channel && conn.Status == "connected" {
+						connectionID = conn.ID
+						senderIdentity = conn.SenderIdentity
+						break
+					}
+				}
+			}
+		}
+	}
+
+	traceID := "new-chat-" + uuid.New().String()
+	
+	// Create NATS outbound QueueMessage
+	qMsg := domain.QueueMessage{
+		WorkspaceID:    workspaceID,
+		ConnectionID:   connectionID,
+		SenderIdentity: senderIdentity,
+		TraceID:        traceID,
+		To:             to,
+		Channel:        channel,
+		Body:           body,
+		QueuedAt:       time.Now().UTC(),
+	}
+
+	if isTemplate {
+		qMsg.TemplateName = templateName
+		qMsg.Language = "pt_BR" // Default language
+		qMsg.Components = componentsList
+	}
+
+	if h.Publisher == nil {
+		return c.String(http.StatusServiceUnavailable, "NATS publisher unavailable")
+	}
+
+	data, err := json.Marshal(qMsg)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to serialize message")
+	}
+
+	if err := h.Publisher.Publish(ctx, "messages.outbound", data, traceID); err != nil {
+		return c.String(http.StatusInternalServerError, "failed to enqueue message: "+err.Error())
+	}
+
+	// Upsert session to make sure it exists and registers sending
+	if h.Sessions != nil {
+		_ = h.Sessions.Upsert(ctx, workspaceID, to, channel, senderIdentity, time.Now().UTC())
+		_ = h.Sessions.UpdateLastReadAt(ctx, workspaceID, to, channel, senderIdentity, time.Now().UTC())
+	}
+
+	c.Response().Header().Set("HX-Trigger", `{"showToast":{"text":"Nova mensagem/template enviada com sucesso!"}}`)
+	return c.NoContent(http.StatusOK)
 }
 
 // safeInitial returns the first character of a string, uppercased, safely.

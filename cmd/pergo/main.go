@@ -366,12 +366,15 @@ func main() {
 		Workspaces:  wsRepo,
 		Connections: connectionRepo,
 		Publisher:   publisher,
+		Templates:   wabaTemplateRepo,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
 	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)
 	adminGroup.GET("/inbox/chat", inboxHandler.ChatPanel)
 	adminGroup.GET("/inbox/messages", inboxHandler.PollMessages)
 	adminGroup.POST("/inbox/send", inboxHandler.SendMessage)
+	adminGroup.GET("/inbox/new-message-modal", inboxHandler.NewMessageModal)
+	adminGroup.POST("/inbox/new-message-send", inboxHandler.NewMessageSend)
 
 	// Device/Connection management routes
 	deviceHandler := &admin.DeviceHandler{

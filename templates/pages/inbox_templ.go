@@ -77,7 +77,7 @@ func InboxContent(conversations []repository.ConversationSummary, unreadMap map[
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"inbox-shell flex h-full w-full overflow-hidden\"><!-- Left panel: conversation list --><div class=\"inbox-sidebar w-80 lg:w-80 md:w-72 flex-shrink-0 border-r border-zinc-200 flex flex-col bg-white h-full overflow-hidden\"><!-- Header --><div class=\"inbox-sidebar-header flex items-center justify-between px-4 py-3 border-b border-zinc-200\"><h1 class=\"text-base font-bold text-zinc-900\">Inbox</h1>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"inbox-shell flex h-full w-full overflow-hidden\"><!-- Left panel: conversation list --><div class=\"inbox-sidebar w-80 lg:w-80 md:w-72 flex-shrink-0 border-r border-zinc-200 flex flex-col bg-white h-full overflow-hidden\"><!-- Header --><div class=\"inbox-sidebar-header flex items-center justify-between px-4 py-3 border-b border-zinc-200\"><div class=\"flex items-center gap-2\"><h1 class=\"text-base font-bold text-zinc-900\">Inbox</h1>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -89,7 +89,7 @@ func InboxContent(conversations []repository.ConversationSummary, unreadMap map[
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", unreadCount))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/inbox.templ`, Line: 34, Col: 130}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/inbox.templ`, Line: 35, Col: 131}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -100,7 +100,7 @@ func InboxContent(conversations []repository.ConversationSummary, unreadMap map[
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</div><!-- Search bar (static UI, future enhancement) --><div class=\"inbox-search px-3 py-2 border-b border-zinc-100\"><div class=\"relative\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 absolute left-2.5 top-2 text-zinc-400\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z\"></path></svg> <input type=\"search\" placeholder=\"Buscar conversa…\" class=\"w-full pl-8 pr-3 py-1.5 text-sm border border-zinc-200 rounded-md bg-zinc-50 text-zinc-700 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-transparent\" disabled></div></div><!-- Conversation list with polling -->")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</div><button class=\"p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-50 text-zinc-600 hover:text-zinc-900 transition-colors shadow-sm flex items-center justify-center\" hx-get=\"/admin/inbox/new-message-modal\" hx-target=\"#modal-container\" hx-swap=\"innerHTML\" onclick=\"setTimeout(openModal, 50)\" title=\"Novo Chat\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-zinc-600\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 4v16m8-8H4\"></path></svg></button></div><!-- Search bar (static UI, future enhancement) --><div class=\"inbox-search px-3 py-2 border-b border-zinc-100\"><div class=\"relative\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 absolute left-2.5 top-2 text-zinc-400\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z\"></path></svg> <input type=\"search\" placeholder=\"Buscar conversa…\" class=\"w-full pl-8 pr-3 py-1.5 text-sm border border-zinc-200 rounded-md bg-zinc-50 text-zinc-700 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-transparent\" disabled></div></div><!-- Conversation list with polling -->")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
