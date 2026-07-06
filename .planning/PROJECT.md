@@ -19,23 +19,24 @@ A single API request delivers a message through any configured channel with auto
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ Unified message ingestion gateway: `POST /messages` → validate → Trace-ID → NATS JetStream queue → `202 Accepted` — Phase 3
+- ✓ Multi-tenant dashboard control panel: server-rendered (Echo + Templ + HTMX), workspace management, QR pairing, connection telemetry, audit review — Phase 2, 4
+- ✓ Multi-session connection controller: WhatsApp Web device pairing, persistent session store in PostgreSQL, reconnect on restart — Phase 4
+- ✓ Smart queueing, backpressure, and rate-limiting engine: NATS JetStream work queue, 1,000-message per-session queue limit with HTTP 429/422 backpressure, staggered dispatch (1-3s delay) for unofficial channels — Phase 3
+- ✓ Automated smart fallback pipeline: ordered `fallback_channels` array, iterative dispatch with failure-driven channel switching — Phase 5
+- ✓ Compliance, auditing, and logging engine: Trace-ID propagation across HTTP → NATS → worker → SQL, immutable partitioned `audit_logs` table, buffered batch writer — Phase 1
+- ✓ WhatsApp Web channel adapter (whatsmeow): WebSocket sessions, multi-device support — Phase 4
+- ✓ WhatsApp Cloud channel adapter (WABA REST API): official Meta integration — Phase 5
+- ✓ Telegram channel adapter: Telegram Bot HTTP API — Phase 5
+- ✓ API key authentication: SHA-256 hashed keys with prefix lookup, in-memory cache — Phase 1
+- ✓ Credential encryption at rest: AES-256-GCM for session tokens and channel credentials — Phase 1
+- ✓ Outbound webhook delivery: durable JetStream consumer for webhook dispatch with retries — Phase 6
+- ✓ Observability: `net/http/pprof` profiling, structured `log/slog` logging, expvar metrics — Phase 1
+- ✓ Conversational Inbox: Server-rendered split-pane conversational dashboard with live HTMX polling, dynamic conversation lists, message thread stitching, and Toast notifications — Phase 9
 
 ### Active
 
-- [ ] Unified message ingestion gateway: `POST /messages` → validate → Trace-ID → NATS JetStream queue → `202 Accepted`
-- [ ] Multi-tenant dashboard control panel: server-rendered (Echo + Templ + HTMX), workspace management, QR pairing, connection telemetry, audit review
-- [ ] Multi-session connection controller: WhatsApp Web device pairing, persistent session store in PostgreSQL, reconnect on restart
-- [ ] Smart queueing, backpressure, and rate-limiting engine: NATS JetStream work queue, 1,000-message per-session queue limit with HTTP 429/422 backpressure, staggered dispatch (1-3s delay) for unofficial channels
-- [ ] Automated smart fallback pipeline: ordered `fallback_channels` array, iterative dispatch with failure-driven channel switching
-- [ ] Compliance, auditing, and logging engine: Trace-ID propagation across HTTP → NATS → worker → SQL, immutable partitioned `audit_logs` table, buffered batch writer
-- [ ] WhatsApp Web channel adapter (whatsmeow): WebSocket sessions, multi-device support
-- [ ] WhatsApp Cloud channel adapter (WABA REST API): official Meta integration
-- [ ] Telegram channel adapter: Telegram Bot HTTP API
-- [ ] API key authentication: SHA-256 hashed keys with prefix lookup, in-memory cache
-- [ ] Credential encryption at rest: AES-256-GCM for session tokens and channel credentials
-- [ ] Outbound webhook delivery: durable JetStream consumer for webhook dispatch with retries
-- [ ] Observability: `net/http/pprof` profiling, structured `log/slog` logging, expvar metrics
+*(All current milestone requirements have been validated)*
 
 ### Out of Scope
 
@@ -80,16 +81,18 @@ A single API request delivers a message through any configured channel with auto
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Echo over net/http+chi for HTTP router | PRD prescribes Echo; handler ergonomics and middleware parity with admin stack — keep handlers thin and std-http.Handler-compatible so router is swappable | — Pending |
-| pgx/v5 over database/sql+sqlx | Binary protocol, prepared-statement cache, native COPY, batch pipeline — right call for the audit batch writer | — Pending |
-| NATS JetStream over Kafka or in-process channels | Work-queue semantics give at-least-once durability with single consumer per message; far less operational weight than Kafka at this scale; in-process channels lose work on crash | — Pending |
-| PostgreSQL as sole datastore (no Redis) | 500 req/s load envelope doesn't require cache layer; API-key auth served from in-memory map with TTL refresh — add Redis only if measurement shows hot path | — Pending |
-| No ORM, no query builder | Hand-written SQL with pgx CollectRows/ForEachRow helpers; query count is small and known | — Pending |
-| log/slog over zerolog/zap | Structured, leveled, context-aware, std lib (Go 1.21+) — no external dependency unless benchmark proves need | — Pending |
-| In-house circuit breaker and backoff over sony/gobreaker | State machine is small; avoid external dependency semantics mismatch — revisit if requirements grow | — Pending |
-| No OpenTelemetry in MVP | Trace-ID propagated explicitly via context + NATS headers + slog; add OTel only if tracing backend introduced | — Pending |
-| Domain-oriented packages over MVC layers | Each package importable on its own, depends only on internal/platform; channel adapters are siblings sharing an interface, not a hierarchy | — Pending |
-| cmd/pergo as sole composition root | No internal/app "god package"; main.go wires deps, starts HTTP + workers | — Pending |
+| Echo over net/http+chi for HTTP router | PRD prescribes Echo; handler ergonomics and middleware parity with admin stack — keep handlers thin and std-http.Handler-compatible so router is swappable | Validated (Phase 1, 2) |
+| pgx/v5 over database/sql+sqlx | Binary protocol, prepared-statement cache, native COPY, batch pipeline — right call for the audit batch writer | Validated (Phase 1) |
+| NATS JetStream over Kafka or in-process channels | Work-queue semantics give at-least-once durability with single consumer per message; far less operational weight than Kafka at this scale; in-process channels lose work on crash | Validated (Phase 3) |
+| PostgreSQL as sole datastore (no Redis) | 500 req/s load envelope doesn't require cache layer; API-key auth served from in-memory map with TTL refresh — add Redis only if measurement shows hot path | Validated (Phase 1) |
+| No ORM, no query builder | Hand-written SQL with pgx CollectRows/ForEachRow helpers; query count is small and known | Validated (Phase 1) |
+| log/slog over zerolog/zap | Structured, leveled, context-aware, std lib (Go 1.21+) — no external dependency unless benchmark proves need | Validated (Phase 1) |
+| In-house circuit breaker and backoff over sony/gobreaker | State machine is small; avoid external dependency semantics mismatch — revisit if requirements grow | Validated (Phase 3) |
+| No OpenTelemetry in MVP | Trace-ID propagated explicitly via context + NATS headers + slog; add OTel only if tracing backend introduced | Validated (Phase 1) |
+| Domain-oriented packages over MVC layers | Each package importable on its own, depends only on internal/platform; channel adapters are siblings sharing an interface, not a hierarchy | Validated (Phase 1) |
+| cmd/pergo as sole composition root | No internal/app "god package"; main.go wires deps, starts HTTP + workers | Validated (Phase 1) |
+| Database-driven inbox read status | Track read/unread states server-side in recipient_sessions to support multi-operator synchronization and prevent cookie limits | Validated (Phase 9) |
+| Multi-instance connection isolation | Extend recipient_sessions PK with recipient_identity to allow multiple active numbers of the same channel | Validated (Phase 9) |
 
 ## Evolution
 
@@ -109,4 +112,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-06-25 after initialization*
+*Last updated: 2026-07-06 after Phase 9*
