@@ -1,6 +1,6 @@
 # PerGo
 
-PerGo is a self-hosted, open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go. It exposes a single, unified REST API (`POST /messages`) that abstracts away the fragmentation of managing multiple messaging providers—WhatsApp Web (unofficial via `whatsmeow`), WhatsApp Cloud (WABA), and Telegram—under a single standardized JSON payload.
+PerGo is a self-hosted, open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go. It exposes a single, unified REST API (`POST /api/v1/messages`) that abstracts away the fragmentation of managing multiple messaging providers—WhatsApp Web (unofficial via `whatsmeow`), WhatsApp Cloud (WABA), and Telegram—under a single standardized JSON payload.
 
 It is built for backend developers integrating omnichannel messaging into CRMs/ERPs and for system operators managing channel connections, compliance, and logs under full data custody.
 
@@ -34,7 +34,7 @@ It is built for backend developers integrating omnichannel messaging into CRMs/E
   * `config/`: Configurations loaded from 12-factor environment variables.
   * `domain/`: Core messaging domain structures.
   * `platform/`: Shared infrastructural components (audit writer, crypto, database connections, NATS queue worker, shutdown orchestrator).
-  * `repository/`: Database repositories (workspaces, API keys, audit).
+  * `repository/`: Database repositories (workspaces, API keys, connections, audit).
   * `session/`: WhatsApp device sessions and registry.
 * `static/`: Static assets (CSS, images) for the operator console.
 * `templates/`: `a-h/templ` components and views.
@@ -71,14 +71,14 @@ docker compose up -d
 ```
 
 This starts:
-* **PostgreSQL** on port `5432` (Username/Password/Database: `postgres`/`postgres`/`pergo`)
+* **PostgreSQL** on port `5433` (Username/Password/Database: `postgres`/`postgres`/`pergo`)
 * **NATS** on port `4222` (and management console on `8222`)
 
 ### 2. Environment Variables
 
 Configure your local environment. Default variables are structured in the app configuration:
-* `DATABASE_URL`: Connection string for PostgreSQL (e.g. `postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable`)
-* `NATS_URL`: Connection string for NATS (e.g. `nats://localhost:4222`)
+* `PERGO_DATABASE_URL`: Connection string for PostgreSQL (e.g. `postgres://postgres:postgres@localhost:5433/pergo?sslmode=disable`)
+* `PERGO_NATS_URL`: Connection string for NATS (e.g. `nats://localhost:4222`)
 * `PERGO_ADMIN_PASSWORD`: Plain password to access the `/admin` operator console.
 * `PERGO_SESSION_SECRET`: Key used for signing administration cookies.
 
@@ -86,7 +86,7 @@ Configure your local environment. Default variables are structured in the app co
 
 To start the application, run:
 ```bash
-make run
+make dev
 ```
 or
 ```bash
@@ -129,10 +129,10 @@ To set up PerGo on your local machine or server:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/pablojhp/PerGo.git
+   git clone https://github.com/pablodiegoo/PerGo.git
    cd PerGo
    ```
-   <!-- VERIFY: The repository URL is https://github.com/pablojhp/PerGo.git -->
+   <!-- VERIFY: The repository URL is https://github.com/pablodiegoo/PerGo.git -->
 
 2. **Install Go dependencies:**
    Make sure you have Go 1.26+ installed, then download the dependencies:

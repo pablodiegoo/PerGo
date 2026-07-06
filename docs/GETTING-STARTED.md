@@ -25,7 +25,7 @@ Certifique-se de ter os seguintes itens instalados na sua máquina:
 
 Navegue até o diretório do projeto:
 ```bash
-cd Coding/OmniGo
+cd PerGo
 ```
 
 ---
@@ -46,7 +46,7 @@ O PerGo depende do banco de dados **PostgreSQL** e do broker **NATS** (com JetSt
 ```bash
 make infra
 ```
-*Isto irá iniciar o banco em `localhost:5432` e o NATS em `localhost:4222`.*
+*Isto irá iniciar o banco em `localhost:5433` e o NATS em `localhost:4222`.*
 
 ---
 
@@ -56,7 +56,7 @@ Gere os templates de UI estáticos e inicie o servidor com hot-reload automátic
 ```bash
 make dev
 ```
-Na primeira inicialização, o PerGo executará automaticamente as migrações embutidas do banco de dados (usando `goose`), criando as tabelas necessárias: `workspaces`, `api_keys`, `channel_credentials` e `audit_logs`.
+Na primeira inicialização, o PerGo executará automaticamente as migrações embutidas do banco de dados (usando `goose`), criando as tabelas necessárias: `workspaces`, `api_keys`, `connections` e `audit_logs`.
 
 ---
 

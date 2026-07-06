@@ -28,12 +28,11 @@ O projeto segue um layout orientado ao domínio e infraestrutura:
 │   ├── channel/          # Adaptadores e lógica de disparo para cada provedor (Telegram, WABA, etc.)
 │   ├── config/           # Parsing das variáveis de ambiente
 │   ├── domain/           # Entidades e modelos de domínio (mensagens, workspaces, audit)
-│   ├── platform/         # Utilitários globais de infraestrutura (criptografia, banco, NATS, shutdown)
-│   ├── repository/       # Repositórios SQL (Workspace, APIKey, Credentials)
+│   ├── platform/         # Utilitários globais de infraestrutura (criptografia, banco, NATS, shutdown, migrations)
+│   ├── repository/       # Repositórios SQL (Workspace, APIKey, Connection)
 │   └── session/          # Gerenciamento de conexões de sessão (WhatsApp Web)
 ├── static/               # Assets estáticos (CSS, JS do HTMX/WebSockets)
-├── templates/            # Componentes visuais (.templ) compilados para Go
-└── migrations/           # Arquivos de migração SQL gerenciados pelo Goose
+└── templates/            # Componentes visuais (.templ) compilados para Go
 ```
 
 ---

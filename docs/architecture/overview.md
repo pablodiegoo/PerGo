@@ -71,7 +71,7 @@ graph TD
 
 ### 2. Queue & De-queue
 - The NATS JetStream durability boundary decouples HTTP request acceptance from downstream execution. <!-- VERIFY: NATS server is configured with JetStream enabled to support the outbound message stream. -->
-- The background [Worker](file:///home/pablo/Coding/PerGo/internal/platform/queue/worker.go#L36) pulls messages from the JetStream stream.
+- The background [Worker](file:///home/pablo/Coding/PerGo/internal/platform/queue/worker.go#L18) pulls messages from the JetStream stream.
 
 ### 3. Execution, Fallback, & Webhooks
 1. **Idempotency Check**: The worker queries the database via [MessageDispatchRepository](file:///home/pablo/Coding/PerGo/internal/repository/dispatch.go) to see if the trace ID has already been dispatched. If `sent`, the message is acknowledged (`Ack`) and discarded.
@@ -88,7 +88,7 @@ graph TD
 
 PerGo enforces clear interfaces to isolate business rules from transport protocols and storage configurations:
 
-* **[channel.Dispatcher](file:///home/pablo/Coding/PerGo/internal/channel/dispatcher.go#L47)**: The core interface for sending messages over a specific channel:
+* **[channel.Dispatcher](file:///home/pablo/Coding/PerGo/internal/channel/dispatcher.go#L35)**: The core interface for sending messages over a specific channel:
   ```go
   type Dispatcher interface {
       Dispatch(ctx context.Context, m *MessagePayload) (string, error)
@@ -97,9 +97,9 @@ PerGo enforces clear interfaces to isolate business rules from transport protoco
   This is implemented by the WhatsApp Web Adapter ([WhatsAppAdapter](file:///home/pablo/Coding/PerGo/internal/channel/whatsapp/adapter.go#L36)), WhatsApp Cloud Adapter ([WABAAdapter](file:///home/pablo/Coding/PerGo/internal/channel/whatsapp/waba.go)), and Telegram Adapter ([TelegramAdapter](file:///home/pablo/Coding/PerGo/internal/channel/telegram/telegram.go)).
 * **[channel.Registry](file:///home/pablo/Coding/PerGo/internal/channel/registry.go#L7)**: A concurrent-safe map of string channel identifiers to their respective `Dispatcher` implementations.
 * **[session.ActiveSession](file:///home/pablo/Coding/PerGo/internal/session/registry.go#L23)**: An in-memory mapping of active WhatsApp JIDs to stateful multi-device WebSocket connections (`whatsmeow`).
-* **[session.Manager](file:///home/pablo/Coding/PerGo/internal/session/manager.go#L42)**: Co-ordinates WhatsApp Web device lifetimes. Handles concurrent reconnection throttling (limiting startup stampedes), listens to incoming message events, downloads media, and publishes incoming events to NATS.
+* **[session.Manager](file:///home/pablo/Coding/PerGo/internal/session/manager.go#L34)**: Co-ordinates WhatsApp Web device lifetimes. Handles concurrent reconnection throttling (limiting startup stampedes), listens to incoming message events, downloads media, and publishes incoming events to NATS.
 * **[repository.ConnectionRepository](file:///home/pablo/Coding/PerGo/internal/repository/connection.go#L40)**: Manages persistence of workspace credentials. Handles transparent AES-256-GCM envelope encryption/decryption of channel credentials using a Key Encryption Key (KEK).
-* **[audit.Writer](file:///home/pablo/Coding/PerGo/internal/platform/audit/batch.go#L14)**: A high-performance async logging recorder. Implemented by [BatchWriter](file:///home/pablo/Coding/PerGo/internal/platform/audit/batch.go#L47), it streams audit logs into an in-memory buffer channel, allowing background workers to execute bulk database writes via `pgx.CopyFrom` to satisfy latency constraints.
+* **[audit.Writer](file:///home/pablo/Coding/PerGo/internal/platform/audit/batch.go#L15)**: A high-performance async logging recorder. Implemented by [BatchWriter](file:///home/pablo/Coding/PerGo/internal/platform/audit/batch.go#L47), it streams audit logs into an in-memory buffer channel, allowing background workers to execute bulk database writes via `pgx.CopyFrom` to satisfy latency constraints.
 
 ---
 
