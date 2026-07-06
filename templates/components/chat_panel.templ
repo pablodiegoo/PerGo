@@ -33,6 +33,14 @@ func safeInitialStr(s string) string {
 	return string(r)
 }
 
+// getLastMessageID returns the last message's ID as a string, or empty if no messages.
+func getLastMessageID(messages []repository.ThreadMessage) string {
+	if len(messages) == 0 {
+		return ""
+	}
+	return messages[len(messages)-1].ID.String()
+}
+
 // ChatPanel renders the full chat thread view for a selected conversation.
 // It includes:
 //   - A header with contact avatar, name, channel info, and the recipient identity.
@@ -67,9 +75,9 @@ templ ChatPanel(from, channel, to string, messages []repository.ThreadMessage) {
 		<!-- Invisible polling sentinel — appends new bubbles every 3s after last message ID -->
 		<div
 			id="chat-poll-anchor"
-			hx-get={ fmt.Sprintf("/admin/inbox/messages?from=%s&channel=%s&to=%s&after_id=LAST_ID", from, channel, to) }
+			hx-get={ fmt.Sprintf("/admin/inbox/messages?from=%s&channel=%s&to=%s&after_id=%s", from, channel, to, getLastMessageID(messages)) }
 			hx-target="#chat-messages"
-			hx-swap="beforeend"
+			hx-swap="beforeend scroll:bottom"
 			hx-trigger="every 3s"
 		></div>
 		<!-- Send form -->
@@ -109,34 +117,9 @@ templ ChatPanel(from, channel, to string, messages []repository.ThreadMessage) {
 			</form>
 		</div>
 	</div>
-	<!-- Client-side: track last message ID for the polling anchor -->
+	<!-- Initial scroll to bottom -->
 	<script>
 		(function() {
-			function updatePollAnchor() {
-				var bubbles = document.querySelectorAll('#chat-messages [data-msg-id]');
-				if (bubbles.length === 0) return;
-				var lastID = bubbles[bubbles.length - 1].getAttribute('data-msg-id');
-				var anchor = document.getElementById('chat-poll-anchor');
-				if (!anchor) return;
-				var baseURL = anchor.getAttribute('hx-get') || '';
-				// Replace placeholder or previous UUID
-				anchor.setAttribute('hx-get', baseURL.replace(/after_id=[^&]*/, 'after_id=' + lastID));
-				htmx.process(anchor);
-			}
-
-			// Run once on load
-			document.addEventListener('DOMContentLoaded', updatePollAnchor);
-
-			// Re-run after each HTMX swap (new messages appended)
-			document.addEventListener('htmx:afterSwap', function(evt) {
-				if (evt.target && evt.target.id === 'chat-messages') {
-					updatePollAnchor();
-					// Scroll to bottom
-					evt.target.scrollTop = evt.target.scrollHeight;
-				}
-			});
-
-			// Initial scroll to bottom
 			var vp = document.getElementById('chat-messages');
 			if (vp) { vp.scrollTop = vp.scrollHeight; }
 		})();

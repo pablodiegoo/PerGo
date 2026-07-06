@@ -41,6 +41,14 @@ func safeInitialStr(s string) string {
 	return string(r)
 }
 
+// getLastMessageID returns the last message's ID as a string, or empty if no messages.
+func getLastMessageID(messages []repository.ThreadMessage) string {
+	if len(messages) == 0 {
+		return ""
+	}
+	return messages[len(messages)-1].ID.String()
+}
+
 // ChatPanel renders the full chat thread view for a selected conversation.
 // It includes:
 //   - A header with contact avatar, name, channel info, and the recipient identity.
@@ -76,7 +84,7 @@ func ChatPanel(from, channel, to string, messages []repository.ThreadMessage) te
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(safeInitialStr(from))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 48, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 56, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -89,7 +97,7 @@ func ChatPanel(from, channel, to string, messages []repository.ThreadMessage) te
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(from)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 51, Col: 57}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 59, Col: 57}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -102,7 +110,7 @@ func ChatPanel(from, channel, to string, messages []repository.ThreadMessage) te
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(channelLabelStr(channel))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 52, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 60, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
@@ -115,7 +123,7 @@ func ChatPanel(from, channel, to string, messages []repository.ThreadMessage) te
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(to)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 52, Col: 77}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 60, Col: 77}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
@@ -142,22 +150,22 @@ func ChatPanel(from, channel, to string, messages []repository.ThreadMessage) te
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var6 string
-		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/inbox/messages?from=%s&channel=%s&to=%s&after_id=LAST_ID", from, channel, to))
+		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/inbox/messages?from=%s&channel=%s&to=%s&after_id=%s", from, channel, to, getLastMessageID(messages)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 70, Col: 109}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 78, Col: 132}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" hx-target=\"#chat-messages\" hx-swap=\"beforeend\" hx-trigger=\"every 3s\"></div><!-- Send form --><div class=\"chat-input-area px-4 py-3 border-t border-zinc-200 bg-white flex-shrink-0\"><form id=\"chat-send-form\" hx-post=\"/admin/inbox/send\" hx-target=\"#chat-send-status\" hx-swap=\"innerHTML\" hx-on::after-request=\"if(event.detail.successful){document.getElementById('chat-textarea').value='';document.getElementById('chat-textarea').style.height='40px';}\"><input type=\"hidden\" name=\"contact\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" hx-target=\"#chat-messages\" hx-swap=\"beforeend scroll:bottom\" hx-trigger=\"every 3s\"></div><!-- Send form --><div class=\"chat-input-area px-4 py-3 border-t border-zinc-200 bg-white flex-shrink-0\"><form id=\"chat-send-form\" hx-post=\"/admin/inbox/send\" hx-target=\"#chat-send-status\" hx-swap=\"innerHTML\" hx-on::after-request=\"if(event.detail.successful){document.getElementById('chat-textarea').value='';document.getElementById('chat-textarea').style.height='40px';}\"><input type=\"hidden\" name=\"contact\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(from)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 84, Col: 52}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 92, Col: 52}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 		if templ_7745c5c3_Err != nil {
@@ -170,7 +178,7 @@ func ChatPanel(from, channel, to string, messages []repository.ThreadMessage) te
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(channel)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 85, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 93, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
@@ -183,13 +191,13 @@ func ChatPanel(from, channel, to string, messages []repository.ThreadMessage) te
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(to)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 86, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 94, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\"><div class=\"flex items-end gap-2\"><textarea id=\"chat-textarea\" name=\"body\" placeholder=\"Digite uma mensagem… (Enter para enviar, Shift+Enter para nova linha)\" rows=\"1\" class=\"flex-1 resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-shadow overflow-hidden\" style=\"min-height:40px;max-height:160px;\" onInput=\"this.style.height='40px';this.style.height=Math.min(this.scrollHeight,160)+'px';\" onKeyDown=\"if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();if(this.value.trim()){htmx.trigger(this.closest('form'),'submit');}}\"></textarea> <button type=\"submit\" class=\"flex-shrink-0 h-10 w-10 rounded-full bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 flex items-center justify-center text-white transition-colors shadow-sm\" aria-label=\"Enviar\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 19l9 2-9-18-9 18 9-2zm0 0v-8\"></path></svg></button></div><div id=\"chat-send-status\" class=\"mt-1 text-xs text-zinc-400 min-h-[16px]\"></div></form></div></div><!-- Client-side: track last message ID for the polling anchor --><script>\n\t\t(function() {\n\t\t\tfunction updatePollAnchor() {\n\t\t\t\tvar bubbles = document.querySelectorAll('#chat-messages [data-msg-id]');\n\t\t\t\tif (bubbles.length === 0) return;\n\t\t\t\tvar lastID = bubbles[bubbles.length - 1].getAttribute('data-msg-id');\n\t\t\t\tvar anchor = document.getElementById('chat-poll-anchor');\n\t\t\t\tif (!anchor) return;\n\t\t\t\tvar baseURL = anchor.getAttribute('hx-get') || '';\n\t\t\t\t// Replace placeholder or previous UUID\n\t\t\t\tanchor.setAttribute('hx-get', baseURL.replace(/after_id=[^&]*/, 'after_id=' + lastID));\n\t\t\t\thtmx.process(anchor);\n\t\t\t}\n\n\t\t\t// Run once on load\n\t\t\tdocument.addEventListener('DOMContentLoaded', updatePollAnchor);\n\n\t\t\t// Re-run after each HTMX swap (new messages appended)\n\t\t\tdocument.addEventListener('htmx:afterSwap', function(evt) {\n\t\t\t\tif (evt.target && evt.target.id === 'chat-messages') {\n\t\t\t\t\tupdatePollAnchor();\n\t\t\t\t\t// Scroll to bottom\n\t\t\t\t\tevt.target.scrollTop = evt.target.scrollHeight;\n\t\t\t\t}\n\t\t\t});\n\n\t\t\t// Initial scroll to bottom\n\t\t\tvar vp = document.getElementById('chat-messages');\n\t\t\tif (vp) { vp.scrollTop = vp.scrollHeight; }\n\t\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\"><div class=\"flex items-end gap-2\"><textarea id=\"chat-textarea\" name=\"body\" placeholder=\"Digite uma mensagem… (Enter para enviar, Shift+Enter para nova linha)\" rows=\"1\" class=\"flex-1 resize-none rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent transition-shadow overflow-hidden\" style=\"min-height:40px;max-height:160px;\" onInput=\"this.style.height='40px';this.style.height=Math.min(this.scrollHeight,160)+'px';\" onKeyDown=\"if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();if(this.value.trim()){htmx.trigger(this.closest('form'),'submit');}}\"></textarea> <button type=\"submit\" class=\"flex-shrink-0 h-10 w-10 rounded-full bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 flex items-center justify-center text-white transition-colors shadow-sm\" aria-label=\"Enviar\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 19l9 2-9-18-9 18 9-2zm0 0v-8\"></path></svg></button></div><div id=\"chat-send-status\" class=\"mt-1 text-xs text-zinc-400 min-h-[16px]\"></div></form></div></div><!-- Initial scroll to bottom --><script>\n\t\t(function() {\n\t\t\tvar vp = document.getElementById('chat-messages');\n\t\t\tif (vp) { vp.scrollTop = vp.scrollHeight; }\n\t\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
