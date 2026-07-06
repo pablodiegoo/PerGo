@@ -175,7 +175,7 @@ body { font-family: var(--font-sans); color: var(--color-text); background: var(
   animation: modalFadeIn 0.2s ease-out;
 }
 
-.modal {
+.modal, .custom-modal {
   background: var(--color-surface);
   padding: var(--spacing-lg);
   border-radius: var(--radius);

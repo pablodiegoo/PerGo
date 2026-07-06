@@ -54,6 +54,11 @@ func (r *ConnectionRepository) Create(ctx context.Context, c *Connection) error 
 		c.ID = uuid.New()
 	}
 
+	if c.ConnectedSince == nil && (c.Status == "connected" || c.Status == "active") {
+		now := time.Now().UTC()
+		c.ConnectedSince = &now
+	}
+
 	var ciphertext []byte
 	var keyID string
 	var keyVersion int = 1

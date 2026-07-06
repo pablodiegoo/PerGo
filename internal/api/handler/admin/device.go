@@ -300,6 +300,7 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 		`, validationErr.Error()))
 	}
 
+	now := time.Now().UTC()
 	conn := &repository.Connection{
 		WorkspaceID:    workspaceID,
 		Name:           name,
@@ -307,6 +308,7 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 		SenderIdentity: senderIdentity,
 		Status:         "connected",
 		Credentials:    credentialsJSON,
+		ConnectedSince: &now,
 	}
 
 	if err := h.Connections.Create(ctx, conn); err != nil {

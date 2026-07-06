@@ -119,6 +119,7 @@ Items acknowledged and carried forward from previous milestone close:
 | GS16 | 2026-06-29 | atualizar-documentacao-projeto | complete ✓ |
 | GS17 | 2026-06-29 | configuracao-verify-token | complete ✓ |
 | GS18 | 2026-06-29 | implementar-inbox-canais-e-logs-outbound | complete ✓ |
+| GS19 | 2026-07-06 | 20260706-devices-modal-inboxes-fix | complete ✓ |
 
 ## Session Continuity
 

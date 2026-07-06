@@ -18,8 +18,8 @@ templ DeviceListContent(connections []*repository.Connection) {
 		<button
 			class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition"
 			hx-get="/admin/devices/pair-form"
-			hx-target="body"
-			hx-swap="beforeend"
+			hx-target="#modal-container"
+			hx-swap="innerHTML"
 		>
 			Nova Conexão
 		</button>
@@ -28,38 +28,7 @@ templ DeviceListContent(connections []*repository.Connection) {
 		@ConnectionTable(connections)
 	</div>
 
-	<div class="section bg-white border border-zinc-200 rounded-lg p-5 shadow-sm">
-		<h2 class="text-sm font-bold text-zinc-500 uppercase tracking-wider mb-4">Caixas de Entrada por Canal (Inboxes)</h2>
-		<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-			<div class="bg-zinc-50 border border-zinc-200 rounded-lg p-4 flex flex-col justify-between gap-4">
-				<div>
-					<h3 class="font-bold text-zinc-900 text-sm">WhatsApp Web</h3>
-					<p class="text-xs text-zinc-400 mt-1">Mensagens recebidas no WhatsApp Web emparelhado.</p>
-				</div>
-				<div>
-					<a href="/admin/inbox?channel=whatsapp" class="btn btn-xs btn-outline border border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center py-1 rounded block">Abrir Inbox</a>
-				</div>
-			</div>
-			<div class="bg-zinc-50 border border-zinc-200 rounded-lg p-4 flex flex-col justify-between gap-4">
-				<div>
-					<h3 class="font-bold text-zinc-900 text-sm">WhatsApp Cloud</h3>
-					<p class="text-xs text-zinc-400 mt-1">Mensagens recebidas via API Oficial (WABA).</p>
-				</div>
-				<div>
-					<a href="/admin/inbox?channel=whatsapp_cloud" class="btn btn-xs btn-outline border border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center py-1 rounded block">Abrir Inbox</a>
-				</div>
-			</div>
-			<div class="bg-zinc-50 border border-zinc-200 rounded-lg p-4 flex flex-col justify-between gap-4">
-				<div>
-					<h3 class="font-bold text-zinc-900 text-sm">Telegram</h3>
-					<p class="text-xs text-zinc-400 mt-1">Mensagens recebidas via bot do Telegram.</p>
-				</div>
-				<div>
-					<a href="/admin/inbox?channel=telegram" class="btn btn-xs btn-outline border border-zinc-300 text-zinc-700 hover:bg-zinc-100 font-semibold w-full text-center py-1 rounded block">Abrir Inbox</a>
-				</div>
-			</div>
-		</div>
-	</div>
+	<div id="modal-container"></div>
 }
 
 // ConnectionTable renders the connection list table.
@@ -108,6 +77,12 @@ templ ConnectionRow(conn *repository.Connection) {
 		</td>
 		<td class="px-4 py-3">
 			<div class="flex items-center gap-2">
+				<a
+					href={ templ.URL("/admin/inbox?channel=" + conn.Channel) }
+					class="btn btn-outline border border-zinc-300 text-zinc-700 hover:bg-zinc-50 btn-xs rounded-md px-2 py-0.5 text-xs font-semibold flex items-center justify-center"
+				>
+					Inbox
+				</a>
 				<button
 					class="btn btn-outline border border-zinc-300 text-zinc-700 hover:bg-zinc-50 btn-xs rounded-md px-2 py-0.5 text-xs font-semibold"
 					hx-get={ "/admin/devices/test?id=" + conn.ID.String() }
@@ -171,7 +146,7 @@ templ ConnectionStatusBadge(status string) {
 // PairForm renders the unified new connection modal form.
 templ PairForm() {
 	<div class="modal-backdrop" onclick="this.closest('.modal-backdrop').remove()">
-		<div class="modal w-full max-w-lg" onclick="event.stopPropagation()">
+		<div class="custom-modal w-full max-w-lg" onclick="event.stopPropagation()">
 			<div class="modal-header">
 				<h3>Nova Conexão</h3>
 			</div>
