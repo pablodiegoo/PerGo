@@ -4,7 +4,7 @@ phase: 09-conversational-inbox
 verified: 2026-07-03
 verifier: orchestrator (inline)
 automated_checks: 12/12 pass
-human_items: 2 pending
+human_items: 0 pending
 ---
 
 # Phase 9 Verification — Conversational Inbox
@@ -105,7 +105,7 @@ These require a running server with paired devices and active webhook traffic:
 - [x] All plan deliverables verified on disk
 - [x] All 9 context decisions traced to implementation
 - [x] Phase goal assessed and achieved
-- [ ] Human verification items (2 pending — see `/gsd-verify-work 9`)
+- [x] Human verification items (2 verified in 09-UAT.md)
 
 ---
 
