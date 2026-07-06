@@ -170,7 +170,7 @@ func (h *InboxHandler) PollMessages(c *echo.Context) error {
 		if from != "" && workspaceID != uuid.Nil {
 			h.checkBackgroundMessages(c, ctx, workspaceID, from, channel, to)
 		}
-		return c.String(http.StatusNoContent, "")
+		return c.NoContent(http.StatusNoContent)
 	}
 
 	// Update last_read_at since operator is actively viewing this conversation
@@ -178,9 +178,12 @@ func (h *InboxHandler) PollMessages(c *echo.Context) error {
 		_ = h.Sessions.UpdateLastReadAt(ctx, workspaceID, from, channel, to, time.Now().UTC())
 	}
 
-	// Render new message bubbles
-	return mw.Render(c, http.StatusOK, components.MessageBubbleList(messages))
+	newLastID := messages[len(messages)-1].ID.String()
+
+	// Render new message bubbles and updated OOB poll anchor
+	return mw.Render(c, http.StatusOK, components.PollMessagesResponse(from, channel, to, newLastID, messages))
 }
+
 
 // checkBackgroundMessages checks if any OTHER conversation has new unread messages
 // and, if so, fires a showToast HX-Trigger header on the response.
