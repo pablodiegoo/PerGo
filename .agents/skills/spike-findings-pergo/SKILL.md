@@ -41,6 +41,9 @@ Original spike source files are preserved in `sources/` for complete reference:
 - [sources/004-inbox-conversation-list/](file:///.agents/skills/spike-findings-pergo/sources/004-inbox-conversation-list/)
 - [sources/005-inbox-chat-view/](file:///.agents/skills/spike-findings-pergo/sources/005-inbox-chat-view/)
 - [sources/006-inbox-realtime-polling/](file:///.agents/skills/spike-findings-pergo/sources/006-inbox-realtime-polling/)
+- [sources/007-inbox-polling-stability/](file:///.agents/skills/spike-findings-pergo/sources/007-inbox-polling-stability/)
+- [sources/008-connection-management-unification/](file:///.agents/skills/spike-findings-pergo/sources/008-connection-management-unification/)
+- [sources/009-waba-template-inbox-delivery/](file:///.agents/skills/spike-findings-pergo/sources/009-waba-template-inbox-delivery/)
 </findings_index>
 
 <metadata>
@@ -52,4 +55,7 @@ Original spike source files are preserved in `sources/` for complete reference:
 - 004-inbox-conversation-list
 - 005-inbox-chat-view
 - 006-inbox-realtime-polling
+- 007-inbox-polling-stability
+- 008-connection-management-unification
+- 009-waba-template-inbox-delivery
 </metadata>
