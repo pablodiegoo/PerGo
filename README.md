@@ -4,6 +4,14 @@ PerGo is a self-hosted, open-source Omnichannel Communications Platform as a Ser
 
 It is built for backend developers integrating omnichannel messaging into CRMs/ERPs and for system operators managing channel connections, compliance, and logs under full data custody.
 
+> **TL;DR (Quick Start):**
+> 
+> ```bash
+> make generate && make prod-down && make prod
+> ```
+
+---
+
 ## Core Value
 
 * **Unified API:** A single API request delivers a message through any configured channel with automatic fallback.
