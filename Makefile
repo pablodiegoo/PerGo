@@ -35,28 +35,28 @@ dev: _check-air _check-templ
 ## prod: build da imagem Docker e sobe tudo via docker compose
 prod:
 	@echo "→ Fazendo build e subindo em produção..."
-	@docker compose up --build -d
+	@docker compose --env-file .env up --build -d
 	@echo "✓ Rodando em http://localhost:$${PERGO_SERVER_PORT:-8080}"
 
 ## prod-logs: acompanha os logs do container em produção
 prod-logs:
-	@docker compose logs -f pergo
+	@docker compose --env-file .env logs -f pergo
 
 ## prod-down: derruba todos os containers
 prod-down:
-	@docker compose down
+	@docker compose --env-file .env down
 
 # ─── Infra local (dev sem container do app) ──────────────────
 
 ## infra: sobe apenas postgres e nats para desenvolvimento local
 infra:
 	@echo "→ Subindo infra (postgres + nats)..."
-	@docker compose up postgres nats -d
+	@docker compose --env-file .env up postgres nats -d
 	@echo "✓ Postgres em localhost:5432 | NATS em localhost:4222"
 
 ## infra-down: derruba a infra
 infra-down:
-	@docker compose down postgres nats
+	@docker compose --env-file .env down postgres nats
 
 # ─── Build ───────────────────────────────────────────────────
 
