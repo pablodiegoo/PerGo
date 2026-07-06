@@ -175,7 +175,7 @@ Note: Phase 2 and Phase 3 are independent after Phase 1 and may execute in paral
 | 7. Media & Inbound | 4/4 | Complete    | 2026-06-27 |
 | 8. Multi-Instance Connections & Dashboard UI | 3/3 | Complete | 2026-07-06 |
 | 9. Conversational Inbox | 3/3 | Complete | 2026-07-06 |
-| 10. Inbox Refactoring & Connection Unification | 0/3 | Planned | - |
+| 10. Inbox Refactoring & Connection Unification | 3/3 | Complete | 2026-07-06 |
 
 ### Phase 8: Multi-Instance Connections & Dashboard UI
 
@@ -209,25 +209,25 @@ Plans:
 
 - [x] TBD (run /gsd-plan-phase 9 to break down) (completed 2026-07-03)
 
-### Phase 10: Inbox Refactoring & Connection Unification
+### Phase 10: Inbox Refactoring & Connection Unification (completed 2026-07-06)
 
 **Goal:** Refactor the inbox to fix polling stability (OOB cursor anchor), unify connection management under a single screen with modal configuration and testing (retiring the playground), and implement WABA templates and 24h window enforcement in the inbox UI.
 **Mode:** mvp
 **Depends on:** Phase 9
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1**
 
-- [ ] 10-01-PLAN.md — Inbox Polling Stability & Zero-JS Scroll Refactoring
+- [x] 10-01-PLAN.md — Inbox Polling Stability & Zero-JS Scroll Refactoring
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 10-02-PLAN.md — Unified Connections Dashboard & Playground Decommission
+- [x] 10-02-PLAN.md — Unified Connections Dashboard & Playground Decommission
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 10-03-PLAN.md — WABA 24h Service Window Enforcement & Template Inbox Composer
+- [x] 10-03-PLAN.md — WABA 24h Service Window Enforcement & Template Inbox Composer
 
 ---
 *Roadmap created: 2026-06-25*
