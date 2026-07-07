@@ -15,9 +15,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
+	"github.com/nats-io/nats.go"
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -644,3 +647,114 @@ func TestInboxHandler_NewMessageSend_Template(t *testing.T) {
 		t.Errorf("Components mismatch: got %v", decoded.Components)
 	}
 }
+
+// TestInboxHandler_NewMessageSend_HTTP verifies form parsing, connection resolution,
+// and publisher invocation on the live Echo HTTP endpoint.
+func TestInboxHandler_NewMessageSend_HTTP(t *testing.T) {
+	dbURL := os.Getenv("PERGO_DATABASE_URL")
+	natsURL := os.Getenv("PERGO_NATS_URL")
+	if dbURL == "" || natsURL == "" {
+		t.Skip("PostgreSQL and NATS must be available to run this test")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("failed to connect to DB pool: %v", err)
+	}
+	defer pool.Close()
+
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		t.Fatalf("failed to connect to NATS: %v", err)
+	}
+	defer nc.Close()
+
+	// Ensure stream exists
+	_, err = queue.EnsureStream(ctx, nc)
+	if err != nil {
+		t.Fatalf("failed to setup JetStream: %v", err)
+	}
+
+	encryptor, err := crypto.NewEncryptor([]byte("dev-development-key-32-bytes-kek"))
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, encryptor)
+	sessionRepo := repository.NewRecipientSessionRepository(pool)
+	auditRepo := repository.NewAuditRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "NewMessageSend HTTP Test Workspace")
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() {
+		_ = wsRepo.Delete(ctx, ws.ID)
+	}()
+
+	// Save active connection for workspace
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "Test Connection WABA",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+5511999990001",
+		Status:         "connected",
+	}
+	err = connRepo.Create(ctx, conn)
+	if err != nil {
+		t.Fatalf("failed to save connection: %v", err)
+	}
+
+	pub := queue.NewJetStreamPublisher(nc)
+	h := &admin.InboxHandler{
+		Repo:        auditRepo,
+		Sessions:    sessionRepo,
+		Workspaces:  wsRepo,
+		Connections: connRepo,
+		Publisher:   pub,
+	}
+
+	// Prepare request payload
+	fv := url.Values{}
+	fv.Set("to", "+5511888880002")
+	fv.Set("channel", "whatsapp_cloud")
+	fv.Set("is_template", "true")
+	fv.Set("template_name", "hello_world")
+	fv.Set("param_1", "TestUser")
+	fv.Set("recipient_identity", "+5511999990001")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/admin/inbox/new-message-send", strings.NewReader(fv.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err = h.NewMessageSend(c)
+	if err != nil {
+		t.Fatalf("NewMessageSend returned error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected StatusOK (200), got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Verify HX-Trigger header is set
+	triggerHeader := rec.Header().Get("HX-Trigger")
+	if !strings.Contains(triggerHeader, "Nova mensagem/template enviada com sucesso!") {
+		t.Errorf("expected HX-Trigger header to contain success message, got %q", triggerHeader)
+	}
+
+	// Verify session was upserted
+	sess, err := sessionRepo.Get(ctx, ws.ID, "+5511888880002", "whatsapp_cloud", "+5511999990001")
+	if err != nil {
+		t.Errorf("expected session to be upserted: %v", err)
+	}
+	if sess == nil || sess.RecipientPhone != "+5511888880002" {
+		t.Errorf("invalid session upserted: %+v", sess)
+	}
+}
+

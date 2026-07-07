@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -55,7 +56,10 @@ func TestDeviceHandler_GetQR_MissingPhone(t *testing.T) {
 
 // TestDeviceHandler_DatabaseFlows runs integration tests against real PostgreSQL.
 func TestDeviceHandler_DatabaseFlows(t *testing.T) {
-	dsn := "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+	dsn := os.Getenv("PERGO_DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -180,7 +184,10 @@ func TestDeviceHandler_DatabaseFlows(t *testing.T) {
 func TestDeviceHandler_StartPairing_LimitExceeded(t *testing.T) {
 	t.Setenv("PERGO_MAX_WHATSAPP_CONNECTIONS", "0")
 
-	dsn := "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+	dsn := os.Getenv("PERGO_DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {

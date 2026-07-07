@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -19,7 +20,10 @@ import (
 )
 
 func TestDashboardHandler_Index_Onboarding(t *testing.T) {
-	dsn := "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+	dsn := os.Getenv("PERGO_DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -126,7 +130,10 @@ func TestDashboardHandler_SelectWorkspace(t *testing.T) {
 }
 
 func TestDashboardHandler_SimulateWebhook(t *testing.T) {
-	dsn := "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+	dsn := os.Getenv("PERGO_DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
