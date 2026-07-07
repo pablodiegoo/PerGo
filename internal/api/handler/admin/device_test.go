@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -238,3 +239,27 @@ func TestDeviceHandler_StartPairing_LimitExceeded(t *testing.T) {
 		t.Errorf("expected body to contain limit exceeded message, got: %s", rec.Body.String())
 	}
 }
+
+// TestDeviceHandler_WS_RequiresAuth asserts that the WebSocket endpoint /admin/devices/test/ws
+// rejects unauthenticated requests.
+func TestDeviceHandler_WS_RequiresAuth(t *testing.T) {
+	e := echo.New()
+	e.Use(middleware.SessionAuthMiddleware())
+
+	h := &admin.DeviceHandler{}
+	e.GET("/admin/devices/test/ws", h.WS)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/devices/test/ws", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	// Requests without session cookie redirect to /admin/login (302)
+	if rec.Code != http.StatusFound {
+		t.Errorf("expected 302 redirect, got %d", rec.Code)
+	}
+	location := rec.Header().Get("Location")
+	if location != "/admin/login" {
+		t.Errorf("expected redirect to /admin/login, got %q", location)
+	}
+}
+

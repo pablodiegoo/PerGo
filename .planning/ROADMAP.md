@@ -233,6 +233,17 @@ Plans:
 *Roadmap created: 2026-06-25*
 *Granularity: standard | Mode: mvp | Phase convention: sequential*
 
+### Phase 10.1: Close gaps (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 10
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 10.1 to break down)
+
 ### Phase 07.1: Close gap: v1.0 audit gaps (INSERTED)
 
 **Goal:** [Urgent work - to be planned]

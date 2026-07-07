@@ -316,3 +316,17 @@ func TestAdminHTMXFragment(t *testing.T) {
 		t.Error("HTMX fragment should contain dashboard content")
 	}
 }
+
+// TestPlaygroundRouteDecommissioned asserts that GET /admin/playground returns 404.
+func TestPlaygroundRouteDecommissioned(t *testing.T) {
+	e := setupTestRoutes(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/playground", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("expected 404 StatusNotFound, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
