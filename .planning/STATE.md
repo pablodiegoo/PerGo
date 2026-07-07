@@ -122,6 +122,8 @@ Items acknowledged and carried forward from previous milestone close:
 | GS17 | 2026-06-29 | configuracao-verify-token | complete ✓ |
 | GS18 | 2026-06-29 | implementar-inbox-canais-e-logs-outbound | complete ✓ |
 | GS19 | 2026-07-06 | 20260706-devices-modal-inboxes-fix | complete ✓ |
+| GS20 | 2026-07-07 | 260706-uzz-quando-clico-em-testar | complete ✓ |
+
 
 ## Session Continuity
 
