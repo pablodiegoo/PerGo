@@ -298,6 +298,13 @@ func main() {
 	adminGroup := e.Group("/admin")
 	adminGroup.Use(middleware.HTMXMiddleware())
 	adminGroup.Use(middleware.SessionAuthMiddleware())
+	adminGroup.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			ctx := context.WithValue(c.Request().Context(), "active_path", c.Request().URL.Path)
+			c.SetRequest(c.Request().WithContext(ctx))
+			return next(c)
+		}
+	})
 
 	// Admin dashboard
 	dashboardHandler := &admin.DashboardHandler{
@@ -322,11 +329,13 @@ func main() {
 		ExternalURL: cfg.ExternalURL,
 	}
 	adminGroup.GET("/workspaces", workspaceHandler.List)
+	adminGroup.GET("/workspace", workspaceHandler.List)
 	adminGroup.POST("/workspaces", workspaceHandler.Create)
 	adminGroup.GET("/workspaces/new", func(c *echo.Context) error {
 		return middleware.Render(c, http.StatusOK, pages.WorkspaceCreateForm())
 	})
 	adminGroup.GET("/workspaces/:id", workspaceHandler.Detail)
+	adminGroup.GET("/workspace/:id", workspaceHandler.Detail)
 	adminGroup.GET("/workspaces/:id/confirm-delete", workspaceHandler.ConfirmDelete)
 	adminGroup.DELETE("/workspaces/:id", workspaceHandler.Delete)
 	adminGroup.POST("/workspaces/:id/credentials/:channel", workspaceHandler.SaveCredentials)
@@ -354,10 +363,17 @@ func main() {
 	auditRepo := repository.NewAuditRepository(pool)
 	auditHandler := &admin.AuditHandler{Repo: auditRepo, Workspaces: wsRepo}
 	adminGroup.GET("/audit", auditHandler.Redirect)
+	adminGroup.GET("/logs", func(c *echo.Context) error {
+		return c.Redirect(http.StatusMovedPermanently, "/admin/logs/outbound")
+	})
 	adminGroup.GET("/audit/inbound", auditHandler.ListInbound)
+	adminGroup.GET("/logs/inbound", auditHandler.ListInbound)
 	adminGroup.GET("/audit/inbound/export", auditHandler.ExportInboundCSV)
+	adminGroup.GET("/logs/inbound/export", auditHandler.ExportInboundCSV)
 	adminGroup.GET("/audit/outbound", auditHandler.ListOutbound)
+	adminGroup.GET("/logs/outbound", auditHandler.ListOutbound)
 	adminGroup.GET("/audit/outbound/export", auditHandler.ExportOutboundCSV)
+	adminGroup.GET("/logs/outbound/export", auditHandler.ExportOutboundCSV)
 
 	// Inbox routes
 	inboxHandler := &admin.InboxHandler{
@@ -388,6 +404,7 @@ func main() {
 		ExternalURL:   cfg.ExternalURL,
 	}
 	adminGroup.GET("/devices", deviceHandler.List)
+	adminGroup.GET("/connections", deviceHandler.List)
 	adminGroup.GET("/devices/pair-form", deviceHandler.PairForm)
 	adminGroup.POST("/devices/pair", deviceHandler.StartPairing)
 	adminGroup.GET("/devices/qr", deviceHandler.GetQR)
