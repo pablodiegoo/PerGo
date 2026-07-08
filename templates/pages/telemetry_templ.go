@@ -84,14 +84,14 @@ func TelemetryContent(data TelemetryData) templ.Component {
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"telemetry-content\" hx-get=\"/admin/telemetry\" hx-trigger=\"every 10s\" hx-target=\"#telemetry-inner\" hx-swap=\"innerHTML\"><div id=\"telemetry-inner\"><div class=\"page-header flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6\"><div><h1 class=\"text-2xl font-bold tracking-tight text-zinc-900\">Telemetry</h1><span class=\"refresh-badge text-xs text-zinc-400\">Auto-refreshes every 10s</span></div><div class=\"tabs tabs-boxed bg-zinc-100 p-1 rounded-lg inline-flex\"><a href=\"/admin/workspaces\" class=\"tab text-zinc-500 hover:text-zinc-900 px-4 py-1.5 text-sm\">Workspaces</a> <a href=\"/admin/webhooks\" class=\"tab text-zinc-500 hover:text-zinc-900 px-4 py-1.5 text-sm\">Webhooks & DLQ</a> <a href=\"/admin/telemetry\" class=\"tab tab-active bg-white text-zinc-900 shadow-sm rounded-md font-semibold px-4 py-1.5 text-sm\">Telemetry</a></div></div><!-- System Overview --><div class=\"section\"><h2>System Overview</h2><div class=\"stats-grid\"><div class=\"stat-card\"><div class=\"stat-value\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"telemetry-content\" hx-get=\"/admin/telemetry\" hx-trigger=\"every 10s\" hx-target=\"#telemetry-inner\" hx-swap=\"innerHTML\"><div id=\"telemetry-inner\"><div class=\"border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end\"><div><h1 class=\"text-2xl font-bold tracking-tight text-zinc-900\">Telemetry</h1><p class=\"text-zinc-500 text-sm mt-1\">Indicadores e performance em tempo real de hardware e rede.</p></div><span class=\"refresh-badge text-xs text-zinc-400\">Auto-refreshes every 10s</span></div><!-- System Overview --><div class=\"section\"><h2>System Overview</h2><div class=\"stats-grid\"><div class=\"stat-card\"><div class=\"stat-value\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", data.ActiveSessions))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/telemetry.templ`, Line: 59, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/telemetry.templ`, Line: 55, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -141,7 +141,7 @@ func TelemetryContent(data TelemetryData) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(data.Uptime)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/telemetry.templ`, Line: 73, Col: 42}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/telemetry.templ`, Line: 69, Col: 42}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
@@ -159,7 +159,7 @@ func TelemetryContent(data TelemetryData) templ.Component {
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(s.JID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/telemetry.templ`, Line: 94, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/telemetry.templ`, Line: 90, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -172,7 +172,7 @@ func TelemetryContent(data TelemetryData) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(s.Status)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/telemetry.templ`, Line: 95, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/telemetry.templ`, Line: 91, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -186,7 +186,7 @@ func TelemetryContent(data TelemetryData) templ.Component {
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(s.ConnectedSince.Format("2006-01-02 15:04:05"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/telemetry.templ`, Line: 98, Col: 57}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/telemetry.templ`, Line: 94, Col: 57}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
@@ -205,7 +205,7 @@ func TelemetryContent(data TelemetryData) templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", s.MessagesSent))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/telemetry.templ`, Line: 103, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/telemetry.templ`, Line: 99, Col: 46}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {

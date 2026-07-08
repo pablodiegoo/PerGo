@@ -39,16 +39,12 @@ templ TelemetryContent(data TelemetryData) {
 		hx-swap="innerHTML"
 	>
 		<div id="telemetry-inner">
-		<div class="page-header flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+		<div class="border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end">
 			<div>
 				<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Telemetry</h1>
-				<span class="refresh-badge text-xs text-zinc-400">Auto-refreshes every 10s</span>
+				<p class="text-zinc-500 text-sm mt-1">Indicadores e performance em tempo real de hardware e rede.</p>
 			</div>
-			<div class="tabs tabs-boxed bg-zinc-100 p-1 rounded-lg inline-flex">
-				<a href="/admin/workspaces" class="tab text-zinc-500 hover:text-zinc-900 px-4 py-1.5 text-sm">Workspaces</a>
-				<a href="/admin/webhooks" class="tab text-zinc-500 hover:text-zinc-900 px-4 py-1.5 text-sm">Webhooks & DLQ</a>
-				<a href="/admin/telemetry" class="tab tab-active bg-white text-zinc-900 shadow-sm rounded-md font-semibold px-4 py-1.5 text-sm">Telemetry</a>
-			</div>
+			<span class="refresh-badge text-xs text-zinc-400">Auto-refreshes every 10s</span>
 		</div>
 
 		<!-- System Overview -->

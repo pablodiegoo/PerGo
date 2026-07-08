@@ -11,12 +11,10 @@ templ WebhooksPage(workspaces []repository.Workspace, dlqItems []*repository.Web
 }
 
 templ WebhooksContent(workspaces []repository.Workspace, dlqItems []*repository.WebhookDLQ) {
-	<div class="page-header flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-		<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Webhooks & DLQ</h1>
-		<div class="tabs tabs-boxed bg-zinc-100 p-1 rounded-lg inline-flex">
-			<a href="/admin/workspaces" class="tab text-zinc-500 hover:text-zinc-900 px-4 py-1.5 text-sm">Workspaces</a>
-			<a href="/admin/webhooks" class="tab tab-active bg-white text-zinc-900 shadow-sm rounded-md font-semibold px-4 py-1.5 text-sm">Webhooks & DLQ</a>
-			<a href="/admin/telemetry" class="tab text-zinc-500 hover:text-zinc-900 px-4 py-1.5 text-sm">Telemetry</a>
+	<div class="border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end">
+		<div>
+			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Webhooks & DLQ</h1>
+			<p class="text-zinc-500 text-sm mt-1">Acompanhe falhas de entrega de webhooks de entrada e reenvios na Dead Letter Queue.</p>
 		</div>
 	</div>
 

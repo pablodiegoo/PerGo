@@ -13,8 +13,11 @@ templ DeviceListPage(connections []*repository.Connection) {
 
 // DeviceListContent renders the connection list content (HTMX fragment or full page body).
 templ DeviceListContent(connections []*repository.Connection) {
-	<div class="page-header flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-		<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Conexões</h1>
+	<div class="border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end">
+		<div>
+			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Conexões</h1>
+			<p class="text-zinc-500 text-sm mt-1">Conecte e autentique seus canais de comunicação unificados.</p>
+		</div>
 		<button
 			class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition"
 			hx-get="/admin/devices/pair-form"

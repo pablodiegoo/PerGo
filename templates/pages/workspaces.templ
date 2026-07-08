@@ -34,12 +34,10 @@ templ WorkspaceListPage(workspaces []repository.Workspace) {
 
 // WorkspaceListContent renders the workspace list content (used by both full page and fragment).
 templ WorkspaceListContent(workspaces []repository.Workspace) {
-	<div class="page-header flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
-		<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Workspaces</h1>
-		<div class="tabs tabs-boxed bg-zinc-100 p-1 rounded-lg inline-flex">
-			<a href="/admin/workspaces" class="tab tab-active bg-white text-zinc-900 shadow-sm rounded-md font-semibold px-4 py-1.5 text-sm">Workspaces</a>
-			<a href="/admin/webhooks" class="tab text-zinc-500 hover:text-zinc-900 px-4 py-1.5 text-sm">Webhooks & DLQ</a>
-			<a href="/admin/telemetry" class="tab text-zinc-500 hover:text-zinc-900 px-4 py-1.5 text-sm">Telemetry</a>
+	<div class="border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end">
+		<div>
+			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Configurações do Workspace</h1>
+			<p class="text-zinc-500 text-sm mt-1">Gerencie workspaces, credenciais de integração e chaves de API.</p>
 		</div>
 		<button
 			class="btn btn-primary"
