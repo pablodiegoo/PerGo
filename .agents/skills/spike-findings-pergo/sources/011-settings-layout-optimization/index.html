@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PerGo Settings Layout Redesign Prototype</title>
+  <!-- Tailwind CSS & DaisyUI -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            pergo: {
+              accent: '#0f172a',
+              border: '#e2e8f0',
+              bg: '#f8fafc',
+              card: '#ffffff'
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-50 min-h-screen flex font-sans antialiased text-slate-800">
+
+  <!-- Left Sidebar Mock (Simplified) -->
+  <aside class="w-60 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 h-screen fixed top-0 left-0">
+    <div class="p-6">
+      <h2 class="text-xl font-bold tracking-tight text-slate-900 mb-6">PerGo</h2>
+      <ul class="space-y-1">
+        <li><a href="#" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded text-slate-600">Visão Geral</a></li>
+        <li><a href="#" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded text-slate-600">Inbox</a></li>
+        <li class="h-px bg-slate-100 my-2"></li>
+        <li>
+          <div class="px-3 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider">Configurações</div>
+          <ul class="pl-3 mt-1 space-y-1">
+            <li><a href="#" onclick="showTab('connections')" id="side-connections" class="nav-item flex items-center px-3 py-2 text-sm font-medium rounded text-slate-900 bg-slate-100">Conexões</a></li>
+            <li><a href="#" onclick="showTab('logs')" id="side-logs" class="nav-item flex items-center px-3 py-2 text-sm font-medium rounded text-slate-600 hover:bg-slate-50">Logs</a></li>
+            <li><a href="#" onclick="showTab('workspace')" id="side-workspace" class="nav-item flex items-center px-3 py-2 text-sm font-medium rounded text-slate-600 hover:bg-slate-50">Workspace</a></li>
+            <li><a href="#" onclick="showTab('webhooks')" id="side-webhooks" class="nav-item flex items-center px-3 py-2 text-sm font-medium rounded text-slate-600 hover:bg-slate-50">Webhooks</a></li>
+            <li><a href="#" onclick="showTab('telemetry')" id="side-telemetry" class="nav-item flex items-center px-3 py-2 text-sm font-medium rounded text-slate-600 hover:bg-slate-50">Telemetry</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
+  </aside>
+
+  <!-- Optimized Main Panel -->
+  <main class="flex-1 ml-60 p-10 min-h-screen">
+    
+    <!-- Unified Settings Frame / Wrapper -->
+    <div class="max-w-5xl mx-auto">
+      
+      <!-- CONNECTIONS SCREEN (Optimized) -->
+      <div id="panel-connections" class="settings-panel">
+        <div class="border-b border-slate-200 pb-5 mb-8 flex justify-between items-end">
+          <div>
+            <h1 class="text-3xl font-bold tracking-tight text-slate-900">Conexões</h1>
+            <p class="text-slate-500 text-sm mt-1">Conecte e autentique seus canais de comunicação unificados.</p>
+          </div>
+          <button class="btn btn-sm bg-slate-900 hover:bg-slate-800 text-white rounded-md font-semibold px-4 border-none transition">Nova Conexão</button>
+        </div>
+
+        <div class="grid grid-cols-1 gap-6">
+          <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <h2 class="text-lg font-semibold text-slate-900 mb-4">Canais Conectados</h2>
+            <div class="text-slate-400 italic py-8 text-center bg-slate-50 rounded-lg border border-dashed border-slate-200">
+              Visualização de Conexões em lista de cartões (WhatsApp, Telegram, etc.)
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LOGS SCREEN (Optimized) -->
+      <div id="panel-logs" class="settings-panel hidden">
+        <div class="border-b border-slate-200 pb-5 mb-8 flex justify-between items-end">
+          <div>
+            <h1 class="text-3xl font-bold tracking-tight text-slate-900">Logs de Auditoria</h1>
+            <p class="text-slate-500 text-sm mt-1">Monitore eventos de tráfego, status de envios e recebimentos.</p>
+          </div>
+          <!-- Internal Tabs (Inbound/Outbound Switcher) -->
+          <div class="tabs tabs-boxed bg-slate-100 p-0.5 rounded-lg flex shrink-0">
+            <button class="tab tab-active bg-white text-slate-950 font-medium px-4 py-1 rounded-md text-xs shadow-sm">Outbound Logs</button>
+            <button class="tab text-slate-500 px-4 py-1 text-xs">Inbound Logs</button>
+          </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+          <h2 class="text-lg font-semibold text-slate-900 mb-4 font-mono text-xs text-slate-400 uppercase tracking-wider">Histórico de Eventos</h2>
+          <div class="text-slate-400 italic py-8 text-center bg-slate-50 rounded-lg border border-dashed border-slate-200">
+            Tabela unificada de logs de auditoria
+          </div>
+        </div>
+      </div>
+
+      <!-- WORKSPACE SCREEN (Optimized) -->
+      <div id="panel-workspace" class="settings-panel hidden">
+        <div class="border-b border-slate-200 pb-5 mb-8 flex justify-between items-end">
+          <div>
+            <h1 class="text-3xl font-bold tracking-tight text-slate-900">Configurações do Workspace</h1>
+            <p class="text-slate-500 text-sm mt-1">Gerencie workspaces, credenciais de integração e chaves de API.</p>
+          </div>
+          <button class="btn btn-sm bg-slate-900 hover:bg-slate-800 text-white rounded-md font-semibold px-4 border-none transition">Criar Workspace</button>
+        </div>
+
+        <div class="space-y-6">
+          <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <h2 class="text-lg font-semibold text-slate-900 mb-4">Meus Workspaces</h2>
+            <div class="text-slate-400 italic py-8 text-center bg-slate-50 rounded-lg border border-dashed border-slate-200">
+              Workspaces cadastrados no sistema
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- WEBHOOKS SCREEN (Optimized) -->
+      <div id="panel-webhooks" class="settings-panel hidden">
+        <div class="border-b border-slate-200 pb-5 mb-8">
+          <h1 class="text-3xl font-bold tracking-tight text-slate-900">Webhooks & DLQ</h1>
+          <p class="text-slate-500 text-sm mt-1">Acompanhe falhas de entrega de webhooks de entrada e reenvios na Dead Letter Queue.</p>
+        </div>
+
+        <div class="space-y-6">
+          <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+            <h2 class="text-lg font-semibold text-slate-900 mb-4">Configuração Global</h2>
+            <div class="text-slate-400 italic py-8 text-center bg-slate-50 rounded-lg border border-dashed border-slate-200">
+              Fila DLQ e logs de webhooks
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TELEMETRY SCREEN (Optimized) -->
+      <div id="panel-telemetry" class="settings-panel hidden">
+        <div class="border-b border-slate-200 pb-5 mb-8 flex justify-between items-end">
+          <div>
+            <h1 class="text-3xl font-bold tracking-tight text-slate-900">Telemetry</h1>
+            <p class="text-slate-500 text-sm mt-1">Indicadores e performance em tempo real de hardware e rede.</p>
+          </div>
+          <span class="text-xs text-slate-400 flex items-center gap-1.5 font-medium">
+            <span class="h-2 w-2 bg-emerald-500 rounded-full animate-pulse"></span>
+            Auto-refreshes every 10s
+          </span>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+          <h2 class="text-lg font-semibold text-slate-900 mb-4">Hardware & Network</h2>
+          <div class="text-slate-400 italic py-8 text-center bg-slate-50 rounded-lg border border-dashed border-slate-200">
+            Métricas de Hardware e Conexão NATS/JetStream
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <script>
+    function showTab(tabId) {
+      // Hide all panels
+      document.querySelectorAll('.settings-panel').forEach(panel => {
+        panel.classList.add('hidden');
+      });
+
+      // Show targeted panel
+      document.getElementById('panel-' + tabId).classList.remove('hidden');
+
+      // Update sidebar active links
+      document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.remove('bg-slate-100', 'text-slate-900');
+        item.classList.add('text-slate-600', 'hover:bg-slate-50');
+      });
+
+      const activeLink = document.getElementById('side-' + tabId);
+      activeLink.classList.add('bg-slate-100', 'text-slate-900');
+      activeLink.classList.remove('text-slate-600', 'hover:bg-slate-50');
+    }
+  </script>
+</body>
+</html>

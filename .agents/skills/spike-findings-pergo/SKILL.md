@@ -31,6 +31,7 @@ Spike sessions wrapped: 2026-06-29, 2026-07-03
 |------|-----------|-------------|
 | Multi-Instance Routing & Consolidation | [multi-instance-routing.md](file:///.agents/skills/spike-findings-pergo/references/multi-instance-routing.md) | Consolidate credentials/devices into a single connections table and route dynamically using static adapters to avoid memory leaks. |
 | Inbox UI | [inbox-ui.md](file:///.agents/skills/spike-findings-pergo/references/inbox-ui.md) | Split-pane chat view driven by HTMX polling (3s chat / 5s list); conversations derived from audit_logs GROUP BY — no new table for MVP. |
+| Settings UI | [settings-ui.md](file:///.agents/skills/spike-findings-pergo/references/settings-ui.md) | Inline collapsible sidebar configurations menu and unified settings sub-pages layout. |
 
 ## Source Files
 
@@ -44,6 +45,8 @@ Original spike source files are preserved in `sources/` for complete reference:
 - [sources/007-inbox-polling-stability/](file:///.agents/skills/spike-findings-pergo/sources/007-inbox-polling-stability/)
 - [sources/008-connection-management-unification/](file:///.agents/skills/spike-findings-pergo/sources/008-connection-management-unification/)
 - [sources/009-waba-template-inbox-delivery/](file:///.agents/skills/spike-findings-pergo/sources/009-waba-template-inbox-delivery/)
+- [sources/010-settings-nested-sidebar/](file:///.agents/skills/spike-findings-pergo/sources/010-settings-nested-sidebar/)
+- [sources/011-settings-layout-optimization/](file:///.agents/skills/spike-findings-pergo/sources/011-settings-layout-optimization/)
 </findings_index>
 
 <metadata>
@@ -58,4 +61,6 @@ Original spike source files are preserved in `sources/` for complete reference:
 - 007-inbox-polling-stability
 - 008-connection-management-unification
 - 009-waba-template-inbox-delivery
+- 010-settings-nested-sidebar
+- 011-settings-layout-optimization
 </metadata>

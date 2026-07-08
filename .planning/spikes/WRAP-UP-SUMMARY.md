@@ -1,8 +1,8 @@
 # Spike Wrap-Up Summary
 
-**Date:** 2026-07-06
-**Spikes processed:** 6 (004, 005, 006, 007, 008, 009)
-**Feature areas:** Conversational Inbox & Unified Connection Management
+**Date:** 2026-07-08
+**Spikes processed:** 8 (004, 005, 006, 007, 008, 009, 010, 011)
+**Feature areas:** Conversational Inbox, Unified Connection Management, Settings UI
 **Skill output:** `./.agents/skills/spike-findings-pergo/`
 
 ## Processed Spikes
@@ -15,6 +15,8 @@
 | 007 | inbox-polling-stability | standard | VALIDATED | Polling Stability |
 | 008 | connection-management-unification | standard | VALIDATED | Unified Connections |
 | 009 | waba-template-inbox-delivery | standard | VALIDATED | WABA Templates |
+| 010 | settings-nested-sidebar | standard | VALIDATED | Settings UI |
+| 011 | settings-layout-optimization | standard | VALIDATED | Settings UI |
 
 ## Key Findings
 
@@ -39,3 +41,7 @@ To completely avoid client-side event listeners and infinite reload loops:
 1. Outside the 24-hour window, the standard compose text area is disabled and a warning banner is shown: *"Janela de 24h fechada. Envie um template para reabrir a conversa."*
 2. A "Templates" button is available for WABA conversations. Clicking it opens a modal to select templates and input variable parameters (`{{1}}`, `{{2}}`).
 3. Initiating new conversations ("Novo Chat" button) requires using templates for WABA.
+
+**Settings UI (Spikes 010 & 011):**
+1. Accordion Configurations menu toggles sub-navigation options inline with smooth height expansion.
+2. Settings layout is standardized, removing top tabs and relying purely on the nested sidebar.
