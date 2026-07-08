@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -41,6 +42,13 @@ func setupTestRoutes(t *testing.T) *echo.Echo {
 	// Protected admin routes (session auth required)
 	adminGroup := e.Group("/admin")
 	adminGroup.Use(mw.SessionAuthMiddleware())
+	adminGroup.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			ctx := context.WithValue(c.Request().Context(), "active_path", c.Request().URL.Path)
+			c.SetRequest(c.Request().WithContext(ctx))
+			return next(c)
+		}
+	})
 
 	// Dashboard handler with optional DB dependencies
 	pool := getTestPool(t)
@@ -228,8 +236,8 @@ func TestAdminDashboardAuthenticated(t *testing.T) {
 		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "/admin/") || !strings.Contains(body, "/admin/workspaces") || !strings.Contains(body, "/admin/audit") {
-		t.Errorf("expected sidebar navigation with /admin/, /admin/workspaces, /admin/audit links, got %q", body)
+	if !strings.Contains(body, "/admin/") || !strings.Contains(body, "/admin/workspace") || !strings.Contains(body, "/admin/logs") {
+		t.Errorf("expected sidebar navigation with /admin/, /admin/workspace, /admin/logs links, got %q", body)
 	}
 }
 
@@ -265,12 +273,12 @@ func TestAdminDashboardContent(t *testing.T) {
 		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
-	// Dashboard should contain workspace count and audit sections
+	// Dashboard should contain workspace count and logs sections
 	if !strings.Contains(body, "workspace") && !strings.Contains(body, "Workspace") {
 		t.Error("expected dashboard to contain workspace information")
 	}
-	if !strings.Contains(body, "audit") && !strings.Contains(body, "Audit") {
-		t.Error("expected dashboard to contain audit section")
+	if !strings.Contains(body, "logs") && !strings.Contains(body, "Logs") {
+		t.Error("expected dashboard to contain logs section")
 	}
 }
 
