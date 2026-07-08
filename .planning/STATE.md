@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: audit gaps
-current_phase: 10.1
+current_phase: 11
+current_phase_name: Settings Sidebar & Layout Unification
 status: executing
 stopped_at: Phase 10.1 plan created
-last_updated: "2026-07-08T22:01:10.271Z"
-last_activity: 2026-07-07
-last_activity_desc: Phase 10.1 complete
+last_updated: "2026-07-08T22:02:54.913Z"
+last_activity: 2026-07-08
+last_activity_desc: Phase 11 execution started
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 12
-  total_plans: 33
+  total_plans: 34
   completed_plans: 33
-  percent: 100
-current_phase_name: Close gaps
+  percent: 92
 ---
 
 # Project State
@@ -24,14 +24,14 @@ current_phase_name: Close gaps
 See: .planning/PROJECT.md (updated 2026-06-25)
 
 **Core value:** A single API request delivers a message through any configured channel with automatic fallback — without per-message markup, without vendor lock-in, and with full custody of transaction data on infrastructure you control.
-**Current focus:** Phase 10.1 — Close gaps
+**Current focus:** Phase 11 — Settings Sidebar & Layout Unification
 
 ## Current Position
 
-Phase: 10.1
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-07-07 — Phase 10.1 complete
+Phase: 11 (Settings Sidebar & Layout Unification) — EXECUTING
+Plan: 1 of 1
+Status: Executing Phase 11
+Last activity: 2026-07-08 — Phase 11 execution started
 
 ## Performance Metrics
 
