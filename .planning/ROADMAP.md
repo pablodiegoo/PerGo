@@ -176,6 +176,7 @@ Note: Phase 2 and Phase 3 are independent after Phase 1 and may execute in paral
 | 8. Multi-Instance Connections & Dashboard UI | 3/3 | Complete | 2026-07-06 |
 | 9. Conversational Inbox | 3/3 | Complete | 2026-07-06 |
 | 10. Inbox Refactoring & Connection Unification | 3/3 | Complete | 2026-07-06 |
+| 11. Settings Sidebar & Layout Unification | 0/1 | Pending | - |
 
 ### Phase 8: Multi-Instance Connections & Dashboard UI
 
@@ -254,3 +255,13 @@ Plans:
 Plans:
 
 - [ ] TBD (run /gsd-plan-phase 07.1 to break down)
+
+### Phase 11: Settings Sidebar & Layout Unification
+
+**Goal:** Implement the collapsible nested Configurations sidebar navigation (Spike 010) and standardized, optimized page layouts across all settings sub-pages (Spike 011).
+**Mode:** mvp
+**Depends on:** Phase 10
+**Plans:** 1 plan
+
+Plans:
+- [ ] 11-01-PLAN.md — Settings Sidebar & Layout Unification: sidebar accordion, active route persistence, top-tabs removal, unified page headers.
