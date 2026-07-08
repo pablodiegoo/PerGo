@@ -1,6 +1,65 @@
 package layout
 
-import "github.com/pablojhp.pergo/internal/repository"
+import (
+	"context"
+	"strings"
+	"github.com/pablojhp.pergo/internal/repository"
+)
+
+func getActivePath(ctx context.Context) string {
+	if val, ok := ctx.Value("active_path").(string); ok {
+		return val
+	}
+	return ""
+}
+
+func isSettingsActive(activePath string) bool {
+	prefixes := []string{
+		"/admin/connections",
+		"/admin/devices",
+		"/admin/logs",
+		"/admin/audit",
+		"/admin/workspace",
+		"/admin/workspaces",
+		"/admin/webhooks",
+		"/admin/telemetry",
+	}
+	for _, p := range prefixes {
+		if strings.HasPrefix(activePath, p) {
+			return true
+		}
+	}
+	return false
+}
+
+func isSubmenuActive(activePath, target string) bool {
+	if target == "/admin/connections" {
+		return strings.HasPrefix(activePath, "/admin/connections") || strings.HasPrefix(activePath, "/admin/devices")
+	}
+	if target == "/admin/logs" {
+		return strings.HasPrefix(activePath, "/admin/logs") || strings.HasPrefix(activePath, "/admin/audit")
+	}
+	if target == "/admin/workspace" {
+		return strings.HasPrefix(activePath, "/admin/workspace") || strings.HasPrefix(activePath, "/admin/workspaces")
+	}
+	if target == "/admin/webhooks" {
+		return strings.HasPrefix(activePath, "/admin/webhooks")
+	}
+	if target == "/admin/telemetry" {
+		return strings.HasPrefix(activePath, "/admin/telemetry")
+	}
+	return false
+}
+
+func isTopLevelActive(activePath, target string) bool {
+	if target == "/admin/" {
+		return activePath == "/admin" || activePath == "/admin/"
+	}
+	if target == "/admin/inbox" {
+		return strings.HasPrefix(activePath, "/admin/inbox")
+	}
+	return false
+}
 
 templ Sidebar() {
 	<nav class="sidebar bg-zinc-50 border-r border-zinc-200 flex flex-col justify-between shrink-0 h-screen font-sans">
@@ -13,19 +72,13 @@ templ Sidebar() {
 		<div id="sidebar-workspace-selector" hx-get="/admin/workspaces/selector" hx-trigger="load" hx-swap="outerHTML"></div>
 		<ul class="sidebar-nav p-3 space-y-1">
 			<li>
-				<a href="/admin/" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900 transition-all">
+				<a href="/admin/" class={ "nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isTopLevelActive(getActivePath(ctx), "/admin/")), templ.KV("text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900", !isTopLevelActive(getActivePath(ctx), "/admin/")) }>
 					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
 					<span>Visão Geral</span>
 				</a>
 			</li>
 			<li>
-				<a href="/admin/devices" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900 transition-all">
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-					<span>Conexões</span>
-				</a>
-			</li>
-			<li>
-				<a href="/admin/inbox" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900 transition-all">
+				<a href="/admin/inbox" class={ "nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isTopLevelActive(getActivePath(ctx), "/admin/inbox")), templ.KV("text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900", !isTopLevelActive(getActivePath(ctx), "/admin/inbox")) }>
 					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
 					<span>Inbox</span>
 					<span id="inbox-unread-badge" class="hidden ml-auto text-xs font-bold bg-blue-500 text-white px-1.5 py-0.5 rounded-full"></span>
@@ -33,16 +86,33 @@ templ Sidebar() {
 			</li>
 
 			<li>
-				<a href="/admin/audit/outbound" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900 transition-all">
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-					<span>Logs de Auditoria</span>
-				</a>
-			</li>
-			<li>
-				<a href="/admin/workspaces" class="nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900 transition-all">
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-					<span>Configurações</span>
-				</a>
+				<button type="button" onclick="toggleSettingsSubmenu()" class={ "w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSettingsActive(getActivePath(ctx))), templ.KV("text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900", !isSettingsActive(getActivePath(ctx))) }>
+					<span class="flex items-center gap-3">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+						<span>Configurações</span>
+					</span>
+					<svg id="chevron-icon" class={ "h-4 w-4 transform transition-transform duration-200 text-zinc-400", templ.KV("rotate-180", isSettingsActive(getActivePath(ctx))) } fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+					</svg>
+				</button>
+				
+				<ul id="settings-submenu" class={ "transition-all duration-200 pl-9 mt-1 space-y-1 overflow-hidden", templ.KV("max-h-[240px] opacity-100", isSettingsActive(getActivePath(ctx))), templ.KV("max-h-0 opacity-0", !isSettingsActive(getActivePath(ctx))) }>
+					<li>
+						<a href="/admin/connections" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/connections")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/connections")) }>Conexões</a>
+					</li>
+					<li>
+						<a href="/admin/logs" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/logs")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/logs")) }>Logs</a>
+					</li>
+					<li>
+						<a href="/admin/workspace" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/workspace")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/workspace")) }>Workspace</a>
+					</li>
+					<li>
+						<a href="/admin/webhooks" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/webhooks")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/webhooks")) }>Webhooks</a>
+					</li>
+					<li>
+						<a href="/admin/telemetry" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/telemetry")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/telemetry")) }>Telemetry</a>
+					</li>
+				</ul>
 			</li>
 		</ul>
 		<div class="sidebar-footer p-3 border-t border-zinc-200">
@@ -53,6 +123,25 @@ templ Sidebar() {
 				</button>
 			</form>
 		</div>
+		<script>
+			function toggleSettingsSubmenu() {
+				const submenu = document.getElementById('settings-submenu');
+				const chevron = document.getElementById('chevron-icon');
+				const isExpanded = submenu.style.maxHeight === '240px' || submenu.classList.contains('max-h-[240px]');
+				
+				if (isExpanded) {
+					submenu.style.maxHeight = '0px';
+					submenu.style.opacity = '0';
+					submenu.classList.remove('max-h-[240px]', 'opacity-100');
+					chevron.classList.remove('rotate-180');
+				} else {
+					submenu.style.maxHeight = '240px';
+					submenu.style.opacity = '1';
+					submenu.classList.add('max-h-[240px]', 'opacity-100');
+					chevron.classList.add('rotate-180');
+				}
+			}
+		</script>
 	</nav>
 }
 
