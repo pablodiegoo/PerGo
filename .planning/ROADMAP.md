@@ -13,8 +13,8 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation** - Server, schema, identity, crypto, audit, observability — the expensive-to-retrofit decisions locked in
-- [ ] **Phase 2: Admin Shell** - Server-rendered admin panel for workspace, key, and audit management
+- [x] **Phase 1: Foundation** - Server, schema, identity, crypto, audit, observability — the expensive-to-retrofit decisions locked in (completed 2026-06-25)
+- [x] **Phase 2: Admin Shell** - Server-rendered admin panel for workspace, key, and audit management (completed 2026-06-25)
 - [x] **Phase 3: Ingest API & Queue** - Unified POST /messages endpoint with JetStream durability, backpressure, dedup, and rate limiting (completed 2026-06-26)
 - [x] **Phase 4: WhatsApp Web & QR Pairing** - Unofficial WhatsApp Web channel via whatsmeow with multi-session, QR pairing, and ban-risk resilience (completed 2026-06-26)
 - [x] **Phase 5: Official Channels & Smart Fallback** - WABA and Telegram adapters with template management, 24h window, and ordered fallback pipeline (completed 2026-06-26)
@@ -40,10 +40,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans:** 4 plans
 Plans:
 
-- [ ] 01-01-PLAN.md — Server bootstrap: scaffold, Docker Compose, Echo v5, pgxpool, goose migrations, health endpoints
-- [ ] 01-02-PLAN.md — Identity & auth: workspace/API key CRUD, SHA-256 hashing, AES-256-GCM encryption, tenant context, auth middleware
-- [ ] 01-03-PLAN.md — Audit logging: trace middleware, slog integration, partitioned audit_logs, buffered batch writer
-- [ ] 01-04-PLAN.md — Observability & shutdown: pprof, expvar, graceful shutdown orchestrator
+- [x] 01-01-PLAN.md — Server bootstrap: scaffold, Docker Compose, Echo v5, pgxpool, goose migrations, health endpoints (completed 2026-06-25)
+- [x] 01-02-PLAN.md — Identity & auth: workspace/API key CRUD, SHA-256 hashing, AES-256-GCM encryption, tenant context, auth middleware (completed 2026-06-25)
+- [x] 01-03-PLAN.md — Audit logging: trace middleware, slog integration, partitioned audit_logs, buffered batch writer (completed 2026-06-25)
+- [x] 01-04-PLAN.md — Observability & shutdown: pprof, expvar, graceful shutdown orchestrator (completed 2026-06-25)
 
 ### Phase 2: Admin Shell
 
@@ -60,9 +60,9 @@ Plans:
 **Plans:** 3 plans
 Plans:
 
-- [ ] 02-01-PLAN.md — Admin shell foundation: templ, session auth, base layout, sidebar, dashboard, HTMX, CSS
-- [ ] 02-02-PLAN.md — Workspace and API key management: CRUD handlers, templates, modal confirmations
-- [ ] 02-03-PLAN.md — Audit log review and CSV export: filtering, pagination, CSV download
+- [x] 02-01-PLAN.md — Admin shell foundation: templ, session auth, base layout, sidebar, dashboard, HTMX, CSS (completed 2026-06-25)
+- [x] 02-02-PLAN.md — Workspace and API key management: CRUD handlers, templates, modal confirmations (completed 2026-06-25)
+- [x] 02-03-PLAN.md — Audit log review and CSV export: filtering, pagination, CSV download (completed 2026-06-25)
 
 **UI hint**: yes
 
@@ -245,16 +245,16 @@ Plans:
 
 - [x] TBD (run /gsd-plan-phase 10.1 to break down) (completed 2026-07-07)
 
-### Phase 07.1: Close gap: v1.0 audit gaps (INSERTED)
+### Phase 07.1: Close gap: v1.0 audit gaps (INSERTED) (completed 2026-06-27)
 
-**Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
+**Goal:** Close all identified v1.0 audit gaps including audit_logs range-partitioning, whatsmeow credentials encryption, balanced QueueDepthTracker, relative WABA media proxy URLs, and whatsmeow Outdated/Logout event handling.
+**Requirements**: AUDIT-01, SEC-04, QUEUE-02, MEDIA-02, WAWEB-06, WAWEB-07
 **Depends on:** Phase 7
-**Plans:** 0 plans
+**Plans:** 1 plan
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 07.1 to break down)
+- [x] 07.1-01-PLAN.md — Close all identified v1.0 audit gaps (completed 2026-06-27)
 
 ### Phase 11: Settings Sidebar & Layout Unification (completed 2026-07-09)
 
