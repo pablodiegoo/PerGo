@@ -179,11 +179,13 @@ type fakeDispatcher struct {
 	err         error
 	calledCount int
 	calledWith  []string
+	lastTo      string
 }
 
 func (m *fakeDispatcher) Dispatch(ctx context.Context, p *channel.MessagePayload) (string, error) {
 	m.calledCount++
 	m.calledWith = append(m.calledWith, p.Channel)
+	m.lastTo = p.To
 	return "", m.err
 }
 
@@ -455,6 +457,54 @@ func TestOrchestrator_QueueDepthDecrement(t *testing.T) {
 	orchestrator.handleFailure(msg2, wsID, "trace-123", 0)
 	if tracker.decrements[wsID] != 2 {
 		t.Errorf("expected 2 decrements after terminal failure, got %d", tracker.decrements[wsID])
+	}
+}
+
+func TestOrchestrator_TelegramContactResolution(t *testing.T) {
+	pool := getTestPool(t)
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	tgContactRepo := repository.NewTelegramContactRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "tg_res_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	// Upsert mapping: username "@my_user" -> "chat_98765"
+	username := "@my_user"
+	err = tgContactRepo.Upsert(ctx, ws.ID, "chat_98765", &username, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("failed to upsert contact: %v", err)
+	}
+
+	// Setup mock dispatcher
+	tgDisp := &fakeDispatcher{err: nil}
+	registry := channel.NewRegistry(map[string]channel.Dispatcher{
+		"telegram": tgDisp,
+	})
+
+	orchestrator := NewDispatchOrchestrator(registry, nil, nil, nil, nil, 5, 60*time.Second)
+	orchestrator.SetTelegramContactRepo(tgContactRepo)
+
+	qMsg := &domain.QueueMessage{
+		WorkspaceID: ws.ID,
+		TraceID:     uuid.New().String(),
+		To:          "@my_user",
+		Channel:     "telegram",
+		Body:        "hello world",
+	}
+
+	msg := &fakeDispatchMsg{}
+	err = orchestrator.Process(ctx, msg, qMsg, 0)
+	if err != nil {
+		t.Fatalf("process failed: %v", err)
+	}
+
+	if tgDisp.lastTo != "chat_98765" {
+		t.Errorf("expected dispatched To to be 'chat_98765', got %s", tgDisp.lastTo)
 	}
 }
 

@@ -21,12 +21,13 @@ import (
 
 // InboxHandler holds dependencies for the conversational inbox.
 type InboxHandler struct {
-	Repo        *repository.AuditRepository
-	Sessions    *repository.RecipientSessionRepository
-	Workspaces  *repository.WorkspaceRepository
-	Connections *repository.ConnectionRepository
-	Publisher   *queue.JetStreamPublisher
-	Templates   *repository.WABATemplateRepository
+	Repo             *repository.AuditRepository
+	Sessions         *repository.RecipientSessionRepository
+	Workspaces       *repository.WorkspaceRepository
+	Connections      *repository.ConnectionRepository
+	Publisher        *queue.JetStreamPublisher
+	Templates        *repository.WABATemplateRepository
+	TelegramContacts *repository.TelegramContactRepository
 }
 
 // resolveWorkspaceID reads the active workspace from the cookie.
@@ -56,7 +57,33 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 	unreadMap := make(map[string]bool, len(conversations))
 	unreadCount := 0
 
-	for _, conv := range conversations {
+	for i := range conversations {
+		conv := &conversations[i]
+
+		// Resolve display name for Telegram using telegram_contacts
+		if conv.Channel == "telegram" && h.TelegramContacts != nil {
+			if contact, err := h.TelegramContacts.Get(ctx, workspaceID, conv.From); err == nil && contact != nil {
+				parts := []string{}
+				if contact.FirstName != nil && *contact.FirstName != "" {
+					parts = append(parts, *contact.FirstName)
+				}
+				if contact.LastName != nil && *contact.LastName != "" {
+					parts = append(parts, *contact.LastName)
+				}
+				displayName := strings.Join(parts, " ")
+				if contact.Username != nil && *contact.Username != "" {
+					if displayName != "" {
+						displayName += " (@" + *contact.Username + ")"
+					} else {
+						displayName = "@" + *contact.Username
+					}
+				}
+				if displayName != "" {
+					conv.DisplayName = displayName
+				}
+			}
+		}
+
 		isUnread := false
 		if h.Sessions != nil {
 			session, sErr := h.Sessions.Get(ctx, workspaceID, conv.From, conv.Channel, conv.RecipientIdentity)

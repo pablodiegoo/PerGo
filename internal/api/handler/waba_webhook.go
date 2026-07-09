@@ -58,20 +58,20 @@ type InboundContact struct {
 
 // WABAWebhookHandler handles verification and inbound payloads for Meta's WhatsApp Cloud API (WABA).
 type WABAWebhookHandler struct {
-	pool         *repository.WorkspaceRepository
-	credsRepo    *repository.CredentialsRepository
-	sessRepo     *repository.RecipientSessionRepository
-	dedupRepo    *repository.InboundDedupRepository
-	s3Client     *storage.S3Client
-	publisher    *queue.JetStreamPublisher
-	auditWriter  audit.Writer
-	client       *http.Client
-	graphBaseURL string
+	pool            *repository.WorkspaceRepository
+	connectionsRepo *repository.ConnectionRepository
+	sessRepo        *repository.RecipientSessionRepository
+	dedupRepo       *repository.InboundDedupRepository
+	s3Client        *storage.S3Client
+	publisher       *queue.JetStreamPublisher
+	auditWriter     audit.Writer
+	client          *http.Client
+	graphBaseURL    string
 }
 
 func NewWABAWebhookHandler(
 	pool *repository.WorkspaceRepository,
-	credsRepo *repository.CredentialsRepository,
+	connectionsRepo *repository.ConnectionRepository,
 	sessRepo *repository.RecipientSessionRepository,
 	dedupRepo *repository.InboundDedupRepository,
 	s3Client *storage.S3Client,
@@ -79,15 +79,15 @@ func NewWABAWebhookHandler(
 	auditWriter audit.Writer,
 ) *WABAWebhookHandler {
 	return &WABAWebhookHandler{
-		pool:         pool,
-		credsRepo:    credsRepo,
-		sessRepo:     sessRepo,
-		dedupRepo:    dedupRepo,
-		s3Client:     s3Client,
-		publisher:    publisher,
-		auditWriter:  auditWriter,
-		client:       &http.Client{Timeout: 30 * time.Second},
-		graphBaseURL: "https://graph.facebook.com/v20.0",
+		pool:            pool,
+		connectionsRepo: connectionsRepo,
+		sessRepo:        sessRepo,
+		dedupRepo:       dedupRepo,
+		s3Client:        s3Client,
+		publisher:       publisher,
+		auditWriter:     auditWriter,
+		client:          &http.Client{Timeout: 30 * time.Second},
+		graphBaseURL:    "https://graph.facebook.com/v20.0",
 	}
 }
 
@@ -107,21 +107,33 @@ func (h *WABAWebhookHandler) HandleGet(c *echo.Context) error {
 		return c.NoContent(http.StatusBadRequest)
 	}
 
-	credsBytes, err := h.credsRepo.Get(c.Request().Context(), workspaceID, "whatsapp_cloud")
-	if err != nil {
-		return c.NoContent(http.StatusForbidden)
-	}
-
-	var creds wabaVerifyCreds
-	if err := json.Unmarshal(credsBytes, &creds); err != nil {
-		return c.NoContent(http.StatusForbidden)
-	}
-
 	verifyToken := c.Request().URL.Query().Get("hub.verify_token")
 	challenge := c.Request().URL.Query().Get("hub.challenge")
 
 	expectedVerifyToken := "pergo_verify_token_" + workspaceIDStr
-	if verifyToken == "" || challenge == "" || (verifyToken != creds.VerifyToken && verifyToken != expectedVerifyToken) {
+
+	// Load registered connections for the workspace
+	conns, err := h.connectionsRepo.ListByWorkspace(c.Request().Context(), workspaceID)
+	if err != nil {
+		return c.NoContent(http.StatusForbidden)
+	}
+
+	var matchFound bool
+	for _, conn := range conns {
+		if conn.Channel != "whatsapp_cloud" {
+			continue
+		}
+
+		var creds wabaVerifyCreds
+		if err := json.Unmarshal(conn.Credentials, &creds); err == nil {
+			if verifyToken != "" && (verifyToken == creds.VerifyToken || verifyToken == expectedVerifyToken) {
+				matchFound = true
+				break
+			}
+		}
+	}
+
+	if !matchFound {
 		return c.NoContent(http.StatusForbidden)
 	}
 
@@ -207,12 +219,27 @@ func (h *WABAWebhookHandler) HandlePost(c *echo.Context) error {
 		return c.NoContent(http.StatusBadRequest)
 	}
 
-	credsBytes, err := h.credsRepo.Get(c.Request().Context(), workspaceID, "whatsapp_cloud")
+	// Load registered connections for the workspace
+	conns, err := h.connectionsRepo.ListByWorkspace(c.Request().Context(), workspaceID)
 	if err != nil {
 		return c.NoContent(http.StatusForbidden)
 	}
+
+	var matchingConn *repository.Connection
+	for _, conn := range conns {
+		if conn.Channel == "whatsapp_cloud" {
+			matchingConn = conn
+			break
+		}
+	}
+
+	if matchingConn == nil {
+		slog.Warn("waba webhook: no connection found", "workspace_id", workspaceID)
+		return c.NoContent(http.StatusForbidden)
+	}
+
 	var creds wabaVerifyCreds
-	_ = json.Unmarshal(credsBytes, &creds)
+	_ = json.Unmarshal(matchingConn.Credentials, &creds)
 
 	ws, err := h.pool.GetByID(c.Request().Context(), workspaceID)
 	if err != nil {

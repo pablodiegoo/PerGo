@@ -56,7 +56,9 @@ templ ConvItem(conv repository.ConversationSummary, unread bool) {
 	>
 		<!-- Avatar -->
 		<div class="conv-avatar flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm select-none">
-			if len([]rune(conv.From)) > 0 {
+			if conv.DisplayName != "" {
+				{ string([]rune(conv.DisplayName)[:1]) }
+			} else if len([]rune(conv.From)) > 0 {
 				{ string([]rune(conv.From)[:1]) }
 			} else {
 				{ "?" }
@@ -65,7 +67,11 @@ templ ConvItem(conv repository.ConversationSummary, unread bool) {
 		<!-- Body -->
 		<div class="conv-body flex-1 min-w-0">
 			<div class="flex items-center justify-between gap-1 mb-0.5">
-				<span class="conv-from font-semibold text-sm text-zinc-900 truncate">{ conv.From }</span>
+				if conv.DisplayName != "" {
+					<span class="conv-from font-semibold text-sm text-zinc-900 truncate">{ conv.DisplayName }</span>
+				} else {
+					<span class="conv-from font-semibold text-sm text-zinc-900 truncate">{ conv.From }</span>
+				}
 				<span class="conv-time text-xs text-zinc-400 flex-shrink-0">{ conv.LastMessageTime.Format("15:04") }</span>
 			</div>
 			<div class="flex items-center justify-between gap-1">

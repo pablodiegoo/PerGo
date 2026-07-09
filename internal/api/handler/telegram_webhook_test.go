@@ -71,7 +71,8 @@ func TestTelegramWebhookHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create encryptor: %v", err)
 	}
-	credsRepo := repository.NewCredentialsRepository(pool, enc)
+	connRepo := repository.NewConnectionRepository(pool, enc)
+	tgContactRepo := repository.NewTelegramContactRepository(pool)
 	sessRepo := repository.NewRecipientSessionRepository(pool)
 	wsRepo := repository.NewWorkspaceRepository(pool)
 
@@ -84,22 +85,30 @@ func TestTelegramWebhookHandler(t *testing.T) {
 		_ = wsRepo.Delete(ctx, ws.ID)
 	}()
 
-	// 3. Save Telegram credentials with token and secret_token
+	// 3. Save Telegram connection with token and secret_token
 	configPayload := map[string]string{
 		"token":        "bot123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
 		"secret_token": "my-secret-telegram-webhook-token",
 		"bot_username": "@testbot",
 	}
 	configBytes, _ := json.Marshal(configPayload)
-	err = credsRepo.Save(ctx, ws.ID, "telegram", configBytes)
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "Test Bot",
+		Channel:        "telegram",
+		SenderIdentity: "@testbot",
+		Credentials:    configBytes,
+	}
+	err = connRepo.Create(ctx, conn)
 	if err != nil {
-		t.Fatalf("failed to save telegram credentials: %v", err)
+		t.Fatalf("failed to create telegram connection: %v", err)
 	}
 
 	// Setup Echo
 	e := echo.New()
 	dedupRepo := repository.NewInboundDedupRepository(pool)
-	h := NewTelegramWebhookHandler(wsRepo, credsRepo, sessRepo, dedupRepo, nil, nil, nil)
+	h := NewTelegramWebhookHandler(wsRepo, connRepo, sessRepo, dedupRepo, nil, nil, nil, tgContactRepo)
 
 	t.Run("Missing Secret Token Header -> 403", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/telegram/%s", ws.ID), strings.NewReader(`{}`))

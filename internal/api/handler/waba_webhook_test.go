@@ -61,7 +61,7 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 	enc, _ := crypto.NewEncryptor(kek)
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
-	credsRepo := repository.NewCredentialsRepository(pool, enc)
+	connRepo := repository.NewConnectionRepository(pool, enc)
 	sessRepo := repository.NewRecipientSessionRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	publisher := queue.NewJetStreamPublisher(nc)
@@ -84,12 +84,20 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 		"token":        "waba-test-token",
 	}
 	configBytes, _ := json.Marshal(configPayload)
-	_ = credsRepo.Save(ctx, ws.ID, "whatsapp_cloud", configBytes)
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "Test WABA",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "123456789",
+		Credentials:    configBytes,
+	}
+	_ = connRepo.Create(ctx, conn)
 
 	auditWriter := audit.NewWriter(pool, 100, 1)
 	defer auditWriter.Close()
 
-	h := NewWABAWebhookHandler(wsRepo, credsRepo, sessRepo, dedupRepo, s3Client, publisher, auditWriter)
+	h := NewWABAWebhookHandler(wsRepo, connRepo, sessRepo, dedupRepo, s3Client, publisher, auditWriter)
 
 	e := echo.New()
 

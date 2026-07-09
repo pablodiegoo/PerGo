@@ -127,6 +127,7 @@ func main() {
 	credentialsRepo := repository.NewCredentialsRepository(pool, encryptor)
 	connectionRepo := repository.NewConnectionRepository(pool, encryptor)
 	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
+	telegramContactRepo := repository.NewTelegramContactRepository(pool)
 	windowChecker := session.NewWindowChecker(recipientSessionRepo)
 
 	// --- REST Adapters ---
@@ -153,6 +154,7 @@ func main() {
 	sessionManager := session.NewManager(db, deviceRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", inboundProcessor)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	orchestrator := queue.NewDispatchOrchestrator(dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter, 5, 60*time.Second)
+	orchestrator.SetTelegramContactRepo(telegramContactRepo)
 	worker := queue.NewWorker(ctx, consumer, orchestrator)
 	slog.Info("message worker started", "consumer", "worker-1")
 
@@ -270,11 +272,11 @@ func main() {
 	e.GET("/media/:workspace_id/:hash", mediaHandler.Handle)
 
 	// --- Telegram Inbound Webhook handler ---
-	telegramWebhookHandler := handler.NewTelegramWebhookHandler(wsRepo, credentialsRepo, recipientSessionRepo, dedupRepo, s3Client, publisher, auditWriter)
+	telegramWebhookHandler := handler.NewTelegramWebhookHandler(wsRepo, connectionRepo, recipientSessionRepo, dedupRepo, s3Client, publisher, auditWriter, telegramContactRepo)
 	e.POST("/webhooks/telegram/:workspace_id", telegramWebhookHandler.Handle)
 
 	// --- WABA Inbound Webhook handler ---
-	wabaWebhookHandler := handler.NewWABAWebhookHandler(wsRepo, credentialsRepo, recipientSessionRepo, dedupRepo, s3Client, publisher, auditWriter)
+	wabaWebhookHandler := handler.NewWABAWebhookHandler(wsRepo, connectionRepo, recipientSessionRepo, dedupRepo, s3Client, publisher, auditWriter)
 	e.GET("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandleGet)
 	e.POST("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandlePost)
 
@@ -403,12 +405,13 @@ func main() {
 
 	// Inbox routes
 	inboxHandler := &admin.InboxHandler{
-		Repo:        auditRepo,
-		Sessions:    recipientSessionRepo,
-		Workspaces:  wsRepo,
-		Connections: connectionRepo,
-		Publisher:   publisher,
-		Templates:   wabaTemplateRepo,
+		Repo:             auditRepo,
+		Sessions:         recipientSessionRepo,
+		Workspaces:       wsRepo,
+		Connections:      connectionRepo,
+		Publisher:        publisher,
+		Templates:        wabaTemplateRepo,
+		TelegramContacts: telegramContactRepo,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
 	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)

@@ -25,12 +25,13 @@ import (
 // TelegramWebhookHandler handles inbound webhooks from Telegram.
 type TelegramWebhookHandler struct {
 	pool                 *repository.WorkspaceRepository
-	credsRepo            *repository.CredentialsRepository
+	connectionsRepo      *repository.ConnectionRepository
 	recipientSessionRepo *repository.RecipientSessionRepository
 	dedupRepo            *repository.InboundDedupRepository
 	s3Client             *storage.S3Client
 	publisher            *queue.JetStreamPublisher
 	auditWriter          audit.Writer
+	telegramContactRepo  *repository.TelegramContactRepository
 	client               *http.Client
 	telegramBaseURL      string
 }
@@ -38,21 +39,23 @@ type TelegramWebhookHandler struct {
 // NewTelegramWebhookHandler creates a new TelegramWebhookHandler.
 func NewTelegramWebhookHandler(
 	pool *repository.WorkspaceRepository,
-	credsRepo *repository.CredentialsRepository,
+	connectionsRepo *repository.ConnectionRepository,
 	recipientSessionRepo *repository.RecipientSessionRepository,
 	dedupRepo *repository.InboundDedupRepository,
 	s3Client *storage.S3Client,
 	publisher *queue.JetStreamPublisher,
 	auditWriter audit.Writer,
+	telegramContactRepo *repository.TelegramContactRepository,
 ) *TelegramWebhookHandler {
 	return &TelegramWebhookHandler{
 		pool:                 pool,
-		credsRepo:            credsRepo,
+		connectionsRepo:      connectionsRepo,
 		recipientSessionRepo: recipientSessionRepo,
 		dedupRepo:            dedupRepo,
 		s3Client:             s3Client,
 		publisher:            publisher,
 		auditWriter:          auditWriter,
+		telegramContactRepo:  telegramContactRepo,
 		client:               &http.Client{Timeout: 30 * time.Second},
 		telegramBaseURL:      "https://api.telegram.org",
 	}
@@ -63,6 +66,13 @@ func (h *TelegramWebhookHandler) SetBaseURL(url string) {
 	h.telegramBaseURL = url
 }
 
+type telegramUser struct {
+	ID        int64  `json:"id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name,omitempty"`
+	Username  string `json:"username,omitempty"`
+}
+
 type telegramUpdate struct {
 	UpdateID int64            `json:"update_id"`
 	Message  *telegramMessage `json:"message"`
@@ -70,6 +80,7 @@ type telegramUpdate struct {
 
 type telegramMessage struct {
 	MessageID int64             `json:"message_id"`
+	From      *telegramUser     `json:"from,omitempty"`
 	Chat      *telegramChat     `json:"chat"`
 	Text      string            `json:"text,omitempty"`
 	Caption   string            `json:"caption,omitempty"`
@@ -114,7 +125,10 @@ type telegramContact struct {
 }
 
 type telegramChat struct {
-	ID int64 `json:"id"`
+	ID        int64  `json:"id"`
+	Username  string `json:"username,omitempty"`
+	FirstName string `json:"first_name,omitempty"`
+	LastName  string `json:"last_name,omitempty"`
 }
 
 type telegramConfig struct {
@@ -141,19 +155,34 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 		return c.NoContent(http.StatusForbidden)
 	}
 
-	// Load registered credentials for the workspace
-	credsBytes, err := h.credsRepo.Get(c.Request().Context(), workspaceID, "telegram")
+	// Load registered connections for the workspace
+	conns, err := h.connectionsRepo.ListByWorkspace(c.Request().Context(), workspaceID)
 	if err != nil {
 		return c.NoContent(http.StatusForbidden)
 	}
 
-	var config telegramConfig
-	if err := json.Unmarshal(credsBytes, &config); err != nil {
-		return c.NoContent(http.StatusForbidden)
+	var matchingConn *repository.Connection
+	var botUsername string
+	var token string
+
+	for _, conn := range conns {
+		if conn.Channel != "telegram" {
+			continue
+		}
+
+		var config telegramConfig
+		if err := json.Unmarshal(conn.Credentials, &config); err == nil {
+			if config.SecretToken == receivedToken {
+				matchingConn = conn
+				botUsername = config.BotUsername
+				token = config.Token
+				break
+			}
+		}
 	}
 
-	// Validate secret token
-	if config.SecretToken == "" || receivedToken != config.SecretToken {
+	if matchingConn == nil {
+		slog.Warn("tg webhook: no matching connection found for secret token", "workspace_id", workspaceID)
 		return c.NoContent(http.StatusForbidden)
 	}
 
@@ -181,7 +210,6 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 			}
 		}
 
-		botUsername := config.BotUsername
 		if botUsername == "" {
 			botUsername = "@bot"
 		}
@@ -190,6 +218,50 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 		err = h.recipientSessionRepo.Upsert(ctx, workspaceID, chatIDStr, "telegram", botUsername, time.Now().UTC())
 		if err != nil {
 			return err
+		}
+
+		// Upsert Telegram contact mapping (resolves username/phone -> chat_id)
+		if h.telegramContactRepo != nil {
+			var usernamePtr *string
+			var firstNamePtr *string
+			var lastNamePtr *string
+			var phonePtr *string
+
+			if update.Message.From != nil {
+				if update.Message.From.Username != "" {
+					u := update.Message.From.Username
+					usernamePtr = &u
+				}
+				if update.Message.From.FirstName != "" {
+					f := update.Message.From.FirstName
+					firstNamePtr = &f
+				}
+				if update.Message.From.LastName != "" {
+					l := update.Message.From.LastName
+					lastNamePtr = &l
+				}
+			}
+
+			// Fallback to Chat metadata if From is missing
+			if usernamePtr == nil && update.Message.Chat.Username != "" {
+				u := update.Message.Chat.Username
+				usernamePtr = &u
+			}
+			if firstNamePtr == nil && update.Message.Chat.FirstName != "" {
+				f := update.Message.Chat.FirstName
+				firstNamePtr = &f
+			}
+			if lastNamePtr == nil && update.Message.Chat.LastName != "" {
+				l := update.Message.Chat.LastName
+				lastNamePtr = &l
+			}
+
+			if update.Message.Contact != nil && update.Message.Contact.PhoneNumber != "" {
+				p := update.Message.Contact.PhoneNumber
+				phonePtr = &p
+			}
+
+			_ = h.telegramContactRepo.Upsert(ctx, workspaceID, chatIDStr, usernamePtr, phonePtr, firstNamePtr, lastNamePtr)
 		}
 
 		ws, err := h.pool.GetByID(ctx, workspaceID)
@@ -241,8 +313,8 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 			mimeType = update.Message.Video.MimeType
 		}
 
-		if fileID != "" && h.s3Client != nil && config.Token != "" {
-			mediaBytes, err := h.downloadTelegramFile(ctx, fileID, config.Token)
+		if fileID != "" && h.s3Client != nil && token != "" {
+			mediaBytes, err := h.downloadTelegramFile(ctx, fileID, token)
 			if err == nil {
 				ext := "bin"
 				if mediaType == "image" {

@@ -170,6 +170,7 @@ type ConversationSummary struct {
 	LastMessageBody   string    `json:"last_message_body"`
 	LastMessageTime   time.Time `json:"last_message_time"`
 	TotalMessageCount int64     `json:"total_message_count"`
+	DisplayName       string    `json:"display_name,omitempty"`
 }
 
 // ThreadMessage represents a single message in a chronological conversation thread.
