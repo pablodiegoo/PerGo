@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: audit gaps
 current_phase: 11
 current_phase_name: Settings Sidebar & Layout Unification
-status: executing
-stopped_at: Phase 10.1 plan created
-last_updated: "2026-07-08T22:02:54.913Z"
-last_activity: 2026-07-08
-last_activity_desc: Phase 11 execution started
+status: idle
+stopped_at: Phase 11 completed
+last_updated: "2026-07-09T08:45:00.000Z"
+last_activity: 2026-07-09
+last_activity_desc: Phase 11 completed
 progress:
   total_phases: 13
-  completed_phases: 12
+  completed_phases: 13
   total_plans: 34
-  completed_plans: 33
-  percent: 92
+  completed_plans: 34
+  percent: 100
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: 11 (Settings Sidebar & Layout Unification) — EXECUTING
+Phase: 11 (Settings Sidebar & Layout Unification) — COMPLETE
 Plan: 1 of 1
-Status: Executing Phase 11
-Last activity: 2026-07-08 — Phase 11 execution started
+Status: Phase 11 complete
+Last activity: 2026-07-09 — Phase 11 completed
 
 ## Performance Metrics
 
@@ -76,6 +76,8 @@ Recent decisions affecting current work:
 - [Roadmap]: WhatsApp Web (highest-risk channel) + all durability machinery (dedup, terminal-session, goroutine lifecycle) lands in Phase 4 with the queue — not deferred to official channels phase
 - [Roadmap]: Phase 2 (Admin Shell) and Phase 3 (Ingest API & Queue) are independent after Phase 1 and may execute in parallel
 - [Phase 03]: Publisher interface defined now for DI; JetStream implementation deferred to Plan 2 — Enables handler tests without real NATS; Plan 2 implements the interface
+- [Phase 11]: Context-driven active path routing in PathMiddleware to expand accordion and highlight active settings sub-items.
+- [Phase 11]: Context-driven server-side pre-rendering of the workspace selector dropdown to prevent reload flash.
 
 ### Pending Todos
 
@@ -126,10 +128,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-08T18:52:19-03:00
-Stopped at: Session resumed, proceeding to wrap up spike findings
-Resume file: .planning/spikes/011-settings-layout-optimization/.continue-here.md
+Last session: 2026-07-09T08:45:00-03:00
+Stopped at: Phase 11 completed, summary file generated, and state updated.
+Resume file: none
 
 ## Operator Next Steps
 
-- Wrap up spike findings with `/gsd-spike --wrap-up`
+- Select next phase from ROADMAP.md (e.g. Phase 07.1)

@@ -256,7 +256,7 @@ Plans:
 
 - [ ] TBD (run /gsd-plan-phase 07.1 to break down)
 
-### Phase 11: Settings Sidebar & Layout Unification
+### Phase 11: Settings Sidebar & Layout Unification (completed 2026-07-09)
 
 **Goal:** Implement the collapsible nested Configurations sidebar navigation (Spike 010) and standardized, optimized page layouts across all settings sub-pages (Spike 011).
 **Mode:** mvp
@@ -264,4 +264,4 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 11-01-PLAN.md — Settings Sidebar & Layout Unification: sidebar accordion, active route persistence, top-tabs removal, unified page headers.
+- [x] 11-01-PLAN.md — Settings Sidebar & Layout Unification: sidebar accordion, active route persistence, top-tabs removal, unified page headers. (completed 2026-07-09)
