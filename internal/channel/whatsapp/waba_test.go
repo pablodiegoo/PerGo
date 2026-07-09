@@ -442,6 +442,9 @@ func TestWABA_MediaExternalURL(t *testing.T) {
 	wsID := uuid.New()
 	tenantCtx := tenant.WithWorkspaceID(context.Background(), wsID)
 
+	// Clean up duplicate connection if exists from previous test runs
+	_, _ = pool.Exec(context.Background(), "DELETE FROM connections WHERE sender_identity = $1", "+12345")
+
 	// Create test workspace to satisfy FK constraint on connections
 	_, err = pool.Exec(context.Background(), "INSERT INTO workspaces (id, name, created_at, updated_at) VALUES ($1, $2, now(), now())", wsID, "test-workspace-"+wsID.String())
 	if err != nil {

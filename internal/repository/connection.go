@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -300,9 +301,10 @@ func (r *ConnectionRepository) scanAndDecrypt(row pgx.Row) (*Connection, error) 
 	if len(ciphertext) > 0 {
 		plaintext, err := r.provider.Decrypt(ciphertext)
 		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt credentials: %w", err)
+			slog.Error("failed to decrypt connection credentials", "connection_id", c.ID, "error", err)
+		} else {
+			c.Credentials = plaintext
 		}
-		c.Credentials = plaintext
 	}
 
 	return &c, nil
@@ -341,9 +343,10 @@ func (r *ConnectionRepository) scanRowAndDecrypt(rows pgx.Rows) (*Connection, er
 	if len(ciphertext) > 0 {
 		plaintext, err := r.provider.Decrypt(ciphertext)
 		if err != nil {
-			return nil, fmt.Errorf("failed to decrypt credentials: %w", err)
+			slog.Error("failed to decrypt connection credentials", "connection_id", c.ID, "error", err)
+		} else {
+			c.Credentials = plaintext
 		}
-		c.Credentials = plaintext
 	}
 
 	return &c, nil

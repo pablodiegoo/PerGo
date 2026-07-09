@@ -267,7 +267,7 @@ func AuditFiltersUI(filters repository.AuditFilters, workspaces []repository.Wor
 			templ_7745c5c3_Var10 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<div class=\"section audit-filters\"><form hx-get=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<div class=\"section audit-filters p-4 mb-6\"><form hx-get=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -280,7 +280,7 @@ func AuditFiltersUI(filters repository.AuditFilters, workspaces []repository.Wor
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\" hx-target=\"#audit-table\" hx-swap=\"innerHTML\"><div class=\"form-row\"><div class=\"form-group\"><label for=\"workspace_id\">Workspace</label> <select name=\"workspace_id\" id=\"workspace_id\" class=\"form-input\"><option value=\"\">All Workspaces</option> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\" hx-target=\"#audit-table\" hx-swap=\"innerHTML\"><div class=\"grid grid-cols-1 md:grid-cols-5 gap-4 items-end\"><div class=\"flex flex-col gap-1\"><label for=\"workspace_id\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Workspace</label> <select name=\"workspace_id\" id=\"workspace_id\" class=\"form-input\"><option value=\"\">Todos</option> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -316,7 +316,7 @@ func AuditFiltersUI(filters repository.AuditFilters, workspaces []repository.Wor
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</select></div><div class=\"form-group\"><label for=\"trace_id\">Trace ID</label> <input type=\"text\" name=\"trace_id\" id=\"trace_id\" class=\"form-input\" placeholder=\"Exact match\"></div><div class=\"form-group\"><label for=\"start\">Start Date</label> <input type=\"date\" name=\"start\" id=\"start\" class=\"form-input\"></div><div class=\"form-group\"><label for=\"end\">End Date</label> <input type=\"date\" name=\"end\" id=\"end\" class=\"form-input\"></div><div class=\"form-group form-actions-inline\"><button type=\"submit\" class=\"btn btn-primary\">Search</button> <a href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</select></div><div class=\"flex flex-col gap-1\"><label for=\"trace_id\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Trace ID</label> <input type=\"text\" name=\"trace_id\" id=\"trace_id\" class=\"form-input\" placeholder=\"Busca exata\"></div><div class=\"flex flex-col gap-1\"><label for=\"start\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Data Início</label> <input type=\"date\" name=\"start\" id=\"start\" class=\"form-input\"></div><div class=\"flex flex-col gap-1\"><label for=\"end\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Data Fim</label> <input type=\"date\" name=\"end\" id=\"end\" class=\"form-input\"></div><div class=\"flex gap-2\"><button type=\"submit\" class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition flex-1 h-9\">Buscar</button> <a href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -329,7 +329,7 @@ func AuditFiltersUI(filters repository.AuditFilters, workspaces []repository.Wor
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" class=\"btn btn-secondary\">Export CSV</a></div></div></form></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" class=\"btn btn-secondary btn-sm font-semibold px-4 py-2 rounded-md transition flex-1 h-9 flex items-center justify-center border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700\">Exportar</a></div></div></form></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
