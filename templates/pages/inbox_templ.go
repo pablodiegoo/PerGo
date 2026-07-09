@@ -25,7 +25,7 @@ type InboxMessage struct {
 }
 
 // InboxPage renders the full split-pane inbox page with sidebar, conversation list, and chat panel.
-func InboxPage(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int) templ.Component {
+func InboxPage(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -46,7 +46,7 @@ func InboxPage(conversations []repository.ConversationSummary, unreadMap map[str
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = layout.Base("Inbox", InboxContent(conversations, unreadMap, activeChannel, unreadCount)).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = layout.Base("Inbox", InboxContent(conversations, unreadMap, activeChannel, unreadCount, chatPanel)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -56,7 +56,7 @@ func InboxPage(conversations []repository.ConversationSummary, unreadMap map[str
 
 // InboxContent renders the split-pane layout (conversation list + chat panel).
 // Used both for full-page render and HTMX partial swap.
-func InboxContent(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int) templ.Component {
+func InboxContent(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -108,7 +108,22 @@ func InboxContent(conversations []repository.ConversationSummary, unreadMap map[
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div><!-- Right panel: chat view --><div id=\"chat-panel\" class=\"chat-panel flex-1 flex flex-col items-center justify-center bg-zinc-50 h-full overflow-hidden\"><!-- Placeholder when no chat is selected --><div class=\"chat-placeholder flex flex-col items-center gap-4 text-zinc-400 select-none\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-16 w-16 text-zinc-300\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1\" d=\"M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z\"></path></svg><div class=\"text-center\"><p class=\"font-semibold text-zinc-500\">Selecione uma conversa</p><p class=\"text-sm mt-1\">Escolha uma conversa à esquerda para visualizar o histórico.</p></div></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div><!-- Right panel: chat view --><div id=\"chat-panel\" class=\"chat-panel flex-1 flex flex-col bg-zinc-50 h-full overflow-hidden\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if chatPanel != nil {
+			templ_7745c5c3_Err = chatPanel.Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<!-- Placeholder when no chat is selected --> <div class=\"chat-placeholder flex flex-col items-center justify-center gap-4 text-zinc-400 select-none h-full w-full\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-16 w-16 text-zinc-300\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1\" d=\"M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z\"></path></svg><div class=\"text-center\"><p class=\"font-semibold text-zinc-500\">Selecione uma conversa</p><p class=\"text-sm mt-1\">Escolha uma conversa à esquerda para visualizar o histórico.</p></div></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

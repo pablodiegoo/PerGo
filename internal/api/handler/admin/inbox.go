@@ -90,10 +90,10 @@ func (h *InboxHandler) View(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "failed to load conversations: "+err.Error())
 	}
 
-	inboxPage := pages.InboxPage(conversations, unreadMap, channelFilter, unreadCount)
-
+	inboxPage := pages.InboxPage(conversations, unreadMap, channelFilter, unreadCount, nil)
+ 
 	if mw.IsHTMX(c) {
-		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, channelFilter, unreadCount))
+		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, channelFilter, unreadCount, nil))
 	}
 	return mw.Render(c, http.StatusOK, inboxPage)
 }
@@ -147,7 +147,18 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		}
 	}
 
-	return mw.Render(c, http.StatusOK, components.ChatPanel(from, channel, to, messages, isWabaBlocked))
+	if mw.IsHTMX(c) {
+		return mw.Render(c, http.StatusOK, components.ChatPanel(from, channel, to, messages, isWabaBlocked))
+	}
+
+	// Direct page reload -> render the full page with this chat panel pre-opened
+	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, "")
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to load conversations: "+err.Error())
+	}
+
+	chatPanelComp := components.ChatPanel(from, channel, to, messages, isWabaBlocked)
+	return mw.Render(c, http.StatusOK, pages.InboxPage(conversations, unreadMap, "", unreadCount, chatPanelComp))
 }
 
 // PollMessages handles GET /admin/inbox/messages — returns new messages for incremental chat polling.
