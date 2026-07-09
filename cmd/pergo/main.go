@@ -300,7 +300,33 @@ func main() {
 	adminGroup.Use(middleware.SessionAuthMiddleware())
 	adminGroup.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
-			ctx := context.WithValue(c.Request().Context(), "active_path", c.Request().URL.Path)
+			ctx := c.Request().Context()
+			ctx = context.WithValue(ctx, "active_path", c.Request().URL.Path)
+
+			// Get active workspace and workspaces list to avoid HTMX reload flash
+			var ws *repository.Workspace
+			cookie, err := c.Cookie("pergo-active-workspace")
+			if err == nil && cookie != nil && cookie.Value != "" {
+				if wsID, parseErr := uuid.Parse(cookie.Value); parseErr == nil {
+					ws, _ = wsRepo.GetByID(ctx, wsID)
+				}
+			}
+			if ws == nil {
+				list, err := wsRepo.List(ctx, 1)
+				if err == nil && len(list) > 0 {
+					ws = &list[0]
+				}
+			}
+			workspaces, _ := wsRepo.List(ctx, 50)
+
+			// Inject into context
+			if ws != nil {
+				ctx = context.WithValue(ctx, "active_workspace", ws)
+			}
+			if len(workspaces) > 0 {
+				ctx = context.WithValue(ctx, "workspaces_list", workspaces)
+			}
+
 			c.SetRequest(c.Request().WithContext(ctx))
 			return next(c)
 		}

@@ -13,6 +13,20 @@ func getActivePath(ctx context.Context) string {
 	return ""
 }
 
+func getActiveWorkspace(ctx context.Context) *repository.Workspace {
+	if val, ok := ctx.Value("active_workspace").(*repository.Workspace); ok {
+		return val
+	}
+	return nil
+}
+
+func getWorkspacesList(ctx context.Context) []repository.Workspace {
+	if val, ok := ctx.Value("workspaces_list").([]repository.Workspace); ok {
+		return val
+	}
+	return nil
+}
+
 func isSettingsActive(activePath string) bool {
 	prefixes := []string{
 		"/admin/connections",
@@ -69,7 +83,7 @@ templ Sidebar() {
 				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h7" /></svg>
 			</button>
 		</div>
-		<div id="sidebar-workspace-selector" hx-get="/admin/workspaces/selector" hx-trigger="load" hx-swap="outerHTML"></div>
+		@WorkspaceSelector(getActiveWorkspace(ctx), getWorkspacesList(ctx))
 		<ul class="sidebar-nav p-3 space-y-1">
 			<li>
 				<a href="/admin/" class={ "nav-item flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isTopLevelActive(getActivePath(ctx), "/admin/")), templ.KV("text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900", !isTopLevelActive(getActivePath(ctx), "/admin/")) }>
@@ -86,7 +100,7 @@ templ Sidebar() {
 			</li>
 
 			<li>
-				<button type="button" onclick="toggleSettingsSubmenu()" class={ "w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSettingsActive(getActivePath(ctx))), templ.KV("text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900", !isSettingsActive(getActivePath(ctx))) }>
+				<button type="button" onclick="toggleSettingsSubmenu()" class={ "nav-item w-full flex items-center justify-between px-3 py-2 text-sm font-medium rounded-md transition-all hover:bg-zinc-200/50 hover:text-zinc-900", templ.KV("text-zinc-900 font-semibold", isSettingsActive(getActivePath(ctx))), templ.KV("text-zinc-600", !isSettingsActive(getActivePath(ctx))) }>
 					<span class="flex items-center gap-3">
 						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
 						<span>Configurações</span>
@@ -96,7 +110,7 @@ templ Sidebar() {
 					</svg>
 				</button>
 				
-				<ul id="settings-submenu" class={ "transition-all duration-200 pl-9 mt-1 space-y-1 overflow-hidden", templ.KV("max-h-[240px] opacity-100", isSettingsActive(getActivePath(ctx))), templ.KV("max-h-0 opacity-0", !isSettingsActive(getActivePath(ctx))) }>
+				<ul id="settings-submenu" class={ "transition-all duration-200 pl-10 mt-1 space-y-1 overflow-hidden", templ.KV("max-h-[240px] opacity-100", isSettingsActive(getActivePath(ctx))), templ.KV("max-h-0 opacity-0", !isSettingsActive(getActivePath(ctx))) }>
 					<li>
 						<a href="/admin/connections" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/connections")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/connections")) }>Conexões</a>
 					</li>
@@ -146,21 +160,25 @@ templ Sidebar() {
 }
 
 templ WorkspaceSelector(activeWorkspace *repository.Workspace, workspaces []repository.Workspace) {
-	<div id="sidebar-workspace-selector" class="px-4 py-2 border-b border-zinc-200">
-		<label class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Workspace</label>
-		<select name="workspace_id" 
-		        hx-post="/admin/workspaces/active" 
-		        hx-trigger="change" 
-		        hx-swap="none"
-		        onchange="window.location.reload()"
-		        class="select select-bordered select-xs w-full max-w-xs font-medium text-zinc-800 bg-white border-zinc-200 focus:outline-none">
-			for _, ws := range workspaces {
-				if activeWorkspace != nil && ws.ID == activeWorkspace.ID {
-					<option value={ ws.ID.String() } selected>{ ws.Name }</option>
-				} else {
-					<option value={ ws.ID.String() }>{ ws.Name }</option>
+	if len(workspaces) > 0 {
+		<div id="sidebar-workspace-selector" class="px-4 py-2 border-b border-zinc-200">
+			<label class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Workspace</label>
+			<select name="workspace_id" 
+			        hx-post="/admin/workspaces/active" 
+			        hx-trigger="change" 
+			        hx-swap="none"
+			        onchange="window.location.reload()"
+			        class="select select-bordered select-xs w-full max-w-xs font-medium text-zinc-800 bg-white border-zinc-200 focus:outline-none">
+				for _, ws := range workspaces {
+					if activeWorkspace != nil && ws.ID == activeWorkspace.ID {
+						<option value={ ws.ID.String() } selected>{ ws.Name }</option>
+					} else {
+						<option value={ ws.ID.String() }>{ ws.Name }</option>
+					}
 				}
-			}
-		</select>
-	</div>
+			</select>
+		</div>
+	} else {
+		<div id="sidebar-workspace-selector" hx-get="/admin/workspaces/selector" hx-trigger="load" hx-swap="outerHTML"></div>
+	}
 }
