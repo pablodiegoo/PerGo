@@ -1,33 +1,27 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-08T22:09:00.296Z",
-  "phase": "11",
-  "phase_name": "Settings Sidebar & Layout Unification",
-  "phase_dir": ".planning/phases/11-settings-sidebar-layout-unification",
-  "plan": 1,
-  "task": 5,
-  "total_tasks": 5,
+  "timestamp": "2026-07-13T21:01:22.794Z",
+  "phase": "",
+  "phase_name": "",
+  "phase_dir": "",
+  "plan": 0,
+  "task": 0,
+  "total_tasks": 3,
   "status": "paused",
-  "completed_tasks": [
-    {"id": 1, "name": "Route Aliases Registration & Request Path Middleware", "status": "done", "commit": "546e496"},
-    {"id": 2, "name": "Collapsible Sidebar Accordion with Active State Persistence", "status": "done", "commit": "2f323bc"},
-    {"id": 3, "name": "Layout Unification & Header Standardization", "status": "done", "commit": "f547af5"},
-    {"id": 4, "name": "Update Tests & Verification", "status": "done", "commit": "d9194aa"}
-  ],
+  "completed_tasks": [],
   "remaining_tasks": [
-    {"id": 5, "name": "Checkpoint: human-verify", "status": "awaiting_verification"}
+    {"id": 12, "name": "session-schema-design", "status": "not_started"},
+    {"id": 13, "name": "inbound-session-routing", "status": "not_started"},
+    {"id": 14, "name": "inbox-timeline-ui", "status": "not_started"}
   ],
-  "blockers": [
-    {"description": "Awaiting user verification and approval of the settings UI changes", "type": "human_action", "workaround": null}
-  ],
+  "blockers": [],
   "async_jobs": [],
-  "human_actions_pending": [
-    {"action": "Verify settings sidebar expand/collapse, active sub-item highlights, and top tabs removal", "context": "Needs user validation of Spike 010 & Spike 011 integration on localhost", "blocking": true}
-  ],
+  "human_actions_pending": [],
   "decisions": [
-    {"decision": "Used CSS transitions for accordion collapsible menu and server-side context propagation for active path retention", "rationale": "Allows clean CSS-only transitions and avoids using layout templates with duplicate top tabs", "phase": "11"}
+    {"decision": "Extract OutboundProcessor", "rationale": "Decouple HTTP handler from validation, media processing, connection routing, and JetStream publishing", "phase": ""},
+    {"decision": "Extract WebhookDispatcher", "rationale": "Decouple NATS queue worker from HTTP POST execution, HMAC signing, PII compliance checks, and DLQ persistence", "phase": ""}
   ],
   "uncommitted_files": [],
-  "next_action": "Process human approval of the Task 5 checkpoint to proceed with SUMMARY.md creation and roadmap finalization.",
-  "context_notes": "We finished all implementation tasks and verified they compile and pass unit/race tests. The user chose to pause work while the checkpoint is pending verification."
+  "next_action": "Align on the decomposition table for Spike 012 and begin building the schema design.",
+  "context_notes": "We finished the core refactorings for Inbound Ingestion, Outbound Ingestion, and Webhook Dispatcher (all tests green and committed). We are now initiating Spike 012 to explore two-way conversational sessions."
 }
