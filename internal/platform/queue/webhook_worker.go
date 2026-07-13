@@ -1,16 +1,11 @@
 package queue
 
 import (
-	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"sync"
 	"time"
 
@@ -19,6 +14,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/webhook"
 )
 
 type WebhookEvent struct {
@@ -36,15 +32,13 @@ type WebhookWorker struct {
 	js              jetstream.JetStream
 	consumer        jetstream.Consumer
 	inboundConsumer jetstream.Consumer
-	dlqRepo         *repository.WebhookDLQRepository
-	wsRepo          *repository.WorkspaceRepository
-	client          *http.Client
+	dispatcher      webhook.WebhookDispatcher
 	cancel          context.CancelFunc
 	wg              sync.WaitGroup
 	done            chan struct{}
 }
 
-func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dlqRepo *repository.WebhookDLQRepository) (*WebhookWorker, error) {
+func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dispatcher webhook.WebhookDispatcher) (*WebhookWorker, error) {
 	js, err := jetstream.New(nc)
 	if err != nil {
 		return nil, fmt.Errorf("jetstream.New: %w", err)
@@ -103,8 +97,7 @@ func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dlqRepo *repository.We
 		js:              js,
 		consumer:        consumer,
 		inboundConsumer: inboundConsumer,
-		dlqRepo:         dlqRepo,
-		client:          &http.Client{Timeout: 10 * time.Second},
+		dispatcher:      dispatcher,
 		cancel:          cancel,
 		done:            make(chan struct{}),
 	}
@@ -118,6 +111,10 @@ func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dlqRepo *repository.We
 func (w *WebhookWorker) Stop() {
 	w.cancel()
 	w.wg.Wait()
+}
+
+func (w *WebhookWorker) SetWorkspaceRepository(repo *repository.WorkspaceRepository) {
+	// Deprecated: workspace opt-in checks are now handled directly inside the WebhookDispatcher.
 }
 
 func (w *WebhookWorker) run(ctx context.Context, cons jetstream.Consumer, mode string) {
@@ -147,10 +144,6 @@ func (w *WebhookWorker) run(ctx context.Context, cons jetstream.Consumer, mode s
 	}
 }
 
-func (w *WebhookWorker) SetWorkspaceRepository(repo *repository.WorkspaceRepository) {
-	w.wsRepo = repo
-}
-
 func (w *WebhookWorker) processEvent(ctx context.Context, msg jetstream.Msg, mode string) {
 	var evt WebhookEvent
 	if err := json.Unmarshal(msg.Data(), &evt); err != nil {
@@ -159,124 +152,26 @@ func (w *WebhookWorker) processEvent(ctx context.Context, msg jetstream.Msg, mod
 		return
 	}
 
-	workspaceID, err := uuid.Parse(evt.WorkspaceID)
+	// Delegate compliance, signing, and HTTP dispatch to the WebhookDispatcher
+	err := w.dispatcher.Dispatch(ctx, mode, msg.Data())
 	if err != nil {
-		slog.Error("webhook worker: invalid workspace ID in event", "error", err, "workspace_id", evt.WorkspaceID)
-		_ = msg.Ack()
+		slog.Warn("webhook worker: dispatch failed", "error", err, "trace_id", evt.TraceID)
+		w.handleRetry(msg, err, &evt)
 		return
 	}
 
-	// 1. Fetch Webhook Configuration for Workspace
-	cfg, err := w.dlqRepo.GetConfig(ctx, workspaceID)
-	if err != nil {
-		if errors.Is(err, repository.ErrWebhookConfigNotFound) {
-			slog.Debug("webhook worker: no webhook config for workspace, dropping event", "workspace_id", workspaceID)
-			_ = msg.Ack()
-			return
-		}
-		// DB error, retry later
-		slog.Error("webhook worker: failed to fetch webhook config", "error", err, "workspace_id", workspaceID)
-		w.handleRetry(msg, fmt.Errorf("failed to fetch config: %w", err), &evt, "")
-		return
-	}
-
-	payloadBytes := msg.Data()
-
-	// Inbound PII redaction logic
-	if mode == "inbound" {
-		var wsOptIn bool
-		if w.wsRepo != nil {
-			if ws, err := w.wsRepo.GetByID(ctx, workspaceID); err == nil && ws != nil {
-				wsOptIn = ws.PIIOptIn
-			}
-		}
-
-		if !wsOptIn {
-			var inboundPayload struct {
-				Event       string `json:"event"`
-				TraceID     string `json:"trace_id"`
-				MessageID   string `json:"message_id"`
-				Channel     string `json:"channel"`
-				Timestamp   string `json:"timestamp"`
-				WorkspaceID string `json:"workspace_id"`
-				From        string `json:"from"`
-				Body        string `json:"body,omitempty"`
-				Media       any    `json:"media,omitempty"`
-				Location    any    `json:"location,omitempty"`
-				Contacts    any    `json:"contacts,omitempty"`
-			}
-			if err := json.Unmarshal(msg.Data(), &inboundPayload); err == nil {
-				// Hash from field
-				hasher := sha256.New()
-				hasher.Write([]byte(inboundPayload.From))
-				inboundPayload.From = hex.EncodeToString(hasher.Sum(nil))
-
-				// Strip location and contacts
-				inboundPayload.Location = nil
-				inboundPayload.Contacts = nil
-
-				payloadBytes, _ = json.Marshal(inboundPayload)
-			}
-		}
-	}
-
-	// 2. Dispatch Webhook
-	err = w.dispatch(ctx, cfg.URL, cfg.Secret, payloadBytes, evt.TraceID)
-	if err != nil {
-		slog.Warn("webhook worker: dispatch failed", "error", err, "url", cfg.URL, "trace_id", evt.TraceID)
-		w.handleRetry(msg, err, &evt, cfg.URL)
-		return
-	}
-
-	slog.Info("webhook worker: dispatched successfully", "url", cfg.URL, "trace_id", evt.TraceID, "event", evt.Event)
+	slog.Info("webhook worker: dispatched successfully", "trace_id", evt.TraceID, "event", evt.Event)
 	_ = msg.Ack()
 }
 
-func (w *WebhookWorker) dispatch(ctx context.Context, url string, secret []byte, payload []byte, traceID string) error {
-	timestamp := fmt.Sprintf("%d", time.Now().Unix())
-	signature := SignPayload(payload, secret, timestamp)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-PerGo-Signature", signature)
-	if traceID != "" {
-		req.Header.Set("X-Trace-ID", traceID)
-	}
-
-	resp, err := w.client.Do(req)
-	if err != nil {
-		return fmt.Errorf("http dispatch error: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return &HTTPError{StatusCode: resp.StatusCode, Status: resp.Status}
-	}
-
-	return nil
-}
-
-type HTTPError struct {
-	StatusCode int
-	Status     string
-}
-
-func (e *HTTPError) Error() string {
-	return fmt.Sprintf("http status %s", e.Status)
-}
-
-func (w *WebhookWorker) handleRetry(msg jetstream.Msg, err error, evt *WebhookEvent, url string) {
+func (w *WebhookWorker) handleRetry(msg jetstream.Msg, err error, evt *WebhookEvent) {
 	numDelivered := uint64(1)
 	if meta, metadataErr := msg.Metadata(); metadataErr == nil && meta != nil {
 		numDelivered = meta.NumDelivered
 	}
 
 	// Check if this error is terminal or we have exhausted max retries (10)
-	var httpErr *HTTPError
+	var httpErr *webhook.HTTPError
 	isTerminalErr := false
 	if errors.As(err, &httpErr) {
 		// Terminal status codes: 400, 401, 403, 404
@@ -291,17 +186,16 @@ func (w *WebhookWorker) handleRetry(msg jetstream.Msg, err error, evt *WebhookEv
 		wsID, _ := uuid.Parse(evt.WorkspaceID)
 		failReason := err.Error()
 
-		// Write to DLQ in database
-		dlqErr := w.dlqRepo.InsertDLQ(
+		// Archive permanently failed event via WebhookDispatcher
+		dlqErr := w.dispatcher.WriteToDLQ(
 			context.Background(),
 			wsID,
 			evt.TraceID,
 			evt.MessageID,
 			evt.Event,
 			msg.Data(),
-			url,
 			int(numDelivered),
-			&failReason,
+			failReason,
 		)
 		if dlqErr != nil {
 			slog.Error("webhook worker: failed to write to DLQ", "error", dlqErr, "trace_id", evt.TraceID)
@@ -322,16 +216,4 @@ func (w *WebhookWorker) handleRetry(msg jetstream.Msg, err error, evt *WebhookEv
 
 	slog.Info("webhook worker: scheduling retry", "trace_id", evt.TraceID, "attempt", numDelivered, "backoff", delay)
 	_ = msg.NakWithDelay(delay)
-}
-
-// SignPayload computes the HMAC-SHA256 signature for a webhook delivery request.
-// Format is: t=<timestamp>,v1=<hex_signature>
-// Signed bytes are: <timestamp> + "." + <raw_payload_bytes>
-func SignPayload(payload []byte, secret []byte, timestamp string) string {
-	mac := hmac.New(sha256.New, secret)
-	mac.Write([]byte(timestamp))
-	mac.Write([]byte("."))
-	mac.Write(payload)
-	signature := hex.EncodeToString(mac.Sum(nil))
-	return fmt.Sprintf("t=%s,v1=%s", timestamp, signature)
 }

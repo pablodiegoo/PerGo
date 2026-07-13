@@ -2,8 +2,6 @@ package handler
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,53 +9,35 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
-	"github.com/pablojhp.pergo/internal/platform/audit"
-	"github.com/pablojhp.pergo/internal/platform/queue"
-	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // TelegramWebhookHandler handles inbound webhooks from Telegram.
 type TelegramWebhookHandler struct {
-	pool                 *repository.WorkspaceRepository
-	connectionsRepo      *repository.ConnectionRepository
-	recipientSessionRepo *repository.RecipientSessionRepository
-	dedupRepo            *repository.InboundDedupRepository
-	s3Client             *storage.S3Client
-	publisher            *queue.JetStreamPublisher
-	auditWriter          audit.Writer
-	telegramContactRepo  *repository.TelegramContactRepository
-	client               *http.Client
-	telegramBaseURL      string
+	connectionsRepo     *repository.ConnectionRepository
+	telegramContactRepo *repository.TelegramContactRepository
+	inboundProcessor    *inbound.InboundProcessor
+	client              *http.Client
+	telegramBaseURL     string
 }
 
 // NewTelegramWebhookHandler creates a new TelegramWebhookHandler.
 func NewTelegramWebhookHandler(
-	pool *repository.WorkspaceRepository,
 	connectionsRepo *repository.ConnectionRepository,
-	recipientSessionRepo *repository.RecipientSessionRepository,
-	dedupRepo *repository.InboundDedupRepository,
-	s3Client *storage.S3Client,
-	publisher *queue.JetStreamPublisher,
-	auditWriter audit.Writer,
 	telegramContactRepo *repository.TelegramContactRepository,
+	inboundProcessor *inbound.InboundProcessor,
 ) *TelegramWebhookHandler {
 	return &TelegramWebhookHandler{
-		pool:                 pool,
-		connectionsRepo:      connectionsRepo,
-		recipientSessionRepo: recipientSessionRepo,
-		dedupRepo:            dedupRepo,
-		s3Client:             s3Client,
-		publisher:            publisher,
-		auditWriter:          auditWriter,
-		telegramContactRepo:  telegramContactRepo,
-		client:               &http.Client{Timeout: 30 * time.Second},
-		telegramBaseURL:      "https://api.telegram.org",
+		connectionsRepo:     connectionsRepo,
+		telegramContactRepo: telegramContactRepo,
+		inboundProcessor:    inboundProcessor,
+		client:              &http.Client{Timeout: 30 * time.Second},
+		telegramBaseURL:     "https://api.telegram.org",
 	}
 }
 
@@ -197,27 +177,8 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 	if update.Message != nil && update.Message.Chat != nil {
 		chatIDStr := strconv.FormatInt(update.Message.Chat.ID, 10)
 
-		// Deduplicate using update_id
-		if h.dedupRepo != nil {
-			unique, err := h.dedupRepo.InsertAndCheck(ctx, workspaceID, "telegram", strconv.FormatInt(update.UpdateID, 10))
-			if err != nil {
-				slog.Error("tg webhook: dedup check failed", "error", err)
-				return c.NoContent(http.StatusInternalServerError)
-			}
-			if !unique {
-				slog.Info("tg webhook: duplicate update ignored", "update_id", update.UpdateID)
-				return c.NoContent(http.StatusOK)
-			}
-		}
-
 		if botUsername == "" {
 			botUsername = "@bot"
-		}
-
-		// Upsert recipient session
-		err = h.recipientSessionRepo.Upsert(ctx, workspaceID, chatIDStr, "telegram", botUsername, time.Now().UTC())
-		if err != nil {
-			return err
 		}
 
 		// Upsert Telegram contact mapping (resolves username/phone -> chat_id)
@@ -264,116 +225,80 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 			_ = h.telegramContactRepo.Upsert(ctx, workspaceID, chatIDStr, usernamePtr, phonePtr, firstNamePtr, lastNamePtr)
 		}
 
-		ws, err := h.pool.GetByID(ctx, workspaceID)
-		if err != nil {
-			return c.NoContent(http.StatusInternalServerError)
-		}
-
-		// Map to InboundEventPayload
-		traceID := uuid.New().String()
-		event := InboundEventPayload{
-			Event:       "inbound_message",
-			TraceID:     traceID,
-			MessageID:   strconv.FormatInt(update.Message.MessageID, 10),
-			Channel:     "telegram",
-			Timestamp:   time.Now().UTC().Format(time.RFC3339),
-			WorkspaceID: workspaceID.String(),
-			From:        chatIDStr,
-			To:          botUsername,
-		}
-
-		if update.Message.Text != "" {
-			event.Body = update.Message.Text
-		}
-
-		// Parse media
+		// Parse media type and file ID
 		var fileID string
 		var mediaType string
-		var mimeType string
 		var filename string
 
 		if len(update.Message.Photo) > 0 {
-			// Get highest resolution photo
 			best := update.Message.Photo[len(update.Message.Photo)-1]
 			fileID = best.FileID
 			mediaType = "image"
-			mimeType = "image/jpeg"
 		} else if update.Message.Document != nil {
 			fileID = update.Message.Document.FileID
 			mediaType = "document"
-			mimeType = update.Message.Document.MimeType
 			filename = update.Message.Document.FileName
 		} else if update.Message.Audio != nil {
 			fileID = update.Message.Audio.FileID
 			mediaType = "audio"
-			mimeType = update.Message.Audio.MimeType
 		} else if update.Message.Video != nil {
 			fileID = update.Message.Video.FileID
 			mediaType = "video"
-			mimeType = update.Message.Video.MimeType
 		}
 
-		if fileID != "" && h.s3Client != nil && token != "" {
+		var inboundMedia *inbound.InboundMedia
+		if fileID != "" && token != "" {
 			mediaBytes, err := h.downloadTelegramFile(ctx, fileID, token)
 			if err == nil {
-				ext := "bin"
-				if mediaType == "image" {
-					ext = "jpg"
-				} else if mimeType != "" {
-					parts := strings.Split(mimeType, "/")
-					if len(parts) == 2 {
-						ext = parts[1]
-					}
+				inboundMedia = &inbound.InboundMedia{
+					Bytes:     mediaBytes,
+					MediaType: mediaType,
+					Filename:  filename,
+					Caption:   update.Message.Caption,
 				}
-				hashKey := sha256Hash(mediaBytes)
-				s3Key := fmt.Sprintf("%s/%s.%s", workspaceID.String(), hashKey, ext)
-				err = h.s3Client.Upload(ctx, s3Key, mediaBytes, mimeType)
-				if err == nil {
-					event.Media = &InboundMedia{
-						MediaURL:  fmt.Sprintf("/media/%s/%s.%s", workspaceID.String(), hashKey, ext),
-						MediaType: mediaType,
-						Filename:  filename,
-						Caption:   update.Message.Caption,
-					}
-				}
+			} else {
+				slog.Error("tg webhook: failed to download media file", "error", err, "file_id", fileID)
 			}
 		}
 
-		// PII opt-in check
-		if ws.PIIOptIn {
-			if update.Message.Location != nil {
-				event.Location = &InboundLocation{
-					Latitude:  update.Message.Location.Latitude,
-					Longitude: update.Message.Location.Longitude,
-				}
-			}
-			if update.Message.Contact != nil {
-				fullName := update.Message.Contact.FirstName
-				if update.Message.Contact.LastName != "" {
-					fullName += " " + update.Message.Contact.LastName
-				}
-				event.Contacts = []InboundContact{
-					{
-						Name:  fullName,
-						Phone: update.Message.Contact.PhoneNumber,
-					},
-				}
+		var inboundLocation *inbound.InboundLocation
+		if update.Message.Location != nil {
+			inboundLocation = &inbound.InboundLocation{
+				Latitude:  update.Message.Location.Latitude,
+				Longitude: update.Message.Location.Longitude,
 			}
 		}
 
-		// Silent drop if truly empty
-		if event.Body == "" && event.Media == nil && event.Location == nil && len(event.Contacts) == 0 {
-			return c.NoContent(http.StatusOK)
+		var inboundContacts []inbound.InboundContact
+		if update.Message.Contact != nil {
+			fullName := update.Message.Contact.FirstName
+			if update.Message.Contact.LastName != "" {
+				fullName += " " + update.Message.Contact.LastName
+			}
+			inboundContacts = append(inboundContacts, inbound.InboundContact{
+				Name:  fullName,
+				Phone: update.Message.Contact.PhoneNumber,
+			})
 		}
 
-		// Publish to NATS
-		if h.publisher != nil {
-			eventData, _ := json.Marshal(event)
-			subject := fmt.Sprintf("inbound.events.%s", workspaceID.String())
-			_ = h.publisher.Publish(ctx, subject, eventData, traceID)
+		event := &inbound.InboundEvent{
+			WorkspaceID: workspaceID,
+			MessageID:   strconv.FormatInt(update.UpdateID, 10), // Use update_id for dedup
+			Channel:     "telegram",
+			From:        chatIDStr,
+			To:          botUsername,
+			Body:        update.Message.Text,
+			Media:       inboundMedia,
+			Location:    inboundLocation,
+			Contacts:    inboundContacts,
+		}
 
-			if h.auditWriter != nil {
-				_ = h.auditWriter.Write(audit.NewEvent(workspaceID, traceID, "inbound_message", eventData))
+		// Delegate ingestion to consolidated processor
+		if h.inboundProcessor != nil {
+			err = h.inboundProcessor.Process(ctx, event)
+			if err != nil {
+				slog.Error("tg webhook: inbound processor failed", "error", err)
+				return c.NoContent(http.StatusInternalServerError)
 			}
 		}
 	}
@@ -382,7 +307,6 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 }
 
 func (h *TelegramWebhookHandler) downloadTelegramFile(ctx context.Context, fileID, token string) ([]byte, error) {
-	// getFile info
 	reqURL := fmt.Sprintf("%s/bot%s/getFile?file_id=%s", h.telegramBaseURL, token, fileID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
@@ -410,7 +334,6 @@ func (h *TelegramWebhookHandler) downloadTelegramFile(ctx context.Context, fileI
 		return nil, fmt.Errorf("failed to decode getFile: %w", err)
 	}
 
-	// Download file
 	downloadURL := fmt.Sprintf("%s/file/bot%s/%s", h.telegramBaseURL, token, fileInfo.Result.FilePath)
 	reqDl, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
@@ -438,10 +361,4 @@ func (h *TelegramWebhookHandler) downloadTelegramFile(ctx context.Context, fileI
 	}
 
 	return data, nil
-}
-
-func sha256Hash(data []byte) string {
-	hasher := sha256.New()
-	hasher.Write(data)
-	return hex.EncodeToString(hasher.Sum(nil))
 }

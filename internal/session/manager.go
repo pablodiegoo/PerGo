@@ -15,6 +15,8 @@ import (
 
 	"github.com/pablojhp.pergo/internal/channel"
 	whatsapp "github.com/pablojhp.pergo/internal/channel/whatsapp"
+	"github.com/pablojhp.pergo/internal/inbound"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 const (
@@ -33,22 +35,22 @@ const (
 // session registration, and graceful shutdown.
 type Manager struct {
 	db               *sql.DB
-	repo             *DeviceRepository
+	repo             *repository.ConnectionRepository
 	registry         *ActiveSession
 	dispatchers      *channel.Registry
 	waVersion        string
-	inboundProcessor *InboundProcessor
+	inboundProcessor *inbound.InboundProcessor
 	mu               sync.Mutex
 }
 
 // NewManager creates a session manager.
 func NewManager(
 	db *sql.DB,
-	repo *DeviceRepository,
+	repo *repository.ConnectionRepository,
 	registry *ActiveSession,
 	dispatchers *channel.Registry,
 	waVersion string,
-	inboundProcessor *InboundProcessor,
+	inboundProcessor *inbound.InboundProcessor,
 ) *Manager {
 	return &Manager{
 		db:               db,
@@ -64,9 +66,16 @@ func NewManager(
 // backoff and storm protection (semaphore cap).
 // It blocks until all reconnection attempts complete or ctx is cancelled.
 func (m *Manager) ReconnectAll(ctx context.Context) error {
-	devices, err := m.repo.ListAll(ctx)
+	allConns, err := m.repo.ListAll(ctx)
 	if err != nil {
-		return fmt.Errorf("session manager: list devices: %w", err)
+		return fmt.Errorf("session manager: list connections: %w", err)
+	}
+
+	var devices []*repository.Connection
+	for _, conn := range allConns {
+		if conn.Channel == "whatsapp" && conn.JID != nil && *conn.JID != "" {
+			devices = append(devices, conn)
+		}
 	}
 
 	slog.Info("session manager: reconnecting devices", "count", len(devices))
@@ -76,16 +85,16 @@ func (m *Manager) ReconnectAll(ctx context.Context) error {
 	var wg sync.WaitGroup
 
 	for _, d := range devices {
-		if d.Status == DeviceStatusTerminal {
+		if d.Status == string(DeviceStatusTerminal) {
 			slog.Warn("session manager: skipping terminal device",
 				"device_id", d.ID,
-				"jid", d.JID,
+				"jid", *d.JID,
 			)
 			continue
 		}
 
 		wg.Add(1)
-		go func(d *Device) {
+		go func(d *repository.Connection) {
 			defer wg.Done()
 
 			// Add jitter to prevent thundering herd
@@ -103,10 +112,10 @@ func (m *Manager) ReconnectAll(ctx context.Context) error {
 				slog.Error("session manager: failed to reconnect device",
 					"error", err,
 					"device_id", d.ID,
-					"jid", d.JID,
+					"jid", *d.JID,
 				)
 				// Update status to disconnected on failure
-				_ = m.repo.UpdateStatus(ctx, d.ID, DeviceStatusDisconnected)
+				_ = m.repo.UpdateStatus(ctx, d.ID, string(DeviceStatusDisconnected))
 			}
 		}(d)
 	}
@@ -120,9 +129,9 @@ func (m *Manager) ReconnectAll(ctx context.Context) error {
 
 // reconnectDevice creates a whatsmeow client for a persisted device and
 // attempts to connect. On success, it registers the session and dispatcher.
-func (m *Manager) reconnectDevice(ctx context.Context, d *Device) error {
+func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection) error {
 	slog.Info("session manager: reconnecting device",
-		"jid", d.JID,
+		"jid", *d.JID,
 		"device_id", d.ID,
 	)
 
@@ -137,7 +146,7 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *Device) error {
 	}
 
 	// Set the JID from the persisted device record
-	jid, err := parseJID(d.JID)
+	jid, err := parseJID(*d.JID)
 	if err != nil {
 		return fmt.Errorf("parse JID: %w", err)
 	}
@@ -161,7 +170,7 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *Device) error {
 		switch v := evt.(type) {
 		case *waEvents.LoggedOut:
 			slog.Warn("session manager: whatsmeow logged out event received, marking device terminal", "device_id", d.ID)
-			_ = m.repo.UpdateStatus(context.Background(), d.ID, DeviceStatusTerminal)
+			_ = m.repo.UpdateStatus(context.Background(), d.ID, string(DeviceStatusTerminal))
 			cancel()
 		case *waEvents.Message:
 			if v.Info.IsFromMe {
@@ -173,53 +182,101 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *Device) error {
 
 			// Download media from WhatsApp CDN (needs active whatsmeow client)
 			var mediaBytes []byte
-			var mediaMeta *MediaMeta
+			var mediaType string
+			var mediaFilename string
+			var mediaCaption string
+			hasMedia := false
 
 			if imageMsg := v.Message.GetImageMessage(); imageMsg != nil {
 				data, err := wc.Client().Download(ctxBg, imageMsg)
 				if err == nil {
 					mediaBytes = data
 				}
-				mediaMeta = &MediaMeta{MediaType: "image"}
+				mediaType = "image"
+				hasMedia = true
 				if imageMsg.Caption != nil {
-					mediaMeta.Caption = *imageMsg.Caption
+					mediaCaption = *imageMsg.Caption
 				}
 			} else if docMsg := v.Message.GetDocumentMessage(); docMsg != nil {
 				data, err := wc.Client().Download(ctxBg, docMsg)
 				if err == nil {
 					mediaBytes = data
 				}
-				mediaMeta = &MediaMeta{MediaType: "document"}
+				mediaType = "document"
+				hasMedia = true
 				if docMsg.FileName != nil {
-					mediaMeta.Filename = *docMsg.FileName
+					mediaFilename = *docMsg.FileName
 				}
 				if docMsg.Caption != nil {
-					mediaMeta.Caption = *docMsg.Caption
+					mediaCaption = *docMsg.Caption
 				}
 			} else if audioMsg := v.Message.GetAudioMessage(); audioMsg != nil {
 				data, err := wc.Client().Download(ctxBg, audioMsg)
 				if err == nil {
 					mediaBytes = data
 				}
-				mediaMeta = &MediaMeta{MediaType: "audio"}
+				mediaType = "audio"
+				hasMedia = true
 			} else if videoMsg := v.Message.GetVideoMessage(); videoMsg != nil {
 				data, err := wc.Client().Download(ctxBg, videoMsg)
 				if err == nil {
 					mediaBytes = data
 				}
-				mediaMeta = &MediaMeta{MediaType: "video"}
+				mediaType = "video"
+				hasMedia = true
 				if videoMsg.Caption != nil {
-					mediaMeta.Caption = *videoMsg.Caption
+					mediaCaption = *videoMsg.Caption
 				}
 			}
 
 			// Delegate to processor
 			if m.inboundProcessor != nil {
-				recipientIdentity := d.Phone
-				if recipientIdentity == "" {
-					recipientIdentity = d.JID
+				recipientIdentity := d.SenderIdentity
+				if recipientIdentity == "" && d.JID != nil {
+					recipientIdentity = *d.JID
 				}
-				m.inboundProcessor.Handle(ctxBg, v, mediaBytes, mediaMeta, d.WorkspaceID, senderJID, recipientIdentity)
+
+				var inboundMedia *inbound.InboundMedia
+				if hasMedia {
+					inboundMedia = &inbound.InboundMedia{
+						Bytes:     mediaBytes,
+						MediaType: mediaType,
+						Filename:  mediaFilename,
+						Caption:   mediaCaption,
+					}
+				}
+
+				var inboundLocation *inbound.InboundLocation
+				if locMsg := v.Message.GetLocationMessage(); locMsg != nil {
+					inboundLocation = &inbound.InboundLocation{
+						Latitude:  *locMsg.DegreesLatitude,
+						Longitude: *locMsg.DegreesLongitude,
+						Name:      locMsg.GetName(),
+						Address:   locMsg.GetAddress(),
+					}
+				}
+
+				var inboundContacts []inbound.InboundContact
+				if contactMsg := v.Message.GetContactMessage(); contactMsg != nil {
+					inboundContacts = append(inboundContacts, inbound.InboundContact{
+						Name:  contactMsg.GetDisplayName(),
+						Phone: contactMsg.GetVcard(),
+					})
+				}
+
+				event := &inbound.InboundEvent{
+					WorkspaceID: d.WorkspaceID,
+					MessageID:   v.Info.ID,
+					Channel:     "whatsapp",
+					From:        senderJID,
+					To:          recipientIdentity,
+					Body:        extractWhatsAppBody(v),
+					Media:       inboundMedia,
+					Location:    inboundLocation,
+					Contacts:    inboundContacts,
+				}
+
+				_ = m.inboundProcessor.Process(ctxBg, event)
 			}
 		}
 	})
@@ -233,12 +290,12 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *Device) error {
 			)
 		}
 		// Update status when goroutine exits
-		_ = m.repo.UpdateStatus(context.Background(), d.ID, DeviceStatusDisconnected)
+		_ = m.repo.UpdateStatus(context.Background(), d.ID, string(DeviceStatusDisconnected))
 		m.registry.Remove(jid)
 	}()
 
 	// Update status to connected
-	return m.repo.UpdateStatus(ctx, d.ID, DeviceStatusConnected)
+	return m.repo.UpdateStatus(ctx, d.ID, string(DeviceStatusConnected))
 }
 
 // parseJID is a helper that parses a JID string.
@@ -271,5 +328,26 @@ func calcBackoff(attempt int) time.Duration {
 	jitter := backoff * 0.1 * (rand.Float64()*2 - 1)
 	return time.Duration(backoff + jitter)
 }
+
+// extractWhatsAppBody pulls the human-readable text from a WhatsApp message.
+func extractWhatsAppBody(v *waEvents.Message) string {
+	if msgText := v.Message.GetConversation(); msgText != "" {
+		return msgText
+	}
+	if extText := v.Message.GetExtendedTextMessage().GetText(); extText != "" {
+		return extText
+	}
+	if imageMsg := v.Message.GetImageMessage(); imageMsg != nil && imageMsg.Caption != nil {
+		return *imageMsg.Caption
+	}
+	if documentMsg := v.Message.GetDocumentMessage(); documentMsg != nil && documentMsg.Caption != nil {
+		return *documentMsg.Caption
+	}
+	if videoMsg := v.Message.GetVideoMessage(); videoMsg != nil && videoMsg.Caption != nil {
+		return *videoMsg.Caption
+	}
+	return ""
+}
+
 
 

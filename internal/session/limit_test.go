@@ -2,13 +2,56 @@ package session
 
 import (
 	"context"
+	"os"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.mau.fi/whatsmeow/types"
 
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
+	"github.com/pablojhp.pergo/internal/repository"
 )
+
+// getTestPool connects to a local test PostgreSQL database.
+func getTestPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+
+	dsn := os.Getenv("PERGO_DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Skipf("PostgreSQL not available at %s: %v", dsn, err)
+	}
+
+	err = pool.Ping(ctx)
+	if err != nil {
+		pool.Close()
+		t.Skipf("PostgreSQL ping failed at %s: %v", dsn, err)
+	}
+
+	db, err := postgres.NewSQLDB(pool)
+	if err != nil {
+		pool.Close()
+		t.Fatalf("failed to wrap pool as sql.DB: %v", err)
+	}
+	defer db.Close()
+
+	if err := postgres.RunMigrations(db); err != nil {
+		pool.Close()
+		t.Fatalf("failed to run migrations: %v", err)
+	}
+
+	return pool
+}
 
 func TestStartPairing_LimitExceeded(t *testing.T) {
 	pool := getTestPool(t)
@@ -17,7 +60,8 @@ func TestStartPairing_LimitExceeded(t *testing.T) {
 		t.Fatalf("failed to get sql.DB: %v", err)
 	}
 
-	repo := NewDeviceRepository(pool)
+	enc, _ := crypto.NewEncryptor(make([]byte, 32))
+	repo := repository.NewConnectionRepository(pool, enc)
 	registry := NewActiveSession()
 
 	manager := NewManager(
@@ -49,13 +93,15 @@ func TestStartPairing_LimitExceeded(t *testing.T) {
 	jids := []string{"5511999990001@s.whatsapp.net", "5511999990002@s.whatsapp.net"}
 
 	for i, id := range deviceIDs {
-		d := &Device{
-			ID:          id,
-			WorkspaceID: workspaceID,
-			Channel:     "whatsapp",
-			JID:         jids[i],
-			Phone:       "551199999000" + string(rune('1'+i)),
-			Status:      DeviceStatusConnected,
+		jidStr := jids[i]
+		d := &repository.Connection{
+			ID:             id,
+			WorkspaceID:    workspaceID,
+			Name:           "Test Web Client",
+			Channel:        "whatsapp",
+			JID:            &jidStr,
+			SenderIdentity: "551199999000" + string(rune('1'+i)),
+			Status:         string(DeviceStatusConnected),
 		}
 		if err := repo.Create(ctx, d); err != nil {
 			t.Fatalf("failed to create device %d: %v", i, err)

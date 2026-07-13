@@ -28,7 +28,6 @@ import (
 
 // DeviceHandler handles admin operations for unified connections management.
 type DeviceHandler struct {
-	Repo          *session.DeviceRepository
 	Sessions      *session.ActiveSession
 	Manager       *session.Manager
 	Connections   *repository.ConnectionRepository
@@ -82,9 +81,9 @@ func (h *DeviceHandler) StartPairing(c *echo.Context) error {
 		if u, err := uuid.Parse(connIDStr); err == nil {
 			existingConnID = &u
 			if phone == "" {
-				dev, err := h.Repo.GetByID(c.Request().Context(), u)
+				dev, err := h.Connections.GetByID(c.Request().Context(), u)
 				if err == nil && dev != nil {
-					phone = dev.Phone
+					phone = dev.SenderIdentity
 				}
 			}
 		}

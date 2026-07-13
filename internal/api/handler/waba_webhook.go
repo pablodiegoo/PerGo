@@ -2,92 +2,37 @@ package handler
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
-	"github.com/pablojhp.pergo/internal/platform/audit"
-	"github.com/pablojhp.pergo/internal/platform/queue"
-	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
-// InboundEventPayload is the standard format for inbound messages forwarded to consumers.
-type InboundEventPayload struct {
-	Event       string           `json:"event"`
-	TraceID     string           `json:"trace_id"`
-	MessageID   string           `json:"message_id"`
-	Channel     string           `json:"channel"`
-	Timestamp   string           `json:"timestamp"`
-	WorkspaceID string           `json:"workspace_id"`
-	From        string           `json:"from"`
-	To          string           `json:"to"`
-	Body        string           `json:"body,omitempty"`
-	Media       *InboundMedia    `json:"media,omitempty"`
-	Location    *InboundLocation `json:"location,omitempty"`
-	Contacts    []InboundContact `json:"contacts,omitempty"`
-}
-
-type InboundMedia struct {
-	MediaURL  string `json:"media_url"`
-	MediaType string `json:"media_type"`
-	Filename  string `json:"filename,omitempty"`
-	Caption   string `json:"caption,omitempty"`
-}
-
-type InboundLocation struct {
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
-	Name      string  `json:"name,omitempty"`
-	Address   string  `json:"address,omitempty"`
-}
-
-type InboundContact struct {
-	Name  string `json:"name"`
-	Phone string `json:"phone"`
-}
-
 // WABAWebhookHandler handles verification and inbound payloads for Meta's WhatsApp Cloud API (WABA).
 type WABAWebhookHandler struct {
-	pool            *repository.WorkspaceRepository
-	connectionsRepo *repository.ConnectionRepository
-	sessRepo        *repository.RecipientSessionRepository
-	dedupRepo       *repository.InboundDedupRepository
-	s3Client        *storage.S3Client
-	publisher       *queue.JetStreamPublisher
-	auditWriter     audit.Writer
-	client          *http.Client
-	graphBaseURL    string
+	connectionsRepo  *repository.ConnectionRepository
+	inboundProcessor *inbound.InboundProcessor
+	client           *http.Client
+	graphBaseURL     string
 }
 
 func NewWABAWebhookHandler(
-	pool *repository.WorkspaceRepository,
 	connectionsRepo *repository.ConnectionRepository,
-	sessRepo *repository.RecipientSessionRepository,
-	dedupRepo *repository.InboundDedupRepository,
-	s3Client *storage.S3Client,
-	publisher *queue.JetStreamPublisher,
-	auditWriter audit.Writer,
+	inboundProcessor *inbound.InboundProcessor,
 ) *WABAWebhookHandler {
 	return &WABAWebhookHandler{
-		pool:            pool,
-		connectionsRepo: connectionsRepo,
-		sessRepo:        sessRepo,
-		dedupRepo:       dedupRepo,
-		s3Client:        s3Client,
-		publisher:       publisher,
-		auditWriter:     auditWriter,
-		client:          &http.Client{Timeout: 30 * time.Second},
-		graphBaseURL:    "https://graph.facebook.com/v20.0",
+		connectionsRepo:  connectionsRepo,
+		inboundProcessor: inboundProcessor,
+		client:           &http.Client{Timeout: 30 * time.Second},
+		graphBaseURL:     "https://graph.facebook.com/v20.0",
 	}
 }
 
@@ -241,58 +186,21 @@ func (h *WABAWebhookHandler) HandlePost(c *echo.Context) error {
 	var creds wabaVerifyCreds
 	_ = json.Unmarshal(matchingConn.Credentials, &creds)
 
-	ws, err := h.pool.GetByID(c.Request().Context(), workspaceID)
-	if err != nil {
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
 	ctx := c.Request().Context()
 
 	for _, entry := range payload.Entry {
 		for _, change := range entry.Changes {
-			// If it's a status message update, ignore it
 			if len(change.Value.Statuses) > 0 {
 				continue
 			}
 
 			for _, msg := range change.Value.Messages {
-				// Deduplicate using provider message ID
-				unique, err := h.dedupRepo.InsertAndCheck(ctx, workspaceID, "whatsapp_cloud", msg.ID)
-				if err != nil {
-					slog.Error("waba webhook: dedup check failed", "error", err)
-					return c.NoContent(http.StatusInternalServerError)
-				}
-				if !unique {
-					slog.Info("waba webhook: duplicate message ignored", "message_id", msg.ID)
-					continue
-				}
-
 				recipientIdentity := change.Value.Metadata.DisplayPhoneNumber
 				if recipientIdentity == "" {
 					recipientIdentity = change.Value.Metadata.PhoneNumberID
 				}
 
-				// Upsert recipient session for window tracking
-				_ = h.sessRepo.Upsert(ctx, workspaceID, msg.From, "whatsapp_cloud", recipientIdentity, time.Now().UTC())
-
-				// Extract contents
-				traceID := uuid.New().String()
-				event := InboundEventPayload{
-					Event:       "inbound_message",
-					TraceID:     traceID,
-					MessageID:   msg.ID,
-					Channel:     "whatsapp_cloud",
-					Timestamp:   time.Now().UTC().Format(time.RFC3339),
-					WorkspaceID: workspaceID.String(),
-					From:        msg.From,
-					To:          recipientIdentity,
-				}
-
-				if msg.Text != nil {
-					event.Body = msg.Text.Body
-				}
-
-				// Handle Media
+				// Resolve media type and media payload
 				var mediaObj *wabaMediaObj
 				var mediaType string
 				switch msg.Type {
@@ -310,75 +218,78 @@ func (h *WABAWebhookHandler) HandlePost(c *echo.Context) error {
 					mediaType = "video"
 				}
 
-				if mediaObj != nil && h.s3Client != nil && creds.Token != "" {
+				var inboundMedia *inbound.InboundMedia
+				if mediaObj != nil && creds.Token != "" {
 					dlURL, err := h.fetchWABADownloadURL(ctx, mediaObj.ID, creds.Token)
 					if err == nil {
 						mediaBytes, err := h.downloadWABAFile(ctx, dlURL, creds.Token)
 						if err == nil {
-							ext := h.getExtFromMime(mediaObj.MimeType)
-							hashKey := contentHash(mediaBytes)
-							s3Key := fmt.Sprintf("%s/%s.%s", workspaceID.String(), hashKey, ext)
-							err = h.s3Client.Upload(ctx, s3Key, mediaBytes, mediaObj.MimeType)
-							if err == nil {
-								proxyURL := fmt.Sprintf("/media/%s/%s.%s", workspaceID.String(), hashKey, ext)
-								event.Media = &InboundMedia{
-									MediaURL:  proxyURL,
-									MediaType: mediaType,
-									Filename:  mediaObj.Filename,
-									Caption:   mediaObj.Caption,
-								}
+							inboundMedia = &inbound.InboundMedia{
+								Bytes:     mediaBytes,
+								MediaType: mediaType,
+								Filename:  mediaObj.Filename,
+								Caption:   mediaObj.Caption,
 							}
+						} else {
+							slog.Error("waba webhook: failed to download media file", "error", err, "media_id", mediaObj.ID)
+						}
+					} else {
+						slog.Error("waba webhook: failed to fetch media URL from Meta", "error", err, "media_id", mediaObj.ID)
+					}
+				}
+
+				var inboundLocation *inbound.InboundLocation
+				if msg.Location != nil {
+					inboundLocation = &inbound.InboundLocation{
+						Latitude:  msg.Location.Latitude,
+						Longitude: msg.Location.Longitude,
+						Name:      msg.Location.Name,
+						Address:   msg.Location.Address,
+					}
+				}
+
+				var inboundContacts []inbound.InboundContact
+				if len(msg.Contacts) > 0 {
+					for _, contact := range msg.Contacts {
+						for _, phone := range contact.Phones {
+							inboundContacts = append(inboundContacts, inbound.InboundContact{
+								Name:  contact.Name.FormattedName,
+								Phone: phone.Phone,
+							})
 						}
 					}
 				}
 
-				// Location & Contacts PII check
-				if ws.PIIOptIn {
-					if msg.Location != nil {
-						event.Location = &InboundLocation{
-							Latitude:  msg.Location.Latitude,
-							Longitude: msg.Location.Longitude,
-							Name:      msg.Location.Name,
-							Address:   msg.Location.Address,
-						}
-					}
-					if len(msg.Contacts) > 0 {
-						for _, contact := range msg.Contacts {
-							for _, phone := range contact.Phones {
-								event.Contacts = append(event.Contacts, InboundContact{
-									Name:  contact.Name.FormattedName,
-									Phone: phone.Phone,
-								})
-							}
-						}
-					}
+				var body string
+				if msg.Text != nil {
+					body = msg.Text.Body
 				}
 
-				// Truly empty check
-				if event.Body == "" && event.Media == nil && event.Location == nil && len(event.Contacts) == 0 {
-					continue
+				event := &inbound.InboundEvent{
+					WorkspaceID: workspaceID,
+					MessageID:   msg.ID, // Used for dedup
+					Channel:     "whatsapp_cloud",
+					From:        msg.From,
+					To:          recipientIdentity,
+					Body:        body,
+					Media:       inboundMedia,
+					Location:    inboundLocation,
+					Contacts:    inboundContacts,
 				}
 
-				// Publish to NATS
-				eventData, _ := json.Marshal(event)
-				subject := fmt.Sprintf("inbound.events.%s", workspaceID.String())
-				_ = h.publisher.Publish(ctx, subject, eventData, traceID)
-
-				// Audit logging
-				if h.auditWriter != nil {
-					_ = h.auditWriter.Write(audit.NewEvent(workspaceID, traceID, "inbound_message", eventData))
+				// Delegate ingestion to consolidated processor
+				if h.inboundProcessor != nil {
+					err := h.inboundProcessor.Process(ctx, event)
+					if err != nil {
+						slog.Error("waba webhook: inbound processor failed", "error", err, "message_id", msg.ID)
+						return c.NoContent(http.StatusInternalServerError)
+					}
 				}
 			}
 		}
 	}
 
 	return c.NoContent(http.StatusOK)
-}
-
-func contentHash(data []byte) string {
-	hasher := sha256.New()
-	hasher.Write(data)
-	return hex.EncodeToString(hasher.Sum(nil))
 }
 
 func (h *WABAWebhookHandler) fetchWABADownloadURL(ctx context.Context, mediaID, token string) (string, error) {
@@ -425,7 +336,6 @@ func (h *WABAWebhookHandler) downloadWABAFile(ctx context.Context, downloadURL, 
 		return nil, fmt.Errorf("download status: %d", resp.StatusCode)
 	}
 
-	// Limit to 25MB
 	limitReader := io.LimitReader(resp.Body, 25*1024*1024+1)
 	data, err := io.ReadAll(limitReader)
 	if err != nil {
@@ -437,16 +347,4 @@ func (h *WABAWebhookHandler) downloadWABAFile(ctx context.Context, downloadURL, 
 	}
 
 	return data, nil
-}
-
-func (h *WABAWebhookHandler) getExtFromMime(mime string) string {
-	parts := strings.Split(mime, "/")
-	if len(parts) == 2 {
-		ext := parts[1]
-		if idx := strings.Index(ext, ";"); idx != -1 {
-			ext = ext[:idx]
-		}
-		return ext
-	}
-	return "bin"
 }

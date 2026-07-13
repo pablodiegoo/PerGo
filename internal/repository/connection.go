@@ -123,6 +123,19 @@ func (r *ConnectionRepository) GetBySenderIdentity(ctx context.Context, workspac
 	return r.scanAndDecrypt(row)
 }
 
+// GetByJID retrieves a connection by its WhatsApp JID.
+func (r *ConnectionRepository) GetByJID(ctx context.Context, jid string) (*Connection, error) {
+	query := `
+		SELECT id, workspace_id, name, channel, sender_identity, status, is_default, 
+		       credentials, key_id, key_version, jid, connected_since, proxy_url, created_at, updated_at
+		FROM connections
+		WHERE jid = $1
+	`
+	row := r.pool.QueryRow(ctx, query, jid)
+	return r.scanAndDecrypt(row)
+}
+
+
 // GetDefaultChannelConnection retrieves the default connection for a given workspace and channel.
 func (r *ConnectionRepository) GetDefaultChannelConnection(ctx context.Context, workspaceID uuid.UUID, channel string) (*Connection, error) {
 	query := `

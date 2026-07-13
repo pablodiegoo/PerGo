@@ -26,6 +26,9 @@ import (
 	"github.com/pablojhp.pergo/internal/channel/telegram"
 	"github.com/pablojhp.pergo/internal/channel/whatsapp"
 	"github.com/pablojhp.pergo/internal/config"
+	"github.com/pablojhp.pergo/internal/inbound"
+	"github.com/pablojhp.pergo/internal/outbound"
+	"github.com/pablojhp.pergo/internal/webhook"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	echosrv "github.com/pablojhp.pergo/internal/platform/echo"
@@ -147,11 +150,10 @@ func main() {
 	// --- Audit writer ---
 	auditWriter := audit.NewWriter(pool, 5000, 2)
 
-	deviceRepo := session.NewDeviceRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	wsRepo := repository.NewWorkspaceRepository(pool)
-	inboundProcessor := session.NewInboundProcessor(dedupRepo, wsRepo, s3Client, publisher, auditWriter, recipientSessionRepo)
-	sessionManager := session.NewManager(db, deviceRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", inboundProcessor)
+	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, s3Client, publisher, auditWriter, recipientSessionRepo)
+	sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", inboundProcessor)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	orchestrator := queue.NewDispatchOrchestrator(dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter, 5, 60*time.Second)
 	orchestrator.SetTelegramContactRepo(telegramContactRepo)
@@ -160,7 +162,8 @@ func main() {
 
 	// --- Webhook Worker ---
 	webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
-	webhookWorker, err := queue.NewWebhookWorker(ctx, nc, webhookDLQRepo)
+	webhookDispatcher := webhook.NewDefaultDispatcher(webhookDLQRepo, wsRepo, nil)
+	webhookWorker, err := queue.NewWebhookWorker(ctx, nc, webhookDispatcher)
 	if err != nil {
 		slog.Error("failed to start webhook worker", "error", err)
 		os.Exit(1)
@@ -259,11 +262,9 @@ func main() {
 	healthHandler.RegisterRoutes(e)
 
 	// --- Message handler (POST /messages) ---
+	outboundProcessor := outbound.NewProcessor(queueDepth, s3Client, connectionRepo, publisher)
 	messageHandler := &handler.MessageHandler{
-		Publisher:      publisher,
-		QueueDepth:     queueDepth,
-		S3Client:       s3Client,
-		ConnectionRepo: connectionRepo,
+		Ingestor: outboundProcessor,
 	}
 	messageHandler.RegisterRoutes(e, middleware.RateLimiterMiddleware(rateLimiter))
 
@@ -272,11 +273,11 @@ func main() {
 	e.GET("/media/:workspace_id/:hash", mediaHandler.Handle)
 
 	// --- Telegram Inbound Webhook handler ---
-	telegramWebhookHandler := handler.NewTelegramWebhookHandler(wsRepo, connectionRepo, recipientSessionRepo, dedupRepo, s3Client, publisher, auditWriter, telegramContactRepo)
+	telegramWebhookHandler := handler.NewTelegramWebhookHandler(connectionRepo, telegramContactRepo, inboundProcessor)
 	e.POST("/webhooks/telegram/:workspace_id", telegramWebhookHandler.Handle)
 
 	// --- WABA Inbound Webhook handler ---
-	wabaWebhookHandler := handler.NewWABAWebhookHandler(wsRepo, connectionRepo, recipientSessionRepo, dedupRepo, s3Client, publisher, auditWriter)
+	wabaWebhookHandler := handler.NewWABAWebhookHandler(connectionRepo, inboundProcessor)
 	e.GET("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandleGet)
 	e.POST("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandlePost)
 
@@ -423,7 +424,6 @@ func main() {
 
 	// Device/Connection management routes
 	deviceHandler := &admin.DeviceHandler{
-		Repo:          deviceRepo,
 		Sessions:      sessionRegistry,
 		Manager:       sessionManager,
 		Connections:   connectionRepo,

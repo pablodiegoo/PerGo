@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
+	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
@@ -108,7 +109,8 @@ func TestTelegramWebhookHandler(t *testing.T) {
 	// Setup Echo
 	e := echo.New()
 	dedupRepo := repository.NewInboundDedupRepository(pool)
-	h := NewTelegramWebhookHandler(wsRepo, connRepo, sessRepo, dedupRepo, nil, nil, nil, tgContactRepo)
+	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, nil, nil, sessRepo)
+	h := NewTelegramWebhookHandler(connRepo, tgContactRepo, inboundProcessor)
 
 	t.Run("Missing Secret Token Header -> 403", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/telegram/%s", ws.ID), strings.NewReader(`{}`))
@@ -207,10 +209,11 @@ func TestTelegramWebhookHandler(t *testing.T) {
 		}))
 		defer tgMockServer.Close()
 
-		h.s3Client = s3Client
-		h.telegramBaseURL = tgMockServer.URL
+		inboundProcessorLocal := inbound.NewInboundProcessor(dedupRepo, wsRepo, s3Client, nil, nil, sessRepo)
+		hLocal := NewTelegramWebhookHandler(connRepo, tgContactRepo, inboundProcessorLocal)
+		hLocal.telegramBaseURL = tgMockServer.URL
 
-		err = h.Handle(c)
+		err = hLocal.Handle(c)
 		if err != nil {
 			t.Fatalf("Handle returned error: %v", err)
 		}

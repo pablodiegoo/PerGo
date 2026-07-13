@@ -16,6 +16,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/webhook"
 )
 
 func TestSignPayload(t *testing.T) {
@@ -24,7 +25,7 @@ func TestSignPayload(t *testing.T) {
 	timestamp := "1700000000"
 
 	// Sign payload
-	signatureHeader := SignPayload(payload, secret, timestamp)
+	signatureHeader := webhook.SignPayload(payload, secret, timestamp)
 
 	// Verify prefix matches expected format
 	expectedPrefix := "t=1700000000,v1="
@@ -104,7 +105,8 @@ func TestWebhookWorker_Integration(t *testing.T) {
 	}
 
 	// 5. Instantiate and Start WebhookWorker
-	worker, err := NewWebhookWorker(ctx, nc, dlqRepo)
+	dispatcher := webhook.NewDefaultDispatcher(dlqRepo, wsRepo, nil)
+	worker, err := NewWebhookWorker(ctx, nc, dispatcher)
 	if err != nil {
 		t.Fatalf("failed to start webhook worker: %v", err)
 	}
@@ -177,7 +179,7 @@ func TestWebhookWorker_Integration(t *testing.T) {
 			t.Errorf("invalid format for X-PerGo-Signature: %q", sigHeader)
 		} else {
 			ts := strings.TrimPrefix(parts[0], "t=")
-			computedSig := SignPayload(payloadBytes, webhookSecret, ts)
+			computedSig := webhook.SignPayload(payloadBytes, webhookSecret, ts)
 			if sigHeader != computedSig {
 				t.Errorf("received signature does not match computed: %q vs %q", sigHeader, computedSig)
 			}
@@ -226,7 +228,8 @@ func TestWebhookWorker_TerminalErrorDLQ(t *testing.T) {
 		t.Fatalf("failed to save config: %v", err)
 	}
 
-	worker, err := NewWebhookWorker(ctx, nc, dlqRepo)
+	dispatcher := webhook.NewDefaultDispatcher(dlqRepo, wsRepo, nil)
+	worker, err := NewWebhookWorker(ctx, nc, dispatcher)
 	if err != nil {
 		t.Fatalf("failed to start worker: %v", err)
 	}
@@ -340,7 +343,8 @@ func TestWebhookWorker_Inbound(t *testing.T) {
 
 	_ = dlqRepo.SaveConfig(ctx, ws.ID, testServer.URL, []byte("signing-secret"))
 
-	worker, err := NewWebhookWorker(ctx, nc, dlqRepo)
+	dispatcher := webhook.NewDefaultDispatcher(dlqRepo, wsRepo, nil)
+	worker, err := NewWebhookWorker(ctx, nc, dispatcher)
 	if err != nil {
 		t.Fatalf("failed to start worker: %v", err)
 	}

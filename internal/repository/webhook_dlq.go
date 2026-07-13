@@ -8,8 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/pablojhp.pergo/internal/platform/crypto"
 )
 
 var (
@@ -47,10 +45,10 @@ type WebhookDLQ struct {
 
 type WebhookDLQRepository struct {
 	pool      *pgxpool.Pool
-	encryptor *crypto.Encryptor
+	encryptor CredentialProvider
 }
 
-func NewWebhookDLQRepository(pool *pgxpool.Pool, encryptor *crypto.Encryptor) *WebhookDLQRepository {
+func NewWebhookDLQRepository(pool *pgxpool.Pool, encryptor CredentialProvider) *WebhookDLQRepository {
 	return &WebhookDLQRepository{
 		pool:      pool,
 		encryptor: encryptor,

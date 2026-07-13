@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	whatsapp "github.com/pablojhp.pergo/internal/channel/whatsapp"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 const (
@@ -69,8 +70,8 @@ func (m *Manager) StartPairing(ctx context.Context, workspaceID uuid.UUID, phone
 	if err == nil {
 		activeCount := 0
 		for _, dev := range devices {
-			if dev.JID != "" {
-				parsedJID, parseErr := parseJID(dev.JID)
+			if dev.Channel == "whatsapp" && dev.JID != nil && *dev.JID != "" {
+				parsedJID, parseErr := parseJID(*dev.JID)
 				if parseErr == nil && m.registry.Get(parsedJID) != nil {
 					// If we are re-pairing this specific connection slot, do not count it against the limit
 					if existingConnID != nil && dev.ID == *existingConnID {
@@ -203,17 +204,19 @@ func (m *Manager) onPairingSuccess(ctx context.Context, wc *whatsapp.WhatsAppCli
 		}
 	} else {
 		dID = uuid.New()
-		d := &Device{
+		jidStr := jid.String()
+		conn := &repository.Connection{
 			ID:             dID,
 			WorkspaceID:    workspaceID,
+			Name:           "WhatsApp Web - " + phone,
 			Channel:        "whatsapp",
-			JID:            jid.String(),
-			Phone:          phone,
-			Status:         DeviceStatusConnected,
+			JID:            &jidStr,
+			SenderIdentity: phone,
+			Status:         string(DeviceStatusConnected),
 			ConnectedSince: &now,
 		}
-		if err := m.repo.Create(ctx, d); err != nil {
-			return fmt.Errorf("persist device: %w", err)
+		if err := m.repo.Create(ctx, conn); err != nil {
+			return fmt.Errorf("persist connection: %w", err)
 		}
 	}
 
@@ -230,7 +233,7 @@ func (m *Manager) onPairingSuccess(ctx context.Context, wc *whatsapp.WhatsAppCli
 	// Keep the client running in background.
 	go func() {
 		_ = wc.Run(sessionCtx)
-		_ = m.repo.UpdateStatus(context.Background(), dID, DeviceStatusDisconnected)
+		_ = m.repo.UpdateStatus(context.Background(), dID, string(DeviceStatusDisconnected))
 		m.registry.Remove(jid)
 	}()
 

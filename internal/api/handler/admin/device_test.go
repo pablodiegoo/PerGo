@@ -24,7 +24,6 @@ import (
 // TestDeviceHandler_Construction verifies fields are correct.
 func TestDeviceHandler_Construction(t *testing.T) {
 	h := &admin.DeviceHandler{
-		Repo:          nil,
 		Sessions:      nil,
 		Manager:       nil,
 		Connections:   nil,
@@ -82,7 +81,6 @@ func TestDeviceHandler_DatabaseFlows(t *testing.T) {
 	}
 
 	connRepo := repository.NewConnectionRepository(pool, encryptor)
-	deviceRepo := session.NewDeviceRepository(pool)
 	wsRepo := repository.NewWorkspaceRepository(pool)
 
 	// Setup a test workspace
@@ -95,7 +93,6 @@ func TestDeviceHandler_DatabaseFlows(t *testing.T) {
 	}()
 
 	h := &admin.DeviceHandler{
-		Repo:        deviceRepo,
 		Connections: connRepo,
 	}
 
@@ -208,7 +205,8 @@ func TestDeviceHandler_StartPairing_LimitExceeded(t *testing.T) {
 		t.Fatalf("failed to get sql.DB: %v", err)
 	}
 
-	repo := session.NewDeviceRepository(pool)
+	enc, _ := crypto.NewEncryptor(make([]byte, 32))
+	repo := repository.NewConnectionRepository(pool, enc)
 	registry := session.NewActiveSession()
 	manager := session.NewManager(
 		sqlDB,
@@ -220,9 +218,9 @@ func TestDeviceHandler_StartPairing_LimitExceeded(t *testing.T) {
 	)
 
 	h := &admin.DeviceHandler{
-		Repo:     repo,
-		Sessions: registry,
-		Manager:  manager,
+		Connections: repo,
+		Sessions:    registry,
+		Manager:     manager,
 	}
 
 	e := echo.New()
