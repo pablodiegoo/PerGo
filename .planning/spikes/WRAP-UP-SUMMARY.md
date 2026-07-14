@@ -1,8 +1,8 @@
 # Spike Wrap-Up Summary
 
 **Date:** 2026-07-14
-**Spikes processed:** 11 (004, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014)
-**Feature areas:** Conversational Inbox, Unified Connection Management, Settings UI, Conversational Sessions, Webhook Delivery & Security
+**Spikes processed:** 14 (004, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014, 015, 016, 017)
+**Feature areas:** Conversational Inbox, Unified Connection Management, Settings UI, Conversational Sessions, Webhook Delivery & Security, Messaging Flow Verbs, Compliance Logging, Omnichannel Contacts
 **Skill output:** `./.agents/skills/spike-findings-pergo/`
 
 ## Processed Spikes
@@ -20,6 +20,9 @@
 | 012 | conversational-session-schema | standard | VALIDATED | Conversational Sessions |
 | 013 | queue-decoupled-webhook-dispatcher | standard | VALIDATED | Webhook Delivery |
 | 014 | hmac-webhook-verification | standard | VALIDATED | Webhook Security |
+| 015 | messaging-verbs-engine | standard | VALIDATED | Messaging Flow Verbs |
+| 016 | selective-metadata-logging | standard | VALIDATED | Compliance Logging |
+| 017 | omnichannel-contact-merging | standard | VALIDATED | Omnichannel Contacts |
 
 ## Key Findings
 
@@ -56,3 +59,15 @@ To completely avoid client-side event listeners and infinite reload loops:
 **Webhook Delivery & Security (Spikes 013 & 014):**
 1. Decoupled webhook processing uses a NATS JetStream stream `webhooks.events` to prevent third-party CRM downtime from affecting socket loops or gateways.
 2. Webhook payload security is enforced via an HMAC-SHA256 signature calculated from the raw JSON payload and the workspace-specific secret key, sent via the `X-PerGo-Signature` header.
+
+**Messaging Flow Verbs Engine (Spike 015):**
+1. Designed a declarative dynamic flow engine parsing JSON verbs like `reply`, `wait`, and `forward`.
+2. Goroutine execution respects precise time delays and is cancelable via standard Go `context` structures.
+
+**Selective Metadata Logging (Spike 016):**
+1. Compliance configuration (`SaveMessageBodies = false`) filters message content (PII) before storage.
+2. Cryptographic metadata (body length, type, identifiers) is retained in database JSONB payloads for tracing and billing.
+
+**Omnichannel Contact Merging (Spike 017):**
+1. Customer identity registry maps multiple channel endpoints (WhatsApp, Telegram) to a single `Contact` profile.
+2. Atomic merge queries update associated identities and conversation threads, preventing dangling relationships.

@@ -34,6 +34,10 @@ Spike sessions wrapped: 2026-06-29, 2026-07-03
 | Settings UI | [settings-ui.md](file:///.agents/skills/spike-findings-pergo/references/settings-ui.md) | Inline collapsible sidebar configurations menu and unified settings sub-pages layout. |
 | Conversational Sessions | [conversational-session.md](file:///.agents/skills/spike-findings-pergo/references/conversational-session.md) | Database-driven recipient session tracking for unread badges and persistent bidirectional conversation states. |
 | Webhook Delivery & Security | [webhook-delivery.md](file:///.agents/skills/spike-findings-pergo/references/webhook-delivery.md) | Asynchronous NATS JetStream-backed webhook dispatching with HMAC-SHA256 signature verification. |
+| Messaging Flow Verbs | [flow-verbs.md](file:///.agents/skills/spike-findings-pergo/references/flow-verbs.md) | Declarative JSON-based flow routing verbs (reply, wait, forward) executing dynamic flows. |
+| Compliance Logging | [selective-logging.md](file:///.agents/skills/spike-findings-pergo/references/selective-logging.md) | Selective metadata-only logging and PII content redaction. |
+| Omnichannel Contacts | [contact-merging.md](file:///.agents/skills/spike-findings-pergo/references/contact-merging.md) | Merging and resolving multiple channel identities into unified customer profiles. |
+
 
 ## Source Files
 
@@ -52,6 +56,9 @@ Original spike source files are preserved in `sources/` for complete reference:
 - [sources/012-conversational-session-schema/](file:///.agents/skills/spike-findings-pergo/sources/012-conversational-session-schema/)
 - [sources/013-queue-decoupled-webhook-dispatcher/](file:///.agents/skills/spike-findings-pergo/sources/013-queue-decoupled-webhook-dispatcher/)
 - [sources/014-hmac-webhook-verification/](file:///.agents/skills/spike-findings-pergo/sources/014-hmac-webhook-verification/)
+- [sources/015-messaging-verbs-engine/](file:///.agents/skills/spike-findings-pergo/sources/015-messaging-verbs-engine/)
+- [sources/016-selective-metadata-logging/](file:///.agents/skills/spike-findings-pergo/sources/016-selective-metadata-logging/)
+- [sources/017-omnichannel-contact-merging/](file:///.agents/skills/spike-findings-pergo/sources/017-omnichannel-contact-merging/)
 </findings_index>
 
 <metadata>
@@ -71,4 +78,7 @@ Original spike source files are preserved in `sources/` for complete reference:
 - 012-conversational-session-schema
 - 013-queue-decoupled-webhook-dispatcher
 - 014-hmac-webhook-verification
+- 015-messaging-verbs-engine
+- 016-selective-metadata-logging
+- 017-omnichannel-contact-merging
 </metadata>

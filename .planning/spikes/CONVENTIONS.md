@@ -28,6 +28,10 @@ Patterns and design choices established across spike sessions.
 - **Conversational Sessions:** Persist bidirectional conversation states in a `recipient_sessions` table mapping unique composite keys `(workspace_id, recipient_phone, channel, recipient_identity)`.
 - **Durable Webhook Queueing:** Dispatch webhooks asynchronously via NATS JetStream to avoid blocking protocol socket reader loops.
 - **Payload Signing:** Enforce security by computing an HMAC-SHA256 signature using the workspace secret, transmitted via `X-PerGo-Signature` in the format `t=<timestamp>,v1=<signature>`.
+- **Messaging Flow Verbs:** Client webhooks can return declarative JSON arrays containing reply/wait/forward commands to offload complex routing states from client logic.
+- **Selective Logging compliance:** If save message bodies is disabled, scrub PII (message text/media link content) from database audit entries and webhooks, retaining metadata indicators.
+- **Omnichannel Contact Merging:** Unify distinct channel endpoints under unified Contact profiles, providing atomic merge methods to consolidate channel threads.
+
 
 ### Admin UI (HTMX)
 - **Partial replacement pattern:** `hx-get="/fragment" hx-target="#panel-id" hx-swap="innerHTML"` — used for all panel transitions (chat open, filter change). Sidebar and surrounding layout stay in place.
