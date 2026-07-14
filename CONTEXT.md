@@ -27,3 +27,8 @@ _Avoid_: Message handler, API ingestor, route dispatcher
 **Webhook Dispatcher**:
 The consolidated module that orchestrates the dispatch logic for webhook events, handling signatures and PII redaction.
 _Avoid_: Webhook worker, payload signer, HTTP poster
+
+**Inbound Channel Adapter**:
+A provider-specific module that translates raw inbound messaging events (payloads, headers, and media) into a unified Inbound Event.
+_Avoid_: Webhook controller, message parser, channel translator
+
