@@ -15,6 +15,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/pablojhp.pergo/internal/inbound"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/queue"
@@ -99,7 +100,7 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 	defer auditWriter.Close()
 
 	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, s3Client, publisher, auditWriter, sessRepo)
-	h := NewWABAWebhookHandler(connRepo, inboundProcessor)
+	h := NewWABAWebhookHandler(connRepo, inboundProcessor, media.NewDefaultEngine(s3Client))
 
 	e := echo.New()
 

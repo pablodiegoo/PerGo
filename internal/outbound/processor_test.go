@@ -7,10 +7,18 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/outbound"
-	"github.com/pablojhp.pergo/internal/platform/storage"
 	"github.com/pablojhp.pergo/internal/repository"
 )
+
+type fakeDownloader struct {
+	downloadFn func(ctx context.Context, url string, headers map[string]string, maxBytes int64) (*media.DownloadResult, error)
+}
+
+func (f *fakeDownloader) Download(ctx context.Context, url string, headers map[string]string, maxBytes int64) (*media.DownloadResult, error) {
+	return f.downloadFn(ctx, url, headers, maxBytes)
+}
 
 // fakeQueueDepthTracker tracks depths in memory.
 type fakeQueueDepthTracker struct {
@@ -170,8 +178,10 @@ func TestProcessor_Ingest(t *testing.T) {
 		resolver := &fakeRouteResolver{conn: defaultConn}
 
 		p := outbound.NewProcessor(nil, uploader, resolver, nil)
-		p.SetDownloader(func(ctx context.Context, url string, maxBytes int64) (*storage.DownloadResult, error) {
-			return nil, storage.ErrMediaSizeExceeded
+		p.SetDownloader(&fakeDownloader{
+			downloadFn: func(ctx context.Context, url string, headers map[string]string, maxBytes int64) (*media.DownloadResult, error) {
+				return nil, media.ErrMediaSizeExceeded
+			},
 		})
 
 		req := &domain.CreateMessageRequest{
@@ -200,13 +210,15 @@ func TestProcessor_Ingest(t *testing.T) {
 		publisher := &fakePublisher{}
 
 		p := outbound.NewProcessor(nil, uploader, resolver, publisher)
-		p.SetDownloader(func(ctx context.Context, url string, maxBytes int64) (*storage.DownloadResult, error) {
-			return &storage.DownloadResult{
-				Bytes:       []byte("png-file-bytes"),
-				Hash:        "abcde12345",
-				ContentType: "image/png",
-				Extension:   "png",
-			}, nil
+		p.SetDownloader(&fakeDownloader{
+			downloadFn: func(ctx context.Context, url string, headers map[string]string, maxBytes int64) (*media.DownloadResult, error) {
+				return &media.DownloadResult{
+					Bytes:       []byte("png-file-bytes"),
+					Hash:        "abcde12345",
+					ContentType: "image/png",
+					Extension:   "png",
+				}, nil
+			},
 		})
 
 		req := &domain.CreateMessageRequest{

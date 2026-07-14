@@ -3,26 +3,27 @@ package whatsapp
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/pablojhp.pergo/internal/inbound"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // WABAInboundAdapter implements channel.InboundAdapter for Meta's WhatsApp Cloud API (WABA).
 type WABAInboundAdapter struct {
+	downloader   media.Downloader
 	client       *http.Client
 	graphBaseURL string
 }
 
 // NewWABAInboundAdapter creates a new WABAInboundAdapter.
-func NewWABAInboundAdapter() *WABAInboundAdapter {
+func NewWABAInboundAdapter(downloader media.Downloader) *WABAInboundAdapter {
 	return &WABAInboundAdapter{
+		downloader:   downloader,
 		client:       &http.Client{Timeout: 30 * time.Second},
 		graphBaseURL: "https://graph.facebook.com/v20.0",
 	}
@@ -241,31 +242,18 @@ func (a *WABAInboundAdapter) fetchWABADownloadURL(ctx context.Context, mediaID, 
 }
 
 func (a *WABAInboundAdapter) downloadWABAFile(ctx context.Context, downloadURL, token string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := a.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("download status: %d", resp.StatusCode)
+	if a.downloader == nil {
+		return nil, fmt.Errorf("downloader is not configured")
 	}
 
-	limitReader := io.LimitReader(resp.Body, 25*1024*1024+1)
-	data, err := io.ReadAll(limitReader)
+	headers := map[string]string{
+		"Authorization": "Bearer " + token,
+	}
+
+	res, err := a.downloader.Download(ctx, downloadURL, headers, 25*1024*1024)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(data) > 25*1024*1024 {
-		return nil, errors.New("media_size_exceeded")
-	}
-
-	return data, nil
+	return res.Bytes, nil
 }

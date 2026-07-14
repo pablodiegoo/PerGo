@@ -10,6 +10,7 @@ import (
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/channel/telegram"
 	"github.com/pablojhp.pergo/internal/inbound"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -27,12 +28,13 @@ func NewTelegramWebhookHandler(
 	connectionsRepo *repository.ConnectionRepository,
 	telegramContactRepo *repository.TelegramContactRepository,
 	inboundProcessor *inbound.InboundProcessor,
+	downloader media.Downloader,
 ) *TelegramWebhookHandler {
 	return &TelegramWebhookHandler{
 		connectionsRepo:     connectionsRepo,
 		telegramContactRepo: telegramContactRepo,
 		inboundProcessor:    inboundProcessor,
-		adapter:             telegram.NewTelegramInboundAdapter(telegramContactRepo),
+		adapter:             telegram.NewTelegramInboundAdapter(telegramContactRepo, downloader),
 	}
 }
 

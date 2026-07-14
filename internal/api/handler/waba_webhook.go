@@ -11,6 +11,7 @@ import (
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/channel/whatsapp"
 	"github.com/pablojhp.pergo/internal/inbound"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -24,11 +25,12 @@ type WABAWebhookHandler struct {
 func NewWABAWebhookHandler(
 	connectionsRepo *repository.ConnectionRepository,
 	inboundProcessor *inbound.InboundProcessor,
+	downloader media.Downloader,
 ) *WABAWebhookHandler {
 	return &WABAWebhookHandler{
 		connectionsRepo:  connectionsRepo,
 		inboundProcessor: inboundProcessor,
-		adapter:          whatsapp.NewWABAInboundAdapter(),
+		adapter:          whatsapp.NewWABAInboundAdapter(downloader),
 	}
 }
 

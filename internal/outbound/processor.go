@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/domain"
-	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -40,16 +40,13 @@ type Publisher interface {
 	Publish(ctx context.Context, subject string, data []byte, traceID string) error
 }
 
-// MediaDownloader defines the function signature for downloading and validating media.
-type MediaDownloader func(ctx context.Context, url string, maxBytes int64) (*storage.DownloadResult, error)
-
 // Processor is the concrete implementation of outbound message ingestion.
 type Processor struct {
 	tracker    QueueDepthChecker
 	uploader   MediaUploader
 	resolver   RouteResolver
 	publisher  Publisher
-	downloadFn MediaDownloader
+	downloader media.Downloader
 }
 
 // NewProcessor creates a new OutboundProcessor implementation.
@@ -64,13 +61,13 @@ func NewProcessor(
 		uploader:   uploader,
 		resolver:   resolver,
 		publisher:  publisher,
-		downloadFn: storage.DownloadAndValidate,
+		downloader: media.NewDefaultEngine(nil),
 	}
 }
 
-// SetDownloader overrides the media downloader function (used in testing).
-func (p *Processor) SetDownloader(downloadFn MediaDownloader) {
-	p.downloadFn = downloadFn
+// SetDownloader overrides the media downloader (used in testing).
+func (p *Processor) SetDownloader(downloader media.Downloader) {
+	p.downloader = downloader
 }
 
 // Ingest runs the outbound message ingestion pipeline: backpressure, validation, S3 caching, routing, NATS publishing.
@@ -102,9 +99,9 @@ func (p *Processor) Ingest(
 			}
 		}
 
-		res, err := p.downloadFn(ctx, req.Media.MediaURL, 25000000)
+		res, err := p.downloader.Download(ctx, req.Media.MediaURL, nil, 25000000)
 		if err != nil {
-			if errors.Is(err, storage.ErrMediaSizeExceeded) {
+			if errors.Is(err, media.ErrMediaSizeExceeded) {
 				return nil, &MediaError{
 					Code:    "media_size_exceeded",
 					Message: "the downloaded file exceeds the maximum size boundary of 25MB",

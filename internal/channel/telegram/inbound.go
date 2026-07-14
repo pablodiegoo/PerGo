@@ -3,21 +3,21 @@ package telegram
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/pablojhp.pergo/internal/inbound"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // TelegramInboundAdapter implements channel.InboundAdapter for Telegram.
 type TelegramInboundAdapter struct {
 	telegramContactRepo *repository.TelegramContactRepository
+	downloader          media.Downloader
 	client              *http.Client
 	telegramBaseURL     string
 }
@@ -25,9 +25,11 @@ type TelegramInboundAdapter struct {
 // NewTelegramInboundAdapter creates a new TelegramInboundAdapter.
 func NewTelegramInboundAdapter(
 	telegramContactRepo *repository.TelegramContactRepository,
+	downloader media.Downloader,
 ) *TelegramInboundAdapter {
 	return &TelegramInboundAdapter{
 		telegramContactRepo: telegramContactRepo,
+		downloader:          downloader,
 		client:              &http.Client{Timeout: 30 * time.Second},
 		telegramBaseURL:     "https://api.telegram.org",
 	}
@@ -293,30 +295,15 @@ func (a *TelegramInboundAdapter) downloadTelegramFile(ctx context.Context, fileI
 	}
 
 	downloadURL := fmt.Sprintf("%s/file/bot%s/%s", a.telegramBaseURL, token, fileInfo.Result.FilePath)
-	reqDl, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	
+	if a.downloader == nil {
+		return nil, fmt.Errorf("downloader is not configured")
+	}
+
+	res, err := a.downloader.Download(ctx, downloadURL, nil, 25*1024*1024)
 	if err != nil {
 		return nil, err
 	}
 
-	respDl, err := a.client.Do(reqDl)
-	if err != nil {
-		return nil, err
-	}
-	defer respDl.Body.Close()
-
-	if respDl.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("file download status: %d", respDl.StatusCode)
-	}
-
-	limitReader := io.LimitReader(respDl.Body, 25*1024*1024+1)
-	data, err := io.ReadAll(limitReader)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(data) > 25*1024*1024 {
-		return nil, errors.New("media_size_exceeded")
-	}
-
-	return data, nil
+	return res.Bytes, nil
 }

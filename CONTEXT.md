@@ -32,3 +32,8 @@ _Avoid_: Webhook worker, payload signer, HTTP poster
 A provider-specific module that translates raw inbound messaging events (payloads, headers, and media) into a unified Inbound Event.
 _Avoid_: Webhook controller, message parser, channel translator
 
+**Media Engine**:
+The consolidated module that orchestrates downloading, validation, and storage of media files across inbound and outbound channels.
+_Avoid_: S3 helper, HTTP downloader, storage client
+
+

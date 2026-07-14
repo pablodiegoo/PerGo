@@ -38,6 +38,7 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/platform/shutdown"
 	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
 	"github.com/pablojhp.pergo/templates/pages"
@@ -261,8 +262,11 @@ func main() {
 	}
 	healthHandler.RegisterRoutes(e)
 
+	mediaEngine := media.NewDefaultEngine(s3Client)
+
 	// --- Message handler (POST /messages) ---
 	outboundProcessor := outbound.NewProcessor(queueDepth, s3Client, connectionRepo, publisher)
+	outboundProcessor.SetDownloader(mediaEngine)
 	messageHandler := &handler.MessageHandler{
 		Ingestor: outboundProcessor,
 	}
@@ -273,11 +277,11 @@ func main() {
 	e.GET("/media/:workspace_id/:hash", mediaHandler.Handle)
 
 	// --- Telegram Inbound Webhook handler ---
-	telegramWebhookHandler := handler.NewTelegramWebhookHandler(connectionRepo, telegramContactRepo, inboundProcessor)
+	telegramWebhookHandler := handler.NewTelegramWebhookHandler(connectionRepo, telegramContactRepo, inboundProcessor, mediaEngine)
 	e.POST("/webhooks/telegram/:workspace_id", telegramWebhookHandler.Handle)
 
 	// --- WABA Inbound Webhook handler ---
-	wabaWebhookHandler := handler.NewWABAWebhookHandler(connectionRepo, inboundProcessor)
+	wabaWebhookHandler := handler.NewWABAWebhookHandler(connectionRepo, inboundProcessor, mediaEngine)
 	e.GET("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandleGet)
 	e.POST("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandlePost)
 
