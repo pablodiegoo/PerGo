@@ -37,6 +37,9 @@ Spike sessions wrapped: 2026-06-29, 2026-07-03
 | Messaging Flow Verbs | [flow-verbs.md](file:///.agents/skills/spike-findings-pergo/references/flow-verbs.md) | Declarative JSON-based flow routing verbs (reply, wait, forward) executing dynamic flows. |
 | Compliance Logging | [selective-logging.md](file:///.agents/skills/spike-findings-pergo/references/selective-logging.md) | Selective metadata-only logging and PII content redaction. |
 | Omnichannel Contacts | [contact-merging.md](file:///.agents/skills/spike-findings-pergo/references/contact-merging.md) | Merging and resolving multiple channel identities into unified customer profiles. |
+| Webhook Subscriptions | [webhook-subscriptions.md](file:///.agents/skills/spike-findings-pergo/references/webhook-subscriptions.md) | Event-filtered multi-webhook subscription routing engine. |
+| Session Caching | [session-caching.md](file:///.agents/skills/spike-findings-pergo/references/session-caching.md) | In-memory session key caching and instance router. |
+
 
 
 ## Source Files
@@ -59,6 +62,8 @@ Original spike source files are preserved in `sources/` for complete reference:
 - [sources/015-messaging-verbs-engine/](file:///.agents/skills/spike-findings-pergo/sources/015-messaging-verbs-engine/)
 - [sources/016-selective-metadata-logging/](file:///.agents/skills/spike-findings-pergo/sources/016-selective-metadata-logging/)
 - [sources/017-omnichannel-contact-merging/](file:///.agents/skills/spike-findings-pergo/sources/017-omnichannel-contact-merging/)
+- [sources/018-multi-webhook-subscriptions/](file:///.agents/skills/spike-findings-pergo/sources/018-multi-webhook-subscriptions/)
+- [sources/019-session-caching-router/](file:///.agents/skills/spike-findings-pergo/sources/019-session-caching-router/)
 </findings_index>
 
 <metadata>
@@ -81,4 +86,6 @@ Original spike source files are preserved in `sources/` for complete reference:
 - 015-messaging-verbs-engine
 - 016-selective-metadata-logging
 - 017-omnichannel-contact-merging
+- 018-multi-webhook-subscriptions
+- 019-session-caching-router
 </metadata>

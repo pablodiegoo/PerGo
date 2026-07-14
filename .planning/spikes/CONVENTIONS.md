@@ -31,6 +31,9 @@ Patterns and design choices established across spike sessions.
 - **Messaging Flow Verbs:** Client webhooks can return declarative JSON arrays containing reply/wait/forward commands to offload complex routing states from client logic.
 - **Selective Logging compliance:** If save message bodies is disabled, scrub PII (message text/media link content) from database audit entries and webhooks, retaining metadata indicators.
 - **Omnichannel Contact Merging:** Unify distinct channel endpoints under unified Contact profiles, providing atomic merge methods to consolidate channel threads.
+- **Webhook Subscriptions Routing:** Webhooks can be filtered by event types, with concurrent routing workers handling multiple endpoints, using wildcards for global listeners.
+- **Session Caching Router:** Keep active socket instances cached using Connection ID and Identity lookup maps, falling back to database checks only on cache miss.
+
 
 
 ### Admin UI (HTMX)

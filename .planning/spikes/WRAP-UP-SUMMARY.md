@@ -1,8 +1,8 @@
 # Spike Wrap-Up Summary
 
 **Date:** 2026-07-14
-**Spikes processed:** 14 (004, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014, 015, 016, 017)
-**Feature areas:** Conversational Inbox, Unified Connection Management, Settings UI, Conversational Sessions, Webhook Delivery & Security, Messaging Flow Verbs, Compliance Logging, Omnichannel Contacts
+**Spikes processed:** 16 (004, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014, 015, 016, 017, 018, 019)
+**Feature areas:** Conversational Inbox, Unified Connection Management, Settings UI, Conversational Sessions, Webhook Delivery & Security, Messaging Flow Verbs, Compliance Logging, Omnichannel Contacts, Webhook Subscriptions, Session Caching
 **Skill output:** `./.agents/skills/spike-findings-pergo/`
 
 ## Processed Spikes
@@ -23,6 +23,8 @@
 | 015 | messaging-verbs-engine | standard | VALIDATED | Messaging Flow Verbs |
 | 016 | selective-metadata-logging | standard | VALIDATED | Compliance Logging |
 | 017 | omnichannel-contact-merging | standard | VALIDATED | Omnichannel Contacts |
+| 018 | multi-webhook-subscriptions | standard | VALIDATED | Webhook Subscriptions |
+| 019 | session-caching-router | standard | VALIDATED | Session Caching |
 
 ## Key Findings
 
@@ -71,3 +73,11 @@ To completely avoid client-side event listeners and infinite reload loops:
 **Omnichannel Contact Merging (Spike 017):**
 1. Customer identity registry maps multiple channel endpoints (WhatsApp, Telegram) to a single `Contact` profile.
 2. Atomic merge queries update associated identities and conversation threads, preventing dangling relationships.
+
+**Webhook Subscriptions (Spike 018):**
+1. Replaced single-webhook layout with a multi-webhook routing registry based on event-type filtering.
+2. Support wildcard (`*`) matching for catch-all integrations.
+
+**Session Caching (Spike 019):**
+1. Implemented a dual-indexed, thread-safe in-memory cache to bypass database queries during hot-path message dispatch.
+2. Evicts active instances cleanly on socket termination.
