@@ -339,7 +339,7 @@
         
         let defaultValue = "";
         if (select === "tracking") {
-          defaultValue = idx === 0 ? "{{nome}}" : "{{codigo_rastreio}}";
+          defaultValue = idx === 0 ? "{{nome}} de {{cidade}}" : "{{codigo_rastreio}}";
         } else if (select === "welcome") {
           defaultValue = "{{nome}}";
         }
@@ -500,16 +500,14 @@
     }
 
     function resolveVariable(inputVal, contact) {
-      // Verifica se o valor está no formato {{nome_da_coluna}}
-      const match = inputVal.match(/^\{\{(.+)\}\}$/);
-      if (match) {
-        const colName = match[1].trim();
-        if (contact.hasOwnProperty(colName)) {
-          return contact[colName];
+      // Substitui todas as ocorrências de {{nome_da_coluna}} no inputVal pelos valores reais do contact
+      return inputVal.replace(/\{\{(.+?)\}\}/g, (match, colName) => {
+        const key = colName.trim();
+        if (contact.hasOwnProperty(key)) {
+          return contact[key];
         }
-        return `[Coluna '${colName}' vazia/inexistente]`;
-      }
-      return inputVal; // Retorna texto estático/manual
+        return `[Coluna '${key}' inexistente]`;
+      });
     }
 
     function previewResolvedMessages() {
