@@ -22,6 +22,7 @@ Spike sessions wrapped: 2026-06-29, 2026-07-03
 - Message bubbles: inbound = left-aligned white, outbound = right-aligned blue (#3b82f6)
 - Realtime updates via HTMX polling: chat panel at 3s (append-only with ID cursor), conversation list at 5s (full-replace)
 - Unread notifications for background conversations via toast — no browser notification API for MVP
+- Campaigns must support CSV mailing list upload, sanitization, WABA template variable mapping (static or dynamic), scheduling, batch throttling (delay and batch size), duration estimation, and enriched outbound logs.
 </requirements>
 
 <findings_index>
@@ -39,6 +40,7 @@ Spike sessions wrapped: 2026-06-29, 2026-07-03
 | Omnichannel Contacts | [contact-merging.md](file:///.agents/skills/spike-findings-pergo/references/contact-merging.md) | Merging and resolving multiple channel identities into unified customer profiles. |
 | Webhook Subscriptions | [webhook-subscriptions.md](file:///.agents/skills/spike-findings-pergo/references/webhook-subscriptions.md) | Event-filtered multi-webhook subscription routing engine. |
 | Session Caching | [session-caching.md](file:///.agents/skills/spike-findings-pergo/references/session-caching.md) | In-memory session key caching and instance router. |
+| Campaign Engine & Throttling | [campaign-engine.md](file:///.agents/skills/spike-findings-pergo/references/campaign-engine.md) | Throttled background campaigns with regex variable interpolation, CSV sanitization, and enriched outbound logs. |
 
 
 
@@ -64,6 +66,7 @@ Original spike source files are preserved in `sources/` for complete reference:
 - [sources/017-omnichannel-contact-merging/](file:///.agents/skills/spike-findings-pergo/sources/017-omnichannel-contact-merging/)
 - [sources/018-multi-webhook-subscriptions/](file:///.agents/skills/spike-findings-pergo/sources/018-multi-webhook-subscriptions/)
 - [sources/019-session-caching-router/](file:///.agents/skills/spike-findings-pergo/sources/019-session-caching-router/)
+- [sources/020-campaign-engine/](file:///.agents/skills/spike-findings-pergo/sources/020-campaign-engine/)
 </findings_index>
 
 <metadata>
@@ -88,4 +91,5 @@ Original spike source files are preserved in `sources/` for complete reference:
 - 017-omnichannel-contact-merging
 - 018-multi-webhook-subscriptions
 - 019-session-caching-router
+- 020-campaign-engine
 </metadata>
