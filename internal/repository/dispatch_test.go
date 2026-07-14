@@ -29,7 +29,7 @@ func TestMessageDispatchRepository(t *testing.T) {
 	initialChannel := "whatsapp_web"
 
 	// 1. GetOrCreateDispatch: creation case
-	d, err := repo.GetOrCreateDispatch(ctx, ws.ID, traceID, initialChannel)
+	d, err := repo.GetOrCreateDispatch(ctx, ws.ID, traceID, initialChannel, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to get/create dispatch: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestMessageDispatchRepository(t *testing.T) {
 	}
 
 	// 2. GetOrCreateDispatch: retrieve existing (idempotency) case
-	d2, err := repo.GetOrCreateDispatch(ctx, ws.ID, traceID, "different_channel")
+	d2, err := repo.GetOrCreateDispatch(ctx, ws.ID, traceID, "different_channel", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("failed to get/create existing dispatch: %v", err)
 	}
