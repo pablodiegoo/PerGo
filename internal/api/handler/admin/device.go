@@ -76,6 +76,7 @@ func (h *DeviceHandler) PairForm(c *echo.Context) error {
 // POST /admin/devices/pair — expects form field "phone" or "connection_id"
 func (h *DeviceHandler) StartPairing(c *echo.Context) error {
 	phone := c.FormValue("phone")
+	proxyURL := c.FormValue("proxy_url")
 	var existingConnID *uuid.UUID
 	if connIDStr := c.FormValue("connection_id"); connIDStr != "" {
 		if u, err := uuid.Parse(connIDStr); err == nil {
@@ -102,7 +103,7 @@ func (h *DeviceHandler) StartPairing(c *echo.Context) error {
 	pairingSessionsMu.Unlock()
 
 	// Start pairing in background.
-	ch, err := h.Manager.StartPairing(c.Request().Context(), wsID, phone, existingConnID)
+	ch, err := h.Manager.StartPairing(c.Request().Context(), wsID, phone, existingConnID, proxyURL)
 	if err != nil {
 		ps.mu.Lock()
 		ps.status = "error"

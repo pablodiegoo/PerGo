@@ -1,3 +1,7 @@
+---
+status: complete
+---
+
 # Phase 7 UAT Verification: Media & Inbound
 
 This document records the verification of Phase 7: Media & Inbound. Because we are running in autonomous mode, all verification relies on the execution and validation of the automated test suites, which cover every success criteria and requirements of this phase.

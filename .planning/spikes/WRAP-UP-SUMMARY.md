@@ -1,8 +1,8 @@
 # Spike Wrap-Up Summary
 
-**Date:** 2026-07-08
-**Spikes processed:** 8 (004, 005, 006, 007, 008, 009, 010, 011)
-**Feature areas:** Conversational Inbox, Unified Connection Management, Settings UI
+**Date:** 2026-07-14
+**Spikes processed:** 16 (004, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014, 015, 016, 017, 018, 019)
+**Feature areas:** Conversational Inbox, Unified Connection Management, Settings UI, Conversational Sessions, Webhook Delivery & Security, Messaging Flow Verbs, Compliance Logging, Omnichannel Contacts, Webhook Subscriptions, Session Caching
 **Skill output:** `./.agents/skills/spike-findings-pergo/`
 
 ## Processed Spikes
@@ -17,6 +17,14 @@
 | 009 | waba-template-inbox-delivery | standard | VALIDATED | WABA Templates |
 | 010 | settings-nested-sidebar | standard | VALIDATED | Settings UI |
 | 011 | settings-layout-optimization | standard | VALIDATED | Settings UI |
+| 012 | conversational-session-schema | standard | VALIDATED | Conversational Sessions |
+| 013 | queue-decoupled-webhook-dispatcher | standard | VALIDATED | Webhook Delivery |
+| 014 | hmac-webhook-verification | standard | VALIDATED | Webhook Security |
+| 015 | messaging-verbs-engine | standard | VALIDATED | Messaging Flow Verbs |
+| 016 | selective-metadata-logging | standard | VALIDATED | Compliance Logging |
+| 017 | omnichannel-contact-merging | standard | VALIDATED | Omnichannel Contacts |
+| 018 | multi-webhook-subscriptions | standard | VALIDATED | Webhook Subscriptions |
+| 019 | session-caching-router | standard | VALIDATED | Session Caching |
 
 ## Key Findings
 
@@ -45,3 +53,31 @@ To completely avoid client-side event listeners and infinite reload loops:
 **Settings UI (Spikes 010 & 011):**
 1. Accordion Configurations menu toggles sub-navigation options inline with smooth height expansion.
 2. Settings layout is standardized, removing top tabs and relying purely on the nested sidebar.
+
+**Conversational Sessions (Spike 012):**
+1. Recipient sessions are persisted to a `recipient_sessions` table mapping unique composite keys `(workspace_id, recipient_phone, channel, recipient_identity)`.
+2. Automatic repository upsert using PostgreSQL's `ON CONFLICT` prevents write failures and tracks unread state cleanly across node crashes.
+
+**Webhook Delivery & Security (Spikes 013 & 014):**
+1. Decoupled webhook processing uses a NATS JetStream stream `webhooks.events` to prevent third-party CRM downtime from affecting socket loops or gateways.
+2. Webhook payload security is enforced via an HMAC-SHA256 signature calculated from the raw JSON payload and the workspace-specific secret key, sent via the `X-PerGo-Signature` header.
+
+**Messaging Flow Verbs Engine (Spike 015):**
+1. Designed a declarative dynamic flow engine parsing JSON verbs like `reply`, `wait`, and `forward`.
+2. Goroutine execution respects precise time delays and is cancelable via standard Go `context` structures.
+
+**Selective Metadata Logging (Spike 016):**
+1. Compliance configuration (`SaveMessageBodies = false`) filters message content (PII) before storage.
+2. Cryptographic metadata (body length, type, identifiers) is retained in database JSONB payloads for tracing and billing.
+
+**Omnichannel Contact Merging (Spike 017):**
+1. Customer identity registry maps multiple channel endpoints (WhatsApp, Telegram) to a single `Contact` profile.
+2. Atomic merge queries update associated identities and conversation threads, preventing dangling relationships.
+
+**Webhook Subscriptions (Spike 018):**
+1. Replaced single-webhook layout with a multi-webhook routing registry based on event-type filtering.
+2. Support wildcard (`*`) matching for catch-all integrations.
+
+**Session Caching (Spike 019):**
+1. Implemented a dual-indexed, thread-safe in-memory cache to bypass database queries during hot-path message dispatch.
+2. Evicts active instances cleanly on socket termination.

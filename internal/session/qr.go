@@ -3,6 +3,7 @@ package session
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -56,7 +57,7 @@ var ErrMaxConnectionsExceeded = errors.New("maximum active WhatsApp connections 
 // and added to the session registry.
 //
 // Note: per whatsmeow API contract, GetQRChannel is called before Connect.
-func (m *Manager) StartPairing(ctx context.Context, workspaceID uuid.UUID, phone string, existingConnID *uuid.UUID) (<-chan QRPairingEvent, error) {
+func (m *Manager) StartPairing(ctx context.Context, workspaceID uuid.UUID, phone string, existingConnID *uuid.UUID, proxyURL string) (<-chan QRPairingEvent, error) {
 	// Read max connections limit from environment (default: 5)
 	maxLimit := 5
 	if limitStr := os.Getenv("PERGO_MAX_WHATSAPP_CONNECTIONS"); limitStr != "" {
@@ -86,9 +87,16 @@ func (m *Manager) StartPairing(ctx context.Context, workspaceID uuid.UUID, phone
 		}
 	}
 
+	if existingConnID != nil && proxyURL == "" {
+		if conn, err := m.repo.GetByID(ctx, *existingConnID); err == nil && conn != nil && conn.ProxyURL != nil {
+			proxyURL = *conn.ProxyURL
+		}
+	}
+
 	cfg := whatsapp.ClientConfig{
 		DB:        m.db,
 		WAVersion: m.waVersion,
+		ProxyURL:  proxyURL,
 	}
 
 	wc, err := whatsapp.NewWhatsAppClient(cfg)
@@ -148,7 +156,7 @@ func (m *Manager) StartPairing(ctx context.Context, workspaceID uuid.UUID, phone
 					}
 				case "success":
 					// Pairing succeeded — persist device and register session.
-					if err := m.onPairingSuccess(ctx, wc, workspaceID, phone, existingConnID); err != nil {
+					if err := m.onPairingSuccess(ctx, wc, workspaceID, phone, existingConnID, proxyURL); err != nil {
 						slog.Error("session manager: pairing success handler failed",
 							"error", err,
 							"workspace_id", workspaceID,
@@ -182,7 +190,7 @@ func (m *Manager) StartPairing(ctx context.Context, workspaceID uuid.UUID, phone
 }
 
 // onPairingSuccess persists the newly paired device and registers its session.
-func (m *Manager) onPairingSuccess(ctx context.Context, wc *whatsapp.WhatsAppClient, workspaceID uuid.UUID, phone string, existingConnID *uuid.UUID) error {
+func (m *Manager) onPairingSuccess(ctx context.Context, wc *whatsapp.WhatsAppClient, workspaceID uuid.UUID, phone string, existingConnID *uuid.UUID, proxyURL string) error {
 	jid := wc.JID()
 	now := time.Now()
 
@@ -196,15 +204,20 @@ func (m *Manager) onPairingSuccess(ctx context.Context, wc *whatsapp.WhatsAppCli
 				sender_identity = $3,
 				status = $4,
 				connected_since = $5,
+				proxy_url = $6,
 				updated_at = NOW()
 			WHERE id = $1
-		`, dID, jid.String(), phone, string(DeviceStatusConnected), &now)
+		`, dID, jid.String(), phone, string(DeviceStatusConnected), &now, sql.NullString{String: proxyURL, Valid: proxyURL != ""})
 		if err != nil {
 			return fmt.Errorf("update connection during re-pair: %w", err)
 		}
 	} else {
 		dID = uuid.New()
 		jidStr := jid.String()
+		var proxyPtr *string
+		if proxyURL != "" {
+			proxyPtr = &proxyURL
+		}
 		conn := &repository.Connection{
 			ID:             dID,
 			WorkspaceID:    workspaceID,
@@ -214,6 +227,7 @@ func (m *Manager) onPairingSuccess(ctx context.Context, wc *whatsapp.WhatsAppCli
 			SenderIdentity: phone,
 			Status:         string(DeviceStatusConnected),
 			ConnectedSince: &now,
+			ProxyURL:       proxyPtr,
 		}
 		if err := m.repo.Create(ctx, conn); err != nil {
 			return fmt.Errorf("persist connection: %w", err)

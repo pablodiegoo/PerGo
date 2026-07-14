@@ -13,6 +13,7 @@ templ Dashboard(
 	recentAuditCount int,
 	isOnboarded bool,
 	apiKeysCount int,
+	activeConnectionsCount int,
 	connections []*repository.Connection,
 	recentLogs []audit.RecentEntry,
 ) {
@@ -45,7 +46,7 @@ templ Dashboard(
 
 		<!-- Dashboard Content -->
 		if !isOnboarded {
-			@OnboardingChecklist(ws, apiKeysCount, len(connections))
+			@OnboardingChecklist(ws, apiKeysCount, activeConnectionsCount)
 		} else {
 			@OperationalDashboard(ws, wsCount, recentAuditCount, apiKeysCount, connections, recentLogs)
 		}

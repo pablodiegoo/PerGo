@@ -164,3 +164,16 @@ func (r *APIKeyRepository) GetByID(ctx context.Context, id uuid.UUID) (*APIKey, 
 	}
 	return &apiKey, nil
 }
+
+// CountActive returns the count of non-revoked API keys for the workspace.
+func (r *APIKeyRepository) CountActive(ctx context.Context, workspaceID uuid.UUID) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM api_keys WHERE workspace_id = $1 AND revoked_at IS NULL`,
+		workspaceID,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}

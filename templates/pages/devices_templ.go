@@ -442,7 +442,7 @@ func PairForm() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<div class=\"form-group\"><label for=\"phone\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Número de Telefone</label> <input type=\"tel\" id=\"phone\" name=\"phone\" required class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\" placeholder=\"+5511999999999\"></div></div><!-- WABA Fields --><div id=\"fields-waba\" style=\"display: none;\" class=\"space-y-4 mb-4\"><div class=\"form-group\"><label for=\"waba_phone_number_id\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Phone Number ID</label> <input type=\"text\" id=\"waba_phone_number_id\" name=\"phone_number_id\" data-required=\"true\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div><div class=\"form-group\"><label for=\"waba_account_id\" class=\"block text-sm font-medium text-zinc-700 mb-1\">WABA Account ID</label> <input type=\"text\" id=\"waba_account_id\" name=\"waba_account_id\" data-required=\"true\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div><div class=\"form-group\"><label for=\"waba_token\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Meta API Token</label> <input type=\"password\" id=\"waba_token\" name=\"token\" data-required=\"true\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div><div class=\"form-group\"><label for=\"waba_verify_token\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Verify Token (Optional)</label> <input type=\"text\" id=\"waba_verify_token\" name=\"verify_token\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div></div><!-- Telegram Fields --><div id=\"fields-telegram\" style=\"display: none;\" class=\"space-y-4 mb-4\"><div class=\"form-group\"><label for=\"tg_token\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Bot Token</label> <input type=\"password\" id=\"tg_token\" name=\"token\" data-required=\"true\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div></div><div id=\"qr-area\" class=\"qr-area mt-4\"></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button type=\"button\" class=\"btn btn-secondary px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-medium\" onclick=\"this.closest('.modal-backdrop').remove()\">Cancelar</button> <button type=\"submit\" id=\"new-conn-submit-btn\" class=\"btn btn-primary bg-zinc-950 hover:bg-zinc-900 text-white px-4 py-2 rounded-md font-medium\">Salvar Conexão</button></div></form></div></div><script>\n\t\t\t(function() {\n\t\t\t\twindow.updateChannelFields = function() {\n\t\t\t\t\tconst channel = document.getElementById('new-channel-select').value;\n\t\t\t\t\tconst waWebFields = document.getElementById('fields-whatsapp');\n\t\t\t\t\tconst wabaFields = document.getElementById('fields-waba');\n\t\t\t\t\tconst tgFields = document.getElementById('fields-telegram');\n\t\t\t\t\tconst submitBtn = document.getElementById('new-conn-submit-btn');\n\n\t\t\t\t\t// Hide everything\n\t\t\t\t\twaWebFields.style.display = 'none';\n\t\t\t\t\twabaFields.style.display = 'none';\n\t\t\t\t\ttgFields.style.display = 'none';\n\n\t\t\t\t\t// Disable required for all dynamic fields\n\t\t\t\t\twabaFields.querySelectorAll('input').forEach(i => i.required = false);\n\t\t\t\t\ttgFields.querySelectorAll('input').forEach(i => i.required = false);\n\t\t\t\t\twaWebFields.querySelectorAll('input').forEach(i => i.required = false);\n\n\t\t\t\t\tif (channel === 'whatsapp') {\n\t\t\t\t\t\twaWebFields.style.display = 'block';\n\t\t\t\t\t\twaWebFields.querySelectorAll('input').forEach(i => i.required = true);\n\t\t\t\t\t\t\n\t\t\t\t\t\tsubmitBtn.innerText = 'Começar Emparelhamento';\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-post', '/admin/devices/pair');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-target', '#qr-area');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t\t\thtmx.process(submitBtn);\n\t\t\t\t\t} else if (channel === 'whatsapp_cloud') {\n\t\t\t\t\t\twabaFields.style.display = 'block';\n\t\t\t\t\t\twabaFields.querySelectorAll('input[data-required=\"true\"]').forEach(i => i.required = true);\n\t\t\t\t\t\t\n\t\t\t\t\t\tsubmitBtn.innerText = 'Salvar Conexão';\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-post', '/admin/devices/create');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-target', '#connections-table-container');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t\t\thtmx.process(submitBtn);\n\t\t\t\t\t} else if (channel === 'telegram') {\n\t\t\t\t\t\ttgFields.style.display = 'block';\n\t\t\t\t\t\ttgFields.querySelectorAll('input[data-required=\"true\"]').forEach(i => i.required = true);\n\t\t\t\t\t\t\n\t\t\t\t\t\tsubmitBtn.innerText = 'Salvar Conexão';\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-post', '/admin/devices/create');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-target', '#connections-table-container');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t\t\thtmx.process(submitBtn);\n\t\t\t\t\t}\n\t\t\t\t};\n\n\t\t\t\tupdateChannelFields();\n\t\t\t})();\n\t\t</script></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<div class=\"form-group\"><label for=\"phone\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Número de Telefone</label> <input type=\"tel\" id=\"phone\" name=\"phone\" data-required=\"true\" required class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\" placeholder=\"+5511999999999\"></div><div class=\"form-group\"><label for=\"proxy_url\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Proxy URL (Opcional)</label> <input type=\"text\" id=\"proxy_url\" name=\"proxy_url\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\" placeholder=\"socks5://user:pass@host:port\"></div></div><!-- WABA Fields --><div id=\"fields-waba\" style=\"display: none;\" class=\"space-y-4 mb-4\"><div class=\"form-group\"><label for=\"waba_phone_number_id\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Phone Number ID</label> <input type=\"text\" id=\"waba_phone_number_id\" name=\"phone_number_id\" data-required=\"true\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div><div class=\"form-group\"><label for=\"waba_account_id\" class=\"block text-sm font-medium text-zinc-700 mb-1\">WABA Account ID</label> <input type=\"text\" id=\"waba_account_id\" name=\"waba_account_id\" data-required=\"true\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div><div class=\"form-group\"><label for=\"waba_token\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Meta API Token</label> <input type=\"password\" id=\"waba_token\" name=\"token\" data-required=\"true\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div><div class=\"form-group\"><label for=\"waba_verify_token\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Verify Token (Optional)</label> <input type=\"text\" id=\"waba_verify_token\" name=\"verify_token\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div></div><!-- Telegram Fields --><div id=\"fields-telegram\" style=\"display: none;\" class=\"space-y-4 mb-4\"><div class=\"form-group\"><label for=\"tg_token\" class=\"block text-sm font-medium text-zinc-700 mb-1\">Bot Token</label> <input type=\"password\" id=\"tg_token\" name=\"token\" data-required=\"true\" class=\"form-input w-full border border-zinc-300 rounded-md p-2 focus:outline-none focus:border-zinc-950\"></div></div><div id=\"qr-area\" class=\"qr-area mt-4\"></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button type=\"button\" class=\"btn btn-secondary px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-medium\" onclick=\"this.closest('.modal-backdrop').remove()\">Cancelar</button> <button type=\"submit\" id=\"new-conn-submit-btn\" class=\"btn btn-primary bg-zinc-950 hover:bg-zinc-900 text-white px-4 py-2 rounded-md font-medium\">Salvar Conexão</button></div></form></div></div><script>\n\t\t\t(function() {\n\t\t\t\twindow.updateChannelFields = function() {\n\t\t\t\t\tconst channel = document.getElementById('new-channel-select').value;\n\t\t\t\t\tconst waWebFields = document.getElementById('fields-whatsapp');\n\t\t\t\t\tconst wabaFields = document.getElementById('fields-waba');\n\t\t\t\t\tconst tgFields = document.getElementById('fields-telegram');\n\t\t\t\t\tconst submitBtn = document.getElementById('new-conn-submit-btn');\n\n\t\t\t\t\t// Hide everything\n\t\t\t\t\twaWebFields.style.display = 'none';\n\t\t\t\t\twabaFields.style.display = 'none';\n\t\t\t\t\ttgFields.style.display = 'none';\n\n\t\t\t\t\t// Disable required for all dynamic fields\n\t\t\t\t\twabaFields.querySelectorAll('input').forEach(i => i.required = false);\n\t\t\t\t\ttgFields.querySelectorAll('input').forEach(i => i.required = false);\n\t\t\t\t\twaWebFields.querySelectorAll('input').forEach(i => i.required = false);\n\n\t\t\t\t\tif (channel === 'whatsapp') {\n\t\t\t\t\t\twaWebFields.style.display = 'block';\n\t\t\t\t\t\twaWebFields.querySelectorAll('input[data-required=\"true\"]').forEach(i => i.required = true);\n\t\t\t\t\t\t\n\t\t\t\t\t\tsubmitBtn.innerText = 'Começar Emparelhamento';\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-post', '/admin/devices/pair');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-target', '#qr-area');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t\t\thtmx.process(submitBtn);\n\t\t\t\t\t} else if (channel === 'whatsapp_cloud') {\n\t\t\t\t\t\twabaFields.style.display = 'block';\n\t\t\t\t\t\twabaFields.querySelectorAll('input[data-required=\"true\"]').forEach(i => i.required = true);\n\t\t\t\t\t\t\n\t\t\t\t\t\tsubmitBtn.innerText = 'Salvar Conexão';\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-post', '/admin/devices/create');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-target', '#connections-table-container');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t\t\thtmx.process(submitBtn);\n\t\t\t\t\t} else if (channel === 'telegram') {\n\t\t\t\t\t\ttgFields.style.display = 'block';\n\t\t\t\t\t\ttgFields.querySelectorAll('input[data-required=\"true\"]').forEach(i => i.required = true);\n\t\t\t\t\t\t\n\t\t\t\t\t\tsubmitBtn.innerText = 'Salvar Conexão';\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-post', '/admin/devices/create');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-target', '#connections-table-container');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t\t\thtmx.process(submitBtn);\n\t\t\t\t\t}\n\t\t\t\t};\n\n\t\t\t\tupdateChannelFields();\n\t\t\t})();\n\t\t</script></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -487,7 +487,7 @@ func QRFragment(code string, phone string, status string, message string) templ.
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 280, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 284, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 		if templ_7745c5c3_Err != nil {
@@ -507,7 +507,7 @@ func QRFragment(code string, phone string, status string, message string) templ.
 				var templ_7745c5c3_Var20 string
 				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(code)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 288, Col: 21}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 292, Col: 21}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 				if templ_7745c5c3_Err != nil {
@@ -520,7 +520,7 @@ func QRFragment(code string, phone string, status string, message string) templ.
 				var templ_7745c5c3_Var21 string
 				templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(code)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 291, Col: 19}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 295, Col: 19}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 				if templ_7745c5c3_Err != nil {
@@ -543,7 +543,7 @@ func QRFragment(code string, phone string, status string, message string) templ.
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/devices/qr?phone=" + phone)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 301, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 305, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 			if templ_7745c5c3_Err != nil {
@@ -601,7 +601,7 @@ func TestConnectionModal(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var24 string
 		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 344, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 348, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 		if templ_7745c5c3_Err != nil {
@@ -614,7 +614,7 @@ func TestConnectionModal(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var25 string
 		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.ID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 356, Col: 72}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 360, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 		if templ_7745c5c3_Err != nil {
@@ -627,7 +627,7 @@ func TestConnectionModal(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var26 string
 		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Channel)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 360, Col: 67}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 364, Col: 67}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 		if templ_7745c5c3_Err != nil {
@@ -640,7 +640,7 @@ func TestConnectionModal(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var27 string
 		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(conn.SenderIdentity)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 365, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 369, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 		if templ_7745c5c3_Err != nil {
@@ -708,7 +708,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		var templ_7745c5c3_Var31 string
 		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(eventType)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 428, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 432, Col: 90}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 		if templ_7745c5c3_Err != nil {
@@ -721,7 +721,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(timeStr)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 429, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 433, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {
@@ -734,7 +734,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		var templ_7745c5c3_Var33 string
 		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 431, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 435, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 		if templ_7745c5c3_Err != nil {
@@ -747,7 +747,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		var templ_7745c5c3_Var34 string
 		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(details)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 432, Col: 120}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 436, Col: 120}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {

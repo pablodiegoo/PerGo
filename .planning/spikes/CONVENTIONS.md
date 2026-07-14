@@ -25,6 +25,16 @@ Patterns and design choices established across spike sessions.
 - **Unified Connections Table:** Consolidate `devices` and `channel_credentials` into a single `connections` table, using a globally unique `sender_identity` column as the business routing key.
 - **Dynamic Instance Routing:** Keep dispatchers statically registered. The worker/API passes connection ID/identities in the payload; dispatchers resolve credentials from DB or in-memory sessions at dispatch time.
 - **API `from` Field Routing:** `POST /api/v1/messages` resolves the target connection using the `from` parameter. Falls back to `is_default = true` connection for the channel.
+- **Conversational Sessions:** Persist bidirectional conversation states in a `recipient_sessions` table mapping unique composite keys `(workspace_id, recipient_phone, channel, recipient_identity)`.
+- **Durable Webhook Queueing:** Dispatch webhooks asynchronously via NATS JetStream to avoid blocking protocol socket reader loops.
+- **Payload Signing:** Enforce security by computing an HMAC-SHA256 signature using the workspace secret, transmitted via `X-PerGo-Signature` in the format `t=<timestamp>,v1=<signature>`.
+- **Messaging Flow Verbs:** Client webhooks can return declarative JSON arrays containing reply/wait/forward commands to offload complex routing states from client logic.
+- **Selective Logging compliance:** If save message bodies is disabled, scrub PII (message text/media link content) from database audit entries and webhooks, retaining metadata indicators.
+- **Omnichannel Contact Merging:** Unify distinct channel endpoints under unified Contact profiles, providing atomic merge methods to consolidate channel threads.
+- **Webhook Subscriptions Routing:** Webhooks can be filtered by event types, with concurrent routing workers handling multiple endpoints, using wildcards for global listeners.
+- **Session Caching Router:** Keep active socket instances cached using Connection ID and Identity lookup maps, falling back to database checks only on cache miss.
+
+
 
 ### Admin UI (HTMX)
 - **Partial replacement pattern:** `hx-get="/fragment" hx-target="#panel-id" hx-swap="innerHTML"` — used for all panel transitions (chat open, filter change). Sidebar and surrounding layout stay in place.

@@ -90,6 +90,103 @@ func TestDashboardHandler_Index_Onboarding(t *testing.T) {
 	}
 }
 
+func TestDashboardHandler_Index_Onboarded(t *testing.T) {
+	dsn := os.Getenv("PERGO_DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Skip("PostgreSQL not available for testing")
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		t.Skip("PostgreSQL ping failed")
+	}
+
+	// Initialize repositories
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	auditQuerier := audit.NewQuerier(pool)
+	apiKeyRepo := repository.NewAPIKeyRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+
+	// Clean tables to avoid collisions
+	_, _ = pool.Exec(ctx, "DELETE FROM api_keys")
+	_, _ = pool.Exec(ctx, "DELETE FROM connections")
+	_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
+
+	// Create workspace
+	ws, err := wsRepo.Create(ctx, "Dashboard Test Workspace")
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() {
+		_, _ = pool.Exec(ctx, "DELETE FROM workspaces WHERE id = $1", ws.ID)
+	}()
+
+	// Create active API Key
+	_, _, err = apiKeyRepo.Create(ctx, ws.ID, "Test API Key")
+	if err != nil {
+		t.Fatalf("failed to create api key: %v", err)
+	}
+
+	// Create active connection
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "Test Active Connection",
+		Channel:        "telegram",
+		SenderIdentity: "active_sender",
+		Status:         "active",
+	}
+	err = connRepo.Create(ctx, conn)
+	if err != nil {
+		t.Fatalf("failed to create connection: %v", err)
+	}
+	defer func() {
+		_ = connRepo.Delete(ctx, conn.ID)
+	}()
+
+	h := &admin.DashboardHandler{
+		Pool:        pool,
+		Workspaces:  wsRepo,
+		Audit:       auditQuerier,
+		APIKeys:     apiKeyRepo,
+		Connections: connRepo,
+		Publisher:   nil,
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/admin/", nil)
+	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err = h.Index(c)
+	if err != nil {
+		t.Errorf("Index returned error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	body := rec.Body.String()
+	// Should not contain onboarding checklist
+	if strings.Contains(body, "Get Started with PerGo") {
+		t.Errorf("expected body NOT to contain onboarding checklist, got: %s", body)
+	}
+	// Should contain telemetry/operational dashboard elements
+	if !strings.Contains(body, "System Status") {
+		t.Errorf("expected body to contain operational dashboard 'System Status', got: %s", body)
+	}
+	if !strings.Contains(body, "Active Channel Connections") {
+		t.Errorf("expected body to contain 'Active Channel Connections', got: %s", body)
+	}
+}
+
 func TestDashboardHandler_SelectWorkspace(t *testing.T) {
 	h := &admin.DashboardHandler{}
 	e := echo.New()
