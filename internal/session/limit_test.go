@@ -121,7 +121,7 @@ func TestStartPairing_LimitExceeded(t *testing.T) {
 	}
 
 	// Try starting a third pairing. Since limit is 2 and both are active, it must fail with ErrMaxConnectionsExceeded.
-	_, err = manager.StartPairing(ctx, workspaceID, "5511999990003", nil)
+	_, err = manager.StartPairing(ctx, workspaceID, "5511999990003", nil, "")
 	if err != ErrMaxConnectionsExceeded {
 		t.Errorf("expected ErrMaxConnectionsExceeded, got %v", err)
 	}
@@ -130,7 +130,7 @@ func TestStartPairing_LimitExceeded(t *testing.T) {
 	// This should bypass the limit check for that slot and NOT return ErrMaxConnectionsExceeded.
 	// Note: it will try to call NewWhatsAppClient, which will fail or succeed depending on mock,
 	// but it won't fail with ErrMaxConnectionsExceeded!
-	_, err = manager.StartPairing(ctx, workspaceID, "5511999990001", &deviceIDs[0])
+	_, err = manager.StartPairing(ctx, workspaceID, "5511999990001", &deviceIDs[0], "")
 	if err == ErrMaxConnectionsExceeded {
 		t.Errorf("expected re-pairing to bypass limit check, but got ErrMaxConnectionsExceeded")
 	}
