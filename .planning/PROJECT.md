@@ -15,6 +15,11 @@ A single API request delivers a message through any configured channel with auto
 - **Success metric**: 99.5% delivery success across all channels at 500+ req/s sustained throughput
 - **Strategy notes**: See `docs/PRD PerGo.md` and `docs/architecture/` for full product and technical specifications
 
+## Current State
+
+- **Shipped Version**: v1.0 (2026-07-14)
+- **Status**: Stable. Fully functional multi-tenant routing gateway with in-memory session caching, split-pane inbox dashboard, multi-device WhatsApp/WABA/Telegram adapters, and JetStream queueing.
+
 ## Requirements
 
 ### Validated
@@ -33,10 +38,11 @@ A single API request delivers a message through any configured channel with auto
 - ✓ Outbound webhook delivery: durable JetStream consumer for webhook dispatch with retries — Phase 6
 - ✓ Observability: `net/http/pprof` profiling, structured `log/slog` logging, expvar metrics — Phase 1
 - ✓ Conversational Inbox: Server-rendered split-pane conversational dashboard with live HTMX polling, dynamic conversation lists, message thread stitching, and Toast notifications — Phase 9
+- ✓ Settings Layout: Nested settings accordion, active route state persistence, and zero-flash workspace selector — Phase 11
 
 ### Active
 
-*(All current milestone requirements have been validated)*
+*(All current milestone requirements have been validated. Run `/gsd-new-milestone` to start the next requirements definition.)*
 
 ### Out of Scope
 
@@ -98,18 +104,5 @@ A single API request delivers a message through any configured channel with auto
 
 This document evolves at phase transitions and milestone boundaries.
 
-**After each phase transition** (via `/gsd-transition`):
-1. Requirements invalidated? -> Move to Out of Scope with reason
-2. Requirements validated? -> Move to Validated with phase reference
-3. New requirements emerged? -> Add to Active
-4. Decisions to log? -> Add to Key Decisions
-5. "What This Is" still accurate? -> Update if drifted
-
-**After each milestone** (via `/gsd-complete-milestone`):
-1. Full review of all sections
-2. Core Value check — still the right priority?
-3. Audit Out of Scope — reasons still valid?
-4. Update Context with current state
-
 ---
-*Last updated: 2026-07-06 after Phase 9*
+*Last updated: 2026-07-14 after v1.0 milestone completion*

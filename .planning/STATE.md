@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: audit gaps
-current_phase: 11
-current_phase_name: Settings Sidebar & Layout Unification
-status: idle
-stopped_at: Completed quick task 260713-uuo: implement-dynamic-onboarding-logic
-last_updated: "2026-07-14T01:36:00.000Z"
+current_phase: 1.0
+status: Awaiting next milestone
+stopped_at: "Completed quick task 260713-uuo: implement-dynamic-onboarding-logic"
+last_updated: "2026-07-14T04:07:17.988Z"
 last_activity: 2026-07-14
-last_activity_desc: Completed quick task 260713-uuo: implement-dynamic-onboarding-logic
+last_activity_desc: Milestone 1.0 completed and archived
 progress:
   total_phases: 13
   completed_phases: 13
   total_plans: 34
   completed_plans: 34
   percent: 100
+current_phase_name: Settings Sidebar & Layout Unification
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: 11 (Settings Sidebar & Layout Unification) — COMPLETE
-Plan: 1 of 1
-Status: Phase 11 complete
-Last activity: 2026-07-14 — Completed quick task 260713-uuo: implement-dynamic-onboarding-logic
+Phase: Milestone 1.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-14 — Milestone 1.0 completed and archived
 
 ## Performance Metrics
 
@@ -137,4 +137,4 @@ Resume file: none
 
 ## Operator Next Steps
 
-- Select next phase from ROADMAP.md (e.g. Phase 07.1)
+- Start the next milestone with /gsd-new-milestone
