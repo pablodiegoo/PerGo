@@ -38,13 +38,13 @@ created: 2026-07-14
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 12-01-01 | 01 | 1 | CAMP-01 | — | N/A | integration | `go test -run TestCampaignAPI` | ❌ W0 | ⬜ pending |
-| 12-01-02 | 01 | 1 | CAMP-02 | — | N/A | unit | `go test -run TestPhoneSanitizer` | ❌ W0 | ⬜ pending |
-| 12-01-03 | 01 | 1 | CAMP-03 | — | N/A | unit | `go test -run TestDeduplication` | ❌ W0 | ⬜ pending |
-| 12-01-04 | 01 | 1 | CAMP-04 | — | N/A | unit | `go test -run TestResolveVariables` | ❌ W0 | ⬜ pending |
-| 12-01-05 | 01 | 1 | CAMP-05 | — | N/A | unit | `go test -run TestDurationCalculation` | ❌ W0 | ⬜ pending |
-| 12-01-06 | 01 | 2 | CAMP-07 | — | N/A | integration | `go test -run TestThrottlingWorker` | ❌ W0 | ⬜ pending |
-| 12-01-07 | 01 | 2 | CAMP-08 | — | N/A | integration | `go test -run TestEnrichedOutboundLogs` | ❌ W0 | ⬜ pending |
+| 12-01-01 | 01 | 1 | CAMP-08 | — | N/A | integration | `go test -run TestCampaignRepository` | ❌ W0 | ⬜ pending |
+| 12-01-02 | 01 | 1 | CAMP-02, CAMP-03, CAMP-04, CAMP-06 | — | N/A | unit | `go test -run TestCampaignHelpers` | ❌ W0 | ⬜ pending |
+| 12-01-03 | 01 | 1 | CAMP-05, CAMP-07 | — | N/A | integration | `go test -run TestCampaignWorker` | ❌ W0 | ⬜ pending |
+| 12-02-01 | 02 | 2 | CAMP-01, CAMP-08 | — | N/A | unit/integration | `go test -run TestCampaignAPI` | ❌ W0 | ⬜ pending |
+| 12-02-02 | 02 | 2 | CAMP-01, CAMP-04, CAMP-05, CAMP-06 | — | N/A | unit | `go test -run TestCampaignTemplates` | ❌ W0 | ⬜ pending |
+| 12-02-03 | 02 | 2 | — | — | N/A | integration | `curl http://localhost:3000/admin/login` | ❌ W0 | ⬜ pending |
+| 12-02-04 | 02 | 2 | CAMP-01, CAMP-07 | — | N/A | manual | `Visual Check` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
