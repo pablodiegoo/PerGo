@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
+	echomw "github.com/labstack/echo/v5/middleware"
 	"github.com/nats-io/nats.go"
 
 	"github.com/pablojhp.pergo/internal/api/handler"
@@ -248,6 +249,11 @@ func main() {
 
 	// --- Echo HTTP server ---
 	e := echosrv.New()
+
+	// Redirect /admin to /admin/ to prevent trailing-slash 404s
+	e.Pre(echomw.AddTrailingSlashWithConfig(echomw.AddTrailingSlashConfig{
+		RedirectCode: http.StatusMovedPermanently,
+	}))
 
 	// Middleware stack: RequestID → Trace → Recover → Auth (on protected routes)
 	e.Use(middleware.TraceMiddleware())
