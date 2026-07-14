@@ -70,6 +70,7 @@
             placeholder="telefone,nome,codigo_rastreio,cidade&#10;5511999998888,João Silva,BR12345XP,São Paulo&#10;5511999998888,João Repetido,BR12345XP,São Paulo&#10;5521977776666,Maria Souza,BR98765LK,Rio de Janeiro&#10;55,Número Inválido,BR00000XX,ErroCity"
             oninput="processMailing()"></textarea>
           <div class="text-[11px] text-slate-400 mt-1">Primeira linha como cabeçalho. Separação automática por vírgula.</div>
+          <div id="headers-helper" class="text-[11px] text-indigo-300 mt-2 bg-slate-950/40 p-2 rounded border border-indigo-950/30"></div>
         </div>
       </div>
 
@@ -335,11 +336,18 @@
         const varNum = idx + 1;
         const formControl = document.createElement("div");
         formControl.className = "form-control w-full";
+        
+        let defaultValue = "";
+        if (select === "tracking") {
+          defaultValue = idx === 0 ? "{{nome}}" : "{{codigo_rastreio}}";
+        } else if (select === "welcome") {
+          defaultValue = "{{nome}}";
+        }
+        
         formControl.innerHTML = `
           <label class="label py-0.5"><span class="label-text text-xs text-indigo-300 font-semibold">${label}</span></label>
-          <div class="flex gap-2">
-            <select id="var-map-${varNum}" class="select select-bordered select-xs w-full font-mono" onchange="previewResolvedMessages()"></select>
-          </div>
+          <input type="text" id="var-map-${varNum}" class="input input-bordered input-xs w-full font-mono text-xs text-white bg-slate-950/60" 
+            placeholder="Digite texto fixo ou {{coluna}}" value="${defaultValue}" oninput="previewResolvedMessages()">
         `;
         container.appendChild(formControl);
       });
@@ -391,34 +399,12 @@
       // Parse headers
       const headers = lines[0].split(",").map(h => h.trim());
       
-      // Update variables selector options
-      const selects = document.querySelectorAll("select[id^='var-map-']");
-      selects.forEach((select, idx) => {
-        const val = select.value;
-        select.innerHTML = "";
-        
-        // Add static option
-        const staticOpt = document.createElement("option");
-        staticOpt.value = "_static_";
-        staticOpt.text = "[Valor Fixo / Manual]";
-        select.appendChild(staticOpt);
-
-        headers.forEach(h => {
-          const opt = document.createElement("option");
-          opt.value = h;
-          opt.text = `Coluna: ${h}`;
-          select.appendChild(opt);
-        });
-
-        // Set default mapping based on guess
-        if (!val) {
-          if (idx === 0 && headers.includes("nome")) select.value = "nome";
-          else if (idx === 1 && headers.includes("codigo_rastreio")) select.value = "codigo_rastreio";
-          else select.value = headers[idx + 1] || "_static_";
-        } else {
-          select.value = val;
-        }
-      });
+      // Update headers helper with clickable shortcuts
+      const headersHelper = document.getElementById("headers-helper");
+      if (headersHelper) {
+        headersHelper.innerHTML = "<strong>Colunas detectadas:</strong> " + 
+          headers.map(h => `<code class="bg-indigo-950/80 px-1.5 py-0.5 rounded text-indigo-200 text-xs mr-1 select-all cursor-pointer font-semibold" title="Clique para copiar" onclick="navigator.clipboard.writeText('{{${h}}}')">{{${h}}}</code>`).join(" ");
+      }
 
       // Process rows
       mailingData = [];
@@ -513,14 +499,27 @@
         `${totalBatches} lotes de ${batchSize} contatos. Atraso total: ${baseSeconds}s ${hasStagger ? '+ ~' + Math.round(staggerSeconds) + 's jitter' : ''}`;
     }
 
+    function resolveVariable(inputVal, contact) {
+      // Verifica se o valor está no formato {{nome_da_coluna}}
+      const match = inputVal.match(/^\{\{(.+)\}\}$/);
+      if (match) {
+        const colName = match[1].trim();
+        if (contact.hasOwnProperty(colName)) {
+          return contact[colName];
+        }
+        return `[Coluna '${colName}' vazia/inexistente]`;
+      }
+      return inputVal; // Retorna texto estático/manual
+    }
+
     function previewResolvedMessages() {
       const select = document.getElementById("template-select").value;
       const t = templates[select];
       
-      const selects = document.querySelectorAll("select[id^='var-map-']");
+      const inputs = document.querySelectorAll("input[id^='var-map-']");
       const mappedVars = [];
-      selects.forEach((s) => {
-        mappedVars.push(s.value);
+      inputs.forEach((input) => {
+        mappedVars.push(input.value);
       });
 
       // Preview using the first 2 clean contacts
@@ -541,13 +540,8 @@
         const contact = cleanMailing[i];
         let text = t.text;
         
-        mappedVars.forEach((col, idx) => {
-          let val = "";
-          if (col === "_static_") {
-            val = `[Valor Fixo ${idx + 1}]`;
-          } else {
-            val = contact[col] || "";
-          }
+        mappedVars.forEach((inputVal, idx) => {
+          const val = resolveVariable(inputVal, contact);
           text = text.replace(`{{${idx + 1}}}`, val);
         });
 
@@ -569,6 +563,7 @@
       document.getElementById("log-panel-separate").className = tab === 'separate' ? "space-y-4" : "space-y-4 hidden";
     }
 
+    // UUID Generator for mock DB
     function generateUUID() {
       return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
         var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
@@ -608,11 +603,11 @@
 
       document.getElementById("sim-batch-text").innerText = `${currentBatch} / ${totalBatches}`;
 
-      // Resolve mapped column keys
-      const selects = document.querySelectorAll("select[id^='var-map-']");
+      // Resolve mapped variables from text inputs
+      const inputs = document.querySelectorAll("input[id^='var-map-']");
       const mappedVars = [];
-      selects.forEach((s) => {
-        mappedVars.push(s.value);
+      inputs.forEach((input) => {
+        mappedVars.push(input.value);
       });
 
       function sendNextBatch() {
@@ -634,10 +629,10 @@
           processedCount++;
           const messageId = generateUUID();
           
-          // Construct JSON variables
+          // Construct JSON variables dynamically mapping
           const variables = {};
-          mappedVars.forEach((col, vIdx) => {
-            variables[`var_${vIdx+1}`] = col === "_static_" ? `valor_fixo_${vIdx+1}` : contact[col];
+          mappedVars.forEach((inputVal, vIdx) => {
+            variables[`var_${vIdx+1}`] = resolveVariable(inputVal, contact);
           });
 
           const sentAt = new Date().toISOString();
