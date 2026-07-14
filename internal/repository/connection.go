@@ -364,3 +364,16 @@ func (r *ConnectionRepository) scanRowAndDecrypt(rows pgx.Rows) (*Connection, er
 
 	return &c, nil
 }
+
+// CountActiveByWorkspace returns the count of connections for the workspace with 'active' or 'connected' status.
+func (r *ConnectionRepository) CountActiveByWorkspace(ctx context.Context, workspaceID uuid.UUID) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM connections WHERE workspace_id = $1 AND status IN ('active', 'connected')`,
+		workspaceID,
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
