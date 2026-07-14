@@ -2397,7 +2397,7 @@ Nodes (6): Authority Limits — Constraint Examples, Four Source Types, Handling
 
 ### Community 400 - "Community 400"
 Cohesion: 0.29
-Nodes (6): /home/pablo/Coding/PerGo/.opencode/gsd-core/*, permission, external_directory, read, /home/pablo/Coding/PerGo/.opencode/gsd-core/*, $schema
+Nodes (6): /home/pablo/Coding/OmniGo/.opencode/gsd-core/*, permission, external_directory, read, /home/pablo/Coding/OmniGo/.opencode/gsd-core/*, $schema
 
 ### Community 401 - "Community 401"
 Cohesion: 0.29

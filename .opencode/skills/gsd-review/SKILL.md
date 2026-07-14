@@ -12,7 +12,7 @@ planning via /gsd-plan-phase --reviews.
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/review.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/review.md
 </execution_context>
 
 <context>

@@ -1,7 +1,7 @@
 # Edge-Probe — Spec-Completeness Reference
 
 Shared reference for the spec/requirements phase. Companion to
-`@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/domain-probes.md`: `domain-probes` covers the
+`@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/domain-probes.md`: `domain-probes` covers the
 **technology axis** (auth, search, caching, deployment); this covers the
 **data/behavior-shape axis** (boundaries, adjacency, encoding, ordering…). Walk each
 requirement against the closed taxonomy below, propose a concrete candidate edge for each

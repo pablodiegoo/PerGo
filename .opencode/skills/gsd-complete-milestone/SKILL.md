@@ -13,8 +13,8 @@ Output: Milestone archived (roadmap + requirements), PROJECT.md evolved, git tag
 <execution_context>
 **Load these files NOW (before proceeding):**
 
-- @/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/complete-milestone.md (main workflow)
-- @/home/pablo/Coding/PerGo/.opencode/gsd-core/templates/milestone-archive.md (archive template)
+- @/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/complete-milestone.md (main workflow)
+- @/home/pablo/Coding/OmniGo/.opencode/gsd-core/templates/milestone-archive.md (archive template)
   </execution_context>
 
 <context>

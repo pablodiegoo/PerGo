@@ -77,7 +77,7 @@ This prevents the "scavenger hunt" anti-pattern where executors explore the code
 
 ## Specificity
 
-**Test:** Could a different the agent instance execute without asking clarifying questions? If not, add specificity. See @/home/pablo/Coding/PerGo/.opencode/gsd-core/references/planner-antipatterns.md for vague-vs-specific comparison table.
+**Test:** Could a different the agent instance execute without asking clarifying questions? If not, add specificity. See @/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/planner-antipatterns.md for vague-vs-specific comparison table.
 
 ## User Setup Detection
 

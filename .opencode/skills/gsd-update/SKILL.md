@@ -16,7 +16,7 @@ Routes to the update workflow which handles:
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/update.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/update.md
 </execution_context>
 
 <flags>
@@ -35,6 +35,6 @@ Parse the first token of $ARGUMENTS:
 </process>
 
 <execution_context_extended>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/sync-skills.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/reapply-patches.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/sync-skills.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/reapply-patches.md
 </execution_context_extended>

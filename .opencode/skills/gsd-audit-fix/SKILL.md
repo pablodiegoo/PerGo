@@ -15,7 +15,7 @@ Flags:
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/audit-fix.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/audit-fix.md
 </execution_context>
 
 <process>

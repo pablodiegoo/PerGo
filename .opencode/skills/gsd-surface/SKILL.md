@@ -4,9 +4,9 @@ description: "Toggle which skills are surfaced — apply a profile, list, or dis
 ---
 
 <objective>
-Manage the runtime skill surface without reinstall. Reads/writes `/home/pablo/Coding/PerGo/.opencode/.gsd-surface.json`
-(sibling to `/home/pablo/Coding/PerGo/.opencode/.gsd-profile`) and re-stages the active skills directory in place.
-Skill dirs live at `/home/pablo/Coding/PerGo/.opencode/skills/gsd-*/`.
+Manage the runtime skill surface without reinstall. Reads/writes `/home/pablo/Coding/OmniGo/.opencode/.gsd-surface.json`
+(sibling to `/home/pablo/Coding/OmniGo/.opencode/.gsd-profile`) and re-stages the active skills directory in place.
+Skill dirs live at `/home/pablo/Coding/OmniGo/.opencode/skills/gsd-*/`.
 
 Sub-commands: list · status · profile · disable · enable · reset
 </objective>
@@ -117,11 +117,11 @@ Valid cluster names: `core_loop`, `audit_review`, `milestone`, `research_ideate`
 ## runtimeConfigDir resolution
 
 The `runtimeConfigDir` for `applySurface` is the **base the agent config directory**
-(`~/.config/opencode`), NOT the skills sub-directory (`/home/pablo/Coding/PerGo/.opencode/skills`).
+(`~/.config/opencode`), NOT the skills sub-directory (`/home/pablo/Coding/OmniGo/.opencode/skills`).
 
 This matches `installRuntimeArtifacts` and `uninstallRuntimeArtifacts`, which also
 receive `~/.config/opencode` as `configDir`. The skill dirs themselves live at
-`/home/pablo/Coding/PerGo/.opencode/skills/gsd-*/` because the `claude global` layout has `destSubpath =
+`/home/pablo/Coding/OmniGo/.opencode/skills/gsd-*/` because the `claude global` layout has `destSubpath =
 'skills'` — they are derived from `configDir`, not the root for it.
 
 ```bash
@@ -135,7 +135,7 @@ SCOPE="global"
 ```
 
 Surface state is stored at `${RUNTIME_CONFIG_DIR}/.gsd-surface.json`
-(i.e. `/home/pablo/Coding/PerGo/.opencode/.gsd-surface.json`).
+(i.e. `/home/pablo/Coding/OmniGo/.opencode/.gsd-surface.json`).
 
 All paths can be overridden by reading the `CLAUDE_CONFIG_DIR` env var if set.
 
@@ -148,9 +148,9 @@ All paths can be overridden by reading the `CLAUDE_CONFIG_DIR` env var if set.
 - Missing `surface.cjs` → prompt: "Run `npm i -g gsd-core` to reinstall GSD."
 
 <execution_context>
-Surface state file: `/home/pablo/Coding/PerGo/.opencode/.gsd-surface.json`
-Install profile marker: `/home/pablo/Coding/PerGo/.opencode/.gsd-profile`
-Skill dirs: `/home/pablo/Coding/PerGo/.opencode/skills/gsd-*/`
-Engine module: `/home/pablo/Coding/PerGo/.opencode/gsd-core/bin/lib/surface.cjs`
-Cluster definitions: `/home/pablo/Coding/PerGo/.opencode/gsd-core/bin/lib/clusters.cjs`
+Surface state file: `/home/pablo/Coding/OmniGo/.opencode/.gsd-surface.json`
+Install profile marker: `/home/pablo/Coding/OmniGo/.opencode/.gsd-profile`
+Skill dirs: `/home/pablo/Coding/OmniGo/.opencode/skills/gsd-*/`
+Engine module: `/home/pablo/Coding/OmniGo/.opencode/gsd-core/bin/lib/surface.cjs`
+Cluster definitions: `/home/pablo/Coding/OmniGo/.opencode/gsd-core/bin/lib/clusters.cjs`
 </execution_context>

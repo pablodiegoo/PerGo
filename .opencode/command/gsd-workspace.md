@@ -28,10 +28,10 @@ Mode routing:
 </routing>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/new-workspace.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/list-workspaces.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/remove-workspace.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ui-brand.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/new-workspace.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/list-workspaces.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/remove-workspace.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ui-brand.md
 </execution_context>
 
 <context>

@@ -15,7 +15,7 @@ Output ONLY the reference content of the chosen tier. Do NOT add:
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/help.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/help.md
 </execution_context>
 
 <context>
@@ -23,5 +23,5 @@ Arguments: $ARGUMENTS
 </context>
 
 <process>
-Follow /home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/help.md with $ARGUMENTS.
+Follow /home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/help.md with $ARGUMENTS.
 </process>

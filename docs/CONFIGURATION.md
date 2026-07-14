@@ -89,7 +89,7 @@ Abaixo está o mapeamento unificado de todas as variáveis de ambiente aceitas p
 
 ## Estrutura de Configuração (Go Struct)
 
-No código fonte, a configuração é carregada do ambiente no início da aplicação em uma estrutura Go chamada [Config](file:///home/pablo/Coding/PerGo/internal/config/config.go#L10) definida em [internal/config/config.go](file:///home/pablo/Coding/PerGo/internal/config/config.go).
+No código fonte, a configuração é carregada do ambiente no início da aplicação em uma estrutura Go chamada [Config](file:///home/pablo/Coding/OmniGo/internal/config/config.go#L10) definida em [internal/config/config.go](file:///home/pablo/Coding/OmniGo/internal/config/config.go).
 
 ```go
 type Config struct {
@@ -110,11 +110,11 @@ type Config struct {
 }
 ```
 
-A função [Load](file:///home/pablo/Coding/PerGo/internal/config/config.go#L28) em [internal/config/config.go](file:///home/pablo/Coding/PerGo/internal/config/config.go) lê essas variáveis e faz o fallback de valores adequadamente.
+A função [Load](file:///home/pablo/Coding/OmniGo/internal/config/config.go#L28) em [internal/config/config.go](file:///home/pablo/Coding/OmniGo/internal/config/config.go) lê essas variáveis e faz o fallback de valores adequadamente.
 
 Outras variáveis especiais também são acessadas de maneira pontual na inicialização de módulos específicos:
-- `PERGO_SESSION_SECRET` é acessado através de [getSessionSecret](file:///home/pablo/Coding/PerGo/internal/api/middleware/session.go#L95) no arquivo [internal/api/middleware/session.go](file:///home/pablo/Coding/PerGo/internal/api/middleware/session.go) para criptografar cookies de sessão.
-- `PERGO_MAX_WHATSAPP_CONNECTIONS` é verificado em [StartPairing](file:///home/pablo/Coding/PerGo/internal/session/qr.go#L58) em [internal/session/qr.go](file:///home/pablo/Coding/PerGo/internal/session/qr.go) para impor um teto de conexões ativas do canal WhatsApp Web.
+- `PERGO_SESSION_SECRET` é acessado através de [getSessionSecret](file:///home/pablo/Coding/OmniGo/internal/api/middleware/session.go#L95) no arquivo [internal/api/middleware/session.go](file:///home/pablo/Coding/OmniGo/internal/api/middleware/session.go) para criptografar cookies de sessão.
+- `PERGO_MAX_WHATSAPP_CONNECTIONS` é verificado em [StartPairing](file:///home/pablo/Coding/OmniGo/internal/session/qr.go#L58) em [internal/session/qr.go](file:///home/pablo/Coding/OmniGo/internal/session/qr.go) para impor um teto de conexões ativas do canal WhatsApp Web.
 
 ---
 
@@ -138,7 +138,7 @@ Outras variáveis especiais também são acessadas de maneira pontual na inicial
 O PerGo carrega variáveis do sistema operacional de forma direta para respeitar os princípios do *12-Factor App*. No entanto, o fluxo de sobrescrita e setup varia por ambiente:
 
 ### Ambiente de Desenvolvimento (Local)
-Para facilitar o desenvolvimento, o projeto disponibiliza um arquivo modelo de exemplo [.env.example](file:///home/pablo/Coding/PerGo/.env.example).
+Para facilitar o desenvolvimento, o projeto disponibiliza um arquivo modelo de exemplo [.env.example](file:///home/pablo/Coding/OmniGo/.env.example).
 1. Copie o arquivo de exemplo para criar a sua configuração local:
    ```bash
    cp .env.example .env
@@ -150,7 +150,7 @@ Para facilitar o desenvolvimento, o projeto disponibiliza um arquivo modelo de e
    ```
 
 ### Ambiente Docker / Docker Compose
-No arquivo [docker-compose.yml](file:///home/pablo/Coding/PerGo/docker-compose.yml), a configuração local é estruturada com base nos containers.
+No arquivo [docker-compose.yml](file:///home/pablo/Coding/OmniGo/docker-compose.yml), a configuração local é estruturada com base nos containers.
 O arquivo carrega as configurações mapeando variáveis de ambiente locais do host ou definindo valores default. Por exemplo, a URL do banco de dados aponta para o nome do serviço no compose (`postgres:5432`) ao invés de `localhost`.
 Para personalizar as variáveis rodando via compose, é possível definir um arquivo `.env` na raiz do projeto, que será injetado automaticamente nos serviços do compose.
 
@@ -160,3 +160,8 @@ Em produção, utilize a infraestrutura de orquestração (Kubernetes, AWS ECS, 
 * Force conexões SSL seguras no PostgreSQL configurando `sslmode=require` na variável `PERGO_DATABASE_URL`.
 * Bloqueie acessos externos à porta de debug `PERGO_DEBUG_PORT` (padrão `6060`), pois ela expõe rotas críticas `/debug/pprof/` de profiling de memória/CPU que podem ser exploradas para ataques de negação de serviço.
 
+---
+
+## Valores Padrão
+
+Os valores padrão para todas as variáveis de ambiente opcionais do PerGo estão definidos na coluna **Valor Padrão** da [Tabela Geral de Variáveis de Ambiente](#tabela-geral-de-variaveis-de-ambiente). Se uma variável opcional não for definida no seu ambiente local ou de produção, o sistema adotará automaticamente o respectivo valor padrão documentado.

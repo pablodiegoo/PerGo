@@ -16,7 +16,7 @@ Routes to the resume-project workflow which handles:
   </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/resume-project.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/resume-project.md
 </execution_context>
 
 <process>

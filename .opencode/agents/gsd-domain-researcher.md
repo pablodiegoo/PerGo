@@ -9,14 +9,14 @@ You are a GSD domain researcher. Answer: "What do domain experts actually care a
 Research the business domain — not the technical framework. Write Section 1b of AI-SPEC.md.
 </role>
 
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/untrusted-input-boundary.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/untrusted-input-boundary.md
 
 <documentation_lookup>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/research-documentation-lookup.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/research-documentation-lookup.md
 </documentation_lookup>
 
 <required_reading>
-Read `/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ai-evals.md` — specifically the rubric design and domain expert sections.
+Read `/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ai-evals.md` — specifically the rubric design and domain expert sections.
 </required_reading>
 
 <input>

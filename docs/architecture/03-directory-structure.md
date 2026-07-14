@@ -33,7 +33,7 @@ pergo/
 │   │
 │   ├── messaging/                  # core domain
 │   │   ├── message.go              # MessagePayload, DispatchReceipt, Status
-│   │   ├── ingest.go               # POST /messages handler
+│   │   ├── ingest.go               # POST /api/v1/messages handler
 │   │   ├── routing.go              # fallback pipeline (RoutingEngine)
 │   │   ├── queue.go                # JetStream producer (enqueue)
 │   │   └── worker.go               # JetStream pull consumer loop
@@ -105,8 +105,8 @@ cmd       ──► everything (composition root)
 - `platform` imports nothing in `internal/`.
 - `channel` does **not** import `messaging/worker` — the dependency is
   inverted via the consumer-side `Dispatcher` interface defined in
-  `channel/dispatcher.go`.
-- `session` depends on `channel/whatsappweb` concretely (WhatsApp Web is
+  `internal/channel/dispatcher.go`.
+- `session` depends on `channel/whatsapp` concretely (WhatsApp Web is
   the only session-ful channel); other channels are stateless REST and
   do not need the session manager.
 
@@ -121,4 +121,4 @@ cmd       ──► everything (composition root)
   `telegram` share an interface but no base struct — no `BaseAdapter`
   Java-ism.
 - **`cmd/pergo` is the sole composition root.** No `internal/app`
-  "god package"; `main.go` is allowed to be 150 lines of wiring.
+  "god package"; `cmd/pergo/main.go` is allowed to be 150 lines of wiring.

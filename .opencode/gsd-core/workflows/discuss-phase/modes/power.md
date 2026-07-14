@@ -8,7 +8,7 @@
 ## Dispatch
 
 ```
-Read @/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/discuss-phase-power.md
+Read @/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/discuss-phase-power.md
 ```
 
 Execute it end-to-end. Do not continue with the standard interactive steps.

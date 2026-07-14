@@ -21,9 +21,9 @@ Flow: Select Framework → Research Docs → Research Domain → Design Eval Str
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/ai-integration-phase.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ai-frameworks.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ai-evals.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/ai-integration-phase.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ai-frameworks.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ai-evals.md
 </execution_context>
 
 <context>

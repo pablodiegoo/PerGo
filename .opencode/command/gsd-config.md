@@ -31,9 +31,9 @@ Mode routing:
 </routing>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/settings.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/settings-advanced.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/settings-integrations.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/settings.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/settings-advanced.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/settings-integrations.md
 </execution_context>
 
 <context>

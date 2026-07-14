@@ -5,7 +5,7 @@
 
 ## Context
 
-The WhatsApp inbound message handler is a 130-line anonymous function embedded in `session/manager.go`'s `reconnectDevice`. It handles text extraction, media download from WhatsApp CDN, S3 upload, deduplication, PII opt-in, event construction, NATS publish, and audit — all inline. Zero test coverage exists because the handler can't be invoked without a live whatsmeow client.
+The WhatsApp inbound message handler is a 130-line anonymous function embedded in `internal/session/manager.go`'s `reconnectDevice`. It handles text extraction, media download from WhatsApp CDN, S3 upload, deduplication, PII opt-in, event construction, NATS publish, and audit — all inline. Zero test coverage exists because the handler can't be invoked without a live whatsmeow client.
 
 ## Decision
 

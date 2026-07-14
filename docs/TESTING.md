@@ -110,7 +110,7 @@ Ao criar novos recursos ou corrigir bugs no PerGo, siga estas convenções de es
    ```
 
 2. **Uso de Helpers para Preparação de Banco de Dados:**
-   Utilize ou crie funções auxiliares (como `getTestPoolWithMigrations` em [connection_test.go](file:///home/pablo/Coding/PerGo/internal/repository/connection_test.go#L16)) para obter um pool com migrações aplicadas automaticamente. Certifique-se de realizar o `Clean up` (deleção dos registros das tabelas afetadas) antes ou depois de cada teste para evitar interferências.
+   Utilize ou crie funções auxiliares (como `getTestPoolWithMigrations` em [connection_test.go](file:///home/pablo/Coding/OmniGo/internal/repository/connection_test.go#L16)) para obter um pool com migrações aplicadas automaticamente. Certifique-se de realizar o `Clean up` (deleção dos registros das tabelas afetadas) antes ou depois de cada teste para evitar interferências.
 
 3. **Mocking e Injeção de Dependências:**
    Não instancie clientes de API reais em testes. Defina e injete interfaces que possam ser substituídas por mocks simples na suite de testes.

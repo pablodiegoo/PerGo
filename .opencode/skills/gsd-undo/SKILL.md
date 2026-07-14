@@ -13,9 +13,9 @@ Three modes:
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/undo.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ui-brand.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/gate-prompts.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/undo.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ui-brand.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/gate-prompts.md
 </execution_context>
 
 <context>

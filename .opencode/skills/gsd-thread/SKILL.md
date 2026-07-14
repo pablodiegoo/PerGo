@@ -10,7 +10,7 @@ doesn't belong to any specific phase.
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/thread.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/thread.md
 </execution_context>
 
 <process>

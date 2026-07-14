@@ -1,7 +1,7 @@
 # Prohibition-Probe — Spec-Completeness Must-NOT Reference
 
 Shared reference for the spec/requirements phase. Companion to
-`@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/edge-probe.md`: `edge-probe` reaches the
+`@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/edge-probe.md`: `edge-probe` reaches the
 **data/behavior-shape axis** (boundaries, adjacency, encoding, ordering) — the things a
 feature must *do*. This reference reaches the orthogonal **must-NOT axis** (product, values,
 safety, ethics) — the things a feature must *never silently become*. The edge-probe caught

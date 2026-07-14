@@ -17,7 +17,7 @@ Spawned by `discuss-phase-assumptions` via `Task()`. You do NOT present output d
 - Flag topics where codebase analysis alone is insufficient (needs external research)
 </role>
 
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/untrusted-input-boundary.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/untrusted-input-boundary.md
 
 <input>
 Agent receives via prompt:

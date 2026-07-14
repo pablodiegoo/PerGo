@@ -17,9 +17,9 @@ Does not require prior new-project setup — auto-creates `.planning/spikes/` if
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/spike.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/spike-wrap-up.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ui-brand.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/spike.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/spike-wrap-up.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ui-brand.md
 </execution_context>
 
 <runtime_note>

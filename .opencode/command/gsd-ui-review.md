@@ -18,8 +18,8 @@ Output: {phase_num}-UI-REVIEW.md
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/ui-review.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ui-brand.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/ui-review.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ui-brand.md
 </execution_context>
 
 <context>

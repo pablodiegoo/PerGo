@@ -25,7 +25,7 @@ Flag handling rule:
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/docs-update.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/docs-update.md
 </execution_context>
 
 <context>

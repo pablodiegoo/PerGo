@@ -21,8 +21,8 @@ Context budget: ~15% orchestrator, 100% fresh per subagent.
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/execute-phase.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ui-brand.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/execute-phase.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ui-brand.md
 </execution_context>
 
 <runtime_note>

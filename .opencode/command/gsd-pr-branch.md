@@ -17,7 +17,7 @@ changes that are irrelevant to code review.
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/pr-branch.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/pr-branch.md
 </execution_context>
 
 <process>

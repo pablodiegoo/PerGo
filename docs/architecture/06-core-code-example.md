@@ -37,7 +37,7 @@ func From(ctx context.Context) string {
 }
 ```
 
-## 6.2 Ingest handler (`internal/messaging/ingest.go`)
+## 6.2 Ingest handler (<!-- VERIFY: internal/messaging/ingest.go -->)
 
 Hot path = two I/O calls: cached auth (middleware) + JetStream publish.
 
@@ -96,7 +96,7 @@ func (h *IngestHandler) Post(c echo.Context) error {
 }
 ```
 
-## 6.3 JetStream publish with Trace-ID header (`internal/messaging/queue.go`)
+## 6.3 JetStream publish with Trace-ID header (<!-- VERIFY: internal/messaging/queue.go -->)
 
 ```go
 package messaging

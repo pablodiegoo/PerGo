@@ -30,7 +30,7 @@ three dependencies that clearly earn their place: `pgx`, `nats.go`,
 - **Public API: REST/JSON over HTTPS.** The consumer is a backend
   developer integrating against a CRM/ERP; REST is the lowest-friction
   contract. gRPC would impose protobuf tooling on the caller for a
-  single endpoint (`POST /messages`) — unjustified.
+  single endpoint (`POST /api/v1/messages`) — unjustified.
 - **Internal dispatch: NATS JetStream.** This is *not* "messaging for
   messaging's sake." JetStream earns its place because:
   1. The ingest path must return in <50ms while the actual send takes

@@ -16,7 +16,7 @@ Validate `.planning/` directory integrity and report actionable issues. Checks f
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/health.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/health.md
 </execution_context>
 
 <process>

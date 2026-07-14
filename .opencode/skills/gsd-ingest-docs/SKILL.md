@@ -17,10 +17,10 @@ Auto-synthesizes most conflicts using the precedence rule `ADR > SPEC > PRD > DO
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/ingest-docs.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ui-brand.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/gate-prompts.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/doc-conflict-engine.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/ingest-docs.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ui-brand.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/gate-prompts.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/doc-conflict-engine.md
 </execution_context>
 
 <context>

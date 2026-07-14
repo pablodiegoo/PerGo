@@ -20,7 +20,7 @@ Delete the channel-layer copies. `channel.MessagePayload.Components` changes fro
 ### Risk assessment
 
 - `channel` already imports `domain` for `Media` — no new dependency
-- `domain` already imported in `waba_test.go`
+- `domain` already imported in `internal/channel/whatsapp/waba_test.go`
 - No other references to `channel.TemplateComponent` or `channel.TemplateParameter` exist
 - No circular dependency possible
 

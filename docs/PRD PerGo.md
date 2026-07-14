@@ -56,7 +56,7 @@ The system administrator manages corporate workspaces, monitors connection healt
 |                                             PerGo Core API                                             |  
 |                                                                                                         |  
 |   \+-----------------------+       Validate & Trace      \+-------------------------------------------+   |  
-|   |   POST /messages      | \--------------------------\> |  NATS JetStream (Work Queue Persistence)  |   |  
+|   |   POST /api/v1/messages      | \--------------------------\> |  NATS JetStream (Work Queue Persistence)  |   |  
 |   \+-----------------------+                             \+-------------------------------------------+   |  
 \+---------------------------------------------------------------------------------------------------------+  
                                                                                     |  
@@ -75,7 +75,7 @@ The system administrator manages corporate workspaces, monitors connection healt
 
 The API interface provides a standard communication gateway. It validates payloads, generates unique trace identifiers, and queues requests for asynchronous processing1.
 
-* **Functional Requirements:** The system must expose a unified POST /messages REST endpoint1. The controller parses the JSON input and validates fields against predefined schemas before assigning a trace header and routing the payload to the queue.  
+* **Functional Requirements:** The system must expose a unified POST /api/v1/messages REST endpoint1. The controller parses the JSON input and validates fields against predefined schemas before assigning a trace header and routing the payload to the queue.  
 * **Go Architecture Note:** The ingestion gateway leverages the Echo web framework to handle HTTP requests with minimal overhead5. Incoming JSON data is parsed directly into strongly typed Go structs, with schema validation managed using structural tag assertions. Decoupling the HTTP delivery layer from individual channel integrations is achieved through a clean interface-based adapter pattern3:  
   Go  
   type MessageDispatcher interface {  

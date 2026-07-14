@@ -12,7 +12,7 @@ Accepts an optional topic argument: `/gsd-explore authentication strategy`
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/explore.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/explore.md
 </execution_context>
 
 <process>

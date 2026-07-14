@@ -18,8 +18,8 @@ Routes to the profile-user workflow which orchestrates the full flow: consent ga
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/profile-user.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/references/ui-brand.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/profile-user.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/references/ui-brand.md
 </execution_context>
 
 <context>

@@ -37,13 +37,13 @@ It is built for backend developers integrating omnichannel messaging into CRMs/E
 
 * `cmd/pergo/`: Server entry point and composition root.
 * `internal/`: Core application modules.
-  * `api/`: API handlers (health, messages, admin dashboard) and middlewares (auth, HTMX, rate limiter, trace).
-  * `channel/`: Message dispatch registry and channel adapters (WhatsApp Web, WABA, Telegram).
-  * `config/`: Configurations loaded from 12-factor environment variables.
-  * `domain/`: Core messaging domain structures.
-  * `platform/`: Shared infrastructural components (audit writer, crypto, database connections, NATS queue worker, shutdown orchestrator).
-  * `repository/`: Database repositories (workspaces, API keys, connections, audit).
-  * `session/`: WhatsApp device sessions and registry.
+*   `api/`: API handlers (health, messages, admin dashboard) and middlewares (auth, HTMX, rate limiter, trace).
+*   `channel/`: Message dispatch registry and channel adapters (WhatsApp Web, WABA, Telegram).
+*   `config/`: Configurations loaded from 12-factor environment variables.
+*   `domain/`: Core messaging domain structures.
+*   `platform/`: Shared infrastructural components (audit writer, crypto, database connections, NATS queue worker, shutdown orchestrator).
+*   `repository/`: Database repositories (workspaces, API keys, connections, audit).
+*   `session/`: WhatsApp device sessions and registry.
 * `static/`: Static assets (CSS, images) for the operator console.
 * `templates/`: `a-h/templ` components and views.
 
@@ -51,14 +51,14 @@ It is built for backend developers integrating omnichannel messaging into CRMs/E
 
 Para guias detalhados de configuração, desenvolvimento e implantação do PerGo, consulte a documentação oficial:
 
-* **Arquitetura do PerGo:** [Visão Geral de Arquitetura](file:///home/pablo/Coding/PerGo/docs/architecture/README.md)
-* **Como Começar:** [Guia de Início Rápido (Getting Started)](file:///home/pablo/Coding/PerGo/docs/GETTING-STARTED.md)
-* **Configurações:** [Variáveis de Ambiente (.env)](file:///home/pablo/Coding/PerGo/docs/CONFIGURATION.md)
-* **Referência da API:** [Endpoints, Payloads e Erros](file:///home/pablo/Coding/PerGo/docs/API.md)
-* **Configuração de Provedores:** [Telegram, WABA e WhatsApp Web Setup](file:///home/pablo/Coding/PerGo/docs/CHANNELS.md)
-* **Desenvolvimento:** [Estrutura de Pastas e Diretrizes](file:///home/pablo/Coding/PerGo/docs/DEVELOPMENT.md)
-* **Testes:** [Guia de Escrita e Execução de Testes](file:///home/pablo/Coding/PerGo/docs/TESTING.md)
-* **Implantação (Deploy):** [Dockerfile e Compose para Produção](file:///home/pablo/Coding/PerGo/docs/DEPLOYMENT.md)
+* **Arquitetura do PerGo:** [Visão Geral de Arquitetura](file:///home/pablo/Coding/OmniGo/docs/architecture/README.md)
+* **Como Começar:** [Guia de Início Rápido (Getting Started)](file:///home/pablo/Coding/OmniGo/docs/GETTING-STARTED.md)
+* **Configurações:** [Variáveis de Ambiente (.env)](file:///home/pablo/Coding/OmniGo/docs/CONFIGURATION.md)
+* **Referência da API:** [Endpoints, Payloads e Erros](file:///home/pablo/Coding/OmniGo/docs/API.md)
+* **Configuração de Provedores:** [Telegram, WABA e WhatsApp Web Setup](file:///home/pablo/Coding/OmniGo/docs/CHANNELS.md)
+* **Desenvolvimento:** [Estrutura de Pastas e Diretrizes](file:///home/pablo/Coding/OmniGo/docs/DEVELOPMENT.md)
+* **Testes:** [Guia de Escrita e Execução de Testes](file:///home/pablo/Coding/OmniGo/docs/TESTING.md)
+* **Implantação (Deploy):** [Dockerfile e Compose para Produção](file:///home/pablo/Coding/OmniGo/docs/DEPLOYMENT.md)
 
 ---
 
@@ -258,10 +258,12 @@ We welcome contributions to PerGo! If you want to contribute, please follow thes
 3. **Format & Verify:** Ensure that the linter passes and all unit tests run successfully before committing:
    ```bash
    make lint
+   ```
+   ```bash
    make test-race
    ```
 
-Refer to the [DEVELOPMENT.md](file:///home/pablo/Coding/PerGo/docs/DEVELOPMENT.md) guide for folder structure details.
+Refer to the [DEVELOPMENT.md](file:///home/pablo/Coding/OmniGo/docs/DEVELOPMENT.md) guide for folder structure details.
 <!-- VERIFY: CONTRIBUTING.md file doesn't exist yet but contributing instructions point to standard fork-and-pull-request flow -->
 
 ---
@@ -270,3 +272,23 @@ Refer to the [DEVELOPMENT.md](file:///home/pablo/Coding/PerGo/docs/DEVELOPMENT.m
 
 This project is licensed under the MIT License.
 <!-- VERIFY: The project is licensed under the MIT License -->
+
+---
+
+## Quick Start
+
+The quickest way to get PerGo up and running is using Docker Compose:
+
+1. **Start Postgres and NATS services:**
+   ```bash
+   docker compose up -d
+   ```
+2. **Generate UI template files:**
+   ```bash
+   make generate
+   ```
+3. **Start the local development server:**
+   ```bash
+   make dev
+   ```
+   The admin console will be available at `http://localhost:8080/admin`.

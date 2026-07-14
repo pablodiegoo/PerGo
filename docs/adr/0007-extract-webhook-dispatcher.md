@@ -42,7 +42,7 @@ The dispatcher is built on top of pure interfaces (`ConfigStore`, `WorkspaceStor
 
 ## Test Strategy
 
-We will write direct, fast unit tests in `dispatcher_test.go` using stubs for the dependency interfaces. This allows validating:
+We will write direct, fast unit tests in <!-- VERIFY: dispatcher_test.go --> using stubs for the dependency interfaces. This allows validating:
 - Correct HMAC header signatures
 - Selective hashing of the `from` field and removal of `location`/`contacts` for PII opted-out workspaces
 - DLQ record insertions on terminal HTTP status codes (e.g. 404)

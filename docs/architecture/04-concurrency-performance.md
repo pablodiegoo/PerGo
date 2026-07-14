@@ -23,7 +23,7 @@
 ## Patterns applied
 
 ### Fan-out at the worker pool, not at the request
-A single `POST /messages` is **one** JetStream publish. Parallelism
+A single `POST /api/v1/messages` is **one** JetStream publish. Parallelism
 happens at the consumer side: N worker goroutines pull from the same
 queue group, so throughput scales by adding workers (or processes).
 There is no per-request `errgroup` — that would be premature fan-out

@@ -78,7 +78,7 @@ Na primeira inicialização, o PerGo executará automaticamente as migrações e
 Abaixo estão listados alguns problemas frequentes durante a configuração inicial do ambiente e como resolvê-los:
 
 1. **Falha de Conexão com o Banco de Dados (`dial tcp 127.0.0.1:5432` ou `5433: connect: connection refused`)**
-   * **Causa:** O container do PostgreSQL não está em execução ou a porta especificada em `PERGO_DATABASE_URL` no seu arquivo `.env` está incorreta. O arquivo [docker-compose.yml](file:///home/pablo/Coding/PerGo/docker-compose.yml) do projeto mapeia a porta interna do banco (`5432`) para a porta `5433` no host do desenvolvedor para evitar conflitos com serviços locais do PostgreSQL.
+   * **Causa:** O container do PostgreSQL não está em execução ou a porta especificada em `PERGO_DATABASE_URL` no seu arquivo `.env` está incorreta. O arquivo [docker-compose.yml](file:///home/pablo/Coding/OmniGo/docker-compose.yml) do projeto mapeia a porta interna do banco (`5432`) para a porta `5433` no host do desenvolvedor para evitar conflitos com serviços locais do PostgreSQL.
    * **Solução:** Certifique-se de inicializar a infraestrutura utilizando `make infra`. No arquivo `.env`, garanta que a string de conexão está configurada para a porta do host correta (por padrão, `5433` em desenvolvimento local):
      ```env
      PERGO_DATABASE_URL=postgres://postgres:postgres@localhost:5433/pergo?sslmode=disable
@@ -113,8 +113,8 @@ Abaixo estão listados alguns problemas frequentes durante a configuração inic
 
 Com a aplicação rodando localmente e a console administrativa configurada, siga para os seguintes guias para aprofundar-se no projeto:
 
-* **Desenvolvimento Interno:** Consulte o [Guia de Desenvolvimento](file:///home/pablo/Coding/PerGo/docs/DEVELOPMENT.md) para entender a arquitetura do projeto, os princípios de design de código, a estrutura de diretórios e como criar componentes de UI ou novos conectores de canal.
-* **Testando a Aplicação:** Consulte o [Guia de Testes](file:///home/pablo/Coding/PerGo/docs/TESTING.md) para aprender a rodar testes unitários, testes com race detector e testes de integração de ponta a ponta com o banco de dados e NATS JetStream.
-* **Detalhamento de Configurações:** Consulte o guia sobre a [Configuração do Sistema](file:///home/pablo/Coding/PerGo/docs/CONFIGURATION.md) para ver todas as opções de customização e variáveis de ambiente disponíveis.
-* **Documentação de Canais:** Acesse o guia de [Canais e Credenciais](file:///home/pablo/Coding/PerGo/docs/CHANNELS.md) para obter instruções passo a passo sobre a configuração do WhatsApp Web, WhatsApp Cloud (WABA) e Telegram.
-* **Referência da API REST:** Veja o guia de referência da [API REST](file:///home/pablo/Coding/PerGo/docs/API.md) para aprender a disparar mensagens omnichannel via payload JSON unificado.
+* **Desenvolvimento Interno:** Consulte o [Guia de Desenvolvimento](file:///home/pablo/Coding/OmniGo/docs/DEVELOPMENT.md) para entender a arquitetura do projeto, os princípios de design de código, a estrutura de diretórios e como criar componentes de UI ou novos conectores de canal.
+* **Testando a Aplicação:** Consulte o [Guia de Testes](file:///home/pablo/Coding/OmniGo/docs/TESTING.md) para aprender a rodar testes unitários, testes com race detector e testes de integração de ponta a ponta com o banco de dados e NATS JetStream.
+* **Detalhamento de Configurações:** Consulte o guia sobre a [Configuração do Sistema](file:///home/pablo/Coding/OmniGo/docs/CONFIGURATION.md) para ver todas as opções de customização e variáveis de ambiente disponíveis.
+* **Documentação de Canais:** Acesse o guia de [Canais e Credenciais](file:///home/pablo/Coding/OmniGo/docs/CHANNELS.md) para obter instruções passo a passo sobre a configuração do WhatsApp Web, WhatsApp Cloud (WABA) e Telegram.
+* **Referência da API REST:** Veja o guia de referência da [API REST](file:///home/pablo/Coding/OmniGo/docs/API.md) para aprender a disparar mensagens omnichannel via payload JSON unificado.

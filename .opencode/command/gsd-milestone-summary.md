@@ -18,7 +18,7 @@ Output: MILESTONE_SUMMARY written to `.planning/reports/`, presented inline, opt
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/milestone-summary.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/milestone-summary.md
 </execution_context>
 
 <context>

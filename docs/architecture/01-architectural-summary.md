@@ -18,7 +18,7 @@ lifecycle) explicit rather than implicit.
 
 ## Functional shape
 
-- **Ingestion gateway**: `POST /messages` → validate → attach Trace-ID →
+- **Ingestion gateway**: `POST /api/v1/messages` → validate → attach Trace-ID →
   enqueue to NATS JetStream work queue → `202 Accepted`.
 - **Channel workers**: JetStream consumers, one logical consumer per
   channel type, dispatching to provider SDKs (whatsmeow WebSocket,

@@ -12,8 +12,8 @@ Output: {phase_num}-UAT.md tracking all test results. If issues found: diagnosed
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/verify-work.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/templates/UAT.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/verify-work.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/templates/UAT.md
 </execution_context>
 
 <context>

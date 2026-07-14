@@ -15,7 +15,7 @@ Routes to the settings workflow which handles:
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/settings.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/settings.md
 </execution_context>
 
 <process>

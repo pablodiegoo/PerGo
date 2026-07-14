@@ -42,7 +42,7 @@ To prevent leaking web-layer concerns, the processor exposes generic ports for i
 
 ## Test Strategy
 
-We will write direct, fast unit tests in `processor_test.go` using in-memory mock implementations of the dependency interfaces. This allows verifying:
+We will write direct, fast unit tests in <!-- VERIFY: processor_test.go --> using in-memory mock implementations of the dependency interfaces. This allows verifying:
 - Schema validation rules
 - Media size limits (25MB)
 - Backpressure limiters

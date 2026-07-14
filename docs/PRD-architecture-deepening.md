@@ -42,10 +42,10 @@ Deepen four modules so each has a small interface and a large, testable implemen
 
 ### Unify TemplateComponent (ADR-0003)
 
-- Delete `TemplateComponent` and `TemplateParameter` from `channel/dispatcher.go`.
+- Delete `TemplateComponent` and `TemplateParameter` from `internal/channel/dispatcher.go`.
 - `channel.MessagePayload.Components` changes type from `[]TemplateComponent` to `[]domain.TemplateComponent`.
 - Delete `convertTemplateComponents` from worker.go; use `qMsg.Components` directly.
-- Update `waba_test.go` type references (`channel.TemplateComponent` → `domain.TemplateComponent`).
+- Update `internal/channel/whatsapp/waba_test.go` type references (`channel.TemplateComponent` → `domain.TemplateComponent`).
 
 ### CredentialProvider Port (ADR-0004)
 
@@ -59,7 +59,7 @@ Deepen four modules so each has a small interface and a large, testable implemen
 
 - **Only test external behavior through module interfaces** — no assertions on internal state or implementation details.
 - **Fake adapters over mocks** — use in-memory, no-op implementations rather than mock frameworks. Adapters record calls for assertion where needed (spy pattern for audit writer, publisher).
-- **Table-driven tests** — one `t.Run` per scenario, consistent with existing patterns in `waba_test.go` and `dispatch_test.go`.
+- **Table-driven tests** — one `t.Run` per scenario, consistent with existing patterns in `internal/channel/whatsapp/waba_test.go` and `internal/channel/dispatcher_test.go`.
 
 ### DispatchOrchestrator tests
 
@@ -73,7 +73,7 @@ Deepen four modules so each has a small interface and a large, testable implemen
 
 ### Unify TemplateComponent
 
-- Update existing `waba_test.go` type references. No new tests — the types are structurally identical.
+- Update existing `internal/channel/whatsapp/waba_test.go` type references. No new tests — the types are structurally identical.
 
 ### CredentialProvider
 

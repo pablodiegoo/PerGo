@@ -17,7 +17,7 @@ Closes the plan → execute → verify → ship loop.
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/ship.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/ship.md
 </execution_context>
 
-Execute the ship workflow from @/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/ship.md end-to-end.
+Execute the ship workflow from @/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/ship.md end-to-end.

@@ -28,8 +28,8 @@ Clarify phase requirements through structured Socratic questioning with quantita
 </objective>
 
 <execution_context>
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/workflows/spec-phase.md
-@/home/pablo/Coding/PerGo/.opencode/gsd-core/templates/spec.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/workflows/spec-phase.md
+@/home/pablo/Coding/OmniGo/.opencode/gsd-core/templates/spec.md
 </execution_context>
 
 <runtime_note>
