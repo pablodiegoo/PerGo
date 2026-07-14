@@ -5,10 +5,10 @@ milestone_name: audit gaps
 current_phase: 11
 current_phase_name: Settings Sidebar & Layout Unification
 status: idle
-stopped_at: Completed quick task 260713-tsm: implement-socks5-proxy-support-whatsmeow
-last_updated: "2026-07-14T00:33:00.000Z"
+stopped_at: Completed quick task 260713-uuo: implement-dynamic-onboarding-logic
+last_updated: "2026-07-14T01:36:00.000Z"
 last_activity: 2026-07-14
-last_activity_desc: Completed quick task 260713-tsm: implement-socks5-proxy-support-whatsmeow
+last_activity_desc: Completed quick task 260713-uuo: implement-dynamic-onboarding-logic
 progress:
   total_phases: 13
   completed_phases: 13
@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 Phase: 11 (Settings Sidebar & Layout Unification) — COMPLETE
 Plan: 1 of 1
 Status: Phase 11 complete
-Last activity: 2026-07-14 — Completed quick task 260713-tsm: implement-socks5-proxy-support-whatsmeow
+Last activity: 2026-07-14 — Completed quick task 260713-uuo: implement-dynamic-onboarding-logic
 
 ## Performance Metrics
 
@@ -127,11 +127,12 @@ Items acknowledged and carried forward from previous milestone close:
 | GS20 | 2026-07-07 | 260706-uzz-quando-clico-em-testar | complete ✓ |
 | GS21 | 2026-07-09 | fix-connections-decrypt-and-layout-tweak | complete ✓ |
 | 260713-tsm | 2026-07-14 | implement-socks5-proxy-support-whatsmeow | complete ✓ |
+| 260713-uuo | 2026-07-14 | implement-dynamic-onboarding-logic | complete ✓ |
 
 ## Session Continuity
 
 Last session: 2026-07-13T20:51:30-03:00
-Stopped at: Completed quick task 260713-tsm: implement-socks5-proxy-support-whatsmeow
+Stopped at: Completed quick task 260713-uuo: implement-dynamic-onboarding-logic
 Resume file: none
 
 ## Operator Next Steps
