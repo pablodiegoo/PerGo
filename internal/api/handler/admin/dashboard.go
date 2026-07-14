@@ -83,21 +83,25 @@ func (h *DashboardHandler) Index(c *echo.Context) error {
 		}
 	}
 
-	apiKeysCount := 0
+	activeKeysCount := 0
 	if h.APIKeys != nil {
-		keys, err := h.APIKeys.ListByWorkspace(ctx, ws.ID)
-		if err == nil {
-			apiKeysCount = len(keys)
+		if count, err := h.APIKeys.CountActive(ctx, ws.ID); err == nil {
+			activeKeysCount = count
 		}
 	}
 
-	connectionsCount := 0
+	activeConnectionsCount := 0
+	if h.Connections != nil {
+		if count, err := h.Connections.CountActiveByWorkspace(ctx, ws.ID); err == nil {
+			activeConnectionsCount = count
+		}
+	}
+
 	var connections []*repository.Connection
 	if h.Connections != nil {
 		list, err := h.Connections.ListByWorkspace(ctx, ws.ID)
 		if err == nil {
 			connections = list
-			connectionsCount = len(list)
 		}
 	}
 
@@ -119,10 +123,10 @@ func (h *DashboardHandler) Index(c *echo.Context) error {
 		allWorkspaces = []repository.Workspace{*ws}
 	}
 
-	// Determine if workspace is fully onboarded (requires at least 1 connection and 1 API key)
-	isOnboarded := apiKeysCount > 0 && connectionsCount > 0
+	// Determine if workspace is fully onboarded (requires at least 1 active connection and 1 active API key)
+	isOnboarded := activeKeysCount > 0 && activeConnectionsCount > 0
 
-	dashboard := pages.Dashboard(ws, allWorkspaces, wsCount, recentAuditCount, isOnboarded, apiKeysCount, connections, recentLogs)
+	dashboard := pages.Dashboard(ws, allWorkspaces, wsCount, recentAuditCount, isOnboarded, activeKeysCount, activeConnectionsCount, connections, recentLogs)
 
 	if mw.IsHTMX(c) {
 		return mw.Render(c, http.StatusOK, dashboard)
