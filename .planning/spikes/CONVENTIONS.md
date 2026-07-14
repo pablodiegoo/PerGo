@@ -25,6 +25,9 @@ Patterns and design choices established across spike sessions.
 - **Unified Connections Table:** Consolidate `devices` and `channel_credentials` into a single `connections` table, using a globally unique `sender_identity` column as the business routing key.
 - **Dynamic Instance Routing:** Keep dispatchers statically registered. The worker/API passes connection ID/identities in the payload; dispatchers resolve credentials from DB or in-memory sessions at dispatch time.
 - **API `from` Field Routing:** `POST /api/v1/messages` resolves the target connection using the `from` parameter. Falls back to `is_default = true` connection for the channel.
+- **Conversational Sessions:** Persist bidirectional conversation states in a `recipient_sessions` table mapping unique composite keys `(workspace_id, recipient_phone, channel, recipient_identity)`.
+- **Durable Webhook Queueing:** Dispatch webhooks asynchronously via NATS JetStream to avoid blocking protocol socket reader loops.
+- **Payload Signing:** Enforce security by computing an HMAC-SHA256 signature using the workspace secret, transmitted via `X-PerGo-Signature` in the format `t=<timestamp>,v1=<signature>`.
 
 ### Admin UI (HTMX)
 - **Partial replacement pattern:** `hx-get="/fragment" hx-target="#panel-id" hx-swap="innerHTML"` — used for all panel transitions (chat open, filter change). Sidebar and surrounding layout stay in place.

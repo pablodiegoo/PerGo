@@ -1,8 +1,8 @@
 # Spike Wrap-Up Summary
 
-**Date:** 2026-07-08
-**Spikes processed:** 8 (004, 005, 006, 007, 008, 009, 010, 011)
-**Feature areas:** Conversational Inbox, Unified Connection Management, Settings UI
+**Date:** 2026-07-14
+**Spikes processed:** 11 (004, 005, 006, 007, 008, 009, 010, 011, 012, 013, 014)
+**Feature areas:** Conversational Inbox, Unified Connection Management, Settings UI, Conversational Sessions, Webhook Delivery & Security
 **Skill output:** `./.agents/skills/spike-findings-pergo/`
 
 ## Processed Spikes
@@ -17,6 +17,9 @@
 | 009 | waba-template-inbox-delivery | standard | VALIDATED | WABA Templates |
 | 010 | settings-nested-sidebar | standard | VALIDATED | Settings UI |
 | 011 | settings-layout-optimization | standard | VALIDATED | Settings UI |
+| 012 | conversational-session-schema | standard | VALIDATED | Conversational Sessions |
+| 013 | queue-decoupled-webhook-dispatcher | standard | VALIDATED | Webhook Delivery |
+| 014 | hmac-webhook-verification | standard | VALIDATED | Webhook Security |
 
 ## Key Findings
 
@@ -45,3 +48,11 @@ To completely avoid client-side event listeners and infinite reload loops:
 **Settings UI (Spikes 010 & 011):**
 1. Accordion Configurations menu toggles sub-navigation options inline with smooth height expansion.
 2. Settings layout is standardized, removing top tabs and relying purely on the nested sidebar.
+
+**Conversational Sessions (Spike 012):**
+1. Recipient sessions are persisted to a `recipient_sessions` table mapping unique composite keys `(workspace_id, recipient_phone, channel, recipient_identity)`.
+2. Automatic repository upsert using PostgreSQL's `ON CONFLICT` prevents write failures and tracks unread state cleanly across node crashes.
+
+**Webhook Delivery & Security (Spikes 013 & 014):**
+1. Decoupled webhook processing uses a NATS JetStream stream `webhooks.events` to prevent third-party CRM downtime from affecting socket loops or gateways.
+2. Webhook payload security is enforced via an HMAC-SHA256 signature calculated from the raw JSON payload and the workspace-specific secret key, sent via the `X-PerGo-Signature` header.
