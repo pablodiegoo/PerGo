@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-07-14T20:49:23.043Z"
 last_activity: 2026-07-14
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-25)
 
 **Core value:** A single API request delivers a message through any configured channel with automatic fallback — without per-message markup, without vendor lock-in, and with full custody of transaction data on infrastructure you control.
-**Current focus:** Phase 11 — Settings Sidebar & Layout Unification
+**Current focus:** Phase 12 — Campaign Engine
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: 12 — Campaign Engine
 Plan: —
-Status: Defining requirements
-Last activity: 2026-07-14 — Milestone v1.1 started
+Status: Planning phase
+Last activity: 2026-07-14 — Milestone v1.1 roadmap created
 
 ## Performance Metrics
 
