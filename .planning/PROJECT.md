@@ -20,6 +20,17 @@ A single API request delivers a message through any configured channel with auto
 - **Shipped Version**: v1.0 (2026-07-14)
 - **Status**: Stable. Fully functional multi-tenant routing gateway with in-memory session caching, split-pane inbox dashboard, multi-device WhatsApp/WABA/Telegram adapters, and JetStream queueing.
 
+## Current Milestone: v1.1 Campaign Engine
+
+**Goal:** Permitir que operadores criem campanhas de envio de mensagens em massa através do upload de mailings (CSV), com higienização automática, interpolação flexível de variáveis, agendamento e controle fino de vazão (throttling) para evitar banimentos.
+
+**Target Features:**
+- Higienização de Mailing (Scrubbing): Upload de CSV, validação de formato de número de telefone (padrão E.164 entre 10 e 15 dígitos) e remoção automática de duplicatas.
+- Mapeamento Flexível de Variáveis: Campo de texto com resolução regex para variáveis múltiplas concatenadas ou textos manuais (ex: `{{nome}} de {{cidade}}`).
+- Agendador e Calculadora de Duração: Estimativa de tempo real com base no tamanho do lote, atraso e jitter. Configuração de data/hora para disparo.
+- Motor de Disparo com Throttling (Worker NATS): Divisão do mailing higienizado em lotes no NATS JetStream, com atraso fixo configurável entre lotes mais um jitter estocástico aleatório.
+- Logs de Outbound Enriquecidos (Opção A): Armazenamento dos metadados da campanha (`campaign_id`, `template_name`, `variables_json`) diretamente na tabela principal de `outbound_logs` com índices específicos para não degradar a performance.
+
 ## Requirements
 
 ### Validated

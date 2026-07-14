@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: audit gaps
-current_phase: 1.0
-status: Awaiting next milestone
-stopped_at: "Completed quick task 260713-uuo: implement-dynamic-onboarding-logic"
-last_updated: "2026-07-14T04:07:17.988Z"
+milestone: v1.1
+milestone_name: Campaign Engine
+status: planning
+last_updated: "2026-07-14T20:49:23.043Z"
 last_activity: 2026-07-14
-last_activity_desc: Milestone 1.0 completed and archived
 progress:
-  total_phases: 13
-  completed_phases: 13
-  total_plans: 34
-  completed_plans: 34
-  percent: 100
-current_phase_name: Settings Sidebar & Layout Unification
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: Milestone 1.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-07-14 — Milestone 1.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-07-14 — Milestone v1.1 started
 
 ## Performance Metrics
 
