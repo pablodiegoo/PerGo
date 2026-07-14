@@ -1,7 +1,7 @@
 # Spike Manifest
 
 ## Idea
-Redesign the PerGo channel credentials and devices architecture to support multiple instances of WhatsApp Web (whatsmeow), WABA, and Telegram bots per workspace, routing outbound messages dynamically via a `from` sender identity or connection ID.
+Redesign the PerGo channel credentials and devices architecture to support multiple instances of WhatsApp Web (whatsmeow), WABA, and Telegram bots per workspace, routing outbound messages dynamically via a `from` sender identity or connection ID. Also includes bulk campaign scheduling, CSV parsing, variable mapping, batch throttling, and analytics logging.
 
 ## Requirements
 - Must support multiple configurations of the same channel type per workspace.
@@ -12,6 +12,7 @@ Redesign the PerGo channel credentials and devices architecture to support multi
 - Message bubbles: inbound = left-aligned white, outbound = right-aligned blue
 - Realtime updates via HTMX polling: chat panel at 3s (append-only with ID cursor), conversation list at 5s (full-replace)
 - Unread notifications for background conversations via toast — no browser notification API for MVP
+- Campaigns must support CSV mailing list upload, sanitization, WABA template variable mapping (static or dynamic), scheduling, batch throttling (delay and batch size), duration estimation, and exportable logs.
 
 ## Spikes
 
@@ -36,3 +37,4 @@ Redesign the PerGo channel credentials and devices architecture to support multi
 | 017 | omnichannel-contact-merging | standard | Given a contact with active conversations on both WhatsApp and Telegram, when queried via a unified contacts API, then their identities are linked to a single customer profile with consolidated history. | VALIDATED | db, schema, omnichannel |
 | 018 | multi-webhook-subscriptions | standard | Given a workspace with multiple webhook subscriptions, when an event occurs, then only the webhooks subscribed to that specific event type are triggered. | PENDING | api, webhooks, routing |
 | 019 | session-caching-router | standard | Given multiple active WhatsMeow connections, when a message is sent, then the gateway resolves and routes the request using an in-memory session cache instead of querying the database on every dispatch. | PENDING | api, cache, concurrency |
+| 020 | campaign-engine | standard | Given a mailing list and throttling parameters, when configured in a UI, then we can clean the list, map variables, estimate duration, and simulate batch dispatching with logging comparison. | PENDING | ui, campaigns, logs |

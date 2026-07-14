@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PerGo — Campaign Engine & Throttling Simulator</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS & DaisyUI (v4 CDN) -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Outfit', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Outfit', sans-serif;
+    }
+    .monospace-font {
+      font-family: 'JetBrains Mono', monospace;
+    }
+  </style>
+</head>
+<body class="bg-base-300 text-base-content min-h-screen p-4 md:p-8">
+
+  <!-- Header -->
+  <div class="max-w-7xl mx-auto mb-8">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gradient-to-r from-slate-900 to-indigo-950 p-6 rounded-2xl border border-indigo-900/40 shadow-xl">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="badge badge-primary font-semibold">SPIKE 020</span>
+          <span class="text-xs text-indigo-400 font-mono">STABILITY & THROTTLING PROTOCOL</span>
+        </div>
+        <h1 class="text-3xl font-bold tracking-tight text-white mt-1">Campaign Engine & Throttling Simulator</h1>
+        <p class="text-sm text-slate-400 mt-1">Simule o upload de mailings, higienização, mapeamento de variáveis WABA, cálculo de vazão e logs comparativos de banco de dados.</p>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="loadMockCSV(true)" class="btn btn-outline btn-sm border-slate-700 hover:border-slate-500 text-slate-300">Carregar Mailing VIP (Com Erros)</button>
+        <button onclick="loadMockCSV(false)" class="btn btn-outline btn-primary btn-sm">Carregar Mailing Limpo</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
+    <!-- Coluna Esquerda: Configuração da Campanha (5 cols) -->
+    <div class="lg:col-span-5 flex flex-col gap-6">
+      
+      <!-- Passo 1: Upload Mailing -->
+      <div class="card bg-base-200 border border-base-100 shadow-lg">
+        <div class="card-body p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="card-title text-lg text-white font-semibold flex items-center gap-2">
+              <span class="bg-indigo-900/50 text-indigo-300 w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono">1</span>
+              Mailing (CSV)
+            </h2>
+            <div class="text-xs text-slate-400 font-mono" id="csv-stats-indicator">Aguardando dados...</div>
+          </div>
+          <textarea id="csv-input" class="textarea textarea-bordered h-40 monospace-font text-xs" 
+            placeholder="telefone,nome,codigo_rastreio,cidade&#10;5511999998888,João Silva,BR12345XP,São Paulo&#10;5511999998888,João Repetido,BR12345XP,São Paulo&#10;5521977776666,Maria Souza,BR98765LK,Rio de Janeiro&#10;55,Número Inválido,BR00000XX,ErroCity"
+            oninput="processMailing()"></textarea>
+          <div class="text-[11px] text-slate-400 mt-1">Primeira linha como cabeçalho. Separação automática por vírgula.</div>
+        </div>
+      </div>
+
+      <!-- Passo 2: Template WABA e Mapeamento -->
+      <div class="card bg-base-200 border border-base-100 shadow-lg">
+        <div class="card-body p-5">
+          <h2 class="card-title text-lg text-white font-semibold flex items-center gap-2 mb-3">
+            <span class="bg-indigo-900/50 text-indigo-300 w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono">2</span>
+            Template WABA & Variáveis
+          </h2>
+          
+          <div class="form-control w-full mb-3">
+            <label class="label py-1"><span class="label-text text-xs">Selecione o Template WABA</span></label>
+            <select id="template-select" class="select select-bordered select-sm w-full" onchange="changeTemplate()">
+              <option value="tracking">Aviso de Rastreamento (2 variáveis)</option>
+              <option value="welcome">Boas-vindas Simples (1 variável)</option>
+              <option value="custom">Mensagem Texto Livre (Sem variáveis)</option>
+            </select>
+          </div>
+
+          <div class="bg-base-300 p-3 rounded-lg border border-slate-700/30 mb-4">
+            <div class="text-xs text-slate-400 font-semibold mb-1">Conteúdo do Template:</div>
+            <div id="template-preview-text" class="text-sm font-mono text-indigo-200">Olá {{1}}, o código do seu pedido é {{2}}!</div>
+          </div>
+
+          <!-- Mapeadores dinâmicos de variáveis -->
+          <div id="variable-mappings-container" class="space-y-3">
+            <div class="text-xs font-semibold text-white">Mapeamento de Variáveis:</div>
+            <!-- Dynamic inject of variable selectors -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Passo 3: Agendamento e Vazão -->
+      <div class="card bg-base-200 border border-base-100 shadow-lg">
+        <div class="card-body p-5">
+          <h2 class="card-title text-lg text-white font-semibold flex items-center gap-2 mb-3">
+            <span class="bg-indigo-900/50 text-indigo-300 w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono">3</span>
+            Agendamento & Throttling
+          </h2>
+
+          <div class="grid grid-cols-2 gap-4 mb-4">
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Membros por Lote</span></label>
+              <input type="number" id="batch-size" class="input input-bordered input-sm font-mono" value="5" min="1" oninput="updateCalculations()">
+            </div>
+            <div class="form-control">
+              <label class="label py-1"><span class="label-text text-xs">Atraso entre Lotes (s)</span></label>
+              <input type="number" id="batch-delay" class="input input-bordered input-sm font-mono" value="3" min="1" oninput="updateCalculations()">
+            </div>
+          </div>
+
+          <div class="form-control flex-row items-center gap-2 mb-4">
+            <input type="checkbox" id="stagger-toggle" class="checkbox checkbox-primary checkbox-xs" checked onchange="updateCalculations()">
+            <label class="label cursor-pointer py-0"><span class="label-text text-xs">Adicionar jitter randômico (atraso estocástico ±1s por envio)</span></label>
+          </div>
+
+          <div class="form-control w-full">
+            <label class="label py-1"><span class="label-text text-xs">Agendar Campanha para:</span></label>
+            <div class="flex gap-2">
+              <input type="datetime-local" id="schedule-time" class="input input-bordered input-sm flex-1 font-mono">
+              <button onclick="setNow()" class="btn btn-outline btn-sm">Agora</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Coluna Direita: Higienização, Calculadora e Logs Comparativos (7 cols) -->
+    <div class="lg:col-span-7 flex flex-col gap-6">
+
+      <!-- Calculadora de Tempo e Higienização -->
+      <div class="card bg-slate-900 border border-slate-800 text-white shadow-xl">
+        <div class="card-body p-6">
+          <h2 class="card-title text-lg text-emerald-400 font-semibold mb-4 flex items-center gap-2">
+            📊 Estimativas e Higienização do Mailing
+          </h2>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-slate-950/60 p-3 rounded-lg border border-slate-800 text-center">
+              <div class="text-[10px] text-slate-400 uppercase font-mono">Total no CSV</div>
+              <div id="stat-total" class="text-xl font-bold font-mono mt-1 text-slate-300">0</div>
+            </div>
+            <div class="bg-slate-950/60 p-3 rounded-lg border border-emerald-950 text-center">
+              <div class="text-[10px] text-emerald-500 uppercase font-mono">Válidos (Limpo)</div>
+              <div id="stat-valid" class="text-xl font-bold font-mono mt-1 text-emerald-400">0</div>
+            </div>
+            <div class="bg-slate-950/60 p-3 rounded-lg border border-amber-950 text-center">
+              <div class="text-[10px] text-amber-500 uppercase font-mono">Duplicados</div>
+              <div id="stat-duplicates" class="text-xl font-bold font-mono mt-1 text-amber-400">0</div>
+            </div>
+            <div class="bg-slate-950/60 p-3 rounded-lg border border-red-950 text-center">
+              <div class="text-[10px] text-red-500 uppercase font-mono">Inválidos</div>
+              <div id="stat-invalid" class="text-xl font-bold font-mono mt-1 text-red-400">0</div>
+            </div>
+          </div>
+
+          <!-- Calculadora de Tempo -->
+          <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <div class="text-xs text-slate-400 font-semibold uppercase font-mono">Cálculo de Duração Estimada</div>
+              <div id="estimated-duration" class="text-2xl font-bold text-white mt-1">0s</div>
+              <div id="calc-explanation" class="text-xs text-slate-400 mt-1 font-mono">Aguardando dados...</div>
+            </div>
+            <button id="start-btn" onclick="startCampaign()" class="btn btn-emerald-500 btn-md text-slate-950 font-bold px-6 shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 w-full md:w-auto" disabled>
+              🚀 Iniciar Disparo
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Simulador de Execução de Lotes -->
+      <div class="card bg-base-200 border border-base-100 shadow-lg" id="simulation-panel" style="display:none;">
+        <div class="card-body p-5">
+          <div class="flex justify-between items-center mb-3">
+            <h3 class="card-title text-sm text-white font-semibold">Simulação de Disparo Periódico</h3>
+            <span id="sim-status" class="badge badge-accent badge-outline font-mono text-xs">Aguardando...</span>
+          </div>
+
+          <div class="w-full bg-slate-800 rounded-full h-2.5 mb-4">
+            <div id="sim-progress-bar" class="bg-emerald-500 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4 mb-4">
+            <div class="text-xs font-mono text-slate-300">Progresso: <span id="sim-progress-text">0 / 0</span></div>
+            <div class="text-xs font-mono text-slate-300 text-right">Lote Atual: <span id="sim-batch-text">0 / 0</span></div>
+          </div>
+
+          <!-- Console de logs de disparos da simulação -->
+          <div class="bg-black p-3 rounded-lg border border-slate-800 h-32 overflow-y-auto monospace-font text-xs text-emerald-400 space-y-1 shadow-inner" id="sim-log">
+            <div>[System] Pronto para iniciar o simulador...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Comparativo de Logs de Banco de Dados -->
+      <div class="card bg-base-200 border border-base-100 shadow-lg">
+        <div class="card-body p-5">
+          <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+            <div>
+              <h2 class="card-title text-lg text-white font-semibold">🗄️ Comparação de Arquitetura de Logs</h2>
+              <p class="text-xs text-slate-400">Veja como os registros são armazenados no banco em tempo real.</p>
+            </div>
+            <div class="flex gap-1 bg-base-300 p-1 rounded-lg">
+              <button onclick="switchLogTab('enriched')" id="tab-btn-enriched" class="btn btn-xs btn-primary font-semibold">Opção A: Outbound Enriquecido</button>
+              <button onclick="switchLogTab('separate')" id="tab-btn-separate" class="btn btn-xs btn-ghost font-semibold">Opção B: Tabelas Separadas</button>
+            </div>
+          </div>
+
+          <!-- Tab A: Enriched -->
+          <div id="log-panel-enriched" class="space-y-4">
+            <div class="alert alert-info text-xs bg-slate-900 border-indigo-900/40 text-slate-300 p-3 rounded-lg flex gap-2">
+              <div>
+                <strong>Opção A (Tabela Única Enriquecida):</strong> Salva dados da campanha na própria tabela <code>outbound_logs</code> usando colunas opcionais <code>campaign_id</code>, <code>template_name</code> e <code>variables_json</code>.
+                <br><span class="text-emerald-500 font-semibold">Prós:</span> Queries mais simples (1 tabela); histórico consolidado de mensageria.
+                <br><span class="text-rose-500 font-semibold">Contras:</span> Tabela cresce rápido em tamanho; índices pesados em logs de alta vazão.
+              </div>
+            </div>
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-900 font-mono text-[11px] text-indigo-300 h-56 overflow-y-auto shadow-inner" id="enriched-log-table">
+              -- Tabela: outbound_logs
+              -- Registros simulados aparecerão aqui durante o envio...
+            </div>
+          </div>
+
+          <!-- Tab B: Separate -->
+          <div id="log-panel-separate" class="space-y-4 hidden">
+            <div class="alert alert-info text-xs bg-slate-900 border-indigo-900/40 text-slate-300 p-3 rounded-lg flex gap-2">
+              <div>
+                <strong>Opção B (Tabelas Relacionadas):</strong> Mantém a tabela <code>outbound_logs</code> enxuta e cria uma tabela <code>campaign_dispatches</code> dedicada para o controle e as variáveis específicas do mailing.
+                <br><span class="text-emerald-500 font-semibold">Prós:</span> Evita inchar a tabela principal de envio; simplifica arquivamento/limpeza de campanhas antigas.
+                <br><span class="text-rose-500 font-semibold">Contras:</span> Necessário JOIN nas queries caso queira cruzar o status de envio de canal (whatsmeow/WABA) com os dados do mailing.
+              </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div class="text-xs font-semibold text-slate-400 mb-1 font-mono">1. outbound_logs (Leve)</div>
+                <div class="bg-slate-950 p-3 rounded-lg border border-slate-900 font-mono text-[10px] text-amber-300 h-44 overflow-y-auto shadow-inner" id="separate-log-outbound">
+                  -- Registros de Envio Simplificados...
+                </div>
+              </div>
+              <div>
+                <div class="text-xs font-semibold text-slate-400 mb-1 font-mono">2. campaign_dispatches (Focada)</div>
+                <div class="bg-slate-950 p-3 rounded-lg border border-slate-900 font-mono text-[10px] text-cyan-300 h-44 overflow-y-auto shadow-inner" id="separate-log-campaign">
+                  -- Variáveis e ID da Campanha...
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Ações com Logs -->
+          <div class="flex justify-end gap-2 mt-2">
+            <button onclick="clearLogs()" class="btn btn-ghost btn-xs text-slate-400">Limpar Logs</button>
+            <button onclick="exportLogs()" class="btn btn-outline btn-xs btn-primary">Exportar Logs Selecionados (JSON)</button>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Script da Simulação e Lógica -->
+  <script>
+    // Templates Mockados
+    const templates = {
+      tracking: {
+        text: "Olá {{1}}, o código do seu pedido é {{2}}!",
+        variables: ["{{1}} — Nome", "{{2}} — Código de Rastreio"]
+      },
+      welcome: {
+        text: "Boas-vindas {{1}}! Obrigado por se registrar.",
+        variables: ["{{1}} — Nome"]
+      },
+      custom: {
+        text: "Mensagem estática geral sem variáveis customizadas.",
+        variables: []
+      }
+    };
+
+    // Estado da simulação
+    let mailingData = [];
+    let cleanMailing = [];
+    let duplicateMailing = [];
+    let invalidMailing = [];
+    let isRunning = false;
+    let timerId = null;
+    let activeTab = "enriched";
+
+    // Dados Simulados de Banco de Dados
+    let dbLogsEnriched = [];
+    let dbLogsOutboundSimple = [];
+    let dbLogsCampaignDispatches = [];
+
+    // Inicialização
+    window.onload = function() {
+      changeTemplate();
+      loadMockCSV(true);
+    };
+
+    function setNow() {
+      const now = new Date();
+      // Format to datetime-local expected string
+      now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+      document.getElementById('schedule-time').value = now.toISOString().slice(0, 16);
+    }
+
+    function changeTemplate() {
+      const select = document.getElementById("template-select").value;
+      const t = templates[select];
+      document.getElementById("template-preview-text").innerText = t.text;
+      
+      const container = document.getElementById("variable-mappings-container");
+      container.innerHTML = "";
+
+      if (t.variables.length === 0) {
+        container.innerHTML = '<div class="text-xs text-slate-400 italic">Este template não requer variáveis do mailing.</div>';
+        processMailing();
+        return;
+      }
+
+      t.variables.forEach((label, idx) => {
+        const varNum = idx + 1;
+        const formControl = document.createElement("div");
+        formControl.className = "form-control w-full";
+        formControl.innerHTML = `
+          <label class="label py-0.5"><span class="label-text text-xs text-indigo-300 font-semibold">${label}</span></label>
+          <div class="flex gap-2">
+            <select id="var-map-${varNum}" class="select select-bordered select-xs w-full font-mono" onchange="previewResolvedMessages()"></select>
+          </div>
+        `;
+        container.appendChild(formControl);
+      });
+
+      // Reprocess to populate selectors
+      processMailing();
+    }
+
+    function loadMockCSV(withErrors) {
+      let csv = "";
+      if (withErrors) {
+        csv = `telefone,nome,codigo_rastreio,cidade
+5511999998888,João Silva,BR12345XP,São Paulo
+5511999998888,João Repetido (Duplicado),BR12345XP,São Paulo
+5521977776666,Maria Souza,BR98765LK,Rio de Janeiro
+5519988887777,Carlos Santos,BR55555AA,Campinas
++5531988880000,Ana Lima,BR88888BB,Belo Horizonte
+5527966665555,Roberto Cunha,BR66666CC,Vitória
+5511999998888,João Terceiro (Duplicado),BR12345XP,São Paulo
+55419999911,Celular Curto (Inválido),BR11111DD,Curitiba
+55,Número Zerado (Inválido),BR00000EE,ErroCity
+5512988885555,Beatriz Costa,BR77777FF,São José
+5511977772222,Julio Santos,BR44444GG,São Paulo`;
+      } else {
+        csv = `telefone,nome,codigo_rastreio,cidade
+5511999998888,João Silva,BR12345XP,São Paulo
+5521977776666,Maria Souza,BR98765LK,Rio de Janeiro
+5519988887777,Carlos Santos,BR55555AA,Campinas
+5531988880000,Ana Lima,BR88888BB,Belo Horizonte
+5527966665555,Roberto Cunha,BR66666CC,Vitória`;
+      }
+      document.getElementById("csv-input").value = csv;
+      processMailing();
+    }
+
+    function processMailing() {
+      const csv = document.getElementById("csv-input").value.trim();
+      if (!csv) {
+        resetStats();
+        return;
+      }
+
+      const lines = csv.split("\n");
+      if (lines.length < 2) {
+        resetStats();
+        return;
+      }
+
+      // Parse headers
+      const headers = lines[0].split(",").map(h => h.trim());
+      
+      // Update variables selector options
+      const selects = document.querySelectorAll("select[id^='var-map-']");
+      selects.forEach((select, idx) => {
+        const val = select.value;
+        select.innerHTML = "";
+        
+        // Add static option
+        const staticOpt = document.createElement("option");
+        staticOpt.value = "_static_";
+        staticOpt.text = "[Valor Fixo / Manual]";
+        select.appendChild(staticOpt);
+
+        headers.forEach(h => {
+          const opt = document.createElement("option");
+          opt.value = h;
+          opt.text = `Coluna: ${h}`;
+          select.appendChild(opt);
+        });
+
+        // Set default mapping based on guess
+        if (!val) {
+          if (idx === 0 && headers.includes("nome")) select.value = "nome";
+          else if (idx === 1 && headers.includes("codigo_rastreio")) select.value = "codigo_rastreio";
+          else select.value = headers[idx + 1] || "_static_";
+        } else {
+          select.value = val;
+        }
+      });
+
+      // Process rows
+      mailingData = [];
+      cleanMailing = [];
+      duplicateMailing = [];
+      invalidMailing = [];
+
+      const seenPhones = new Set();
+
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const cols = lines[i].split(",").map(c => c.trim());
+        const row = {};
+        
+        headers.forEach((h, idx) => {
+          row[h] = cols[idx] || "";
+        });
+
+        const phone = row["telefone"] || "";
+        
+        // Clean phone checking
+        const cleanPhone = phone.replace(/[^0-9]/g, "");
+        const isValidPhone = cleanPhone.length >= 10 && cleanPhone.length <= 15;
+
+        if (!isValidPhone) {
+          row["_error"] = "Formato de telefone inválido (deve ter entre 10 e 15 dígitos)";
+          invalidMailing.push(row);
+        } else if (seenPhones.has(cleanPhone)) {
+          row["_error"] = "Número de telefone duplicado";
+          duplicateMailing.push(row);
+        } else {
+          seenPhones.add(cleanPhone);
+          row["_clean_phone"] = cleanPhone;
+          cleanMailing.push(row);
+        }
+        
+        mailingData.push(row);
+      }
+
+      // Update indicators
+      document.getElementById("stat-total").innerText = mailingData.length;
+      document.getElementById("stat-valid").innerText = cleanMailing.length;
+      document.getElementById("stat-duplicates").innerText = duplicateMailing.length;
+      document.getElementById("stat-invalid").innerText = invalidMailing.length;
+
+      document.getElementById("csv-stats-indicator").innerText = `${cleanMailing.length} válidos de ${mailingData.length} registros`;
+
+      // Enable start button if there are valid contacts
+      document.getElementById("start-btn").disabled = cleanMailing.length === 0;
+
+      updateCalculations();
+      previewResolvedMessages();
+    }
+
+    function resetStats() {
+      document.getElementById("stat-total").innerText = "0";
+      document.getElementById("stat-valid").innerText = "0";
+      document.getElementById("stat-duplicates").innerText = "0";
+      document.getElementById("stat-invalid").innerText = "0";
+      document.getElementById("csv-stats-indicator").innerText = "Aguardando dados...";
+      document.getElementById("start-btn").disabled = true;
+      updateCalculations();
+    }
+
+    function updateCalculations() {
+      const total = cleanMailing.length;
+      const batchSize = parseInt(document.getElementById("batch-size").value) || 1;
+      const delay = parseInt(document.getElementById("batch-delay").value) || 1;
+      const hasStagger = document.getElementById("stagger-toggle").checked;
+
+      if (total === 0) {
+        document.getElementById("estimated-duration").innerText = "0s";
+        document.getElementById("calc-explanation").innerText = "Nenhum contato válido encontrado.";
+        return;
+      }
+
+      const totalBatches = Math.ceil(total / batchSize);
+      const baseSeconds = (totalBatches - 1) * delay;
+      // Stagger random adds roughly 0.5s per message avg
+      const staggerSeconds = hasStagger ? (total * 0.5) : 0;
+      const totalSeconds = Math.round(baseSeconds + staggerSeconds);
+
+      let durationText = `${totalSeconds}s`;
+      if (totalSeconds > 60) {
+        const minutes = Math.floor(totalSeconds / 60);
+        const secs = totalSeconds % 60;
+        durationText = `${minutes}m ${secs}s`;
+      }
+
+      document.getElementById("estimated-duration").innerText = durationText;
+      document.getElementById("calc-explanation").innerText = 
+        `${totalBatches} lotes de ${batchSize} contatos. Atraso total: ${baseSeconds}s ${hasStagger ? '+ ~' + Math.round(staggerSeconds) + 's jitter' : ''}`;
+    }
+
+    function previewResolvedMessages() {
+      const select = document.getElementById("template-select").value;
+      const t = templates[select];
+      
+      const selects = document.querySelectorAll("select[id^='var-map-']");
+      const mappedVars = [];
+      selects.forEach((s) => {
+        mappedVars.push(s.value);
+      });
+
+      // Preview using the first 2 clean contacts
+      const maxPreviews = Math.min(2, cleanMailing.length);
+      
+      const container = document.getElementById("variable-mappings-container");
+      // Clean old preview nodes
+      const oldPreviews = container.querySelectorAll(".preview-bubble");
+      oldPreviews.forEach(p => p.remove());
+
+      if (cleanMailing.length === 0) return;
+
+      const previewDiv = document.createElement("div");
+      previewDiv.className = "preview-bubble mt-4 pt-3 border-t border-slate-700/50 space-y-2";
+      previewDiv.innerHTML = '<div class="text-xs font-semibold text-white">Pré-visualização do Envio:</div>';
+
+      for (let i = 0; i < maxPreviews; i++) {
+        const contact = cleanMailing[i];
+        let text = t.text;
+        
+        mappedVars.forEach((col, idx) => {
+          let val = "";
+          if (col === "_static_") {
+            val = `[Valor Fixo ${idx + 1}]`;
+          } else {
+            val = contact[col] || "";
+          }
+          text = text.replace(`{{${idx + 1}}}`, val);
+        });
+
+        const bubble = document.createElement("div");
+        bubble.className = "p-2 bg-slate-950/40 rounded text-[11px] font-mono text-indigo-200 border-l-2 border-indigo-500";
+        bubble.innerHTML = `<strong>Para:</strong> ${contact["telefone"]} (${contact["nome"]})<br><strong>MSG:</strong> ${text}`;
+        previewDiv.appendChild(bubble);
+      }
+
+      container.appendChild(previewDiv);
+    }
+
+    function switchLogTab(tab) {
+      activeTab = tab;
+      document.getElementById("tab-btn-enriched").className = tab === 'enriched' ? "btn btn-xs btn-primary font-semibold" : "btn btn-xs btn-ghost font-semibold";
+      document.getElementById("tab-btn-separate").className = tab === 'separate' ? "btn btn-xs btn-primary font-semibold" : "btn btn-xs btn-ghost font-semibold";
+
+      document.getElementById("log-panel-enriched").className = tab === 'enriched' ? "space-y-4" : "space-y-4 hidden";
+      document.getElementById("log-panel-separate").className = tab === 'separate' ? "space-y-4" : "space-y-4 hidden";
+    }
+
+    function generateUUID() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    function startCampaign() {
+      if (isRunning) return;
+      isRunning = true;
+      document.getElementById("start-btn").disabled = true;
+      document.getElementById("csv-input").disabled = true;
+      document.getElementById("template-select").disabled = true;
+      document.getElementById("batch-size").disabled = true;
+      document.getElementById("batch-delay").disabled = true;
+
+      document.getElementById("simulation-panel").style.display = "block";
+      document.getElementById("sim-status").innerText = "ENVIANDO";
+      document.getElementById("sim-status").className = "badge badge-accent font-mono text-xs";
+
+      const simLog = document.getElementById("sim-log");
+      simLog.innerHTML = `<div>[${new Date().toLocaleTimeString()}] Campanha iniciada via NATS JetStream.</div>`;
+
+      let processedCount = 0;
+      const total = cleanMailing.length;
+      const batchSize = parseInt(document.getElementById("batch-size").value) || 1;
+      const delay = parseInt(document.getElementById("batch-delay").value) || 1;
+      const hasStagger = document.getElementById("stagger-toggle").checked;
+
+      const campaignId = generateUUID();
+      const templateName = document.getElementById("template-select").value;
+
+      document.getElementById("sim-progress-text").innerText = `${processedCount} / ${total}`;
+      
+      const totalBatches = Math.ceil(total / batchSize);
+      let currentBatch = 0;
+
+      document.getElementById("sim-batch-text").innerText = `${currentBatch} / ${totalBatches}`;
+
+      // Resolve mapped column keys
+      const selects = document.querySelectorAll("select[id^='var-map-']");
+      const mappedVars = [];
+      selects.forEach((s) => {
+        mappedVars.push(s.value);
+      });
+
+      function sendNextBatch() {
+        if (processedCount >= total) {
+          completeCampaign();
+          return;
+        }
+
+        currentBatch++;
+        document.getElementById("sim-batch-text").innerText = `${currentBatch} / ${totalBatches}`;
+
+        const batchStartIndex = processedCount;
+        const batchEndIndex = Math.min(processedCount + batchSize, total);
+        const batchItems = cleanMailing.slice(batchStartIndex, batchEndIndex);
+
+        let delayMultiplier = 1;
+
+        batchItems.forEach((contact, idx) => {
+          processedCount++;
+          const messageId = generateUUID();
+          
+          // Construct JSON variables
+          const variables = {};
+          mappedVars.forEach((col, vIdx) => {
+            variables[`var_${vIdx+1}`] = col === "_static_" ? `valor_fixo_${vIdx+1}` : contact[col];
+          });
+
+          const sentAt = new Date().toISOString();
+
+          // Simula Jitter Randômico
+          const staggerOffset = hasStagger ? (Math.random() * 0.4) : 0;
+          delayMultiplier += staggerOffset;
+
+          // 1. Log Enriched Row (Opção A)
+          const enrichedRow = {
+            id: messageId,
+            workspace_id: "00000000-0000-0000-0000-000000000001",
+            recipient: contact["telefone"],
+            channel: "whatsapp",
+            status: "sent",
+            campaign_id: campaignId,
+            template_name: templateName,
+            variables_json: JSON.stringify(variables),
+            sent_at: sentAt
+          };
+          dbLogsEnriched.push(enrichedRow);
+
+          // 2. Log Separate Rows (Opção B)
+          const simpleOutboundRow = {
+            id: messageId,
+            workspace_id: "00000000-0000-0000-0000-000000000001",
+            recipient: contact["telefone"],
+            channel: "whatsapp",
+            status: "sent",
+            sent_at: sentAt
+          };
+          const campaignDispatchRow = {
+            id: generateUUID(),
+            campaign_id: campaignId,
+            outbound_log_id: messageId,
+            recipient: contact["telefone"],
+            variables_json: JSON.stringify(variables),
+            created_at: sentAt
+          };
+
+          dbLogsOutboundSimple.push(simpleOutboundRow);
+          dbLogsCampaignDispatches.push(campaignDispatchRow);
+        });
+
+        // UI progress update
+        const progressPct = (processedCount / total) * 100;
+        document.getElementById("sim-progress-bar").style.width = `${progressPct}%`;
+        document.getElementById("sim-progress-text").innerText = `${processedCount} / ${total}`;
+
+        // Print batch log
+        const logLine = document.createElement("div");
+        logLine.innerText = `[${new Date().toLocaleTimeString()}] Lote ${currentBatch}/${totalBatches} enviado com sucesso (${batchItems.length} contatos).`;
+        simLog.appendChild(logLine);
+        simLog.scrollTop = simLog.scrollHeight;
+
+        // Render Database comparative views
+        renderDbLogs();
+
+        // Schedule next batch
+        if (processedCount < total) {
+          const actualDelay = (delay * 1000) * delayMultiplier;
+          timerId = setTimeout(sendNextBatch, actualDelay);
+        } else {
+          completeCampaign();
+        }
+      }
+
+      function completeCampaign() {
+        isRunning = false;
+        document.getElementById("sim-status").innerText = "CONCLUÍDO";
+        document.getElementById("sim-status").className = "badge badge-success font-mono text-xs";
+        
+        const logLine = document.createElement("div");
+        logLine.className = "text-emerald-300 font-bold";
+        logLine.innerText = `[${new Date().toLocaleTimeString()}] Campanha finalizada com sucesso! Todos os lotes foram processados.`;
+        simLog.appendChild(logLine);
+        simLog.scrollTop = simLog.scrollHeight;
+
+        // Re-enable inputs
+        document.getElementById("csv-input").disabled = false;
+        document.getElementById("template-select").disabled = false;
+        document.getElementById("batch-size").disabled = false;
+        document.getElementById("batch-delay").disabled = false;
+        document.getElementById("start-btn").disabled = false;
+      }
+
+      // Start execution
+      timerId = setTimeout(sendNextBatch, 500);
+    }
+
+    function renderDbLogs() {
+      // 1. Render Enriched Logs
+      const enrichedBox = document.getElementById("enriched-log-table");
+      let enrichedSQL = `-- Tabela: outbound_logs (Enriched)\n`;
+      dbLogsEnriched.forEach(row => {
+        enrichedSQL += `INSERT INTO outbound_logs (id, recipient, campaign_id, template_name, variables_json, sent_at)\n`;
+        enrichedSQL += `VALUES ('${row.id.substring(0,8)}...', '${row.recipient}', '${row.campaign_id.substring(0,8)}...', '${row.template_name}', '${row.variables_json}', '${row.sent_at}');\n\n`;
+      });
+      enrichedBox.innerText = dbLogsEnriched.length ? enrichedSQL : "-- Sem dados ainda. Inicie o disparo.";
+      enrichedBox.scrollTop = enrichedBox.scrollHeight;
+
+      // 2. Render Separate Logs - Outbound
+      const outBox = document.getElementById("separate-log-outbound");
+      let outSQL = `-- Tabela: outbound_logs (Leve)\n`;
+      dbLogsOutboundSimple.forEach(row => {
+        outSQL += `INSERT INTO outbound_logs (id, recipient, status, sent_at)\n`;
+        outSQL += `VALUES ('${row.id.substring(0,8)}...', '${row.recipient}', 'sent', '${row.sent_at}');\n\n`;
+      });
+      outBox.innerText = dbLogsOutboundSimple.length ? outSQL : "-- Sem dados...";
+      outBox.scrollTop = outBox.scrollHeight;
+
+      // 3. Render Separate Logs - Campaign
+      const campBox = document.getElementById("separate-log-campaign");
+      let campSQL = `-- Tabela: campaign_dispatches\n`;
+      dbLogsCampaignDispatches.forEach(row => {
+        campSQL += `INSERT INTO campaign_dispatches (id, campaign_id, outbound_log_id, recipient, variables_json)\n`;
+        campSQL += `VALUES ('${row.id.substring(0,8)}...', '${row.campaign_id.substring(0,8)}...', '${row.outbound_log_id.substring(0,8)}...', '${row.recipient}', '${row.variables_json}');\n\n`;
+      });
+      campBox.innerText = dbLogsCampaignDispatches.length ? campSQL : "-- Sem dados...";
+      campBox.scrollTop = campBox.scrollHeight;
+    }
+
+    function clearLogs() {
+      dbLogsEnriched = [];
+      dbLogsOutboundSimple = [];
+      dbLogsCampaignDispatches = [];
+      renderDbLogs();
+    }
+
+    function exportLogs() {
+      let data = {};
+      if (activeTab === "enriched") {
+        data = {
+          architecture: "enriched_outbound_logs",
+          records: dbLogsEnriched
+        };
+      } else {
+        data = {
+          architecture: "separate_campaign_tables",
+          outbound_logs: dbLogsOutboundSimple,
+          campaign_dispatches: dbLogsCampaignDispatches
+        };
+      }
+      
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `pergo_campaign_logs_${activeTab}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  </script>
+</body>
+</html>
