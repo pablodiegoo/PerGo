@@ -139,6 +139,9 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection)
 		DB:        m.db,
 		WAVersion: m.waVersion,
 	}
+	if d.ProxyURL != nil {
+		cfg.ProxyURL = *d.ProxyURL
+	}
 
 	wc, err := whatsapp.NewWhatsAppClient(cfg)
 	if err != nil {
