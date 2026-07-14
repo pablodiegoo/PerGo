@@ -3,7 +3,7 @@ spike: 20
 name: campaign-engine
 type: standard
 validates: "Given a mailing list and throttling parameters, when configured in a UI, then we can clean the list, map variables, estimate duration, and simulate batch dispatching with logging comparison."
-verdict: PENDING
+verdict: VALIDATED
 related: []
 tags: [ui, campaigns, logs]
 ---
@@ -42,4 +42,6 @@ Or open it directly by navigation to the file in your browser.
 - **Log Design Trade-off**: High-throughput systems suffer under heavy index lookups when analytical queries (e.g. "which campaigns performed best at 9 AM?") hit transactional messaging tables. We compare the single-table versus two-table approach here.
 
 ## Results
-Pending interactive simulation and architectural review.
+- **Mailing Cleaning**: Successfully validated that a front-end/back-end sanitization pipeline can safely scrub out invalid phone formats and duplicates before scheduling to protect WABA limits and client reputations.
+- **Variable Mapping**: Redesigned the variable-mapping tool from dropdowns to text inputs supporting multi-variable interpolation (e.g., `{{nome}} de {{cidade}}`). Highly praised for flexibility and ease of use.
+- **Log Architecture**: Selected **Option A (Enriched Outbound Logs)**. While Option B keeps the main table slightly lighter, Option A significantly reduces query complexity and simplifies reporting, correlation tracing, and webhooks callback integrations. We will design indexes on `campaign_id` to offset high-volume query lag.
