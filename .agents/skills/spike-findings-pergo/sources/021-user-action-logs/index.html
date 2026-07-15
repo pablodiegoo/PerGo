@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spike 021 - User & API Action Logs</title>
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+        pre, code {
+            font-family: 'JetBrains Mono', monospace;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-6 md:p-12">
+    <main class="max-w-6xl mx-auto space-y-8">
+        
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-900 pb-6">
+            <div>
+                <span class="text-xs font-bold uppercase tracking-wider text-indigo-400">Spike 021 Prototype</span>
+                <h1 class="text-3xl font-extrabold tracking-tight">Logs de Ações dos Usuários e APIs</h1>
+                <p class="text-sm text-slate-400 mt-1">Validação de esquema unificado e interface de auditoria multilocatário.</p>
+            </div>
+            <div class="flex gap-2">
+                <a href="/admin/" class="btn btn-sm btn-outline border-slate-800 hover:bg-slate-900 text-slate-300">Voltar para o Painel</a>
+            </div>
+        </header>
+
+        <!-- Metrics & Quick Cards -->
+        <section class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div class="bg-slate-900/40 border border-slate-900 p-6 rounded-xl space-y-2">
+                <span class="text-xs text-slate-400 font-semibold uppercase">Total de Ações (Hoje)</span>
+                <div class="text-3xl font-extrabold text-indigo-400">1,248</div>
+            </div>
+            <div class="bg-slate-900/40 border border-slate-900 p-6 rounded-xl space-y-2">
+                <span class="text-xs text-slate-400 font-semibold uppercase">Ações do Console</span>
+                <div class="text-3xl font-extrabold text-blue-400">152</div>
+            </div>
+            <div class="bg-slate-900/40 border border-slate-900 p-6 rounded-xl space-y-2">
+                <span class="text-xs text-slate-400 font-semibold uppercase">Ações via API</span>
+                <div class="text-3xl font-extrabold text-emerald-400">1,096</div>
+            </div>
+            <div class="bg-slate-900/40 border border-slate-900 p-6 rounded-xl space-y-2">
+                <span class="text-xs text-slate-400 font-semibold uppercase">Endereços IP Distintos</span>
+                <div class="text-3xl font-extrabold text-purple-400">14</div>
+            </div>
+        </section>
+
+        <!-- Filters & Logs Table -->
+        <section class="bg-slate-900/20 border border-slate-900 rounded-xl p-6 space-y-6">
+            <!-- Filter Controls -->
+            <div class="flex flex-wrap items-center justify-between gap-4">
+                <div class="flex flex-wrap items-center gap-4">
+                    <!-- Actor Type Filter -->
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-slate-400 font-bold uppercase">Agente:</span>
+                        <div class="join">
+                            <button onclick="filterLogs('all-actors')" id="btn-all-actors" class="btn btn-xs join-item btn-active bg-indigo-600 border-none text-white">Todos</button>
+                            <button onclick="filterLogs('user')" id="btn-user" class="btn btn-xs join-item bg-slate-800 border-none text-slate-300">Usuários</button>
+                            <button onclick="filterLogs('api_key')" id="btn-api_key" class="btn btn-xs join-item bg-slate-800 border-none text-slate-300">APIs</button>
+                        </div>
+                    </div>
+
+                    <!-- Source Filter -->
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-slate-400 font-bold uppercase">Origem:</span>
+                        <div class="join">
+                            <button onclick="filterSource('all-sources')" id="btn-all-sources" class="btn btn-xs join-item btn-active bg-indigo-600 border-none text-white">Todas</button>
+                            <button onclick="filterSource('dashboard')" id="btn-dashboard" class="btn btn-xs join-item bg-slate-800 border-none text-slate-300">Console</button>
+                            <button onclick="filterSource('api')" id="btn-api" class="btn btn-xs join-item bg-slate-800 border-none text-slate-300">API REST</button>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <input type="text" placeholder="Buscar por ação ou IP..." class="input input-xs input-bordered w-full max-w-xs bg-slate-950 text-xs border-slate-800 rounded-lg">
+                </div>
+            </div>
+
+            <!-- Table -->
+            <div class="overflow-x-auto w-full">
+                <table class="table w-full text-slate-200">
+                    <thead>
+                        <tr class="border-b border-slate-900 text-slate-400 text-[11px] uppercase tracking-wider">
+                            <th>Data / Hora</th>
+                            <th>Agente (Actor)</th>
+                            <th>Ação</th>
+                            <th>Origem</th>
+                            <th>IP / Contexto</th>
+                            <th class="text-right">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="logs-table-body">
+                        <!-- Filled dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Schema and Architecture comparative -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Proposed DB Schema -->
+            <div class="bg-slate-900/40 border border-slate-900 p-6 rounded-xl space-y-4">
+                <h3 class="font-bold text-lg text-indigo-400">Esquema do Banco de Dados (Proposta)</h3>
+                <pre class="bg-slate-950 p-4 rounded-lg text-xs text-indigo-300 leading-relaxed overflow-x-auto whitespace-pre"><code>CREATE TABLE user_action_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL REFERENCES workspaces(id),
+    
+    -- Identificação Polimórfica do Agente
+    actor_type VARCHAR(50) NOT NULL, -- 'user', 'api_key', 'system'
+    actor_id VARCHAR(255) NOT NULL,   -- email do usuário ou api_key.id
+    actor_name VARCHAR(255) NOT NULL, -- nome cacheado da key / email
+    
+    -- Detalhes da Ação
+    action VARCHAR(100) NOT NULL,    -- ex: 'campaign.create', 'message.send'
+    source VARCHAR(50) NOT NULL,      -- 'dashboard' ou 'api'
+    
+    -- Contexto de Acesso
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    metadata JSONB,                  -- Parâmetros, IDs de alvos, etc.
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Índice composto otimizado para paginação e ordenação por tenant
+CREATE INDEX idx_user_action_logs_workspace_date 
+ON user_action_logs(workspace_id, created_at DESC);</code></pre>
+            </div>
+
+            <!-- Architectural Trails -->
+            <div class="bg-slate-900/40 border border-slate-900 p-6 rounded-xl space-y-4">
+                <h3 class="font-bold text-lg text-indigo-400">Fluxo de Captura em Go</h3>
+                <div class="space-y-4 text-sm text-slate-300 leading-relaxed">
+                    <p>
+                        Para garantir a captura sem impactar o tempo de resposta do cliente, a gravação de logs deve utilizar a mesma infraestrutura assíncrona do <code>audit.Writer</code> existente.
+                    </p>
+                    <div class="border-l-2 border-indigo-600 pl-4 space-y-2">
+                        <h4 class="font-semibold text-slate-100 text-xs uppercase tracking-wider">Dashboard (Echo Handlers)</h4>
+                        <p class="text-xs text-slate-400">
+                            Nos handlers de renderização/postagem do admin (ex: criar campanha, deletar conexão), o identificador do operador atual (email de login ou ID do usuário da sessão) é extraído do contexto e enviado ao gravador.
+                        </p>
+                    </div>
+                    <div class="border-l-2 border-emerald-600 pl-4 space-y-2">
+                        <h4 class="font-semibold text-slate-100 text-xs uppercase tracking-wider">API Publica (Echo Middleware)</h4>
+                        <p class="text-xs text-slate-400">
+                            Um middleware de auditoria global é ativado em todas as rotas da API (<code>/api/v1/*</code>). Ele extrai o IP, User-Agent, ID da chave de API verificada e registra a ação de forma assíncrona com os metadados da requisição.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Details Modal -->
+    <dialog id="details_modal" class="modal">
+        <div class="modal-box bg-slate-900 border border-slate-800 rounded-2xl max-w-xl">
+            <h3 class="font-bold text-lg text-indigo-400">Metadados da Ação</h3>
+            <div class="py-4">
+                <pre class="bg-slate-950 p-4 rounded-lg text-xs text-emerald-400 overflow-x-auto whitespace-pre"><code id="modal-json-content"></code></pre>
+            </div>
+            <div class="modal-action">
+                <form method="dialog">
+                    <button class="btn btn-sm btn-indigo bg-indigo-600 hover:bg-indigo-500 border-none text-white rounded-lg">Fechar</button>
+                </form>
+            </div>
+        </div>
+    </dialog>
+
+    <!-- Javascript Prototype Data & Interaction -->
+    <script>
+        const sampleLogs = [
+            {
+                timestamp: "2026-07-15 14:15:32",
+                actor_type: "user",
+                actor_id: "admin@pergo.dev",
+                actor_name: "Administrador Geral",
+                action: "campaign.create",
+                source: "dashboard",
+                ip_address: "192.168.15.22",
+                user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0",
+                metadata: {
+                    campaign_id: "782bd267-27b0-466d-a7b2-6c17d74db190",
+                    campaign_name: "Promoção Dia dos Pais",
+                    mailing_list_size: 250,
+                    channel: "whatsapp",
+                    batch_size: 50,
+                    delay_seconds: 2
+                }
+            },
+            {
+                timestamp: "2026-07-15 14:12:05",
+                actor_type: "api_key",
+                actor_id: "926df21a-e99d-478a-a22b-0bb5b15ff2f4",
+                actor_name: "Integração CRM (ab12cd34)",
+                action: "message.send",
+                source: "api",
+                ip_address: "34.205.10.88",
+                user_agent: "Go-http-client/1.1",
+                metadata: {
+                    recipient: "+5511998765432",
+                    channel: "whatsapp",
+                    media_type: "none",
+                    has_fallback: true,
+                    fallback_channels: ["telegram"]
+                }
+            },
+            {
+                timestamp: "2026-07-15 14:10:11",
+                actor_type: "user",
+                actor_id: "operator@pergo.dev",
+                actor_name: "Suporte Operador 1",
+                action: "connection.pair",
+                source: "dashboard",
+                ip_address: "177.34.120.5",
+                user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                metadata: {
+                    connection_id: "a3cd2891-b3b4-4e4d-ac22-de9abf2105e4",
+                    channel: "whatsapp_web",
+                    device_name: "WhatsApp Financeiro"
+                }
+            },
+            {
+                timestamp: "2026-07-15 14:08:44",
+                actor_type: "api_key",
+                actor_id: "0a56bd12-f22a-4c22-bd56-c2abf892cf61",
+                actor_name: "Notificações Alertas (e1f2g3h4)",
+                action: "message.send",
+                source: "api",
+                ip_address: "52.34.110.15",
+                user_agent: "axios/1.6.0",
+                metadata: {
+                    recipient: "@pablo_jhp",
+                    channel: "telegram",
+                    media_type: "document",
+                    filename: "relatorio_mensal.pdf"
+                }
+            },
+            {
+                timestamp: "2026-07-15 14:02:18",
+                actor_type: "user",
+                actor_id: "admin@pergo.dev",
+                actor_name: "Administrador Geral",
+                action: "workspace.update",
+                source: "dashboard",
+                ip_address: "192.168.15.22",
+                user_agent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+                metadata: {
+                    previous_name: "OmniGo Dev",
+                    new_name: "OmniGo Prod",
+                    pii_opt_in: true
+                }
+            }
+        ];
+
+        let currentActorFilter = 'all-actors';
+        let currentSourceFilter = 'all-sources';
+
+        function filterLogs(actorType) {
+            currentActorFilter = actorType;
+            // Update buttons
+            ['all-actors', 'user', 'api_key'].forEach(t => {
+                const btn = document.getElementById(`btn-${t}`);
+                if (t === actorType) {
+                    btn.classList.add('btn-indigo', 'bg-indigo-600', 'text-white');
+                    btn.classList.remove('bg-slate-800', 'text-slate-300');
+                } else {
+                    btn.classList.remove('btn-indigo', 'bg-indigo-600', 'text-white');
+                    btn.classList.add('bg-slate-800', 'text-slate-300');
+                }
+            });
+            renderLogs();
+        }
+
+        function filterSource(source) {
+            currentSourceFilter = source;
+            // Update buttons
+            ['all-sources', 'dashboard', 'api'].forEach(s => {
+                const btn = document.getElementById(`btn-${s}`);
+                if (s === source) {
+                    btn.classList.add('btn-indigo', 'bg-indigo-600', 'text-white');
+                    btn.classList.remove('bg-slate-800', 'text-slate-300');
+                } else {
+                    btn.classList.remove('btn-indigo', 'bg-indigo-600', 'text-white');
+                    btn.classList.add('bg-slate-800', 'text-slate-300');
+                }
+            });
+            renderLogs();
+        }
+
+        function renderLogs() {
+            const body = document.getElementById('logs-table-body');
+            body.innerHTML = '';
+
+            const filtered = sampleLogs.filter(log => {
+                const matchActor = currentActorFilter === 'all-actors' || log.actor_type === currentActorFilter;
+                const matchSource = currentSourceFilter === 'all-sources' || log.source === currentSourceFilter;
+                return matchActor && matchSource;
+            });
+
+            filtered.forEach(log => {
+                const tr = document.createElement('tr');
+                tr.className = 'border-b border-slate-900/60 hover:bg-slate-900/10 transition';
+
+                const sourceBadge = log.source === 'dashboard' 
+                    ? `<span class="badge badge-indigo border-none text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 text-indigo-300 bg-indigo-950/40">Console</span>`
+                    : `<span class="badge badge-emerald border-none text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 text-emerald-300 bg-emerald-950/40">API REST</span>`;
+
+                const actorIcon = log.actor_type === 'user' ? '👤' : '🔑';
+
+                tr.innerHTML = `
+                    <td class="font-mono text-xs text-slate-400">${log.timestamp}</td>
+                    <td class="text-xs">
+                        <div class="flex items-center gap-2">
+                            <span>${actorIcon}</span>
+                            <div>
+                                <div class="font-bold text-slate-200">${log.actor_name}</div>
+                                <div class="text-[10px] text-slate-500 font-mono">${log.actor_id}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="font-mono text-xs font-semibold text-slate-300">${log.action}</td>
+                    <td>${sourceBadge}</td>
+                    <td>
+                        <div class="text-xs text-slate-300 font-mono">${log.ip_address}</div>
+                        <div class="text-[10px] text-slate-500 truncate max-w-[200px]" title="${log.user_agent}">${log.user_agent}</div>
+                    </td>
+                    <td class="text-right">
+                        <button onclick="showDetails(${JSON.stringify(log.metadata).replace(/"/g, '&quot;')})" class="btn btn-xs btn-outline border-slate-800 hover:bg-slate-900 text-slate-300 rounded-lg px-3 transition">Metadados</button>
+                    </td>
+                `;
+                body.appendChild(tr);
+            });
+        }
+
+        function showDetails(metadata) {
+            const formatted = JSON.stringify(metadata, null, 2);
+            document.getElementById('modal-json-content').innerText = formatted;
+            document.getElementById('details_modal').showModal();
+        }
+
+        // Initial render
+        renderLogs();
+    </script>
+</body>
+</html>
