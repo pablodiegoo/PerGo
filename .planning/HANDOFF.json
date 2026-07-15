@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-07-15T20:56:31.585Z",
+  "phase": "16",
+  "phase_name": "deprecate-workspace-subviews",
+  "phase_dir": ".planning/phases/16-deprecate-workspace-subviews",
+  "plan": 1,
+  "task": 4,
+  "total_tasks": 4,
+  "status": "completed",
+  "completed_tasks": [
+    {"id": 1, "name": "Refactor WABA Template Handler Credentials Source", "status": "done", "commit": "68cde74"},
+    {"id": 2, "name": "Simplify Workspace Handler & Layout", "status": "done", "commit": "4a413c7"},
+    {"id": 3, "name": "Routing Updates & Redirections", "status": "done", "commit": "63225a8"},
+    {"id": 4, "name": "Validation & Compilation", "status": "done", "commit": "09a72ed"}
+  ],
+  "remaining_tasks": [],
+  "blockers": [],
+  "async_jobs": [],
+  "human_actions_pending": [],
+  "decisions": [
+    {"decision": "Decoupled WABA Template Handler from credentials repo and pointed it to connections repo.", "rationale": "Allows template sync to run on multi-instance connection credentials directly.", "phase": "16"},
+    {"decision": "Redirected general workspaces index routes to the active workspace settings page.", "rationale": "Removes the redundant list of all workspaces and routes the user directly to the active workspace.", "phase": "16"}
+  ],
+  "uncommitted_files": [],
+  "next_action": "Wait for user's next instructions or define the next phase of the roadmap.",
+  "context_notes": "We finished migrating the credentials logic away from the deprecated credentials table. The server is restarted and running perfectly."
+}
