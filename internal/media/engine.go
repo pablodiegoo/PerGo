@@ -11,8 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/platform/storage"
 )
+
+// maxMediaSize is the maximum allowed size of media files (25MB).
+const maxMediaSize = 25 * 1024 * 1024
 
 // ErrMediaSizeExceeded is returned when the downloaded file exceeds the maximum size boundary.
 var ErrMediaSizeExceeded = errors.New("media_size_exceeded")
@@ -35,10 +39,12 @@ type Uploader interface {
 	Upload(ctx context.Context, key string, data []byte, contentType string) error
 }
 
-// Engine combines both downloader and uploader interfaces.
+// Engine combines downloader, uploader, and consolidated inbound/outbound processors.
 type Engine interface {
 	Downloader
 	Uploader
+	ProcessOutbound(ctx context.Context, workspaceID uuid.UUID, mediaURL string) (string, error)
+	ProcessInbound(ctx context.Context, workspaceID uuid.UUID, mediaType string, data []byte) (string, error)
 }
 
 // DefaultEngine implements the Engine interface.
@@ -128,6 +134,74 @@ func (e *DefaultEngine) Upload(ctx context.Context, key string, data []byte, con
 		return errors.New("s3 client is not configured")
 	}
 	return e.s3Client.Upload(ctx, key, data, contentType)
+}
+
+// ProcessOutbound downloads remote media, uploads it to S3, and returns a local proxy URL.
+func (e *DefaultEngine) ProcessOutbound(ctx context.Context, workspaceID uuid.UUID, mediaURL string) (string, error) {
+	res, err := e.Download(ctx, mediaURL, nil, maxMediaSize)
+	if err != nil {
+		return "", err
+	}
+
+	s3Key := fmt.Sprintf("%s/%s.%s", workspaceID.String(), res.Hash, res.Extension)
+	err = e.Upload(ctx, s3Key, res.Bytes, res.ContentType)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("/media/%s/%s.%s", workspaceID.String(), res.Hash, res.Extension), nil
+}
+
+// ProcessInbound handles inbound media bytes, uploads them to S3, and returns a local proxy URL.
+func (e *DefaultEngine) ProcessInbound(ctx context.Context, workspaceID uuid.UUID, mediaType string, data []byte) (string, error) {
+	if int64(len(data)) > maxMediaSize {
+		return "", ErrMediaSizeExceeded
+	}
+
+	hasher := sha256.New()
+	hasher.Write(data)
+	hashKey := hex.EncodeToString(hasher.Sum(nil))
+
+	ext := getExtFromMediaType(mediaType)
+	mimeType := getMimeFromMediaType(mediaType)
+	s3Key := fmt.Sprintf("%s/%s.%s", workspaceID.String(), hashKey, ext)
+
+	err := e.Upload(ctx, s3Key, data, mimeType)
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("/media/%s/%s.%s", workspaceID.String(), hashKey, ext), nil
+}
+
+func getExtFromMediaType(mediaType string) string {
+	switch mediaType {
+	case "image":
+		return "jpg"
+	case "video":
+		return "mp4"
+	case "audio":
+		return "ogg"
+	case "document":
+		return "pdf"
+	default:
+		return "bin"
+	}
+}
+
+func getMimeFromMediaType(mediaType string) string {
+	switch mediaType {
+	case "image":
+		return "image/jpeg"
+	case "video":
+		return "video/mp4"
+	case "audio":
+		return "audio/ogg"
+	case "document":
+		return "application/pdf"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 func mimeToExt(mime string) string {

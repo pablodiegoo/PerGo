@@ -10,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/media"
+	"github.com/pablojhp.pergo/internal/platform/storage"
 )
 
 func TestMediaEngine_Download(t *testing.T) {
@@ -141,6 +143,65 @@ func TestMediaEngine_Download(t *testing.T) {
 		_, err := engine.Download(ctx, server.URL+"/timeout", nil, 25000000)
 		if err == nil {
 			t.Fatal("expected error for timeout, got nil")
+		}
+	})
+}
+
+func TestDefaultEngine_Process(t *testing.T) {
+	s3Client, err := storage.NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "pergo-bucket", true)
+	if err != nil {
+		t.Fatalf("failed to create s3 client: %v", err)
+	}
+
+	engine := media.NewDefaultEngine(s3Client)
+	ctx := context.Background()
+	wsID := uuid.New()
+
+	t.Run("ProcessInbound success", func(t *testing.T) {
+		data := []byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A}
+		url, err := engine.ProcessInbound(ctx, wsID, "image", data)
+		if err != nil {
+			t.Fatalf("ProcessInbound failed: %v", err)
+		}
+
+		expectedHash := sha256.New()
+		expectedHash.Write(data)
+		hashStr := hex.EncodeToString(expectedHash.Sum(nil))
+
+		expectedURL := "/media/" + wsID.String() + "/" + hashStr + ".jpg"
+		if url != expectedURL {
+			t.Errorf("expected URL %s, got %s", expectedURL, url)
+		}
+	})
+
+	t.Run("ProcessInbound size limit exceeded", func(t *testing.T) {
+		largeData := make([]byte, 25*1024*1024+1)
+		_, err := engine.ProcessInbound(ctx, wsID, "image", largeData)
+		if !errors.Is(err, media.ErrMediaSizeExceeded) {
+			t.Errorf("expected ErrMediaSizeExceeded, got %v", err)
+		}
+	})
+
+	t.Run("ProcessOutbound success", func(t *testing.T) {
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 't', 'e', 's', 't'})
+		})
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		url, err := engine.ProcessOutbound(ctx, wsID, server.URL)
+		if err != nil {
+			t.Fatalf("ProcessOutbound failed: %v", err)
+		}
+
+		expectedHash := sha256.New()
+		expectedHash.Write([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 't', 'e', 's', 't'})
+		hashStr := hex.EncodeToString(expectedHash.Sum(nil))
+
+		expectedURL := "/media/" + wsID.String() + "/" + hashStr + ".png"
+		if url != expectedURL {
+			t.Errorf("expected URL %s, got %s", expectedURL, url)
 		}
 	})
 }
