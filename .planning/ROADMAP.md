@@ -54,6 +54,17 @@ Plans:
 
 - [x] TBD (run /gsd-plan-phase 13 to break down) (completed 2026-07-15)
 
+### Phase 14: user-api-action-logs
+
+**Goal:** Implement administrative action audit logging for dashboard operators and API keys.
+**Requirements**: LOG-01, LOG-02, LOG-03
+**Depends on:** Phase 13
+**Plans:** 1 plans
+
+Plans:
+
+- [ ] 14-01-PLAN.md
+
 ---
 *Roadmap created: 2026-07-14*
 *Granularity: standard | Mode: mvp | Phase convention: sequential*
