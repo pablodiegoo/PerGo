@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Campaign Engine
-current_phase: 12
+current_phase: 12.1
+current_phase_name: address-tech-debt-sidebar-active-highlighting
 status: executing
 stopped_at: Session resumed, proceeding to plan Phase 12 (Campaign Engine)
-last_updated: "2026-07-15T12:22:24.380Z"
+last_updated: "2026-07-15T13:07:33.335Z"
 last_activity: 2026-07-15
-last_activity_desc: Phase 12 marked complete
+last_activity_desc: Phase 12.1 execution started
 progress:
   total_phases: 2
   completed_phases: 1
-  total_plans: 2
+  total_plans: 3
   completed_plans: 2
   percent: 50
-current_phase_name: Campaign Engine
 ---
 
 # Project State
@@ -24,14 +24,14 @@ current_phase_name: Campaign Engine
 See: .planning/PROJECT.md (updated 2026-06-25)
 
 **Core value:** A single API request delivers a message through any configured channel with automatic fallback — without per-message markup, without vendor lock-in, and with full custody of transaction data on infrastructure you control.
-**Current focus:** Phase 12 — Campaign Engine
+**Current focus:** Phase 12.1 — address-tech-debt-sidebar-active-highlighting
 
 ## Current Position
 
-Phase: 12 — COMPLETE
-Plan: 12-01, 12-02
-Status: Ready to execute
-Last activity: 2026-07-15 — Phase 12 marked complete
+Phase: 12.1 (address-tech-debt-sidebar-active-highlighting) — EXECUTING
+Plan: 1 of 1
+Status: Executing Phase 12.1
+Last activity: 2026-07-15 — Phase 12.1 execution started
 
 ## Performance Metrics
 

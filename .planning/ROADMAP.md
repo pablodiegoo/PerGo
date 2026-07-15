@@ -7,7 +7,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 ## Phases
 
 - [x] **Phase 12: Campaign Engine** - Bulk messaging campaign dashboard with CSV sanitization, flexible regex variables interpolation, batch throttling via NATS JetStream, and enriched outbound logging. (completed 2026-07-15)
-- [ ] **Phase 12.1: Address tech debt: sidebar active highlighting** - Fix active styling highlighting and Settings accordion expansion for workspace-scoped campaigns page. (INSERTED)
+- [x] **Phase 12.1: Address tech debt: sidebar active highlighting** - Fix active styling highlighting and Settings accordion expansion for workspace-scoped campaigns page. (INSERTED) (completed 2026-07-15)
 
 ## Phase Details
 
@@ -39,7 +39,7 @@ Phases execute in numeric order: 12
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 12. Campaign Engine | 2/2 | Complete   | 2026-07-15 |
-| 12.1. Address tech debt: sidebar active highlighting | 0/0 | Not started | - |
+| 12.1. Address tech debt: sidebar active highlighting | 1/1 | Complete   | 2026-07-15 |
 
 ---
 *Roadmap created: 2026-07-14*
@@ -50,8 +50,10 @@ Phases execute in numeric order: 12
 **Goal:** [Urgent work - to be planned]
 **Requirements**: TBD
 **Depends on:** Phase 12
-**Plans:** 0 plans
+**Plans:** 1/1 plans complete
 
 Plans:
+
+- [ ] 12.1-01-PLAN.md
 
 - [ ] TBD (run /gsd-plan-phase 12.1 to break down)
