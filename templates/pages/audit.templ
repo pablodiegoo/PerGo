@@ -44,45 +44,51 @@ templ AuditTableFragment(entries []repository.AuditEntry, total int, filters rep
 // AuditTable renders the audit log table with rows and pagination.
 templ AuditTable(entries []repository.AuditEntry, total int, filters repository.AuditFilters, baseURL string) {
 	<div id="audit-table">
-		<table class="table">
-			<thead>
-				<tr>
-					<th>Timestamp</th>
-					<th>Workspace</th>
-					<th>Trace ID</th>
-					<th>Event Type</th>
-					<th>Payload</th>
-				</tr>
-			</thead>
-			<tbody>
-				for _, entry := range entries {
+		<div class="overflow-x-auto border border-zinc-200 rounded-lg shadow-sm">
+			<table class="table min-w-full divide-y divide-zinc-200">
+				<thead class="bg-zinc-50 text-zinc-500 text-xs font-semibold uppercase tracking-wider text-left border-b border-zinc-200">
 					<tr>
-						<td>{ entry.CreatedAt.Format("2006-01-02 15:04:05") }</td>
-						<td>{ entry.WorkspaceID.String()[:8] }</td>
-						<td>{ entry.TraceID }</td>
-						<td>{ entry.EventType }</td>
-						<td style="max-width: 500px; overflow-wrap: break-word; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap;">{ string(entry.Payload) }</td>
+						<th class="px-6 py-3">Timestamp</th>
+						<th class="px-6 py-3">Workspace</th>
+						<th class="px-6 py-3">Trace ID</th>
+						<th class="px-6 py-3">Event Type</th>
+						<th class="px-6 py-3">Payload</th>
 					</tr>
-				}
-				if len(entries) == 0 {
-					<tr>
-						<td colspan="5" class="empty-state">No audit entries found.</td>
-					</tr>
-				}
-			</tbody>
-		</table>
-		@AuditPagination(total, filters.Page, filters.PageSize, filters, baseURL)
+				</thead>
+				<tbody class="divide-y divide-zinc-200 text-sm text-zinc-700 bg-white">
+					for _, entry := range entries {
+						<tr class="hover:bg-zinc-50/50 transition-colors">
+							<td class="px-6 py-4 text-xs font-mono text-zinc-500">{ entry.CreatedAt.Format("2006-01-02 15:04:05") }</td>
+							<td class="px-6 py-4 text-xs font-mono text-zinc-500">{ entry.WorkspaceID.String()[:8] }</td>
+							<td class="px-6 py-4 text-xs font-mono text-zinc-500">{ entry.TraceID }</td>
+							<td class="px-6 py-4">
+								<span class="font-mono text-xs bg-zinc-100 text-zinc-800 border rounded px-1.5 py-0.5">{ entry.EventType }</span>
+							</td>
+							<td class="px-6 py-4 text-xs font-mono max-w-xs truncate" title={ string(entry.Payload) } style="overflow-wrap: break-word; white-space: pre-wrap;">{ string(entry.Payload) }</td>
+						</tr>
+					}
+					if len(entries) == 0 {
+						<tr>
+							<td colspan="5" class="px-6 py-12 text-center text-zinc-400">No audit entries found.</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+		<div class="mt-4">
+			@AuditPagination(total, filters.Page, filters.PageSize, filters, baseURL)
+		</div>
 	</div>
 }
 
 // AuditFiltersUI renders the filter controls for the audit log page.
 templ AuditFiltersUI(filters repository.AuditFilters, workspaces []repository.Workspace, baseURL string) {
-	<div class="section audit-filters p-4 mb-6">
+	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6">
 		<form hx-get={ baseURL } hx-target="#audit-table" hx-swap="innerHTML">
 			<div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
 				<div class="flex flex-col gap-1">
 					<label for="workspace_id" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Workspace</label>
-					<select name="workspace_id" id="workspace_id" class="form-input">
+					<select name="workspace_id" id="workspace_id" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full">
 						<option value="">Todos</option>
 						for _, ws := range workspaces {
 							<option value={ ws.ID.String() }>{ ws.Name }</option>
@@ -91,19 +97,19 @@ templ AuditFiltersUI(filters repository.AuditFilters, workspaces []repository.Wo
 				</div>
 				<div class="flex flex-col gap-1">
 					<label for="trace_id" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Trace ID</label>
-					<input type="text" name="trace_id" id="trace_id" class="form-input" placeholder="Busca exata"/>
+					<input type="text" name="trace_id" id="trace_id" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="Busca exata"/>
 				</div>
 				<div class="flex flex-col gap-1">
 					<label for="start" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Data Início</label>
-					<input type="date" name="start" id="start" class="form-input"/>
+					<input type="date" name="start" id="start" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
 				</div>
 				<div class="flex flex-col gap-1">
 					<label for="end" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Data Fim</label>
-					<input type="date" name="end" id="end" class="form-input"/>
+					<input type="date" name="end" id="end" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
 				</div>
 				<div class="flex gap-2">
 					<button type="submit" class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition flex-1 h-9">Buscar</button>
-					<a href={ templ.SafeURL(buildExportURL(baseURL, filters)) } class="btn btn-secondary btn-sm font-semibold px-4 py-2 rounded-md transition flex-1 h-9 flex items-center justify-center border border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700">Exportar</a>
+					<a href={ templ.SafeURL(buildExportURL(baseURL, filters)) } class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition flex-1 h-9 flex items-center justify-center">Exportar</a>
 				</div>
 			</div>
 		</form>

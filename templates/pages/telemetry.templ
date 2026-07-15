@@ -48,64 +48,68 @@ templ TelemetryContent(data TelemetryData) {
 		</div>
 
 		<!-- System Overview -->
-		<div class="section">
-			<h2>System Overview</h2>
-			<div class="stats-grid">
-				<div class="stat-card">
-					<div class="stat-value">{ fmt.Sprintf("%d", data.ActiveSessions) }</div>
-					<div class="stat-label">Active Sessions</div>
+		<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6">
+			<h2 class="text-lg font-semibold text-zinc-900 mb-4">System Overview</h2>
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+				<div class="bg-slate-50 border border-zinc-200 rounded-lg p-5 shadow-sm">
+					<span class="text-xs text-zinc-500 font-semibold uppercase tracking-wider">Active Sessions</span>
+					<div class="text-2xl font-extrabold text-zinc-900 mt-1">{ fmt.Sprintf("%d", data.ActiveSessions) }</div>
 				</div>
-				<div class="stat-card">
-					<div class={ "stat-value", templ.KV("status-ok", data.NATSConnected), templ.KV("status-error", !data.NATSConnected) }>
+				<div class="bg-slate-50 border border-zinc-200 rounded-lg p-5 shadow-sm">
+					<span class="text-xs text-zinc-500 font-semibold uppercase tracking-wider">NATS Status</span>
+					<div class={ "text-2xl font-extrabold mt-1", templ.KV("text-emerald-600", data.NATSConnected), templ.KV("text-rose-600", !data.NATSConnected) }>
 						if data.NATSConnected {
 							Connected
 						} else {
 							Disconnected
 						}
 					</div>
-					<div class="stat-label">NATS Status</div>
 				</div>
-				<div class="stat-card">
-					<div class="stat-value">{ data.Uptime }</div>
-					<div class="stat-label">Uptime</div>
+				<div class="bg-slate-50 border border-zinc-200 rounded-lg p-5 shadow-sm">
+					<span class="text-xs text-zinc-500 font-semibold uppercase tracking-wider">Uptime</span>
+					<div class="text-2xl font-extrabold text-zinc-900 mt-1">{ data.Uptime }</div>
 				</div>
 			</div>
 		</div>
 
 		<!-- Device Sessions -->
-		<div class="section">
-			<h2>Device Sessions</h2>
-			<table class="table">
-				<thead>
-					<tr>
-						<th>JID</th>
-						<th>Status</th>
-						<th>Connected Since</th>
-						<th>Messages Sent</th>
-					</tr>
-				</thead>
-				<tbody>
-					for _, s := range data.Sessions {
+		<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6">
+			<h2 class="text-lg font-semibold text-zinc-900 mb-4">Device Sessions</h2>
+			<div class="overflow-x-auto border border-zinc-200 rounded-lg shadow-sm">
+				<table class="table min-w-full divide-y divide-zinc-200">
+					<thead class="bg-zinc-50 text-zinc-500 text-xs font-semibold uppercase tracking-wider text-left border-b border-zinc-200">
 						<tr>
-							<td><code class="jid-code">{ s.JID }</code></td>
-							<td><span class="badge badge-success">{ s.Status }</span></td>
-							<td>
-								if s.ConnectedSince != nil {
-									{ s.ConnectedSince.Format("2006-01-02 15:04:05") }
-								} else {
-									<span class="text-muted">—</span>
-								}
-							</td>
-							<td>{ fmt.Sprintf("%d", s.MessagesSent) }</td>
+							<th class="px-6 py-3">JID</th>
+							<th class="px-6 py-3">Status</th>
+							<th class="px-6 py-3">Connected Since</th>
+							<th class="px-6 py-3">Messages Sent</th>
 						</tr>
-					}
-					if len(data.Sessions) == 0 {
-						<tr>
-							<td colspan="4" class="empty-state">No active device sessions.</td>
-						</tr>
-					}
-				</tbody>
-			</table>
+					</thead>
+					<tbody class="divide-y divide-zinc-200 text-sm text-zinc-700 bg-white">
+						for _, s := range data.Sessions {
+							<tr class="hover:bg-zinc-50/50 transition-colors">
+								<td class="px-6 py-4"><code class="jid-code text-xs font-mono bg-zinc-100 text-zinc-800 border rounded px-1.5 py-0.5">{ s.JID }</code></td>
+								<td class="px-6 py-4">
+									<span class="badge badge-sm bg-emerald-50 text-emerald-700 border-emerald-200 px-2 py-0.5 text-xs font-semibold">{ s.Status }</span>
+								</td>
+								<td class="px-6 py-4 text-xs font-mono text-zinc-500">
+									if s.ConnectedSince != nil {
+										{ s.ConnectedSince.Format("2006-01-02 15:04:05") }
+									} else {
+										<span class="text-zinc-300">—</span>
+									}
+								</td>
+								<td class="px-6 py-4 text-xs font-mono text-zinc-500">{ fmt.Sprintf("%d", s.MessagesSent) }</td>
+							</tr>
+						}
+						if len(data.Sessions) == 0 {
+							<tr>
+								<td colspan="4" class="px-6 py-12 text-center text-zinc-400">No active device sessions.</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
 		</div>
 		</div>
 	</div>
