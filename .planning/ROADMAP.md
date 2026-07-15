@@ -41,6 +41,17 @@ Phases execute in numeric order: 12
 | 12. Campaign Engine | 2/2 | Complete   | 2026-07-15 |
 | 12.1. Address tech debt: sidebar active highlighting | 1/1 | Complete    | 2026-07-15 |
 
+### Phase 13: deepen-media-engine-to-consolidate-storage-pipelines
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 12
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 13 to break down)
+
 ---
 *Roadmap created: 2026-07-14*
 *Granularity: standard | Mode: mvp | Phase convention: sequential*
