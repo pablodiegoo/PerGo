@@ -65,6 +65,17 @@ Plans:
 
 - [ ] 14-01-PLAN.md
 
+### Phase 15: css-standardization
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 14
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 15 to break down)
+
 ---
 *Roadmap created: 2026-07-14*
 *Granularity: standard | Mode: mvp | Phase convention: sequential*
