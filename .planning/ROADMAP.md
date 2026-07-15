@@ -39,7 +39,7 @@ Phases execute in numeric order: 12
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 12. Campaign Engine | 2/2 | Complete   | 2026-07-15 |
-| 12.1. Address tech debt: sidebar active highlighting | 1/1 | Complete   | 2026-07-15 |
+| 12.1. Address tech debt: sidebar active highlighting | 1/1 | Complete    | 2026-07-15 |
 
 ---
 *Roadmap created: 2026-07-14*
@@ -56,4 +56,4 @@ Plans:
 
 - [ ] 12.1-01-PLAN.md
 
-- [ ] TBD (run /gsd-plan-phase 12.1 to break down)
+- [x] TBD (run /gsd-plan-phase 12.1 to break down) (completed 2026-07-15)
