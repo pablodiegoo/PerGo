@@ -15,10 +15,10 @@ Implemented administrative action audit logging for PerGo, covering both API Key
    - Implemented `DashboardAuditMiddleware` to capture state-changing dashboard routes (POST, PUT, DELETE), redacting credentials and enqueuing logs.
    - Registered `DashboardAuditMiddleware` on the `/admin` protected routing group and `AuditMiddleware` globally.
    - Added complete mock/context tests in `audit_test.go` verifying the pipeline.
-4. **Console UI & Routing**:
-   - Created `templates/pages/user_logs.templ` containing the Action Logs table, workspace statistics, actor/source filters, pagination footer, and an interactive metadata modal.
-   - Built route handler `internal/api/handler/admin/user_logs.go` mapping `/admin/user-logs` and `/admin/user-logs/:id/metadata`.
-   - Updated settings submenu and expanded height animation properties in `templates/layout/sidebar.templ`.
+4. **Console UI & Routing (Unified Tabs)**:
+   - Created a unified `LogsHeaderTabs` component in `templates/pages/audit.templ` rendering tabs for Outbound, Inbound, and Action logs.
+   - Built route handler `internal/api/handler/admin/user_logs.go` mapping `/admin/logs/actions` and `/admin/logs/actions/:id/metadata`.
+   - Embedded the Action Logs view inside the existing Logs page layout, avoiding sidebar submenu expansion clutter.
 
 ## Verification Details
 - Successfully compiled templates via `templ generate ./...`.
