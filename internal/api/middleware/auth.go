@@ -66,6 +66,7 @@ func AuthMiddleware(repo *repository.APIKeyRepository) echo.MiddlewareFunc {
 			// Inject workspace_id into request context
 			ctx := tenant.WithWorkspaceID(c.Request().Context(), apiKey.WorkspaceID)
 			c.SetRequest(c.Request().WithContext(ctx))
+			c.Set("api_key", apiKey)
 
 			return next(c)
 		}
