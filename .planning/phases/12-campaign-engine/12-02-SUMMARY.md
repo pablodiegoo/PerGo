@@ -1,3 +1,12 @@
+---
+requirements_completed:
+  - CAMP-01
+  - CAMP-04
+  - CAMP-05
+  - CAMP-06
+  - CAMP-07
+  - CAMP-08
+---
 # Phase 12-02 Summary — REST Endpoints & Admin Console UI
 
 ## 1. What was built

@@ -1,3 +1,13 @@
+---
+requirements_completed:
+  - CAMP-02
+  - CAMP-03
+  - CAMP-04
+  - CAMP-05
+  - CAMP-06
+  - CAMP-07
+  - CAMP-08
+---
 # Phase 12-01 Summary — Campaign Engine Foundation
 
 ## 1. What was built
