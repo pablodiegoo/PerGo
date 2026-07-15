@@ -18,7 +18,7 @@ func AuthMiddleware(repo *repository.APIKeyRepository) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			path := c.Request().URL.Path
-			if path == "/healthz" || path == "/readyz" || strings.HasPrefix(path, "/admin") || strings.HasPrefix(path, "/webhooks") || strings.HasPrefix(path, "/static") {
+			if path == "/" || path == "/healthz" || path == "/readyz" || strings.HasPrefix(path, "/admin") || strings.HasPrefix(path, "/webhooks") || strings.HasPrefix(path, "/static") {
 				return next(c)
 			}
 
