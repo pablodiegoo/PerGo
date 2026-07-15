@@ -12,12 +12,58 @@ import (
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
-type fakeDownloader struct {
-	downloadFn func(ctx context.Context, url string, headers map[string]string, maxBytes int64) (*media.DownloadResult, error)
+type fakeMediaEngine struct {
+	downloadFn        func(ctx context.Context, url string, headers map[string]string, maxBytes int64) (*media.DownloadResult, error)
+	uploadFn          func(ctx context.Context, key string, data []byte, contentType string) error
+	processOutboundFn func(ctx context.Context, workspaceID uuid.UUID, mediaURL string) (string, error)
+	processInboundFn  func(ctx context.Context, workspaceID uuid.UUID, mediaType string, data []byte) (string, error)
+
+	inboundCalls []struct {
+		workspaceID uuid.UUID
+		mediaType   string
+		data        []byte
+	}
+	outboundCalls []struct {
+		workspaceID uuid.UUID
+		mediaURL    string
+	}
 }
 
-func (f *fakeDownloader) Download(ctx context.Context, url string, headers map[string]string, maxBytes int64) (*media.DownloadResult, error) {
-	return f.downloadFn(ctx, url, headers, maxBytes)
+func (f *fakeMediaEngine) Download(ctx context.Context, url string, headers map[string]string, maxBytes int64) (*media.DownloadResult, error) {
+	if f.downloadFn != nil {
+		return f.downloadFn(ctx, url, headers, maxBytes)
+	}
+	return nil, nil
+}
+
+func (f *fakeMediaEngine) Upload(ctx context.Context, key string, data []byte, contentType string) error {
+	if f.uploadFn != nil {
+		return f.uploadFn(ctx, key, data, contentType)
+	}
+	return nil
+}
+
+func (f *fakeMediaEngine) ProcessOutbound(ctx context.Context, workspaceID uuid.UUID, mediaURL string) (string, error) {
+	f.outboundCalls = append(f.outboundCalls, struct {
+		workspaceID uuid.UUID
+		mediaURL    string
+	}{workspaceID, mediaURL})
+	if f.processOutboundFn != nil {
+		return f.processOutboundFn(ctx, workspaceID, mediaURL)
+	}
+	return "", nil
+}
+
+func (f *fakeMediaEngine) ProcessInbound(ctx context.Context, workspaceID uuid.UUID, mediaType string, data []byte) (string, error) {
+	f.inboundCalls = append(f.inboundCalls, struct {
+		workspaceID uuid.UUID
+		mediaType   string
+		data        []byte
+	}{workspaceID, mediaType, data})
+	if f.processInboundFn != nil {
+		return f.processInboundFn(ctx, workspaceID, mediaType, data)
+	}
+	return "", nil
 }
 
 // fakeQueueDepthTracker tracks depths in memory.
@@ -34,27 +80,7 @@ func (f *fakeQueueDepthTracker) Increment(workspaceID uuid.UUID) {
 	f.increment = workspaceID
 }
 
-// fakeMediaUploader tracks uploads.
-type fakeMediaUploader struct {
-	uploaded []struct {
-		key         string
-		data        []byte
-		contentType string
-	}
-	err error
-}
 
-func (f *fakeMediaUploader) Upload(ctx context.Context, key string, data []byte, contentType string) error {
-	if f.err != nil {
-		return f.err
-	}
-	f.uploaded = append(f.uploaded, struct {
-		key         string
-		data        []byte
-		contentType string
-	}{key, data, contentType})
-	return nil
-}
 
 // fakeRouteResolver mocks connection lookups.
 type fakeRouteResolver struct {
@@ -106,11 +132,11 @@ func TestProcessor_Ingest(t *testing.T) {
 
 	t.Run("Ingest standard text message succeeds", func(t *testing.T) {
 		tracker := &fakeQueueDepthTracker{}
-		uploader := &fakeMediaUploader{}
+		me := &fakeMediaEngine{}
 		resolver := &fakeRouteResolver{conn: defaultConn}
 		publisher := &fakePublisher{}
 
-		p := outbound.NewProcessor(tracker, uploader, resolver, publisher)
+		p := outbound.NewProcessor(tracker, me, resolver, publisher)
 
 		req := &domain.CreateMessageRequest{
 			To:      "123456",
@@ -174,15 +200,14 @@ func TestProcessor_Ingest(t *testing.T) {
 	})
 
 	t.Run("Media size limit exceeded triggers MediaError", func(t *testing.T) {
-		uploader := &fakeMediaUploader{}
+		me := &fakeMediaEngine{
+			processOutboundFn: func(ctx context.Context, workspaceID uuid.UUID, mediaURL string) (string, error) {
+				return "", media.ErrMediaSizeExceeded
+			},
+		}
 		resolver := &fakeRouteResolver{conn: defaultConn}
 
-		p := outbound.NewProcessor(nil, uploader, resolver, nil)
-		p.SetDownloader(&fakeDownloader{
-			downloadFn: func(ctx context.Context, url string, headers map[string]string, maxBytes int64) (*media.DownloadResult, error) {
-				return nil, media.ErrMediaSizeExceeded
-			},
-		})
+		p := outbound.NewProcessor(nil, me, resolver, nil)
 
 		req := &domain.CreateMessageRequest{
 			To:      "123456",
@@ -205,21 +230,15 @@ func TestProcessor_Ingest(t *testing.T) {
 	})
 
 	t.Run("Successful media caching uploads to S3 and updates URL", func(t *testing.T) {
-		uploader := &fakeMediaUploader{}
+		me := &fakeMediaEngine{
+			processOutboundFn: func(ctx context.Context, workspaceID uuid.UUID, mediaURL string) (string, error) {
+				return "/media/" + workspaceID.String() + "/abcde12345.png", nil
+			},
+		}
 		resolver := &fakeRouteResolver{conn: defaultConn}
 		publisher := &fakePublisher{}
 
-		p := outbound.NewProcessor(nil, uploader, resolver, publisher)
-		p.SetDownloader(&fakeDownloader{
-			downloadFn: func(ctx context.Context, url string, headers map[string]string, maxBytes int64) (*media.DownloadResult, error) {
-				return &media.DownloadResult{
-					Bytes:       []byte("png-file-bytes"),
-					Hash:        "abcde12345",
-					ContentType: "image/png",
-					Extension:   "png",
-				}, nil
-			},
-		})
+		p := outbound.NewProcessor(nil, me, resolver, publisher)
 
 		req := &domain.CreateMessageRequest{
 			To:      "123456",
@@ -236,12 +255,13 @@ func TestProcessor_Ingest(t *testing.T) {
 			t.Fatalf("Ingest failed: %v", err)
 		}
 
-		// Verify S3 Upload
-		if len(uploader.uploaded) != 1 {
-			t.Fatalf("expected 1 upload, got %d", len(uploader.uploaded))
+		// Verify ProcessOutbound Call
+		if len(me.outboundCalls) != 1 {
+			t.Fatalf("expected 1 ProcessOutbound call, got %d", len(me.outboundCalls))
 		}
-		if uploader.uploaded[0].key != wsID.String()+"/abcde12345.png" {
-			t.Errorf("got upload key %s", uploader.uploaded[0].key)
+		call := me.outboundCalls[0]
+		if call.mediaURL != "https://example.com/sunset.png" {
+			t.Errorf("got mediaURL %s, want https://example.com/sunset.png", call.mediaURL)
 		}
 
 		// Verify rewired URL

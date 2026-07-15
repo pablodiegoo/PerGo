@@ -24,11 +24,6 @@ type QueueDepthChecker interface {
 	Increment(workspaceID uuid.UUID)
 }
 
-// MediaUploader defines the port for S3 file storage uploads.
-type MediaUploader interface {
-	Upload(ctx context.Context, key string, data []byte, contentType string) error
-}
-
 // RouteResolver defines the port for connection routing resolution.
 type RouteResolver interface {
 	GetBySenderIdentity(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error)
@@ -42,32 +37,25 @@ type Publisher interface {
 
 // Processor is the concrete implementation of outbound message ingestion.
 type Processor struct {
-	tracker    QueueDepthChecker
-	uploader   MediaUploader
-	resolver   RouteResolver
-	publisher  Publisher
-	downloader media.Downloader
+	tracker     QueueDepthChecker
+	resolver    RouteResolver
+	publisher   Publisher
+	mediaEngine media.Engine
 }
 
 // NewProcessor creates a new OutboundProcessor implementation.
 func NewProcessor(
 	tracker QueueDepthChecker,
-	uploader MediaUploader,
+	mediaEngine media.Engine,
 	resolver RouteResolver,
 	publisher Publisher,
 ) *Processor {
 	return &Processor{
-		tracker:    tracker,
-		uploader:   uploader,
-		resolver:   resolver,
-		publisher:  publisher,
-		downloader: media.NewDefaultEngine(nil),
+		tracker:     tracker,
+		mediaEngine: mediaEngine,
+		resolver:    resolver,
+		publisher:   publisher,
 	}
-}
-
-// SetDownloader overrides the media downloader (used in testing).
-func (p *Processor) SetDownloader(downloader media.Downloader) {
-	p.downloader = downloader
 }
 
 // Ingest runs the outbound message ingestion pipeline: backpressure, validation, S3 caching, routing, NATS publishing.
@@ -91,15 +79,15 @@ func (p *Processor) Ingest(
 
 	// 3. Process Media if present
 	if req.Media != nil {
-		if p.uploader == nil {
-			slog.Error("S3 storage client is not configured for media downloads", "trace_id", traceID)
+		if p.mediaEngine == nil {
+			slog.Error("media engine is not configured for media processing", "trace_id", traceID)
 			return nil, &MediaError{
 				Code:    "internal_error",
 				Message: "media storage configuration error",
 			}
 		}
 
-		res, err := p.downloader.Download(ctx, req.Media.MediaURL, nil, 25000000)
+		mediaURL, err := p.mediaEngine.ProcessOutbound(ctx, workspaceID, req.Media.MediaURL)
 		if err != nil {
 			if errors.Is(err, media.ErrMediaSizeExceeded) {
 				return nil, &MediaError{
@@ -117,19 +105,8 @@ func (p *Processor) Ingest(
 			}
 		}
 
-		// Store media in S3
-		key := workspaceID.String() + "/" + res.Hash + "." + res.Extension
-		if err := p.uploader.Upload(ctx, key, res.Bytes, res.ContentType); err != nil {
-			slog.Error("failed to upload media to S3", "error", err, "trace_id", traceID, "key", key)
-			return nil, &MediaError{
-				Code:    "internal_error",
-				Message: "failed to store media file",
-				Err:     err,
-			}
-		}
-
 		// Rewire the message payload's MediaURL to the internal proxy URL
-		req.Media.MediaURL = "/media/" + workspaceID.String() + "/" + res.Hash + "." + res.Extension
+		req.Media.MediaURL = mediaURL
 	}
 
 	// 4. Resolve connection routing
