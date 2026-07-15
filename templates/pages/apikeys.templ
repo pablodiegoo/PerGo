@@ -10,21 +10,21 @@ import (
 
 // APIKeyRow renders a single API key table row.
 templ APIKeyRow(workspaceID uuid.UUID, key repository.APIKey) {
-	<tr>
-		<td>{ key.Name }</td>
-		<td><code>{ key.KeyPrefix }</code></td>
-		<td>
+	<tr class="hover:bg-zinc-50/50 transition-colors">
+		<td class="px-6 py-4 font-semibold text-zinc-900">{ key.Name }</td>
+		<td class="px-6 py-4 text-xs font-mono text-zinc-500"><code>{ key.KeyPrefix }</code></td>
+		<td class="px-6 py-4">
 			if key.RevokedAt != nil {
-				<span class="badge badge-danger">Revoked</span>
+				<span class="badge badge-sm bg-rose-50 text-rose-700 border-rose-200 px-2 py-0.5 text-xs font-semibold">Revoked</span>
 			} else {
-				<span class="badge badge-success">Active</span>
+				<span class="badge badge-sm bg-emerald-50 text-emerald-700 border-emerald-200 px-2 py-0.5 text-xs font-semibold">Active</span>
 			}
 		</td>
-		<td>{ key.CreatedAt.Format("2006-01-02 15:04") }</td>
-		<td>
+		<td class="px-6 py-4 text-xs font-mono text-zinc-500">{ key.CreatedAt.Format("02/01/2006 15:04") }</td>
+		<td class="px-6 py-4 text-right">
 			if key.RevokedAt == nil {
 				<button
-					class="btn btn-danger btn-sm"
+					class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold"
 					hx-get={ fmt.Sprintf("/admin/workspaces/%s/keys/%s/confirm-revoke", workspaceID, key.ID) }
 					hx-target="body"
 					hx-swap="beforeend"
@@ -38,48 +38,51 @@ templ APIKeyRow(workspaceID uuid.UUID, key repository.APIKey) {
 
 // APIKeyListFragment renders the API key list as an HTMX fragment.
 templ APIKeyListFragment(workspaceID uuid.UUID, keys []repository.APIKey) {
-	<table class="table">
-		<thead>
-			<tr>
-				<th>Name</th>
-				<th>Prefix</th>
-				<th>Status</th>
-				<th>Created</th>
-				<th>Actions</th>
-			</tr>
-		</thead>
-		<tbody id="api-key-list-body">
-			for _, k := range keys {
-				@APIKeyRow(workspaceID, k)
-			}
-			if len(keys) == 0 {
+	<div class="overflow-x-auto border border-zinc-200 rounded-lg shadow-sm">
+		<table class="table min-w-full divide-y divide-zinc-200">
+			<thead class="bg-zinc-50 text-zinc-500 text-xs font-semibold uppercase tracking-wider text-left border-b border-zinc-200">
 				<tr>
-					<td colspan="5" class="empty-state">No API keys yet.</td>
+					<th class="px-6 py-3">Name</th>
+					<th class="px-6 py-3">Prefix</th>
+					<th class="px-6 py-3">Status</th>
+					<th class="px-6 py-3">Created</th>
+					<th class="px-6 py-3 text-right">Actions</th>
 				</tr>
-			}
-		</tbody>
-	</table>
+			</thead>
+			<tbody id="api-key-list-body" class="divide-y divide-zinc-200 text-sm text-zinc-700 bg-white">
+				for _, k := range keys {
+					@APIKeyRow(workspaceID, k)
+				}
+				if len(keys) == 0 {
+					<tr>
+						<td colspan="5" class="px-6 py-12 text-center text-zinc-400">No API keys yet.</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
 }
 
 // APIKeyGenerateForm renders the generate API key form.
 templ APIKeyGenerateForm(workspaceID uuid.UUID) {
-	<div class="section">
-		<h2>Generate API Key</h2>
+	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6">
+		<h2 class="text-lg font-semibold text-zinc-900 mb-4">Generate API Key</h2>
 		<form
 			hx-post={ fmt.Sprintf("/admin/workspaces/%s/keys", workspaceID) }
 			hx-target="#api-key-list-body"
 			hx-swap="afterbegin"
+			class="space-y-4"
 		>
-			<div class="form-group">
-				<label for="key-name">Key Name</label>
-				<input type="text" id="key-name" name="name" required class="form-input"/>
+			<div class="flex flex-col gap-1">
+				<label for="key-name" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Key Name</label>
+				<input type="text" id="key-name" name="name" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="ex: Produção API"/>
 			</div>
-			<div class="form-actions">
-				<button type="submit" class="btn btn-primary">Generate</button>
+			<div class="flex gap-2">
+				<button type="submit" class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9">Generate</button>
 				<button
 					type="button"
-					class="btn btn-secondary"
-					onclick="this.closest('.section').remove()"
+					class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9"
+					onclick="this.closest('.bg-white').remove()"
 				>
 					Cancel
 				</button>
@@ -90,19 +93,21 @@ templ APIKeyGenerateForm(workspaceID uuid.UUID) {
 
 // APIKeyRevealed displays a newly generated API key (shown ONCE only).
 templ APIKeyRevealed(keyPlaintext string, prefix string, name string) {
-	<div class="alert alert-warning">
-		<h3>API Key Generated</h3>
-		<p>Your API key <strong>{ name }</strong> has been generated. <strong>Copy it now — it will not be shown again.</strong></p>
-		<div class="key-display">
-			<code class="api-key-plaintext">{ keyPlaintext }</code>
+	<div class="alert bg-amber-50 text-amber-800 border border-amber-200 rounded-lg p-5 mb-6 flex flex-col items-start gap-3">
+		<div>
+			<h3 class="text-sm font-bold">API Key Generated Successfully</h3>
+			<p class="text-xs text-amber-700 mt-1">Your API key <strong>{ name }</strong> has been generated. <strong>Copy it now — it will not be shown again.</strong></p>
+		</div>
+		<div class="flex items-center gap-2 w-full max-w-md bg-white border border-amber-200 rounded p-2">
+			<code class="api-key-plaintext text-xs font-mono text-zinc-900 select-all flex-1 break-all">{ keyPlaintext }</code>
 			<button
-				class="btn btn-secondary btn-sm"
+				class="btn btn-xs bg-zinc-900 text-white border-none font-semibold px-3 py-1 hover:bg-zinc-800 rounded"
 				onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent).then(() => this.textContent = 'Copied!')"
 			>
 				Copy
 			</button>
 		</div>
-		<p class="key-prefix">Prefix: <code>{ prefix }</code></p>
+		<p class="text-xs text-amber-700">Prefix: <code class="bg-amber-100/50 px-1 rounded font-mono">{ prefix }</code></p>
 	</div>
 }
 

@@ -18,35 +18,37 @@ templ WebhooksContent(workspaces []repository.Workspace, dlqItems []*repository.
 		</div>
 	</div>
 
-	<div class="section" style="margin-bottom: var(--spacing-xl);">
-		<h2>Workspaces Webhooks Config</h2>
-		<table class="table">
-			<thead>
-				<tr>
-					<th>Workspace</th>
-					<th>Actions</th>
-				</tr>
-			</thead>
-			<tbody>
-				for _, ws := range workspaces {
+	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8">
+		<h2 class="text-lg font-semibold text-zinc-900 mb-4">Workspaces Webhooks Config</h2>
+		<div class="overflow-x-auto border border-zinc-200 rounded-lg shadow-sm">
+			<table class="table min-w-full divide-y divide-zinc-200">
+				<thead class="bg-zinc-50 text-zinc-500 text-xs font-semibold uppercase tracking-wider text-left border-b border-zinc-200">
 					<tr>
-						<td>{ ws.Name }</td>
-						<td>
-							<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/webhooks", ws.ID)) } class="btn btn-primary btn-sm">Configure</a>
-						</td>
+						<th class="px-6 py-3">Workspace</th>
+						<th class="px-6 py-3 text-right">Actions</th>
 					</tr>
-				}
-				if len(workspaces) == 0 {
-					<tr>
-						<td colspan="2" class="empty-state">No workspaces found.</td>
-					</tr>
-				}
-			</tbody>
-		</table>
+				</thead>
+				<tbody class="divide-y divide-zinc-200 text-sm text-zinc-700 bg-white">
+					for _, ws := range workspaces {
+						<tr class="hover:bg-zinc-50/50 transition-colors">
+							<td class="px-6 py-4 font-semibold text-zinc-900">{ ws.Name }</td>
+							<td class="px-6 py-4 text-right">
+								<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/webhooks", ws.ID)) } class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-xs font-semibold px-3 py-1.5 rounded">Configure</a>
+							</td>
+						</tr>
+					}
+					if len(workspaces) == 0 {
+						<tr>
+							<td colspan="2" class="px-6 py-12 text-center text-zinc-400">No workspaces found.</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
 	</div>
 
-	<div class="section">
-		<h2>Dead-Letter Queue (DLQ)</h2>
+	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6">
+		<h2 class="text-lg font-semibold text-zinc-900 mb-4">Dead-Letter Queue (DLQ)</h2>
 		@DLQTable(dlqItems, true)
 	</div>
 }
@@ -56,42 +58,46 @@ templ WorkspaceWebhooksPage(ws repository.Workspace, config *repository.WebhookC
 }
 
 templ WorkspaceWebhooksContent(ws repository.Workspace, config *repository.WebhookConfig, dlqItems []*repository.WebhookDLQ) {
-	<div class="page-header">
-		<h1>Webhooks: { ws.Name }</h1>
-		<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", ws.ID)) } class="btn btn-secondary">Back to Workspace</a>
+	<div class="border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end">
+		<div>
+			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Webhooks: { ws.Name }</h1>
+			<p class="text-zinc-500 text-sm mt-1">Configure o webhook de destino e gerencie envios pendentes para esta área de trabalho.</p>
+		</div>
+		<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", ws.ID)) } class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">Back to Workspace</a>
 	</div>
 
-	<div class="section" style="margin-bottom: var(--spacing-xl);">
-		<h2>Webhook Configuration</h2>
+	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8">
+		<h2 class="text-lg font-semibold text-zinc-900 mb-4">Webhook Configuration</h2>
 		<form
 			hx-post={ fmt.Sprintf("/admin/workspaces/%s/webhooks/config", ws.ID) }
 			hx-swap="none"
+			class="space-y-4"
 		>
-			<div class="form-group">
-				<label for="url">Webhook URL</label>
+			<div class="flex flex-col gap-1">
+				<label for="url" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Webhook URL</label>
 				if config != nil {
-					<input type="url" id="url" name="url" value={ config.URL } required class="form-input" placeholder="https://yourdomain.com/webhooks"/>
+					<input type="url" id="url" name="url" value={ config.URL } required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="https://yourdomain.com/webhooks"/>
 				} else {
-					<input type="url" id="url" name="url" required class="form-input" placeholder="https://yourdomain.com/webhooks"/>
+					<input type="url" id="url" name="url" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="https://yourdomain.com/webhooks"/>
 				}
 			</div>
-			<div class="form-group">
-				<label for="secret">Signing Secret</label>
+			<div class="flex flex-col gap-1">
+				<label for="secret" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Signing Secret</label>
 				if config != nil {
-					<input type="password" id="secret" name="secret" value="********" required class="form-input" placeholder="Enter signing secret"/>
+					<input type="password" id="secret" name="secret" value="********" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="Enter signing secret"/>
 				} else {
-					<input type="password" id="secret" name="secret" required class="form-input" placeholder="Enter signing secret"/>
+					<input type="password" id="secret" name="secret" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="Enter signing secret"/>
 				}
-				<small class="form-text text-muted" style="color: var(--color-text-muted); font-size: 0.8rem; display: block; margin-top: 0.25rem;">
+				<small class="text-xs text-zinc-400 block mt-1">
 					Used to compute HMAC-SHA256 signature in X-PerGo-Signature header.
 				</small>
 			</div>
-			<div class="form-actions">
-				<button type="submit" class="btn btn-primary">Save Configuration</button>
+			<div class="flex gap-2">
+				<button type="submit" class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9">Save Configuration</button>
 				if config != nil {
 					<button
 						type="button"
-						class="btn btn-danger"
+						class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-sm font-semibold px-4 py-2 rounded-md transition h-9"
 						hx-delete={ fmt.Sprintf("/admin/workspaces/%s/webhooks/config", ws.ID) }
 						hx-confirm="Are you sure you want to delete this webhook configuration?"
 						hx-target="body"
@@ -104,117 +110,157 @@ templ WorkspaceWebhooksContent(ws repository.Workspace, config *repository.Webho
 		</form>
 	</div>
 
-	<div class="section">
-		<h2>Workspace Dead-Letter Queue (DLQ)</h2>
+	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6">
+		<h2 class="text-lg font-semibold text-zinc-900 mb-4">Workspace Dead-Letter Queue (DLQ)</h2>
 		@DLQTable(dlqItems, false)
 	</div>
 }
 
 templ DLQTable(items []*repository.WebhookDLQ, showWorkspace bool) {
 	<div id="dlq-table-container">
-		<table class="table">
-			<thead>
-				<tr>
-					if showWorkspace {
-						<th>Workspace ID</th>
-					}
-					<th>Trace ID</th>
-					<th>Message ID</th>
-					<th>Event</th>
-					<th>Attempts</th>
-					<th>Last Attempt</th>
-					<th>Actions</th>
-				</tr>
-			</thead>
-			<tbody>
-				for _, item := range items {
-					<tr id={ fmt.Sprintf("dlq-row-%s", item.ID) }>
-						if showWorkspace {
-							<td>{ item.WorkspaceID.String() }</td>
-						}
-						<td><code>{ item.TraceID }</code></td>
-						<td><code>{ item.MessageID }</code></td>
-						<td><span class="badge badge-secondary">{ item.EventType }</span></td>
-						<td>{ fmt.Sprintf("%d", item.Attempts) }</td>
-						<td>{ item.LastAttemptAt.Format("2006-01-02 15:04:05") }</td>
-						<td>
-							<div style="display: flex; gap: var(--spacing-sm);">
-								<button
-									class="btn btn-primary btn-sm"
-									hx-get={ fmt.Sprintf("/admin/webhooks/dlq/%s/details", item.ID) }
-									hx-target="body"
-									hx-swap="beforeend"
-								>
-									Details
-								</button>
-								<button
-									class="btn btn-success btn-sm"
-									hx-post={ fmt.Sprintf("/admin/webhooks/dlq/%s/retry", item.ID) }
-									hx-target={ fmt.Sprintf("#dlq-row-%s", item.ID) }
-									hx-swap="outerHTML"
-								>
-									Retry Delivery
-								</button>
-								<button
-									class="btn btn-danger btn-sm"
-									hx-delete={ fmt.Sprintf("/admin/webhooks/dlq/%s", item.ID) }
-									hx-confirm="Delete Webhook Log: Are you sure you want to permanently delete this dead-lettered webhook log? This action cannot be undone."
-									hx-target={ fmt.Sprintf("#dlq-row-%s", item.ID) }
-									hx-swap="delete"
-								>
-									Delete
-								</button>
-							</div>
-						</td>
-					</tr>
-				}
-				if len(items) == 0 {
+		<div class="overflow-x-auto border border-zinc-200 rounded-lg shadow-sm">
+			<table class="table min-w-full divide-y divide-zinc-200">
+				<thead class="bg-zinc-50 text-zinc-500 text-xs font-semibold uppercase tracking-wider text-left border-b border-zinc-200">
 					<tr>
-						<td colspan={ fmt.Sprintf("%d", map[bool]int{true: 7, false: 6}[showWorkspace]) } class="empty-state" style="text-align: center; padding: var(--spacing-lg);">
-							<div style="font-weight: 600; margin-bottom: var(--spacing-xs);">No dead-lettered webhooks</div>
-							<div style="font-size: 0.875rem; color: var(--color-text-muted);">Webhook delivery is running smoothly. Any permanently failed deliveries will appear here.</div>
-						</td>
+						if showWorkspace {
+							<th class="px-6 py-3">Workspace ID</th>
+						}
+						<th class="px-6 py-3">Trace ID</th>
+						<th class="px-6 py-3">Message ID</th>
+						<th class="px-6 py-3">Event</th>
+						<th class="px-6 py-3">Attempts</th>
+						<th class="px-6 py-3">Last Attempt</th>
+						<th class="px-6 py-3 text-right">Actions</th>
 					</tr>
-				}
-			</tbody>
-		</table>
+				</thead>
+				<tbody class="divide-y divide-zinc-200 text-sm text-zinc-700 bg-white">
+					for _, item := range items {
+						<tr id={ fmt.Sprintf("dlq-row-%s", item.ID) } class="hover:bg-zinc-50/50 transition-colors">
+							if showWorkspace {
+								<td class="px-6 py-4 text-xs font-mono text-zinc-500">{ item.WorkspaceID.String()[:8] }</td>
+							}
+							<td class="px-6 py-4 text-xs font-mono text-zinc-500"><code>{ item.TraceID }</code></td>
+							<td class="px-6 py-4 text-xs font-mono text-zinc-500"><code>{ item.MessageID }</code></td>
+							<td class="px-6 py-4">
+								<span class="badge badge-sm bg-blue-50 text-blue-700 border-blue-200 px-2 py-0.5 text-xs font-semibold">{ item.EventType }</span>
+							</td>
+							<td class="px-6 py-4 text-xs font-mono text-zinc-500">{ fmt.Sprintf("%d", item.Attempts) }</td>
+							<td class="px-6 py-4 text-xs font-mono text-zinc-500">{ item.LastAttemptAt.Format("02/01/2006 15:04:05") }</td>
+							<td class="px-6 py-4 text-right">
+								<div class="inline-flex gap-2">
+									<button
+										class="btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold"
+										hx-get={ fmt.Sprintf("/admin/webhooks/dlq/%s/details", item.ID) }
+										hx-target="body"
+										hx-swap="beforeend"
+									>
+										Details
+									</button>
+									<button
+										class="btn btn-ghost hover:bg-emerald-50 text-emerald-600 btn-xs font-semibold"
+										hx-post={ fmt.Sprintf("/admin/webhooks/dlq/%s/retry", item.ID) }
+										hx-target={ fmt.Sprintf("#dlq-row-%s", item.ID) }
+										hx-swap="outerHTML"
+									>
+										Retry
+									</button>
+									<button
+										class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold"
+										hx-delete={ fmt.Sprintf("/admin/webhooks/dlq/%s", item.ID) }
+										hx-confirm="Delete Webhook Log: Are you sure you want to permanently delete this dead-lettered webhook log? This action cannot be undone."
+										hx-target={ fmt.Sprintf("#dlq-row-%s", item.ID) }
+										hx-swap="delete"
+									>
+										Delete
+									</button>
+								</div>
+							</td>
+						</tr>
+					}
+					if len(items) == 0 {
+						<tr>
+							<td colspan={ fmt.Sprintf("%d", map[bool]int{true: 7, false: 6}[showWorkspace]) } class="px-6 py-12 text-center text-zinc-400">
+								<div class="font-semibold mb-1">No dead-lettered webhooks</div>
+								<div class="text-xs text-zinc-400">Webhook delivery is running smoothly. Any permanently failed deliveries will appear here.</div>
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
 	</div>
 }
 
 templ DLQDetailModal(item *repository.WebhookDLQ) {
-	<div class="modal-backdrop" onclick="this.remove()" style="position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;">
-		<div class="modal-card" onclick="event.stopPropagation()" style="background: var(--color-surface); padding: var(--spacing-lg); border-radius: var(--radius); width: 100%; max-width: 600px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-height: 90vh; overflow-y: auto;">
-			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-md); border-bottom: 1px solid var(--color-border); padding-bottom: var(--spacing-sm);">
-				<h3 style="margin: 0; font-size: 1.25rem;">Dead-Letter Log Details</h3>
-				<button class="btn btn-secondary btn-sm" onclick="this.closest('.modal-backdrop').remove()">Close</button>
+	<div class="modal-backdrop" onclick="this.closest('.modal-backdrop').remove()">
+		<div class="custom-modal w-full max-w-2xl" onclick="event.stopPropagation()">
+			<div class="modal-header border-b pb-3 mb-4">
+				<h3 class="text-lg font-bold text-zinc-900">Dead-Letter Log Details</h3>
 			</div>
 			
-			<div style="display: grid; grid-template-columns: 120px 1fr; gap: var(--spacing-sm); font-size: 0.875rem; margin-bottom: var(--spacing-md);">
-				<strong>ID:</strong> <span>{ item.ID.String() }</span>
-				<strong>Workspace ID:</strong> <span>{ item.WorkspaceID.String() }</span>
-				<strong>Trace ID:</strong> <span>{ item.TraceID }</span>
-				<strong>Message ID:</strong> <span>{ item.MessageID }</span>
-				<strong>Event Type:</strong> <span><span class="badge badge-secondary">{ item.EventType }</span></span>
-				<strong>Webhook URL:</strong> <span><code>{ item.WebhookURL }</code></span>
-				<strong>Attempts:</strong> <span>{ fmt.Sprintf("%d", item.Attempts) }</span>
-				<strong>Last Attempt:</strong> <span>{ item.LastAttemptAt.Format("2006-01-02 15:04:05") }</span>
-				<strong>Created At:</strong> <span>{ item.CreatedAt.Format("2006-01-02 15:04:05") }</span>
-			</div>
-
-			if item.FailureReason != nil {
-				<div style="margin-bottom: var(--spacing-md);">
-					<strong>Failure Reason:</strong>
-					<div class="alert alert-error" style="margin-top: var(--spacing-xs); margin-bottom: 0; font-family: monospace; white-space: pre-wrap;">
-						{ *item.FailureReason }
+			<div class="modal-body space-y-4">
+				<div class="grid grid-cols-2 gap-4 text-xs">
+					<div>
+						<span class="block text-zinc-400 font-semibold uppercase">ID</span>
+						<span class="font-mono text-zinc-950 font-medium">{ item.ID.String() }</span>
+					</div>
+					<div>
+						<span class="block text-zinc-400 font-semibold uppercase">Workspace ID</span>
+						<span class="font-mono text-zinc-950 font-medium">{ item.WorkspaceID.String() }</span>
+					</div>
+					<div>
+						<span class="block text-zinc-400 font-semibold uppercase">Trace ID</span>
+						<span class="font-mono text-zinc-950 font-medium">{ item.TraceID }</span>
+					</div>
+					<div>
+						<span class="block text-zinc-400 font-semibold uppercase">Message ID</span>
+						<span class="font-mono text-zinc-950 font-medium">{ item.MessageID }</span>
+					</div>
+					<div>
+						<span class="block text-zinc-400 font-semibold uppercase">Event Type</span>
+						<span>
+							<span class="badge badge-sm bg-blue-50 text-blue-700 border-blue-200 px-2 py-0.5 text-xs font-semibold">{ item.EventType }</span>
+						</span>
+					</div>
+					<div>
+						<span class="block text-zinc-400 font-semibold uppercase">Webhook URL</span>
+						<span class="font-mono text-zinc-950 font-medium truncate block max-w-xs">{ item.WebhookURL }</span>
+					</div>
+					<div>
+						<span class="block text-zinc-400 font-semibold uppercase">Attempts</span>
+						<span class="text-zinc-950 font-medium">{ fmt.Sprintf("%d", item.Attempts) }</span>
+					</div>
+					<div>
+						<span class="block text-zinc-400 font-semibold uppercase">Last Attempt</span>
+						<span class="text-zinc-950 font-medium">{ item.LastAttemptAt.Format("02/01/2006 15:04:05") }</span>
 					</div>
 				</div>
-			}
 
-			<div>
-				<strong>Payload:</strong>
-				<pre style="background: var(--color-bg); padding: var(--spacing-md); border-radius: var(--radius); overflow-x: auto; font-family: monospace; font-size: 0.8rem; margin-top: var(--spacing-xs); max-height: 250px;">
-					{ string(item.Payload) }
-				</pre>
+				if item.FailureReason != nil {
+					<div>
+						<span class="block text-xs text-zinc-400 font-semibold uppercase mb-1">Failure Reason</span>
+						<div class="alert bg-rose-50 text-rose-800 border border-rose-200 rounded p-3 font-mono text-xs break-all leading-relaxed">
+							{ *item.FailureReason }
+						</div>
+					</div>
+				}
+
+				<div>
+					<span class="block text-xs text-zinc-400 font-semibold uppercase mb-1">Payload JSON</span>
+					<pre class="bg-zinc-950 text-emerald-400 p-4 rounded-lg text-xs leading-relaxed overflow-x-auto max-h-60 select-all font-mono">
+						<code>{ string(item.Payload) }</code>
+					</pre>
+				</div>
+			</div>
+
+			<div class="modal-footer flex justify-end border-t pt-4 mt-6">
+				<button 
+					type="button" 
+					class="btn btn-ghost hover:bg-zinc-100 text-zinc-700 px-4 py-2 rounded-lg text-xs font-semibold"
+					onclick="this.closest('.modal-backdrop').remove()"
+				>
+					Fechar
+				</button>
 			</div>
 		</div>
 	</div>
