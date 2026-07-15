@@ -31,3 +31,9 @@ go.work.sum
 *.db
 *.sqlite
 tmp/
+
+# Agentic and planning outputs/caches
+/graphify-out/
+/skills-lock.json
+/.gemini/
+
