@@ -42,7 +42,7 @@ func TestMessageHandler_CreateWithMedia(t *testing.T) {
 			w.Header().Set("Content-Type", "image/png")
 			w.Write([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 'd', 'a', 't', 'a'})
 		case "/large.png":
-			data := make([]byte, 25000001)
+			data := make([]byte, 25*1024*1024+1)
 			w.Header().Set("Content-Type", "image/png")
 			w.Write(data)
 		case "/notfound":

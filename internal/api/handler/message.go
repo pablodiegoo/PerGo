@@ -11,6 +11,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/storage"
@@ -69,15 +70,15 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 	// Dynamically wrap legacy fields if Ingestor is not injected
 	ingestor := h.Ingestor
 	if ingestor == nil {
-		var uploader outbound.MediaUploader
+		var mediaEngine media.Engine
 		if h.S3Client != nil {
-			uploader = h.S3Client
+			mediaEngine = media.NewDefaultEngine(h.S3Client)
 		}
 		var tracker outbound.QueueDepthChecker
 		if h.QueueDepth != nil {
 			tracker = h.QueueDepth
 		}
-		ingestor = outbound.NewProcessor(tracker, uploader, h.ConnectionRepo, h.Publisher)
+		ingestor = outbound.NewProcessor(tracker, mediaEngine, h.ConnectionRepo, h.Publisher)
 	}
 
 	// Ingest using OutboundProcessor

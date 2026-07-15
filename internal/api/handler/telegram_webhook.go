@@ -28,13 +28,13 @@ func NewTelegramWebhookHandler(
 	connectionsRepo *repository.ConnectionRepository,
 	telegramContactRepo *repository.TelegramContactRepository,
 	inboundProcessor *inbound.InboundProcessor,
-	downloader media.Downloader,
+	mediaEngine media.Engine,
 ) *TelegramWebhookHandler {
 	return &TelegramWebhookHandler{
 		connectionsRepo:     connectionsRepo,
 		telegramContactRepo: telegramContactRepo,
 		inboundProcessor:    inboundProcessor,
-		adapter:             telegram.NewTelegramInboundAdapter(telegramContactRepo, downloader),
+		adapter:             telegram.NewTelegramInboundAdapter(telegramContactRepo, mediaEngine),
 	}
 }
 

@@ -25,12 +25,12 @@ type WABAWebhookHandler struct {
 func NewWABAWebhookHandler(
 	connectionsRepo *repository.ConnectionRepository,
 	inboundProcessor *inbound.InboundProcessor,
-	downloader media.Downloader,
+	mediaEngine media.Engine,
 ) *WABAWebhookHandler {
 	return &WABAWebhookHandler{
 		connectionsRepo:  connectionsRepo,
 		inboundProcessor: inboundProcessor,
-		adapter:          whatsapp.NewWABAInboundAdapter(downloader),
+		adapter:          whatsapp.NewWABAInboundAdapter(mediaEngine),
 	}
 }
 

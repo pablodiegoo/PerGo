@@ -99,8 +99,9 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 	auditWriter := audit.NewWriter(pool, 100, 1)
 	defer auditWriter.Close()
 
-	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, s3Client, publisher, auditWriter, sessRepo)
-	h := NewWABAWebhookHandler(connRepo, inboundProcessor, media.NewDefaultEngine(s3Client))
+	mediaEngine := media.NewDefaultEngine(s3Client)
+	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, sessRepo)
+	h := NewWABAWebhookHandler(connRepo, inboundProcessor, mediaEngine)
 
 	e := echo.New()
 

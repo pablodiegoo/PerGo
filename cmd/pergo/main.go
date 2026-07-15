@@ -128,6 +128,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	mediaEngine := media.NewDefaultEngine(s3Client)
+
 	credentialsRepo := repository.NewCredentialsRepository(pool, encryptor)
 	connectionRepo := repository.NewConnectionRepository(pool, encryptor)
 	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
@@ -153,7 +155,7 @@ func main() {
 
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	wsRepo := repository.NewWorkspaceRepository(pool)
-	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, s3Client, publisher, auditWriter, recipientSessionRepo)
+	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo)
 	sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", inboundProcessor)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	orchestrator := queue.NewDispatchOrchestrator(dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter, 5, 60*time.Second)
@@ -287,11 +289,8 @@ func main() {
 	}
 	healthHandler.RegisterRoutes(e)
 
-	mediaEngine := media.NewDefaultEngine(s3Client)
-
 	// --- Message handler (POST /messages) ---
-	outboundProcessor := outbound.NewProcessor(queueDepth, s3Client, connectionRepo, publisher)
-	outboundProcessor.SetDownloader(mediaEngine)
+	outboundProcessor := outbound.NewProcessor(queueDepth, mediaEngine, connectionRepo, publisher)
 	messageHandler := &handler.MessageHandler{
 		Ingestor: outboundProcessor,
 	}
