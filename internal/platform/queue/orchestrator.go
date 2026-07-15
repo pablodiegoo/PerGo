@@ -90,7 +90,11 @@ func (o *DispatchOrchestrator) Process(
 	var dispatch *repository.MessageDispatch
 	if o.dispatchRepo != nil && traceID != "" {
 		var err error
-		dispatch, err = o.dispatchRepo.GetOrCreateDispatch(ctx, workspaceID, traceID, qMsg.Channel)
+		var tempName *string
+		if qMsg.TemplateName != "" {
+			tempName = &qMsg.TemplateName
+		}
+		dispatch, err = o.dispatchRepo.GetOrCreateDispatch(ctx, workspaceID, traceID, qMsg.Channel, qMsg.CampaignID, tempName, qMsg.VariablesJSON)
 		if err != nil {
 			slog.Error("orchestrator: failed to get/create dispatch state", "error", err, "trace_id", traceID)
 			o.handleFailure(msg, workspaceID, traceID, attempt)

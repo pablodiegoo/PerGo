@@ -337,7 +337,7 @@ func TestOrchestrator_FallbackLoop(t *testing.T) {
 
 	t.Run("Redelivery of sent message skips dispatch", func(t *testing.T) {
 		traceID := uuid.New().String()
-		d, err := dispatchRepo.GetOrCreateDispatch(ctx, ws.ID, traceID, "whatsapp")
+		d, err := dispatchRepo.GetOrCreateDispatch(ctx, ws.ID, traceID, "whatsapp", nil, nil, nil)
 		if err != nil {
 			t.Fatalf("failed to create dispatch: %v", err)
 		}

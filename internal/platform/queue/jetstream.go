@@ -163,3 +163,62 @@ func (p *JetStreamPublisher) Publish(ctx context.Context, subject string, data [
 	}
 	return nil
 }
+
+// EnsureCampaignStream creates or updates a WorkQueuePolicy stream named "CAMPAIGNS".
+func EnsureCampaignStream(ctx context.Context, nc *nats.Conn) (jetstream.Stream, error) {
+	js, err := jetstream.New(nc)
+	if err != nil {
+		return nil, fmt.Errorf("jetstream.New: %w", err)
+	}
+
+	stream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:      "CAMPAIGNS",
+		Subjects:  []string{"campaigns.>"},
+		Retention: jetstream.WorkQueuePolicy,
+		MaxMsgs:   MaxQueueDepth,
+		Discard:   jetstream.DiscardNew,
+		Storage:   jetstream.FileStorage,
+		MaxAge:    24 * time.Hour,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create stream CAMPAIGNS: %w", err)
+	}
+
+	slog.Info("jetstream campaign stream ready", "stream", "CAMPAIGNS")
+	return stream, nil
+}
+
+// EnsureCampaignConsumer creates or gets a durable pull consumer with MaxAckPending = 1 on the CAMPAIGNS stream.
+func EnsureCampaignConsumer(ctx context.Context, stream jetstream.Stream, consumerName string) (jetstream.Consumer, error) {
+	if stream.CachedInfo().Config.Retention == jetstream.WorkQueuePolicy {
+		lister := stream.ConsumerNames(ctx)
+		for name := range lister.Name() {
+			if name != consumerName {
+				slog.Info("deleting stale consumer from campaigns WorkQueue stream", "stream", stream.CachedInfo().Config.Name, "consumer", name)
+				_ = stream.DeleteConsumer(ctx, name)
+			}
+		}
+	}
+
+	cons, err := stream.Consumer(ctx, consumerName)
+	if err == nil {
+		slog.Info("jetstream campaigns consumer found", "consumer", consumerName)
+		return cons, nil
+	}
+
+	cfg := jetstream.ConsumerConfig{
+		Durable:       consumerName,
+		FilterSubject: "campaigns.>",
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		MaxDeliver:    5,
+		MaxAckPending: 1, // guarantee sequential batch delivery across replicas
+	}
+
+	cons, err = createConsumerWithRetry(ctx, stream, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("create campaigns consumer %s: %w", consumerName, err)
+	}
+	slog.Info("jetstream campaigns consumer ready", "consumer", consumerName)
+	return cons, nil
+}
+

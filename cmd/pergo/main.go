@@ -162,6 +162,21 @@ func main() {
 	worker := queue.NewWorker(ctx, consumer, orchestrator)
 	slog.Info("message worker started", "consumer", "worker-1")
 
+	// --- Campaign Worker ---
+	campStream, err := queue.EnsureCampaignStream(ctx, nc)
+	if err != nil {
+		slog.Error("failed to create JetStream campaign stream", "error", err)
+		os.Exit(1)
+	}
+	campConsumer, err := queue.EnsureCampaignConsumer(ctx, campStream, "campaign-worker-1")
+	if err != nil {
+		slog.Error("failed to create JetStream campaign consumer", "error", err)
+		os.Exit(1)
+	}
+	campaignRepo := repository.NewCampaignRepository(pool)
+	campaignWorker := queue.NewCampaignWorker(ctx, campConsumer, campaignRepo, dispatchRepo, publisher)
+	slog.Info("campaign worker started", "consumer", "campaign-worker-1")
+
 	// --- Webhook Worker ---
 	webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
 	webhookDispatcher := webhook.NewDefaultDispatcher(webhookDLQRepo, wsRepo, nil)
@@ -213,6 +228,11 @@ func main() {
 	orch.Register(func() error {
 		slog.Info("stopping webhook worker")
 		webhookWorker.Stop()
+		return nil
+	})
+	orch.Register(func() error {
+		slog.Info("stopping campaign worker")
+		campaignWorker.Stop()
 		return nil
 	})
 	orch.Register(func() error {
