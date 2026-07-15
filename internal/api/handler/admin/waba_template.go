@@ -18,19 +18,19 @@ import (
 
 // WABATemplateHandler handles WABA template management.
 type WABATemplateHandler struct {
-	Repo      *repository.WABATemplateRepository
-	CredsRepo *repository.CredentialsRepository
-	Client    *http.Client
-	BaseURL   string
+	Repo            *repository.WABATemplateRepository
+	ConnectionsRepo *repository.ConnectionRepository
+	Client          *http.Client
+	BaseURL         string
 }
 
 // NewWABATemplateHandler creates a new WABATemplateHandler.
-func NewWABATemplateHandler(repo *repository.WABATemplateRepository, credsRepo *repository.CredentialsRepository) *WABATemplateHandler {
+func NewWABATemplateHandler(repo *repository.WABATemplateRepository, connectionsRepo *repository.ConnectionRepository) *WABATemplateHandler {
 	return &WABATemplateHandler{
-		Repo:      repo,
-		CredsRepo: credsRepo,
-		Client:    http.DefaultClient,
-		BaseURL:   "https://graph.facebook.com/v18.0",
+		Repo:            repo,
+		ConnectionsRepo: connectionsRepo,
+		Client:          http.DefaultClient,
+		BaseURL:         "https://graph.facebook.com/v18.0",
 	}
 }
 
@@ -103,13 +103,20 @@ func (h *WABATemplateHandler) Create(c *echo.Context) error {
 		components = json.RawMessage("[]")
 	}
 
-	// Retrieve credentials
-	credsBytes, err := h.CredsRepo.Get(c.Request().Context(), workspaceID, "whatsapp_cloud")
+	// Retrieve WABA connections for this workspace
+	conns, err := h.ConnectionsRepo.ListByWorkspace(c.Request().Context(), workspaceID)
 	if err != nil {
-		if errors.Is(err, repository.ErrCredentialsNotFound) {
-			return c.String(http.StatusBadRequest, "whatsapp_cloud credentials not configured for this workspace")
+		return c.String(http.StatusInternalServerError, "failed to load connections")
+	}
+	var wabaConn *repository.Connection
+	for _, conn := range conns {
+		if conn.Channel == "whatsapp_cloud" && (conn.Status == "active" || conn.Status == "connected") {
+			wabaConn = conn
+			break
 		}
-		return c.String(http.StatusInternalServerError, "failed to load credentials")
+	}
+	if wabaConn == nil {
+		return c.String(http.StatusBadRequest, "whatsapp_cloud connection not configured or active for this workspace")
 	}
 
 	type wabaConfig struct {
@@ -117,7 +124,7 @@ func (h *WABATemplateHandler) Create(c *echo.Context) error {
 		WABAAccountID string `json:"waba_account_id"`
 	}
 	var config wabaConfig
-	if err := json.Unmarshal(credsBytes, &config); err != nil || config.Token == "" || config.WABAAccountID == "" {
+	if err := json.Unmarshal(wabaConn.Credentials, &config); err != nil || config.Token == "" || config.WABAAccountID == "" {
 		return c.String(http.StatusBadRequest, "invalid WABA credentials configuration; token and waba_account_id are required")
 	}
 
@@ -218,17 +225,27 @@ func (h *WABATemplateHandler) Sync(c *echo.Context) error {
 		return c.String(http.StatusForbidden, "template does not belong to workspace")
 	}
 
-	// Retrieve credentials
-	credsBytes, err := h.CredsRepo.Get(c.Request().Context(), workspaceID, "whatsapp_cloud")
+	// Retrieve WABA connections for this workspace
+	conns, err := h.ConnectionsRepo.ListByWorkspace(c.Request().Context(), workspaceID)
 	if err != nil {
-		return c.String(http.StatusBadRequest, "whatsapp_cloud credentials not configured")
+		return c.String(http.StatusInternalServerError, "failed to load connections")
+	}
+	var wabaConn *repository.Connection
+	for _, conn := range conns {
+		if conn.Channel == "whatsapp_cloud" && (conn.Status == "active" || conn.Status == "connected") {
+			wabaConn = conn
+			break
+		}
+	}
+	if wabaConn == nil {
+		return c.String(http.StatusBadRequest, "whatsapp_cloud connection not configured or active for this workspace")
 	}
 
 	type wabaConfig struct {
 		Token string `json:"token"`
 	}
 	var config wabaConfig
-	if err := json.Unmarshal(credsBytes, &config); err != nil || config.Token == "" {
+	if err := json.Unmarshal(wabaConn.Credentials, &config); err != nil || config.Token == "" {
 		return c.String(http.StatusBadRequest, "invalid credentials config; token is required")
 	}
 

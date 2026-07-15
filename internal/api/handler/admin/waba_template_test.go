@@ -74,7 +74,7 @@ func TestWABATemplateHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create encryptor: %v", err)
 	}
-	credsRepo := repository.NewCredentialsRepository(pool, enc)
+	connRepo := repository.NewConnectionRepository(pool, enc)
 
 	ws, err := wsRepo.Create(ctx, "handler_test_ws_"+uuid.New().String())
 	if err != nil {
@@ -90,9 +90,16 @@ func TestWABATemplateHandler(t *testing.T) {
 		"waba_account_id": "99999",
 	}
 	configBytes, _ := json.Marshal(wabaConfig)
-	err = credsRepo.Save(ctx, ws.ID, "whatsapp_cloud", configBytes)
+	_, err = connRepo.Create(ctx, &repository.Connection{
+		WorkspaceID:    ws.ID,
+		Name:           "WABA Cloud Test",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "12345",
+		Credentials:    configBytes,
+		Status:         "active",
+	})
 	if err != nil {
-		t.Fatalf("failed to save WABA credentials: %v", err)
+		t.Fatalf("failed to create WABA connection: %v", err)
 	}
 
 	t.Run("Create Template Success", func(t *testing.T) {
@@ -109,7 +116,7 @@ func TestWABATemplateHandler(t *testing.T) {
 		}))
 		defer metaServer.Close()
 
-		h := admin.NewWABATemplateHandler(tmplRepo, credsRepo)
+		h := admin.NewWABATemplateHandler(tmplRepo, connRepo)
 		h.BaseURL = metaServer.URL
 
 		e := echo.New()
@@ -169,7 +176,7 @@ func TestWABATemplateHandler(t *testing.T) {
 		}))
 		defer metaServer.Close()
 
-		h := admin.NewWABATemplateHandler(tmplRepo, credsRepo)
+		h := admin.NewWABATemplateHandler(tmplRepo, connRepo)
 		h.BaseURL = metaServer.URL
 
 		e := echo.New()
