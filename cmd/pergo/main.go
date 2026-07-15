@@ -502,6 +502,35 @@ func main() {
 	adminGroup.POST("/workspaces/:workspace_id/webhooks/config", webhookHandler.SaveConfig)
 	adminGroup.DELETE("/workspaces/:workspace_id/webhooks/config", webhookHandler.DeleteConfig)
 
+	// Campaigns routes
+	campaignHandler := admin.NewCampaignHandler(campaignRepo, wabaTemplateRepo, connectionRepo, publisher)
+	adminGroup.GET("/campaigns", func(c *echo.Context) error {
+		ctx := c.Request().Context()
+		cookie, err := c.Cookie("pergo-active-workspace")
+		var wsID uuid.UUID
+		if err == nil && cookie != nil && cookie.Value != "" {
+			wsID, _ = uuid.Parse(cookie.Value)
+		}
+		if wsID == uuid.Nil {
+			list, err := wsRepo.List(ctx, 1)
+			if err == nil && len(list) > 0 {
+				wsID = list[0].ID
+			}
+		}
+		if wsID == uuid.Nil {
+			return c.String(http.StatusBadRequest, "nenhum workspace encontrado. Crie um workspace primeiro.")
+		}
+		return c.Redirect(http.StatusFound, fmt.Sprintf("/admin/workspaces/%s/campaigns", wsID.String()))
+	})
+	adminGroup.GET("/workspaces/:workspace_id/campaigns", campaignHandler.List)
+	adminGroup.GET("/workspaces/:workspace_id/campaigns/new", campaignHandler.NewForm)
+	adminGroup.POST("/workspaces/:workspace_id/campaigns/upload", campaignHandler.UploadCSV)
+	adminGroup.POST("/workspaces/:workspace_id/campaigns", campaignHandler.Create)
+	adminGroup.GET("/workspaces/:workspace_id/campaigns/:id/skipped/download", campaignHandler.DownloadSkipped)
+	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/start", campaignHandler.Start)
+	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/cancel", campaignHandler.Cancel)
+	adminGroup.DELETE("/workspaces/:workspace_id/campaigns/:id", campaignHandler.Delete)
+
 
 
 	// Static files
