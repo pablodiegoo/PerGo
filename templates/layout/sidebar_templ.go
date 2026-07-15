@@ -36,6 +36,9 @@ func getWorkspacesList(ctx context.Context) []repository.Workspace {
 }
 
 func isSettingsActive(activePath string) bool {
+	if strings.Contains(activePath, "/campaigns") {
+		return false
+	}
 	prefixes := []string{
 		"/admin/connections",
 		"/admin/devices",
@@ -62,10 +65,12 @@ func isSubmenuActive(activePath, target string) bool {
 		return strings.HasPrefix(activePath, "/admin/logs") || strings.HasPrefix(activePath, "/admin/audit")
 	}
 	if target == "/admin/workspace" {
-		return strings.HasPrefix(activePath, "/admin/workspace") || strings.HasPrefix(activePath, "/admin/workspaces")
+		return (strings.HasPrefix(activePath, "/admin/workspace") || strings.HasPrefix(activePath, "/admin/workspaces")) &&
+			!strings.Contains(activePath, "/webhooks") &&
+			!strings.Contains(activePath, "/campaigns")
 	}
 	if target == "/admin/webhooks" {
-		return strings.HasPrefix(activePath, "/admin/webhooks")
+		return strings.HasPrefix(activePath, "/admin/webhooks") || strings.Contains(activePath, "/webhooks")
 	}
 	if target == "/admin/telemetry" {
 		return strings.HasPrefix(activePath, "/admin/telemetry")
@@ -81,7 +86,7 @@ func isTopLevelActive(activePath, target string) bool {
 		return strings.HasPrefix(activePath, "/admin/inbox")
 	}
 	if target == "/admin/campaigns" {
-		return strings.HasPrefix(activePath, "/admin/campaigns")
+		return strings.HasPrefix(activePath, "/admin/campaigns") || strings.Contains(activePath, "/campaigns")
 	}
 	return false
 }
@@ -400,7 +405,7 @@ func WorkspaceSelector(activeWorkspace *repository.Workspace, workspaces []repos
 					var templ_7745c5c3_Var25 string
 					templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(ws.ID.String())
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 184, Col: 36}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 189, Col: 36}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 					if templ_7745c5c3_Err != nil {
@@ -413,7 +418,7 @@ func WorkspaceSelector(activeWorkspace *repository.Workspace, workspaces []repos
 					var templ_7745c5c3_Var26 string
 					templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(ws.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 184, Col: 57}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 189, Col: 57}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 					if templ_7745c5c3_Err != nil {
@@ -431,7 +436,7 @@ func WorkspaceSelector(activeWorkspace *repository.Workspace, workspaces []repos
 					var templ_7745c5c3_Var27 string
 					templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.ResolveAttributeValue(ws.ID.String())
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 186, Col: 36}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 191, Col: 36}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var27)
 					if templ_7745c5c3_Err != nil {
@@ -444,7 +449,7 @@ func WorkspaceSelector(activeWorkspace *repository.Workspace, workspaces []repos
 					var templ_7745c5c3_Var28 string
 					templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(ws.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 186, Col: 48}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 191, Col: 48}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 					if templ_7745c5c3_Err != nil {

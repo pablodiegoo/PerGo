@@ -28,6 +28,9 @@ func getWorkspacesList(ctx context.Context) []repository.Workspace {
 }
 
 func isSettingsActive(activePath string) bool {
+	if strings.Contains(activePath, "/campaigns") {
+		return false
+	}
 	prefixes := []string{
 		"/admin/connections",
 		"/admin/devices",
@@ -54,10 +57,12 @@ func isSubmenuActive(activePath, target string) bool {
 		return strings.HasPrefix(activePath, "/admin/logs") || strings.HasPrefix(activePath, "/admin/audit")
 	}
 	if target == "/admin/workspace" {
-		return strings.HasPrefix(activePath, "/admin/workspace") || strings.HasPrefix(activePath, "/admin/workspaces")
+		return (strings.HasPrefix(activePath, "/admin/workspace") || strings.HasPrefix(activePath, "/admin/workspaces")) &&
+			!strings.Contains(activePath, "/webhooks") &&
+			!strings.Contains(activePath, "/campaigns")
 	}
 	if target == "/admin/webhooks" {
-		return strings.HasPrefix(activePath, "/admin/webhooks")
+		return strings.HasPrefix(activePath, "/admin/webhooks") || strings.Contains(activePath, "/webhooks")
 	}
 	if target == "/admin/telemetry" {
 		return strings.HasPrefix(activePath, "/admin/telemetry")
@@ -73,7 +78,7 @@ func isTopLevelActive(activePath, target string) bool {
 		return strings.HasPrefix(activePath, "/admin/inbox")
 	}
 	if target == "/admin/campaigns" {
-		return strings.HasPrefix(activePath, "/admin/campaigns")
+		return strings.HasPrefix(activePath, "/admin/campaigns") || strings.Contains(activePath, "/campaigns")
 	}
 	return false
 }
