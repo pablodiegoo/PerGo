@@ -31,7 +31,7 @@ templ CampaignsContent(workspaceID uuid.UUID, campaigns []domain.Campaign, templ
 		</div>
 	</div>
 
-	<div id="campaign-form-area" class="mb-6"></div>
+	<div id="campaign-form-area" class="mb-6" hx-get={ fmt.Sprintf("/admin/workspaces/%s/campaigns/new", workspaceID) } hx-trigger="connection-created from:body"></div>
 
 	<div class="section bg-white rounded-xl shadow-sm border border-zinc-200 overflow-hidden">
 		<table class="min-w-full divide-y divide-zinc-200">
@@ -60,6 +60,7 @@ templ CampaignsContent(workspaceID uuid.UUID, campaigns []domain.Campaign, templ
 			</tbody>
 		</table>
 	</div>
+	<div id="modal-container"></div>
 }
 
 templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
@@ -162,10 +163,14 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 
 				<div class="form-group">
 					<label for="channel" class="block text-sm font-semibold text-zinc-700 mb-2">Canal / Conexão</label>
-					<select id="channel" name="channel" required onchange="toggleTemplateSelector()" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
-						<option value="whatsapp">WhatsApp Web (Não oficial)</option>
-						<option value="whatsapp_cloud">WhatsApp Cloud (WABA)</option>
-						<option value="telegram">Telegram</option>
+					<select id="channel" name="channel" required onchange="handleConnectionChange(); toggleTemplateSelector();" class="w-full p-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
+						<option value="">-- Selecione uma conexão --</option>
+						for _, conn := range connections {
+							if conn.Status == "active" || conn.Status == "connected" {
+								<option value={ conn.Channel }>{ fmt.Sprintf("%s [%s]", conn.Name, conn.Channel) }</option>
+							}
+						}
+						<option value="add_new_connection">+ Adicionar nova conexão...</option>
 					</select>
 				</div>
 			</div>
@@ -263,6 +268,14 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 	<script>
 		// Global counts
 		let globalValidCount = 0;
+
+		function handleConnectionChange() {
+			const select = document.getElementById('channel');
+			if (select.value === 'add_new_connection') {
+				htmx.ajax('GET', '/admin/devices/pair-form', {target: '#modal-container', swap: 'innerHTML'});
+				select.value = '';
+			}
+		}
 
 		function toggleTemplateSelector() {
 			const channel = document.getElementById('channel').value;
