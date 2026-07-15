@@ -65,14 +65,18 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end\"><div><h1 class=\"text-2xl font-bold tracking-tight text-zinc-900\">Logs de Ações</h1><p class=\"text-zinc-500 text-sm mt-1\">Monitore atividades de operadores (usuários) e chaves de API para conformidade e auditoria.</p></div></div><!-- Statistics Row --><div class=\"grid grid-cols-1 md:grid-cols-3 gap-6 mb-8\"><div class=\"bg-white border border-zinc-200 rounded-lg p-5 shadow-sm\"><span class=\"text-xs text-zinc-500 font-semibold uppercase tracking-wider\">Total de Eventos</span><div class=\"text-2xl font-extrabold text-zinc-900 mt-1\">")
+		templ_7745c5c3_Err = LogsHeaderTabs("actions").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<!-- Statistics Row --><div class=\"grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 mt-6\"><div class=\"bg-white border border-zinc-200 rounded-lg p-5 shadow-sm\"><span class=\"text-xs text-zinc-500 font-semibold uppercase tracking-wider\">Total de Eventos</span><div class=\"text-2xl font-extrabold text-zinc-900 mt-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", total))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 26, Col: 85}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 21, Col: 85}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -85,7 +89,7 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(logs)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 30, Col: 89}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 25, Col: 89}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
@@ -98,7 +102,7 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(workspaceID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 34, Col: 84}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 29, Col: 84}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
@@ -118,9 +122,9 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var7 templ.SafeURL
-		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/user-logs?offset=0&actor_type=&source=%s", sourceFilter)))
+		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/logs/actions?offset=0&actor_type=&source=%s", sourceFilter)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 47, Col: 101}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 42, Col: 104}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -153,9 +157,9 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var10 templ.SafeURL
-		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/user-logs?offset=0&actor_type=user&source=%s", sourceFilter)))
+		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/logs/actions?offset=0&actor_type=user&source=%s", sourceFilter)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 53, Col: 105}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 48, Col: 108}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -188,9 +192,9 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var13 templ.SafeURL
-		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/user-logs?offset=0&actor_type=api_key&source=%s", sourceFilter)))
+		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/logs/actions?offset=0&actor_type=api_key&source=%s", sourceFilter)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 59, Col: 108}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 54, Col: 111}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -223,9 +227,9 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var16 templ.SafeURL
-		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/user-logs?offset=0&actor_type=%s&source=", actorTypeFilter)))
+		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/logs/actions?offset=0&actor_type=%s&source=", actorTypeFilter)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 71, Col: 104}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 66, Col: 107}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {
@@ -258,9 +262,9 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var19 templ.SafeURL
-		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/user-logs?offset=0&actor_type=%s&source=dashboard", actorTypeFilter)))
+		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/logs/actions?offset=0&actor_type=%s&source=dashboard", actorTypeFilter)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 77, Col: 113}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 72, Col: 116}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 		if templ_7745c5c3_Err != nil {
@@ -293,9 +297,9 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var22 templ.SafeURL
-		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/user-logs?offset=0&actor_type=%s&source=api", actorTypeFilter)))
+		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/logs/actions?offset=0&actor_type=%s&source=api", actorTypeFilter)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 83, Col: 107}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 78, Col: 110}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 		if templ_7745c5c3_Err != nil {
@@ -326,7 +330,7 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			var templ_7745c5c3_Var24 string
 			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(log.CreatedAt.Format("02/01/2006 15:04:05"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 110, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 105, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 			if templ_7745c5c3_Err != nil {
@@ -339,7 +343,7 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(log.ActorName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 114, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 109, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -352,7 +356,7 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(log.ActorID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 115, Col: 86}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 110, Col: 86}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
@@ -365,7 +369,7 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			var templ_7745c5c3_Var27 string
 			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(log.Action)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 119, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 114, Col: 107}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 			if templ_7745c5c3_Err != nil {
@@ -394,7 +398,7 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 				var templ_7745c5c3_Var28 string
 				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(*log.IPAddress)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 130, Col: 25}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 125, Col: 25}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
@@ -411,9 +415,9 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var29 string
-			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/user-logs/%s/metadata", log.ID))
+			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/logs/actions/%s/metadata", log.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 138, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 133, Col: 72}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
 			if templ_7745c5c3_Err != nil {
@@ -442,7 +446,7 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			var templ_7745c5c3_Var30 string
 			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", offset+1))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 162, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 157, Col: 46}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
@@ -455,7 +459,7 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			var templ_7745c5c3_Var31 string
 			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", min(offset+limit, total)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 162, Col: 96}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 157, Col: 96}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {
@@ -468,7 +472,7 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 			var templ_7745c5c3_Var32 string
 			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", total))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 162, Col: 128}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 157, Col: 128}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 			if templ_7745c5c3_Err != nil {
@@ -484,9 +488,9 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var33 templ.SafeURL
-				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/user-logs?offset=%d&actor_type=%s&source=%s", max(0, offset-limit), actorTypeFilter, sourceFilter)))
+				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/logs/actions?offset=%d&actor_type=%s&source=%s", max(0, offset-limit), actorTypeFilter, sourceFilter)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 167, Col: 143}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 162, Col: 146}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 				if templ_7745c5c3_Err != nil {
@@ -508,9 +512,9 @@ func UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, lim
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var34 templ.SafeURL
-				templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/user-logs?offset=%d&actor_type=%s&source=%s", offset+limit, actorTypeFilter, sourceFilter)))
+				templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL(fmt.Sprintf("/admin/logs/actions?offset=%d&actor_type=%s&source=%s", offset+limit, actorTypeFilter, sourceFilter)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 178, Col: 135}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 173, Col: 138}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 				if templ_7745c5c3_Err != nil {
@@ -568,7 +572,7 @@ func UserLogMetadataModal(log repository.UserActionLog, metadataJSON string) tem
 		var templ_7745c5c3_Var36 string
 		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(log.ActorName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 205, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 200, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 		if templ_7745c5c3_Err != nil {
@@ -581,7 +585,7 @@ func UserLogMetadataModal(log repository.UserActionLog, metadataJSON string) tem
 		var templ_7745c5c3_Var37 string
 		templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(log.Action)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 209, Col: 68}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 204, Col: 68}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 		if templ_7745c5c3_Err != nil {
@@ -595,7 +599,7 @@ func UserLogMetadataModal(log repository.UserActionLog, metadataJSON string) tem
 			var templ_7745c5c3_Var38 string
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(*log.IPAddress)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 215, Col: 24}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 210, Col: 24}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 			if templ_7745c5c3_Err != nil {
@@ -614,7 +618,7 @@ func UserLogMetadataModal(log repository.UserActionLog, metadataJSON string) tem
 		var templ_7745c5c3_Var39 string
 		templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(log.CreatedAt.Format("02/01/2006 15:04:05"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 223, Col: 91}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 218, Col: 91}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 		if templ_7745c5c3_Err != nil {
@@ -628,7 +632,7 @@ func UserLogMetadataModal(log repository.UserActionLog, metadataJSON string) tem
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(*log.UserAgent)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 231, Col: 23}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 226, Col: 23}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
@@ -647,7 +651,7 @@ func UserLogMetadataModal(log repository.UserActionLog, metadataJSON string) tem
 		var templ_7745c5c3_Var41 string
 		templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(metadataJSON)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 241, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/user_logs.templ`, Line: 236, Col: 26}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 		if templ_7745c5c3_Err != nil {

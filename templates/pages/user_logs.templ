@@ -12,15 +12,10 @@ templ UserLogsPage(workspaceID uuid.UUID, logs []repository.UserActionLog, limit
 }
 
 templ UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, limit, offset, total int, actorTypeFilter, sourceFilter string) {
-	<div class="border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end">
-		<div>
-			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Logs de Ações</h1>
-			<p class="text-zinc-500 text-sm mt-1">Monitore atividades de operadores (usuários) e chaves de API para conformidade e auditoria.</p>
-		</div>
-	</div>
+	@LogsHeaderTabs("actions")
 
 	<!-- Statistics Row -->
-	<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+	<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 mt-6">
 		<div class="bg-white border border-zinc-200 rounded-lg p-5 shadow-sm">
 			<span class="text-xs text-zinc-500 font-semibold uppercase tracking-wider">Total de Eventos</span>
 			<div class="text-2xl font-extrabold text-zinc-900 mt-1">{ fmt.Sprintf("%d", total) }</div>
@@ -44,19 +39,19 @@ templ UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, li
 					<span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Agente:</span>
 					<div class="join">
 						<a 
-							href={ templ.URL(fmt.Sprintf("/admin/user-logs?offset=0&actor_type=&source=%s", sourceFilter)) } 
+							href={ templ.URL(fmt.Sprintf("/admin/logs/actions?offset=0&actor_type=&source=%s", sourceFilter)) } 
 							class={ "btn btn-xs join-item font-semibold", templ.KV("btn-active bg-zinc-900 text-white border-none", actorTypeFilter == ""), templ.KV("btn-outline border-zinc-300 text-zinc-600 hover:bg-zinc-100", actorTypeFilter != "") }
 						>
 							Todos
 						</a>
 						<a 
-							href={ templ.URL(fmt.Sprintf("/admin/user-logs?offset=0&actor_type=user&source=%s", sourceFilter)) } 
+							href={ templ.URL(fmt.Sprintf("/admin/logs/actions?offset=0&actor_type=user&source=%s", sourceFilter)) } 
 							class={ "btn btn-xs join-item font-semibold", templ.KV("btn-active bg-zinc-900 text-white border-none", actorTypeFilter == "user"), templ.KV("btn-outline border-zinc-300 text-zinc-600 hover:bg-zinc-100", actorTypeFilter != "user") }
 						>
 							Usuários
 						</a>
 						<a 
-							href={ templ.URL(fmt.Sprintf("/admin/user-logs?offset=0&actor_type=api_key&source=%s", sourceFilter)) } 
+							href={ templ.URL(fmt.Sprintf("/admin/logs/actions?offset=0&actor_type=api_key&source=%s", sourceFilter)) } 
 							class={ "btn btn-xs join-item font-semibold", templ.KV("btn-active bg-zinc-900 text-white border-none", actorTypeFilter == "api_key"), templ.KV("btn-outline border-zinc-300 text-zinc-600 hover:bg-zinc-100", actorTypeFilter != "api_key") }
 						>
 							APIs
@@ -68,19 +63,19 @@ templ UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, li
 					<span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Origem:</span>
 					<div class="join">
 						<a 
-							href={ templ.URL(fmt.Sprintf("/admin/user-logs?offset=0&actor_type=%s&source=", actorTypeFilter)) } 
+							href={ templ.URL(fmt.Sprintf("/admin/logs/actions?offset=0&actor_type=%s&source=", actorTypeFilter)) } 
 							class={ "btn btn-xs join-item font-semibold", templ.KV("btn-active bg-zinc-900 text-white border-none", sourceFilter == ""), templ.KV("btn-outline border-zinc-300 text-zinc-600 hover:bg-zinc-100", sourceFilter != "") }
 						>
 							Todas
 						</a>
 						<a 
-							href={ templ.URL(fmt.Sprintf("/admin/user-logs?offset=0&actor_type=%s&source=dashboard", actorTypeFilter)) } 
+							href={ templ.URL(fmt.Sprintf("/admin/logs/actions?offset=0&actor_type=%s&source=dashboard", actorTypeFilter)) } 
 							class={ "btn btn-xs join-item font-semibold", templ.KV("btn-active bg-zinc-900 text-white border-none", sourceFilter == "dashboard"), templ.KV("btn-outline border-zinc-300 text-zinc-600 hover:bg-zinc-100", sourceFilter != "dashboard") }
 						>
 							Console
 						</a>
 						<a 
-							href={ templ.URL(fmt.Sprintf("/admin/user-logs?offset=0&actor_type=%s&source=api", actorTypeFilter)) } 
+							href={ templ.URL(fmt.Sprintf("/admin/logs/actions?offset=0&actor_type=%s&source=api", actorTypeFilter)) } 
 							class={ "btn btn-xs join-item font-semibold", templ.KV("btn-active bg-zinc-900 text-white border-none", sourceFilter == "api"), templ.KV("btn-outline border-zinc-300 text-zinc-600 hover:bg-zinc-100", sourceFilter != "api") }
 						>
 							API REST
@@ -135,7 +130,7 @@ templ UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, li
 							<td class="px-6 py-4 text-right">
 								<button 
 									class="btn btn-ghost hover:bg-zinc-100 text-blue-600 btn-xs font-semibold"
-									hx-get={ fmt.Sprintf("/admin/user-logs/%s/metadata", log.ID) }
+									hx-get={ fmt.Sprintf("/admin/logs/actions/%s/metadata", log.ID) }
 									hx-target="#modal-container"
 									hx-swap="innerHTML"
 								>
@@ -164,7 +159,7 @@ templ UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, li
 				<div class="join">
 					if offset > 0 {
 						<a 
-							href={ templ.URL(fmt.Sprintf("/admin/user-logs?offset=%d&actor_type=%s&source=%s", max(0, offset-limit), actorTypeFilter, sourceFilter)) } 
+							href={ templ.URL(fmt.Sprintf("/admin/logs/actions?offset=%d&actor_type=%s&source=%s", max(0, offset-limit), actorTypeFilter, sourceFilter)) } 
 							class="btn btn-xs join-item btn-outline border-zinc-300 hover:bg-zinc-100 font-semibold"
 						>
 							Anterior
@@ -175,7 +170,7 @@ templ UserLogsContent(workspaceID uuid.UUID, logs []repository.UserActionLog, li
 
 					if offset+limit < total {
 						<a 
-							href={ templ.URL(fmt.Sprintf("/admin/user-logs?offset=%d&actor_type=%s&source=%s", offset+limit, actorTypeFilter, sourceFilter)) } 
+							href={ templ.URL(fmt.Sprintf("/admin/logs/actions?offset=%d&actor_type=%s&source=%s", offset+limit, actorTypeFilter, sourceFilter)) } 
 							class="btn btn-xs join-item btn-outline border-zinc-300 hover:bg-zinc-100 font-semibold"
 						>
 							Próximo

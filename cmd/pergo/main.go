@@ -514,8 +514,8 @@ func main() {
 	adminGroup.DELETE("/webhooks/dlq/:dlq_id", webhookHandler.DeleteDLQ)
 
 	// User action logs routes
-	adminGroup.GET("/user-logs", userLogsHandler.List)
-	adminGroup.GET("/user-logs/:id/metadata", userLogsHandler.GetMetadata)
+	adminGroup.GET("/logs/actions", userLogsHandler.List)
+	adminGroup.GET("/logs/actions/:id/metadata", userLogsHandler.GetMetadata)
 
 	adminGroup.GET("/workspaces/:workspace_id/webhooks", webhookHandler.Page)
 	adminGroup.POST("/workspaces/:workspace_id/webhooks/config", webhookHandler.SaveConfig)

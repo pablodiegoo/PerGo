@@ -69,13 +69,13 @@ func TestUserLogsHandler(t *testing.T) {
 	e := echo.New()
 
 	t.Run("List Logs", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/admin/user-logs", nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/logs/actions", nil)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
 		// Set context values to avoid layout crash
-		reqCtx := context.WithValue(req.Context(), "active_path", "/admin/user-logs")
+		reqCtx := context.WithValue(req.Context(), "active_path", "/admin/logs/actions")
 		reqCtx = context.WithValue(reqCtx, "active_workspace", ws)
 		reqCtx = context.WithValue(reqCtx, "workspaces_list", []repository.Workspace{*ws})
 		c.SetRequest(req.WithContext(reqCtx))
@@ -89,8 +89,8 @@ func TestUserLogsHandler(t *testing.T) {
 		}
 
 		body := rec.Body.String()
-		if !strings.Contains(body, "Logs de Ações") {
-			t.Errorf("expected response to contain 'Logs de Ações', got: %s", body)
+		if !strings.Contains(body, "Logs de Auditoria") {
+			t.Errorf("expected response to contain 'Logs de Auditoria', got: %s", body)
 		}
 		if !strings.Contains(body, "Admin User") {
 			t.Errorf("expected response to contain actor name 'Admin User', got: %s", body)
@@ -98,10 +98,10 @@ func TestUserLogsHandler(t *testing.T) {
 	})
 
 	t.Run("Get Log Metadata Modal", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/admin/user-logs/"+log.ID.String()+"/metadata", nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/logs/actions/"+log.ID.String()+"/metadata", nil)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
-		c.SetPath("/admin/user-logs/:id/metadata")
+		c.SetPath("/admin/logs/actions/:id/metadata")
 		c.SetPathValues(echo.PathValues{
 			{Name: "id", Value: log.ID.String()},
 		})
