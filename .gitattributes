@@ -1,4 +1,7 @@
-.agents/** linguist-vendored
-.opencode/** linguist-vendored
-.planning/** linguist-vendored
+.agents/** linguist-vendored export-ignore
+.opencode/** linguist-vendored export-ignore
+.planning/** linguist-vendored export-ignore
+AGENTS.md export-ignore
+CONTEXT.md export-ignore
+GEMINI.md export-ignore
 docs/** linguist-documentation
