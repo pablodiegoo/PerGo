@@ -267,7 +267,7 @@ func main() {
 	userActionLogRepo := repository.NewUserActionLogRepository(pool)
 	wabaTemplateRepo := repository.NewWABATemplateRepository(pool)
 
-	wabaTemplateHandler := admin.NewWABATemplateHandler(wabaTemplateRepo, credentialsRepo)
+	wabaTemplateHandler := admin.NewWABATemplateHandler(wabaTemplateRepo, connectionRepo)
 	userLogsHandler := admin.NewUserLogsHandler(userActionLogRepo)
 
 	// --- Echo HTTP server ---
@@ -398,12 +398,10 @@ func main() {
 	workspaceHandler := &admin.WorkspaceHandler{
 		Repo:        wsRepo,
 		APIKeys:     apiKeyRepo,
-		Credentials: credentialsRepo,
-		Templates:   wabaTemplateRepo,
 		ExternalURL: cfg.ExternalURL,
 	}
-	adminGroup.GET("/workspaces", workspaceHandler.List)
-	adminGroup.GET("/workspace", workspaceHandler.List)
+	adminGroup.GET("/workspaces", workspaceHandler.ActiveWorkspace)
+	adminGroup.GET("/workspace", workspaceHandler.ActiveWorkspace)
 	adminGroup.POST("/workspaces", workspaceHandler.Create)
 	adminGroup.GET("/workspaces/new", func(c *echo.Context) error {
 		return middleware.Render(c, http.StatusOK, pages.WorkspaceCreateForm())
@@ -412,8 +410,6 @@ func main() {
 	adminGroup.GET("/workspace/:id", workspaceHandler.Detail)
 	adminGroup.GET("/workspaces/:id/confirm-delete", workspaceHandler.ConfirmDelete)
 	adminGroup.DELETE("/workspaces/:id", workspaceHandler.Delete)
-	adminGroup.POST("/workspaces/:id/credentials/:channel", workspaceHandler.SaveCredentials)
-	adminGroup.DELETE("/workspaces/:id/credentials/:channel", workspaceHandler.DeleteCredentials)
 
 	// API key management routes
 	apiKeyHandler := &admin.APIKeyHandler{Repo: apiKeyRepo, Workspaces: wsRepo}
