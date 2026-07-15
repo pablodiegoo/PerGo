@@ -2,14 +2,13 @@ package inbound
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -77,17 +76,12 @@ type Publisher interface {
 	Publish(ctx context.Context, subject string, data []byte, traceID string) error
 }
 
-// MediaUploader defines the port for storing media files in external storage.
-type MediaUploader interface {
-	Upload(ctx context.Context, key string, data []byte, contentType string) error
-}
-
 // InboundProcessor handles workspace verification, deduplication, PII checking,
 // S3 uploading, NATS publishing, and audit logging for all messaging channels.
 type InboundProcessor struct {
 	dedupRepo            *repository.InboundDedupRepository
 	wsRepo               *repository.WorkspaceRepository
-	s3Client             MediaUploader
+	mediaEngine          media.Engine
 	publisher            Publisher
 	auditWriter          audit.Writer
 	recipientSessionRepo *repository.RecipientSessionRepository
@@ -97,7 +91,7 @@ type InboundProcessor struct {
 func NewInboundProcessor(
 	dedupRepo *repository.InboundDedupRepository,
 	wsRepo *repository.WorkspaceRepository,
-	s3Client MediaUploader,
+	mediaEngine media.Engine,
 	publisher Publisher,
 	auditWriter audit.Writer,
 	recipientSessionRepo *repository.RecipientSessionRepository,
@@ -105,7 +99,7 @@ func NewInboundProcessor(
 	return &InboundProcessor{
 		dedupRepo:            dedupRepo,
 		wsRepo:               wsRepo,
-		s3Client:             s3Client,
+		mediaEngine:          mediaEngine,
 		publisher:            publisher,
 		auditWriter:          auditWriter,
 		recipientSessionRepo: recipientSessionRepo,
@@ -162,22 +156,15 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 
 	// 5. Upload media to S3 if present
 	if ev.Media != nil && len(ev.Media.Bytes) > 0 {
-		if len(ev.Media.Bytes) > 25*1024*1024 {
-			slog.Warn("inbound processor: skipped S3 upload; media size exceeds 25MB limit", "size", len(ev.Media.Bytes))
-		} else if p.s3Client == nil {
-			slog.Error("inbound processor: skipped S3 upload; S3 client is not configured")
+		if p.mediaEngine == nil {
+			slog.Error("inbound processor: skipped S3 upload; S3 client/media engine is not configured")
 		} else {
-			hashKey := hashBytes(ev.Media.Bytes)
-			ext := getExtFromMediaType(ev.Media.MediaType)
-			s3Key := fmt.Sprintf("%s/%s.%s", ev.WorkspaceID.String(), hashKey, ext)
-			mimeType := getMimeFromMediaType(ev.Media.MediaType)
-
-			err := p.s3Client.Upload(ctx, s3Key, ev.Media.Bytes, mimeType)
+			mediaURL, err := p.mediaEngine.ProcessInbound(ctx, ev.WorkspaceID, ev.Media.MediaType, ev.Media.Bytes)
 			if err != nil {
-				slog.Error("inbound processor: S3 upload failed", "error", err, "key", s3Key)
+				slog.Error("inbound processor: media upload/process failed", "error", err)
 			} else {
 				payload.Media = &EventMedia{
-					MediaURL:  fmt.Sprintf("/media/%s/%s.%s", ev.WorkspaceID.String(), hashKey, ext),
+					MediaURL:  mediaURL,
 					MediaType: ev.Media.MediaType,
 					Filename:  ev.Media.Filename,
 					Caption:   ev.Media.Caption,
@@ -220,40 +207,4 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 	}
 
 	return nil
-}
-
-func hashBytes(data []byte) string {
-	h := sha256.New()
-	h.Write(data)
-	return hex.EncodeToString(h.Sum(nil))
-}
-
-func getExtFromMediaType(mediaType string) string {
-	switch mediaType {
-	case "image":
-		return "jpg"
-	case "video":
-		return "mp4"
-	case "audio":
-		return "ogg"
-	case "document":
-		return "pdf"
-	default:
-		return "bin"
-	}
-}
-
-func getMimeFromMediaType(mediaType string) string {
-	switch mediaType {
-	case "image":
-		return "image/jpeg"
-	case "video":
-		return "video/mp4"
-	case "audio":
-		return "audio/ogg"
-	case "document":
-		return "application/pdf"
-	default:
-		return "application/octet-stream"
-	}
 }

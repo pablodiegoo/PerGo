@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pablojhp.pergo/internal/inbound"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -77,26 +78,59 @@ func (f *fakePublisher) Publish(ctx context.Context, subject string, data []byte
 	return nil
 }
 
-// fakeUploader records uploaded files.
-type fakeUploader struct {
-	uploaded []struct {
-		key         string
+// fakeMediaEngine records uploads and processes.
+type fakeMediaEngine struct {
+	downloadFn        func(ctx context.Context, url string, headers map[string]string, maxBytes int64) (*media.DownloadResult, error)
+	uploadFn          func(ctx context.Context, key string, data []byte, contentType string) error
+	processOutboundFn func(ctx context.Context, workspaceID uuid.UUID, mediaURL string) (string, error)
+	processInboundFn  func(ctx context.Context, workspaceID uuid.UUID, mediaType string, data []byte) (string, error)
+
+	inboundCalls []struct {
+		workspaceID uuid.UUID
+		mediaType   string
 		data        []byte
-		contentType string
 	}
-	err error
+	outboundCalls []struct {
+		workspaceID uuid.UUID
+		mediaURL    string
+	}
 }
 
-func (f *fakeUploader) Upload(ctx context.Context, key string, data []byte, contentType string) error {
-	if f.err != nil {
-		return f.err
+func (f *fakeMediaEngine) Download(ctx context.Context, url string, headers map[string]string, maxBytes int64) (*media.DownloadResult, error) {
+	if f.downloadFn != nil {
+		return f.downloadFn(ctx, url, headers, maxBytes)
 	}
-	f.uploaded = append(f.uploaded, struct {
-		key         string
-		data        []byte
-		contentType string
-	}{key, data, contentType})
+	return nil, nil
+}
+
+func (f *fakeMediaEngine) Upload(ctx context.Context, key string, data []byte, contentType string) error {
+	if f.uploadFn != nil {
+		return f.uploadFn(ctx, key, data, contentType)
+	}
 	return nil
+}
+
+func (f *fakeMediaEngine) ProcessOutbound(ctx context.Context, workspaceID uuid.UUID, mediaURL string) (string, error) {
+	f.outboundCalls = append(f.outboundCalls, struct {
+		workspaceID uuid.UUID
+		mediaURL    string
+	}{workspaceID, mediaURL})
+	if f.processOutboundFn != nil {
+		return f.processOutboundFn(ctx, workspaceID, mediaURL)
+	}
+	return "", nil
+}
+
+func (f *fakeMediaEngine) ProcessInbound(ctx context.Context, workspaceID uuid.UUID, mediaType string, data []byte) (string, error) {
+	f.inboundCalls = append(f.inboundCalls, struct {
+		workspaceID uuid.UUID
+		mediaType   string
+		data        []byte
+	}{workspaceID, mediaType, data})
+	if f.processInboundFn != nil {
+		return f.processInboundFn(ctx, workspaceID, mediaType, data)
+	}
+	return "", nil
 }
 
 // fakeAuditWriter records audit events.
@@ -138,10 +172,10 @@ func TestInboundProcessor_Process(t *testing.T) {
 
 	t.Run("Standard text message ingestion", func(t *testing.T) {
 		pub := &fakePublisher{}
-		up := &fakeUploader{}
+		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, up, pub, aud, sessRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -190,10 +224,10 @@ func TestInboundProcessor_Process(t *testing.T) {
 
 	t.Run("Deduplication prevents double processing", func(t *testing.T) {
 		pub := &fakePublisher{}
-		up := &fakeUploader{}
+		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, up, pub, aud, sessRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -225,10 +259,14 @@ func TestInboundProcessor_Process(t *testing.T) {
 
 	t.Run("Media upload and mapping", func(t *testing.T) {
 		pub := &fakePublisher{}
-		up := &fakeUploader{}
+		me := &fakeMediaEngine{
+			processInboundFn: func(ctx context.Context, workspaceID uuid.UUID, mediaType string, data []byte) (string, error) {
+				return "/media/" + workspaceID.String() + "/abcde12345.jpg", nil
+			},
+		}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, up, pub, aud, sessRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -249,13 +287,16 @@ func TestInboundProcessor_Process(t *testing.T) {
 			t.Fatalf("Process failed: %v", err)
 		}
 
-		// Verify S3 Upload
-		if len(up.uploaded) != 1 {
-			t.Fatalf("expected 1 S3 upload, got %d", len(up.uploaded))
+		// Verify Media Engine Inbound Call
+		if len(me.inboundCalls) != 1 {
+			t.Fatalf("expected 1 ProcessInbound call, got %d", len(me.inboundCalls))
 		}
-		upload := up.uploaded[0]
-		if upload.contentType != "image/jpeg" {
-			t.Errorf("got contentType %s, want image/jpeg", upload.contentType)
+		call := me.inboundCalls[0]
+		if call.mediaType != "image" {
+			t.Errorf("got mediaType %s, want image", call.mediaType)
+		}
+		if string(call.data) != "fake-image-bytes" {
+			t.Errorf("got data %s, want fake-image-bytes", string(call.data))
 		}
 
 		// Verify Media URL in payload
@@ -280,10 +321,10 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 
 		pub := &fakePublisher{}
-		up := &fakeUploader{}
+		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, up, pub, aud, sessRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -325,7 +366,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 
 		pub2 := &fakePublisher{}
-		proc2 := inbound.NewInboundProcessor(dedupRepo, wsRepo, up, pub2, aud, sessRepo)
+		proc2 := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub2, aud, sessRepo)
 		event.MessageID = "test-pii-opt-in" // fresh message ID to bypass dedup
 
 		err = proc2.Process(ctx, event)
@@ -350,10 +391,14 @@ func TestInboundProcessor_Process(t *testing.T) {
 
 	t.Run("Non-fatal S3 upload failure does not stop message ingestion", func(t *testing.T) {
 		pub := &fakePublisher{}
-		up := &fakeUploader{err: errors.New("S3 server timeout")}
+		me := &fakeMediaEngine{
+			processInboundFn: func(ctx context.Context, workspaceID uuid.UUID, mediaType string, data []byte) (string, error) {
+				return "", errors.New("S3 server timeout")
+			},
+		}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, up, pub, aud, sessRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
