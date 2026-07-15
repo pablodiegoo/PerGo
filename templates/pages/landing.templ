@@ -1,0 +1,152 @@
+package pages
+
+templ Landing() {
+	<!DOCTYPE html>
+	<html lang="en" data-theme="dark">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>PerGo - Omnichannel CPaaS</title>
+			<link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css"/>
+			<script src="https://cdn.tailwindcss.com"></script>
+			<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"/>
+			<style>
+				body {
+					font-family: 'Plus Jakarta Sans', sans-serif;
+				}
+				pre, code {
+					font-family: 'JetBrains Mono', monospace;
+				}
+				.gradient-text {
+					background: linear-gradient(135deg, #a5b4fc 0%, #6366f1 50%, #4f46e5 100%);
+					-webkit-background-clip: text;
+					-webkit-text-fill-color: transparent;
+				}
+				.glow-effect {
+					position: relative;
+				}
+				.glow-effect::after {
+					content: '';
+					position: absolute;
+					inset: 0;
+					background: radial-gradient(circle at 50% 50%, rgba(99, 102, 241, 0.15), transparent 60%);
+					pointer-events: none;
+					z-index: 0;
+				}
+			</style>
+		</head>
+		<body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white glow-effect overflow-x-hidden">
+			<!-- Navigation -->
+			<header class="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
+				<div class="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+					<div class="flex items-center gap-2">
+						<span class="text-2xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-400 to-indigo-600 bg-clip-text text-transparent">PerGo</span>
+						<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-indigo-950/50 text-indigo-400 border border-indigo-900/30">CPaaS</span>
+					</div>
+					<nav class="flex items-center gap-6">
+						<a href="https://github.com/pablodiegoo/OmniGo" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-slate-400 hover:text-indigo-400 transition">GitHub</a>
+						<a href="/admin/login" class="btn btn-sm btn-indigo bg-indigo-600 hover:bg-indigo-500 text-white border-none rounded-lg px-4 text-xs font-bold transition-all shadow-lg shadow-indigo-600/20">Ir para o Console</a>
+					</nav>
+				</div>
+			</header>
+
+			<!-- Hero Section -->
+			<section class="max-w-7xl mx-auto px-6 pt-20 pb-16 text-center relative z-10">
+				<div class="max-w-3xl mx-auto space-y-6">
+					<h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight leading-none">
+						Comunicações Multicanal <br/>
+						<span class="gradient-text">Sem Custos Abusivos</span>
+					</h1>
+					<p class="text-base sm:text-lg text-slate-400 font-medium leading-relaxed max-w-2xl mx-auto">
+						Uma única API REST integrada no seu backend para gerenciar conexões de WhatsApp Web, WhatsApp Cloud (WABA) e Telegram com fila resiliente NATS JetStream e soberania total dos seus dados.
+					</p>
+					<div class="flex flex-wrap items-center justify-center gap-4 pt-4">
+						<a href="/admin/" class="btn btn-md bg-indigo-600 hover:bg-indigo-500 text-white border-none rounded-xl px-6 font-bold shadow-lg shadow-indigo-600/30 transition-all hover:-translate-y-0.5">
+							Acessar Painel Admin
+						</a>
+						<a href="https://github.com/pablodiegoo/OmniGo" target="_blank" rel="noopener noreferrer" class="btn btn-md btn-outline border-slate-800 hover:bg-slate-900 text-slate-300 rounded-xl px-6 font-bold transition-all hover:-translate-y-0.5">
+							Ver Repositório GitHub
+						</a>
+					</div>
+				</div>
+			</section>
+
+			<!-- Code & Integration Section -->
+			<section class="max-w-7xl mx-auto px-6 py-12 relative z-10">
+				<div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+					<!-- Explanation -->
+					<div class="space-y-6">
+						<h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight">Uma única requisição para qualquer canal</h2>
+						<p class="text-sm sm:text-base text-slate-400 leading-relaxed">
+							Abstraia a fragmentação dos provedores. Faça um único POST para a rota de mensagens e o PerGo cuidará do roteamento, throttling de entrega, throttling antispam do WhatsApp Web (atrasos aleatórios de 1-3s) e fallback para canais secundários se o principal falhar.
+						</p>
+						<div class="space-y-3 text-xs sm:text-sm">
+							<div class="flex items-start gap-3">
+								<span class="w-5 h-5 rounded-full bg-indigo-950 flex items-center justify-center text-indigo-400 font-bold text-xs">✓</span>
+								<span><strong>Fallback automático:</strong> Envia por Telegram se o WhatsApp falhar.</span>
+							</div>
+							<div class="flex items-start gap-3">
+								<span class="w-5 h-5 rounded-full bg-indigo-950 flex items-center justify-center text-indigo-400 font-bold text-xs">✓</span>
+								<span><strong>Segurança:</strong> Criptografia AES-256-GCM para credenciais de canais.</span>
+							</div>
+							<div class="flex items-start gap-3">
+								<span class="w-5 h-5 rounded-full bg-indigo-950 flex items-center justify-center text-indigo-400 font-bold text-xs">✓</span>
+								<span><strong>Alta Performance:</strong> Ingestion em &lt;50ms com broker NATS.</span>
+							</div>
+						</div>
+					</div>
+
+					<!-- Code Terminal -->
+					<div class="bg-slate-900/60 border border-slate-800/80 rounded-2xl overflow-hidden shadow-2xl backdrop-blur-sm">
+						<div class="bg-slate-950/60 px-4 py-3 border-b border-slate-800/80 flex items-center justify-between">
+							<div class="flex items-center gap-1.5">
+								<span class="w-3 h-3 rounded-full bg-red-500/70"></span>
+								<span class="w-3 h-3 rounded-full bg-yellow-500/70"></span>
+								<span class="w-3 h-3 rounded-full bg-green-500/70"></span>
+							</div>
+							<span class="text-[11px] font-semibold text-slate-500 font-mono">cURL integration</span>
+						</div>
+						<div class="p-6">
+							<pre class="text-xs sm:text-sm text-indigo-300 leading-relaxed overflow-x-auto whitespace-pre"><code>curl -X POST http://localhost:8080/api/v1/messages \
+  -H "Authorization: Bearer <span class="text-emerald-400">&lt;SUA_API_KEY&gt;</span>" \
+  -H "Content-Type: application/json" \
+  -d '{"{"}
+    <span class="text-indigo-400">"channel"</span>: <span class="text-amber-400">"whatsapp"</span>,
+    <span class="text-indigo-400">"to"</span>: <span class="text-amber-400">"+5511999999999"</span>,
+    <span class="text-indigo-400">"body"</span>: <span class="text-amber-400">"Olá de dentro do PerGo!"</span>,
+    <span class="text-indigo-400">"fallback_channels"</span>: [<span class="text-amber-400">"telegram"</span>]
+  {"}"}'</code></pre>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<!-- Features Grid -->
+			<section class="max-w-7xl mx-auto px-6 py-16 border-t border-slate-900/60 relative z-10">
+				<h3 class="text-center text-xs font-bold uppercase tracking-wider text-indigo-400 mb-12">Recursos da Plataforma</h3>
+				<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+					<div class="bg-slate-900/30 border border-slate-900 p-6 rounded-xl space-y-3 hover:border-slate-800 transition">
+						<div class="w-10 h-10 rounded-lg bg-indigo-950/50 flex items-center justify-center text-xl text-indigo-400 font-bold">💬</div>
+						<h4 class="font-bold text-base">WhatsApp Web (whatsmeow)</h4>
+						<p class="text-xs text-slate-400 leading-relaxed">Conecte via QR Code utilizando sessões locais seguras e simulação de comportamento humano para evitar banimentos.</p>
+					</div>
+					<div class="bg-slate-900/30 border border-slate-900 p-6 rounded-xl space-y-3 hover:border-slate-800 transition">
+						<div class="w-10 h-10 rounded-lg bg-indigo-950/50 flex items-center justify-center text-xl text-indigo-400 font-bold">☁️</div>
+						<h4 class="font-bold text-base">WhatsApp Cloud (WABA)</h4>
+						<p class="text-xs text-slate-400 leading-relaxed">Integração oficial robusta e em conformidade com as políticas da Meta para grandes volumes de campanhas.</p>
+					</div>
+					<div class="bg-slate-900/30 border border-slate-900 p-6 rounded-xl space-y-3 hover:border-slate-800 transition">
+						<div class="w-10 h-10 rounded-lg bg-indigo-950/50 flex items-center justify-center text-xl text-indigo-400 font-bold">🤖</div>
+						<h4 class="font-bold text-base">Telegram Bots</h4>
+						<p class="text-xs text-slate-400 leading-relaxed">Roteamento completo de bots com suporte a chat IDs numéricos e persistência automática de contatos.</p>
+					</div>
+				</div>
+			</section>
+
+			<!-- Footer -->
+			<footer class="border-t border-slate-900 py-8 text-center text-xs text-slate-500 relative z-10">
+				<p>&copy; 2026 PerGo. Licenciado sob MIT. Projeto Open Source.</p>
+			</footer>
+		</body>
+	</html>
+}

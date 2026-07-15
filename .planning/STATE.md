@@ -133,6 +133,7 @@ Items acknowledged and carried forward from previous milestone close:
 | 260713-uuo | 2026-07-14 | implement-dynamic-onboarding-logic | complete ✓ |
 | 260715-eg9 | 2026-07-15 | implement-connections-list-in-campaign-f | complete ✓ |
 | 260715-f3q | 2026-07-15 | review-and-update-gitattributes-and-gitignore | complete ✓ |
+| 260715-ixv | 2026-07-15 | landing-page | complete ✓ |
 
 ## Session Continuity
 
