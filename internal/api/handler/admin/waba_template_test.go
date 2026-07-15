@@ -90,7 +90,7 @@ func TestWABATemplateHandler(t *testing.T) {
 		"waba_account_id": "99999",
 	}
 	configBytes, _ := json.Marshal(wabaConfig)
-	_, err = connRepo.Create(ctx, &repository.Connection{
+	err = connRepo.Create(ctx, &repository.Connection{
 		WorkspaceID:    ws.ID,
 		Name:           "WABA Cloud Test",
 		Channel:        "whatsapp_cloud",

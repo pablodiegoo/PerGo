@@ -130,7 +130,6 @@ func main() {
 
 	mediaEngine := media.NewDefaultEngine(s3Client)
 
-	credentialsRepo := repository.NewCredentialsRepository(pool, encryptor)
 	connectionRepo := repository.NewConnectionRepository(pool, encryptor)
 	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
 	telegramContactRepo := repository.NewTelegramContactRepository(pool)
