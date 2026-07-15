@@ -130,6 +130,8 @@ Items acknowledged and carried forward from previous milestone close:
 | GS21 | 2026-07-09 | fix-connections-decrypt-and-layout-tweak | complete ✓ |
 | 260713-tsm | 2026-07-14 | implement-socks5-proxy-support-whatsmeow | complete ✓ |
 | 260713-uuo | 2026-07-14 | implement-dynamic-onboarding-logic | complete ✓ |
+| 260715-eg9 | 2026-07-15 | implement-connections-list-in-campaign-f | complete ✓ |
+
 
 ## Session Continuity
 
