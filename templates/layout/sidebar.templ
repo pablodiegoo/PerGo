@@ -125,12 +125,15 @@ templ Sidebar() {
 					</svg>
 				</button>
 				
-				<ul id="settings-submenu" class={ "transition-all duration-200 pl-10 mt-1 space-y-1 overflow-hidden", templ.KV("max-h-[240px] opacity-100", isSettingsActive(getActivePath(ctx))), templ.KV("max-h-0 opacity-0", !isSettingsActive(getActivePath(ctx))) }>
+				<ul id="settings-submenu" class={ "transition-all duration-200 pl-10 mt-1 space-y-1 overflow-hidden", templ.KV("max-h-[280px] opacity-100", isSettingsActive(getActivePath(ctx))), templ.KV("max-h-0 opacity-0", !isSettingsActive(getActivePath(ctx))) }>
 					<li>
 						<a href="/admin/connections" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/connections")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/connections")) }>Conexões</a>
 					</li>
 					<li>
 						<a href="/admin/logs" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/logs")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/logs")) }>Logs</a>
+					</li>
+					<li>
+						<a href="/admin/user-logs" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/user-logs")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/user-logs")) }>Logs de Ações</a>
 					</li>
 					<li>
 						<a href="/admin/workspace" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/workspace")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/workspace")) }>Workspace</a>
@@ -156,17 +159,17 @@ templ Sidebar() {
 			function toggleSettingsSubmenu() {
 				const submenu = document.getElementById('settings-submenu');
 				const chevron = document.getElementById('chevron-icon');
-				const isExpanded = submenu.style.maxHeight === '240px' || submenu.classList.contains('max-h-[240px]');
+				const isExpanded = submenu.style.maxHeight === '280px' || submenu.classList.contains('max-h-[280px]');
 				
 				if (isExpanded) {
 					submenu.style.maxHeight = '0px';
 					submenu.style.opacity = '0';
-					submenu.classList.remove('max-h-[240px]', 'opacity-100');
+					submenu.classList.remove('max-h-[280px]', 'opacity-100');
 					chevron.classList.remove('rotate-180');
 				} else {
-					submenu.style.maxHeight = '240px';
+					submenu.style.maxHeight = '280px';
 					submenu.style.opacity = '1';
-					submenu.classList.add('max-h-[240px]', 'opacity-100');
+					submenu.classList.add('max-h-[280px]', 'opacity-100');
 					chevron.classList.add('rotate-180');
 				}
 			}

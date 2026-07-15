@@ -145,3 +145,91 @@ func TestAuditMiddleware(t *testing.T) {
 		}
 	})
 }
+
+func TestDashboardAuditMiddleware(t *testing.T) {
+	e := echo.New()
+
+	h := func(c *echo.Context) error {
+		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+	}
+
+	inserter := &mockActionLogInserter{
+		ch: make(chan *repository.UserActionLog, 10),
+	}
+
+	mw := DashboardAuditMiddleware(inserter)
+
+	t.Run("GET request does not audit", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/admin/workspaces/a88bd267-27b0-466d-a7b2-6c17d74db190/campaigns", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: "a88bd267-27b0-466d-a7b2-6c17d74db190"},
+		})
+
+		err := mw(h)(c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		select {
+		case log := <-inserter.ch:
+			t.Errorf("unexpected log recorded for GET: %+v", log)
+		case <-time.After(50 * time.Millisecond):
+			// Success
+		}
+	})
+
+	t.Run("POST request audits successfully", func(t *testing.T) {
+		body := "name=TestCampaign&channel=whatsapp"
+		req := httptest.NewRequest(http.MethodPost, "/admin/workspaces/a88bd267-27b0-466d-a7b2-6c17d74db190/campaigns/new", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("User-Agent", "DashboardAgent")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns/new")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: "a88bd267-27b0-466d-a7b2-6c17d74db190"},
+		})
+
+		err := mw(h)(c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		wsID, _ := uuid.Parse("a88bd267-27b0-466d-a7b2-6c17d74db190")
+
+		select {
+		case log := <-inserter.ch:
+			if log.WorkspaceID != wsID {
+				t.Errorf("expected workspace ID %s, got %s", wsID, log.WorkspaceID)
+			}
+			if log.ActorType != "user" {
+				t.Errorf("expected actor type 'user', got '%s'", log.ActorType)
+			}
+			if log.ActorID != "admin" {
+				t.Errorf("expected actor ID 'admin', got '%s'", log.ActorID)
+			}
+			if log.Action != "campaign.create" {
+				t.Errorf("expected action 'campaign.create', got '%s'", log.Action)
+			}
+			if log.Source != "dashboard" {
+				t.Errorf("expected source 'dashboard', got '%s'", log.Source)
+			}
+			if log.UserAgent == nil || *log.UserAgent != "DashboardAgent" {
+				t.Errorf("expected user agent 'DashboardAgent', got '%v'", log.UserAgent)
+			}
+			
+			var meta map[string]any
+			if err := json.Unmarshal(log.Metadata, &meta); err != nil {
+				t.Fatalf("failed to parse metadata: %v", err)
+			}
+			if meta["name"] != "TestCampaign" || meta["channel"] != "whatsapp" {
+				t.Errorf("unexpected metadata: %+v", meta)
+			}
+		case <-time.After(200 * time.Millisecond):
+			t.Fatal("timeout waiting for audit log")
+		}
+	})
+}

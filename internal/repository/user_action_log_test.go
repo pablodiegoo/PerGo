@@ -32,7 +32,7 @@ func TestUserActionLogRepository(t *testing.T) {
 	}()
 
 	// 1. Initial list should be empty
-	logs, total, err := repo.ListByWorkspace(ctx, ws.ID, 10, 0)
+	logs, total, err := repo.ListByWorkspace(ctx, ws.ID, 10, 0, "", "")
 	if err != nil {
 		t.Fatalf("failed to list action logs: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestUserActionLogRepository(t *testing.T) {
 	}
 
 	// 4. Verify pagination and content
-	logs, total, err = repo.ListByWorkspace(ctx, ws.ID, 10, 0)
+	logs, total, err = repo.ListByWorkspace(ctx, ws.ID, 10, 0, "", "")
 	if err != nil {
 		t.Fatalf("failed to list logs: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestUserActionLogRepository(t *testing.T) {
 	}
 
 	// 5. Test pagination limits
-	logsLimit, totalLimit, err := repo.ListByWorkspace(ctx, ws.ID, 1, 0)
+	logsLimit, totalLimit, err := repo.ListByWorkspace(ctx, ws.ID, 1, 0, "", "")
 	if err != nil {
 		t.Fatalf("failed to list with limit: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestUserActionLogRepository(t *testing.T) {
 	}
 
 	// Test offset
-	logsOffset, totalOffset, err := repo.ListByWorkspace(ctx, ws.ID, 1, 1)
+	logsOffset, totalOffset, err := repo.ListByWorkspace(ctx, ws.ID, 1, 1, "", "")
 	if err != nil {
 		t.Fatalf("failed to list with offset: %v", err)
 	}
@@ -166,4 +166,31 @@ func TestUserActionLogRepository(t *testing.T) {
 	if logsOffset[0].ID != item2.ID {
 		t.Error("expected second page item to match item2")
 	}
+
+	// 6. Test filters
+	t.Run("filter by actorType=user", func(t *testing.T) {
+		filteredLogs, filteredTotal, err := repo.ListByWorkspace(ctx, ws.ID, 10, 0, "user", "")
+		if err != nil {
+			t.Fatalf("filter list failed: %v", err)
+		}
+		if filteredTotal != 1 {
+			t.Errorf("expected 1 user log, got %d", filteredTotal)
+		}
+		if len(filteredLogs) != 1 || filteredLogs[0].ActorType != "user" {
+			t.Errorf("expected user actor type, got %+v", filteredLogs)
+		}
+	})
+
+	t.Run("filter by source=api", func(t *testing.T) {
+		filteredLogs, filteredTotal, err := repo.ListByWorkspace(ctx, ws.ID, 10, 0, "", "api")
+		if err != nil {
+			t.Fatalf("filter list failed: %v", err)
+		}
+		if filteredTotal != 1 {
+			t.Errorf("expected 1 api log, got %d", filteredTotal)
+		}
+		if len(filteredLogs) != 1 || filteredLogs[0].Source != "api" {
+			t.Errorf("expected source api, got %+v", filteredLogs)
+		}
+	})
 }

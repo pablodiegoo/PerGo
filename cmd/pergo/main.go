@@ -264,9 +264,11 @@ func main() {
 
 	// --- Repositories ---
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
+	userActionLogRepo := repository.NewUserActionLogRepository(pool)
 	wabaTemplateRepo := repository.NewWABATemplateRepository(pool)
 
 	wabaTemplateHandler := admin.NewWABATemplateHandler(wabaTemplateRepo, credentialsRepo)
+	userLogsHandler := admin.NewUserLogsHandler(userActionLogRepo)
 
 	// --- Echo HTTP server ---
 	e := echosrv.New()
@@ -281,6 +283,9 @@ func main() {
 
 	// Auth middleware — protects /api/* routes
 	e.Use(middleware.AuthMiddleware(apiKeyRepo))
+
+	// Audit middleware — audits API operations
+	e.Use(middleware.AuditMiddleware(userActionLogRepo))
 
 	// Health endpoints
 	healthHandler := &handler.HealthHandler{
@@ -340,6 +345,7 @@ func main() {
 	adminGroup := e.Group("/admin")
 	adminGroup.Use(middleware.HTMXMiddleware())
 	adminGroup.Use(middleware.SessionAuthMiddleware())
+	adminGroup.Use(middleware.DashboardAuditMiddleware(userActionLogRepo))
 	adminGroup.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			ctx := c.Request().Context()
@@ -506,6 +512,10 @@ func main() {
 	adminGroup.GET("/webhooks/dlq/:dlq_id/details", webhookHandler.GetDetails)
 	adminGroup.POST("/webhooks/dlq/:dlq_id/retry", webhookHandler.RetryDLQ)
 	adminGroup.DELETE("/webhooks/dlq/:dlq_id", webhookHandler.DeleteDLQ)
+
+	// User action logs routes
+	adminGroup.GET("/user-logs", userLogsHandler.List)
+	adminGroup.GET("/user-logs/:id/metadata", userLogsHandler.GetMetadata)
 
 	adminGroup.GET("/workspaces/:workspace_id/webhooks", webhookHandler.Page)
 	adminGroup.POST("/workspaces/:workspace_id/webhooks/config", webhookHandler.SaveConfig)
