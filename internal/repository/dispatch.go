@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -22,6 +23,9 @@ type MessageDispatch struct {
 	Status         string
 	FallbackIndex  int
 	ErrorMessage   *string
+	CampaignID     *uuid.UUID
+	TemplateName   *string
+	VariablesJSON  map[string]string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
@@ -37,19 +41,44 @@ func NewMessageDispatchRepository(pool *pgxpool.Pool) *MessageDispatchRepository
 }
 
 // GetOrCreateDispatch retrieves an existing dispatch by trace_id or inserts a new one if it doesn't exist.
-func (r *MessageDispatchRepository) GetOrCreateDispatch(ctx context.Context, workspaceID uuid.UUID, traceID string, initialChannel string) (*MessageDispatch, error) {
+func (r *MessageDispatchRepository) GetOrCreateDispatch(
+	ctx context.Context,
+	workspaceID uuid.UUID,
+	traceID string,
+	initialChannel string,
+	campaignID *uuid.UUID,
+	templateName *string,
+	variablesJSON map[string]string,
+) (*MessageDispatch, error) {
+	var varsJSON []byte
+	var err error
+	if variablesJSON != nil {
+		varsJSON, err = json.Marshal(variablesJSON)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var d MessageDispatch
-	err := r.pool.QueryRow(ctx,
-		`INSERT INTO message_dispatches (workspace_id, trace_id, current_channel, status, fallback_index)
-		 VALUES ($1, $2, $3, 'queued', 0)
+	var varsRaw []byte
+	err = r.pool.QueryRow(ctx,
+		`INSERT INTO message_dispatches (workspace_id, trace_id, current_channel, status, fallback_index, campaign_id, template_name, variables_json)
+		 VALUES ($1, $2, $3, 'queued', 0, $4, $5, $6)
 		 ON CONFLICT (trace_id) DO UPDATE 
 		 SET trace_id = EXCLUDED.trace_id -- dummy update to return existing row
-		 RETURNING id, workspace_id, trace_id, current_channel, status, fallback_index, error_message, created_at, updated_at`,
-		workspaceID, traceID, initialChannel,
-	).Scan(&d.ID, &d.WorkspaceID, &d.TraceID, &d.CurrentChannel, &d.Status, &d.FallbackIndex, &d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt)
+		 RETURNING id, workspace_id, trace_id, current_channel, status, fallback_index, error_message, campaign_id, template_name, variables_json, created_at, updated_at`,
+		workspaceID, traceID, initialChannel, campaignID, templateName, varsJSON,
+	).Scan(&d.ID, &d.WorkspaceID, &d.TraceID, &d.CurrentChannel, &d.Status, &d.FallbackIndex, &d.ErrorMessage, &d.CampaignID, &d.TemplateName, &varsRaw, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
+
+	if len(varsRaw) > 0 {
+		if err := json.Unmarshal(varsRaw, &d.VariablesJSON); err != nil {
+			return nil, err
+		}
+	}
+
 	return &d, nil
 }
 
@@ -67,16 +96,24 @@ func (r *MessageDispatchRepository) UpdateDispatchStatus(ctx context.Context, id
 // GetByTraceID retrieves a message dispatch record by trace_id.
 func (r *MessageDispatchRepository) GetByTraceID(ctx context.Context, traceID string) (*MessageDispatch, error) {
 	var d MessageDispatch
+	var varsRaw []byte
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, workspace_id, trace_id, current_channel, status, fallback_index, error_message, created_at, updated_at
+		`SELECT id, workspace_id, trace_id, current_channel, status, fallback_index, error_message, campaign_id, template_name, variables_json, created_at, updated_at
 		 FROM message_dispatches WHERE trace_id = $1`,
 		traceID,
-	).Scan(&d.ID, &d.WorkspaceID, &d.TraceID, &d.CurrentChannel, &d.Status, &d.FallbackIndex, &d.ErrorMessage, &d.CreatedAt, &d.UpdatedAt)
+	).Scan(&d.ID, &d.WorkspaceID, &d.TraceID, &d.CurrentChannel, &d.Status, &d.FallbackIndex, &d.ErrorMessage, &d.CampaignID, &d.TemplateName, &varsRaw, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrDispatchNotFound
 		}
 		return nil, err
 	}
+
+	if len(varsRaw) > 0 {
+		if err := json.Unmarshal(varsRaw, &d.VariablesJSON); err != nil {
+			return nil, err
+		}
+	}
+
 	return &d, nil
 }

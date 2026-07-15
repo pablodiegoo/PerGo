@@ -68,6 +68,8 @@ type QueueMessage struct {
 	TemplateName     string              `json:"template_name,omitempty"`
 	Language         string              `json:"language,omitempty"`
 	Components       []TemplateComponent `json:"components,omitempty"`
+	CampaignID       *uuid.UUID          `json:"campaign_id,omitempty"`
+	VariablesJSON    map[string]string   `json:"variables_json,omitempty"`
 }
 
 // TemplateComponent represents a template component payload.
