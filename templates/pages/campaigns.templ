@@ -460,7 +460,7 @@ templ CSVPreviewSegment(summary map[string]int, headers []string, sampleRows [][
 				</table>
 			</div>
 			<p class="text-[11px] text-zinc-400 mb-2">Exibindo as primeiras { fmt.Sprintf("%d", len(sampleRows)) } linhas da planilha.</p>
-		</div>
+		}
 
 		<input type="hidden" id="hidden_valid_count" value={ fmt.Sprintf("%d", summary["valid"]) }/>
 		// Inject JSON payload and wake up JavaScript counts
