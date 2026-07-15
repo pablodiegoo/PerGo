@@ -1,0 +1,28 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-07-15T10:47:58.472Z",
+  "phase": "12",
+  "phase_name": "Campaign Engine",
+  "phase_dir": ".planning/phases/12-campaign-engine",
+  "plan": 2,
+  "task": 3,
+  "total_tasks": 3,
+  "status": "paused",
+  "completed_tasks": [
+    {"id": 1, "name": "Task 1: Campaign Echo Admin Handler and Route Registrations", "status": "done", "commit": "f058529"},
+    {"id": 2, "name": "Task 2: Campaigns HTML/TEMPL Views and Sidebar Integration", "status": "done", "commit": "f058529"},
+    {"id": 3, "name": "Task 3: Run Dev Server", "status": "done", "commit": "d628677"}
+  ],
+  "remaining_tasks": [],
+  "blockers": [],
+  "async_jobs": [],
+  "human_actions_pending": [],
+  "decisions": [
+    {"decision": "Stop Workers Cleanly", "rationale": "Added MessagesContext tracking to CampaignWorker struct to call msgCtx.Stop() on cancel/shutdown, preventing worker test blockages.", "phase": "12"},
+    {"decision": "Avoid JS Double Braces in TEMPL", "rationale": "Mapped double braces dynamically via string concatenation in template views to prevent a-h/templ parsing issues.", "phase": "12"},
+    {"decision": "Sequential Integration Tests", "rationale": "Disabled Go package parallelization using -p 1 to prevent concurrent DB migrations and metadata conflicts on check constraint type updates.", "phase": "12"}
+  ],
+  "uncommitted_files": [],
+  "next_action": "Complete milestone using /gsd-complete-milestone or start next milestone.",
+  "context_notes": "Milestone v1.1 for Campaign Engine is fully completed. All tests pass cleanly. Background worker, API endpoints, and admin UI views are verified and committed."
+}
