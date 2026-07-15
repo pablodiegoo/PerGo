@@ -76,6 +76,17 @@ Plans:
 
 - [ ] TBD (run /gsd-plan-phase 15 to break down)
 
+### Phase 16: deprecate-workspace-subviews
+
+**Goal:** Deprecate redundant workspace credentials and simplify workspace settings view.
+**Requirements**: TBD
+**Depends on:** Phase 15
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 16 to break down)
+
 ---
 *Roadmap created: 2026-07-14*
 *Granularity: standard | Mode: mvp | Phase convention: sequential*
