@@ -122,21 +122,21 @@ templ WorkspaceCreateForm() {
 }
 
 // WorkspaceDetailPage renders the workspace detail page with API keys section.
-templ WorkspaceDetailPage(ws repository.Workspace, keys []repository.APIKey, waba WABAConfig, tg TelegramConfig, externalURL string) {
-	@layout.Base(ws.Name, WorkspaceDetailContent(ws, keys, waba, tg, externalURL))
+templ WorkspaceDetailPage(ws repository.Workspace, keys []repository.APIKey) {
+	@layout.Base(ws.Name, WorkspaceDetailContent(ws, keys))
 }
 
 // WorkspaceDetailContent renders workspace detail content.
-templ WorkspaceDetailContent(ws repository.Workspace, keys []repository.APIKey, waba WABAConfig, tg TelegramConfig, externalURL string) {
+templ WorkspaceDetailContent(ws repository.Workspace, keys []repository.APIKey) {
 	<div class="border-b border-zinc-200 pb-5 mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
 		<div>
 			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">{ ws.Name }</h1>
-			<p class="text-zinc-500 text-sm mt-1">Gerencie credenciais e configurações de canais de mensageria da área de trabalho.</p>
+			<p class="text-zinc-500 text-sm mt-1">Gerencie chaves de API e configurações desta área de trabalho.</p>
 		</div>
 		<div class="flex flex-wrap gap-2">
 			<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/templates", ws.ID)) } class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">WABA Templates</a>
 			<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/webhooks", ws.ID)) } class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">Webhooks</a>
-			<a href="/admin/workspaces" class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">Back to Workspaces</a>
+			<a href="/admin/" class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">Dashboard</a>
 		</div>
 	</div>
 
@@ -155,14 +155,6 @@ templ WorkspaceDetailContent(ws repository.Workspace, keys []repository.APIKey, 
 				<span class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-0.5">Updated At</span>
 				<span class="text-zinc-900 font-medium">{ ws.UpdatedAt.Format("02/01/2006 15:04:05") }</span>
 			</div>
-		</div>
-	</div>
-
-	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8">
-		<h2 class="text-lg font-semibold text-zinc-900 mb-4">Channel Credentials</h2>
-		<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-			@WABACredentialsCard(ws.ID.String(), waba, "", externalURL)
-			@TelegramCredentialsCard(ws.ID.String(), tg, "", externalURL)
 		</div>
 	</div>
 
@@ -212,155 +204,4 @@ templ WorkspaceDeleteConfirm(ws repository.Workspace) {
 		fmt.Sprintf("Are you sure you want to delete workspace '%s'? This will also delete all associated API keys. This action cannot be undone.", ws.Name),
 		fmt.Sprintf("/admin/workspaces/%s", ws.ID),
 	)
-}
-
-templ WABACredentialsCard(workspaceID string, config WABAConfig, errStr string, externalURL string) {
-	<div id="waba-credentials-card" class="bg-slate-50 border border-zinc-200 rounded-lg p-6 shadow-sm">
-		<h3 class="text-md font-bold text-zinc-900 mb-4 border-b border-zinc-200/60 pb-2">WhatsApp Cloud (WABA)</h3>
-		<div>
-			if errStr != "" {
-				<div class="alert bg-rose-50 text-rose-800 border border-rose-200 rounded p-3 mb-4 text-xs font-semibold">
-					{ errStr }
-				</div>
-			}
-			if config.Token != "" {
-				<dl class="space-y-3 mb-4 text-xs">
-					<div>
-						<dt class="text-zinc-400 font-semibold uppercase tracking-wider mb-0.5">Phone Number ID</dt>
-						<dd class="font-mono text-zinc-900 font-medium">{ config.PhoneNumberID }</dd>
-					</div>
-					<div>
-						<dt class="text-zinc-400 font-semibold uppercase tracking-wider mb-0.5">WABA Account ID</dt>
-						<dd class="font-mono text-zinc-900 font-medium">{ config.WABAAccountID }</dd>
-					</div>
-					<div>
-						<dt class="text-zinc-400 font-semibold uppercase tracking-wider mb-0.5">API Token</dt>
-						<dd class="font-mono text-zinc-900 font-medium">{ maskToken(config.Token) }</dd>
-					</div>
-					<div>
-						<dt class="text-zinc-400 font-semibold uppercase tracking-wider mb-0.5">Verify Token</dt>
-						<dd class="font-mono text-zinc-900 font-medium">
-							if config.VerifyToken != "" {
-								{ config.VerifyToken }
-							} else {
-								{ "pergo_verify_token_" + workspaceID }
-							}
-						</dd>
-					</div>
-				</dl>
-				<button
-					class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold"
-					hx-delete={ fmt.Sprintf("/admin/workspaces/%s/credentials/whatsapp_cloud", workspaceID) }
-					hx-target="#waba-credentials-card"
-					hx-swap="outerHTML"
-					hx-confirm="Are you sure you want to revoke WhatsApp Cloud credentials?"
-				>
-					Revoke
-				</button>
-			} else {
-				<p class="text-zinc-400 text-xs mb-4">No credentials configured.</p>
-				<form
-					hx-post={ fmt.Sprintf("/admin/workspaces/%s/credentials/whatsapp_cloud", workspaceID) }
-					hx-target="#waba-credentials-card"
-					hx-swap="outerHTML"
-					class="space-y-4"
-				>
-					<div class="flex flex-col gap-1">
-						<label for="waba_phone_number_id" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Phone Number ID</label>
-						<input type="text" id="waba_phone_number_id" name="phone_number_id" value={ config.PhoneNumberID } required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
-					</div>
-					<div class="flex flex-col gap-1">
-						<label for="waba_account_id" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">WABA Account ID</label>
-						<input type="text" id="waba_account_id" name="waba_account_id" value={ config.WABAAccountID } required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
-					</div>
-					<div class="flex flex-col gap-1">
-						<label for="waba_token" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Meta API Token</label>
-						<input type="password" id="waba_token" name="token" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
-					</div>
-					<div class="flex flex-col gap-1">
-						<label for="waba_verify_token" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Webhook Verify Token</label>
-						<input type="text" id="waba_verify_token" name="verify_token" value={ config.VerifyToken } placeholder={ "pergo_verify_token_" + workspaceID } class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
-					</div>
-					<button type="submit" class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-xs font-semibold px-3 py-1.5 rounded transition">Configure WABA</button>
-				</form>
-			}
-			
-			<details class="group mt-6 border-t border-zinc-200/60 pt-4">
-				<summary class="cursor-pointer font-bold text-xs text-zinc-800 outline-none flex items-center justify-between">
-					<span>Ajuda: Configurar Webhook na Meta</span>
-					<span class="transition-transform group-open:rotate-180">&#9662;</span>
-				</summary>
-				<div class="mt-3 text-xs text-zinc-500 space-y-2 leading-relaxed">
-					<p>1. No painel <a href="https://developers.facebook.com/" target="_blank" class="text-blue-600 hover:underline">Meta for Developers</a>, vá em WhatsApp -> Configuração.</p>
-					<p>2. Configure a <strong>Callback URL</strong> como:</p>
-					<div class="flex items-center gap-2 bg-white border border-zinc-200 rounded p-1.5">
-						<input type="text" readonly value={ fmt.Sprintf("%s/webhooks/waba/%s", externalURL, workspaceID) } class="flex-1 font-mono text-[10px] bg-transparent border-none outline-none select-all text-zinc-700" onclick="this.select();"/>
-						<button type="button" class="btn btn-xs bg-zinc-900 text-white border-none font-semibold px-2 hover:bg-zinc-800 rounded" onclick="navigator.clipboard.writeText(this.previousElementSibling.value); alert('URL Copiada!');">Copiar</button>
-					</div>
-					<p>3. Insira o mesmo <strong>Verify Token</strong> de sua preferência no painel da Meta e configure no PerGo.</p>
-					<p>4. Em webhook fields, assine o campo <strong>messages</strong>.</p>
-				</div>
-			</details>
-		</div>
-	</div>
-}
-
-templ TelegramCredentialsCard(workspaceID string, config TelegramConfig, errStr string, externalURL string) {
-	<div id="telegram-credentials-card" class="bg-slate-50 border border-zinc-200 rounded-lg p-6 shadow-sm">
-		<h3 class="text-md font-bold text-zinc-900 mb-4 border-b border-zinc-200/60 pb-2">Telegram Bot</h3>
-		<div>
-			if errStr != "" {
-				<div class="alert bg-rose-50 text-rose-800 border border-rose-200 rounded p-3 mb-4 text-xs font-semibold">
-					{ errStr }
-				</div>
-			}
-			if config.Token != "" {
-				<dl class="space-y-3 mb-4 text-xs">
-					<div>
-						<dt class="text-zinc-400 font-semibold uppercase tracking-wider mb-0.5">Bot Token</dt>
-						<dd class="font-mono text-zinc-900 font-medium">{ maskToken(config.Token) }</dd>
-					</div>
-				</dl>
-				<button
-					class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold"
-					hx-delete={ fmt.Sprintf("/admin/workspaces/%s/credentials/telegram", workspaceID) }
-					hx-target="#telegram-credentials-card"
-					hx-swap="outerHTML"
-					hx-confirm="Are you sure you want to revoke Telegram credentials?"
-				>
-					Revoke
-				</button>
-			} else {
-				<p class="text-zinc-400 text-xs mb-4">No credentials configured.</p>
-				<form
-					hx-post={ fmt.Sprintf("/admin/workspaces/%s/credentials/telegram", workspaceID) }
-					hx-target="#telegram-credentials-card"
-					hx-swap="outerHTML"
-					class="space-y-4"
-				>
-					<div class="flex flex-col gap-1">
-						<label for="tg_token" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Bot Token</label>
-						<input type="password" id="tg_token" name="token" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
-					</div>
-					<button type="submit" class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-xs font-semibold px-3 py-1.5 rounded transition">Configure Telegram</button>
-				</form>
-			}
-			
-			<details class="group mt-6 border-t border-zinc-200/60 pt-4">
-				<summary class="cursor-pointer font-bold text-xs text-zinc-800 outline-none flex items-center justify-between">
-					<span>Ajuda: Configurar Bot no Telegram</span>
-					<span class="transition-transform group-open:rotate-180">&#9662;</span>
-				</summary>
-				<div class="mt-3 text-xs text-zinc-500 space-y-2 leading-relaxed">
-					<p>1. Crie o seu bot no Telegram conversando com o <a href="https://t.me/BotFather" target="_blank" class="text-blue-600 hover:underline">&#64;BotFather</a>.</p>
-					<p>2. Envie o comando <code>/newbot</code> e siga as instruções para obter o <strong>Bot Token</strong>.</p>
-					<p><strong>Nota:</strong> Se o seu servidor usar HTTPS, o PerGo registrará o webhook automaticamente no Telegram apontando para:</p>
-					<div class="flex items-center gap-2 bg-white border border-zinc-200 rounded p-1.5">
-						<input type="text" readonly value={ fmt.Sprintf("%s/webhooks/telegram/%s", externalURL, workspaceID) } class="flex-1 font-mono text-[10px] bg-transparent border-none outline-none select-all text-zinc-700" onclick="this.select();"/>
-						<button type="button" class="btn btn-xs bg-zinc-900 text-white border-none font-semibold px-2 hover:bg-zinc-800 rounded" onclick="navigator.clipboard.writeText(this.previousElementSibling.value); alert('URL Copiada!');">Copiar</button>
-					</div>
-				</div>
-			</details>
-		</div>
-	</div>
 }
