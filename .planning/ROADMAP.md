@@ -23,7 +23,11 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
   3. System parses CSV, sanitizes data, schedules batches, and dispatches them in the background via NATS JetStream, with configurable delays and random jitter.
   4. System persists campaign metadata in `outbound_logs` using the Enriched Logs architecture with compound database indexes, verified via tests.
 
-**Plans**: TBD
+**Plans**: 1/2 plans executed
+
+- [x] 12-01-PLAN.md
+- [ ] 12-02-PLAN.md
+
 **UI hint**: yes
 
 ## Progress
@@ -33,7 +37,7 @@ Phases execute in numeric order: 12
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 12. Campaign Engine | 0/2 | Pending | - |
+| 12. Campaign Engine | 1/2 | In Progress|  |
 
 ---
 *Roadmap created: 2026-07-14*
