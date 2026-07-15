@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PerGo UI Style Guide & Design Tokens</title>
+  <!-- Outfit & JetBrains Mono Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- DaisyUI CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css"/>
+  
+  <style>
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: #f8fafc;
+    }
+    code, pre {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .design-token-card {
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .design-token-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+    }
+  </style>
+</head>
+<body class="min-h-screen text-slate-800">
+
+  <!-- Sidebar Simulator -->
+  <div class="flex">
+    <!-- Mini Sidebar simulation -->
+    <aside class="w-64 bg-zinc-900 min-h-screen text-zinc-300 p-6 flex flex-col justify-between border-r border-zinc-800 fixed left-0 top-0 bottom-0">
+      <div>
+        <div class="flex items-center gap-3 mb-8">
+          <div class="h-8 w-8 rounded-lg bg-white flex items-center justify-center font-bold text-zinc-950 shadow-md">
+            P
+          </div>
+          <span class="text-xl font-bold tracking-tight text-white">PerGo <span class="text-xs bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded ml-1">UI</span></span>
+        </div>
+        
+        <nav class="space-y-6">
+          <div>
+            <span class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Design System</span>
+            <ul class="mt-2 space-y-1">
+              <li>
+                <a href="#typography" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md bg-zinc-800 text-white">
+                  Tipografia
+                </a>
+              </li>
+              <li>
+                <a href="#colors" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all">
+                  Cores & Paleta
+                </a>
+              </li>
+              <li>
+                <a href="#badges" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all">
+                  Sinalizações & Badges
+                </a>
+              </li>
+              <li>
+                <a href="#forms" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all">
+                  Formulários & Botões
+                </a>
+              </li>
+              <li>
+                <a href="#tables" class="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all">
+                  Tabelas & Listas
+                </a>
+              </li>
+            </ul>
+          </div>
+        </nav>
+      </div>
+
+      <div class="text-xs text-zinc-500">
+        PerGo Design System v1.0.0
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 ml-64 p-10 max-w-6xl">
+      <!-- Title Header -->
+      <div class="border-b border-slate-200 pb-5 mb-8 flex justify-between items-end">
+        <div>
+          <h1 class="text-3xl font-extrabold tracking-tight text-slate-900">Guia de Padronização Visual</h1>
+          <p class="text-slate-500 text-sm mt-1">Biblioteca de componentes e diretrizes de estilo para o console da PerGo.</p>
+        </div>
+        <div class="badge badge-lg bg-zinc-900 text-white border-none font-semibold px-4 py-2">Style Guide</div>
+      </div>
+
+      <!-- Typography Section -->
+      <section id="typography" class="mb-12 scroll-mt-6">
+        <h2 class="text-xl font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
+          <span class="h-6 w-1 bg-zinc-900 rounded-full"></span>
+          1. Estrutura de Títulos & Descrições
+        </h2>
+        
+        <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+          <div class="p-4 bg-slate-50 rounded-lg text-xs font-semibold text-slate-500 mb-4">
+            REGRA: Todos os títulos principais de páginas devem utilizar a mesma hierarquia (2xl/3xl font-bold) acompanhados de descrição curta (sm text-slate-500).
+          </div>
+
+          <!-- Page Header Preview -->
+          <div class="p-6 border border-slate-200 rounded-lg bg-white">
+            <h1 class="text-2xl font-bold tracking-tight text-slate-900">Título Principal da Página</h1>
+            <p class="text-slate-500 text-sm mt-1">Este é o texto de descrição que explica de forma objetiva o papel da tela.</p>
+          </div>
+
+          <div class="p-6 border border-slate-200 rounded-lg bg-white">
+            <h2 class="text-lg font-semibold text-slate-900">Sub-seções de Conteúdo</h2>
+            <p class="text-slate-500 text-xs mt-0.5">Parágrafos de ajuda interna de cards ou áreas de configuração.</p>
+          </div>
+
+          <!-- Code Snippet -->
+          <div class="relative">
+            <span class="absolute top-2 right-2 text-xs font-mono bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">HTML</span>
+            <pre class="bg-slate-900 text-emerald-400 p-4 rounded-lg text-xs overflow-x-auto leading-relaxed">
+&lt;!-- Cabeçalho de Página Padrão --&gt;
+&lt;div class="border-b border-zinc-200 pb-5 mb-8"&gt;
+    &lt;h1 class="text-2xl font-bold tracking-tight text-zinc-900"&gt;Título Principal&lt;/h1&gt;
+    &lt;p class="text-zinc-500 text-sm mt-1"&gt;Descrição da página...&lt;/p&gt;
+&lt;/div&gt;
+
+&lt;!-- Subtítulo Padrão --&gt;
+&lt;h2 class="text-lg font-semibold text-zinc-900"&gt;Subtítulo da Área&lt;/h2&gt;
+&lt;p class="text-zinc-500 text-xs mt-0.5"&gt;Descrição secundária...&lt;/p&gt;</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Colors Section -->
+      <section id="colors" class="mb-12 scroll-mt-6">
+        <h2 class="text-xl font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
+          <span class="h-6 w-1 bg-zinc-900 rounded-full"></span>
+          2. Paleta de Cores Coesa
+        </h2>
+        
+        <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+          <div class="p-4 bg-slate-50 rounded-lg text-xs font-semibold text-slate-500 mb-6">
+            REGRA: Evite cores primárias sólidas (azul puro, vermelho puro). Utilize a escala neutra do Zinc/Slate para o tema dark-light e cores dessaturadas para indicações.
+          </div>
+
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="design-token-card bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col items-center justify-center">
+              <div class="h-12 w-full rounded bg-zinc-950 mb-3 shadow-inner"></div>
+              <span class="text-xs font-bold text-slate-900">Zinc 950 (Primary)</span>
+              <span class="text-[10px] text-slate-400 font-mono">#09090b</span>
+            </div>
+            <div class="design-token-card bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col items-center justify-center">
+              <div class="h-12 w-full rounded bg-blue-600 mb-3 shadow-inner"></div>
+              <span class="text-xs font-bold text-slate-900">Blue 600 (Accent)</span>
+              <span class="text-[10px] text-slate-400 font-mono">#2563eb</span>
+            </div>
+            <div class="design-token-card bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col items-center justify-center">
+              <div class="h-12 w-full rounded bg-emerald-600 mb-3 shadow-inner"></div>
+              <span class="text-xs font-bold text-slate-900">Emerald 600 (Success)</span>
+              <span class="text-[10px] text-slate-400 font-mono">#059669</span>
+            </div>
+            <div class="design-token-card bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-col items-center justify-center">
+              <div class="h-12 w-full rounded bg-amber-500 mb-3 shadow-inner"></div>
+              <span class="text-xs font-bold text-slate-900">Amber 500 (Warning)</span>
+              <span class="text-[10px] text-slate-400 font-mono">#f59e0b</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Badges Section -->
+      <section id="badges" class="mb-12 scroll-mt-6">
+        <h2 class="text-xl font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
+          <span class="h-6 w-1 bg-zinc-900 rounded-full"></span>
+          3. Sinalizações & Badges
+        </h2>
+        
+        <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+          <div class="p-4 bg-slate-50 rounded-lg text-xs font-semibold text-slate-500 mb-4">
+            REGRA: Status de envio/recebimento, origem ou tipo de agente devem usar badges leves de fundo claro com borda e texto colorido, evitando preenchimentos opacos escuros.
+          </div>
+
+          <div class="flex flex-wrap gap-4 items-center p-6 border border-slate-200 rounded-lg bg-slate-50/30">
+            <div>
+              <span class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Sucesso / Ativo</span>
+              <span class="badge badge-sm bg-emerald-50 text-emerald-700 border-emerald-200 px-2 py-1 text-xs font-semibold">Conectado</span>
+            </div>
+            <div>
+              <span class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Pendente / Alerta</span>
+              <span class="badge badge-sm bg-amber-50 text-amber-700 border-amber-200 px-2 py-1 text-xs font-semibold">Pendente</span>
+            </div>
+            <div>
+              <span class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Erro / Inativo</span>
+              <span class="badge badge-sm bg-rose-50 text-rose-700 border-rose-200 px-2 py-1 text-xs font-semibold">Desconectado</span>
+            </div>
+            <div>
+              <span class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Informativo</span>
+              <span class="badge badge-sm bg-blue-50 text-blue-700 border-blue-200 px-2 py-1 text-xs font-semibold">API REST</span>
+            </div>
+          </div>
+
+          <!-- Code Snippet -->
+          <div class="relative">
+            <span class="absolute top-2 right-2 text-xs font-mono bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">HTML</span>
+            <pre class="bg-slate-900 text-emerald-400 p-4 rounded-lg text-xs overflow-x-auto leading-relaxed">
+&lt;!-- Badge de Sucesso --&gt;
+&lt;span class="badge badge-sm bg-emerald-50 text-emerald-700 border-emerald-200 px-2 py-0.5 text-xs font-semibold"&gt;Sucesso&lt;/span&gt;
+
+&lt;!-- Badge de Alerta --&gt;
+&lt;span class="badge badge-sm bg-amber-50 text-amber-700 border-amber-200 px-2 py-0.5 text-xs font-semibold"&gt;Pendente&lt;/span&gt;
+
+&lt;!-- Badge de Erro --&gt;
+&lt;span class="badge badge-sm bg-rose-50 text-rose-700 border-rose-200 px-2 py-0.5 text-xs font-semibold"&gt;Erro&lt;/span&gt;
+
+&lt;!-- Badge Informativo --&gt;
+&lt;span class="badge badge-sm bg-blue-50 text-blue-700 border-blue-200 px-2 py-0.5 text-xs font-semibold"&gt;Info&lt;/span&gt;</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Forms Section -->
+      <section id="forms" class="mb-12 scroll-mt-6">
+        <h2 class="text-xl font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
+          <span class="h-6 w-1 bg-zinc-900 rounded-full"></span>
+          4. Formulários & Botões
+        </h2>
+        
+        <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+          <div class="p-4 bg-slate-50 rounded-lg text-xs font-semibold text-slate-500 mb-4">
+            REGRA: Rótulos superiores devem usar fonte xs semi-bold zinc-500 em caixa alta. Botões de ação primários devem usar o tema preto (bg-zinc-950) e secundários em outline leve.
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 border border-slate-200 rounded-lg bg-slate-50/30">
+            <!-- Text Input -->
+            <div class="flex flex-col gap-1">
+              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Identificador / Rótulo</label>
+              <input type="text" class="form-input border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent transition-all bg-white" placeholder="Insira o texto..." />
+            </div>
+
+            <!-- Select Option -->
+            <div class="flex flex-col gap-1">
+              <label class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Opção de Filtro</label>
+              <select class="form-input border border-slate-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent transition-all bg-white">
+                <option>Todos os tipos</option>
+                <option>Apenas conexões</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="flex gap-4 p-6 border border-slate-200 rounded-lg bg-white">
+            <button class="btn btn-sm bg-zinc-950 hover:bg-zinc-900 text-white font-semibold rounded-md px-4 py-2 border-none">
+              Ação Principal
+            </button>
+            <button class="btn btn-sm bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-md px-4 py-2 font-semibold">
+              Ação Secundária
+            </button>
+          </div>
+
+          <!-- Code Snippet -->
+          <div class="relative">
+            <span class="absolute top-2 right-2 text-xs font-mono bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">HTML</span>
+            <pre class="bg-slate-900 text-emerald-400 p-4 rounded-lg text-xs overflow-x-auto leading-relaxed">
+&lt;!-- Campo de Entrada (Input/Select) --&gt;
+&lt;div class="flex flex-col gap-1"&gt;
+    &lt;label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider"&gt;Nome do Campo&lt;/label&gt;
+    &lt;input type="text" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent transition-all" /&gt;
+&lt;/div&gt;
+
+&lt;!-- Botão Primário Preto --&gt;
+&lt;button class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none font-semibold rounded-md px-4 py-2"&gt;
+    Salvar
+&lt;/button&gt;</pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tables Section -->
+      <section id="tables" class="mb-12 scroll-mt-6">
+        <h2 class="text-xl font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
+          <span class="h-6 w-1 bg-zinc-900 rounded-full"></span>
+          5. Tabelas de Informações
+        </h2>
+        
+        <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-sm space-y-6">
+          <div class="p-4 bg-slate-50 rounded-lg text-xs font-semibold text-slate-500 mb-4">
+            REGRA: Listas e relatórios tabulares devem usar a classe min-w-full com thead bg-zinc-50, dividindo as linhas suavemente via border-zinc-200 e aplicando hover.
+          </div>
+
+          <!-- Table Simulator -->
+          <div class="overflow-x-auto border border-slate-200 rounded-lg shadow-sm">
+            <table class="table min-w-full divide-y divide-slate-200">
+              <thead class="bg-slate-50 text-slate-500 text-xs font-semibold uppercase tracking-wider text-left border-b border-slate-200">
+                <tr>
+                  <th class="px-6 py-3">Coluna 1</th>
+                  <th class="px-6 py-3">Coluna 2</th>
+                  <th class="px-6 py-3 text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-200 text-sm text-slate-700 bg-white">
+                <tr class="hover:bg-slate-50/50 transition-colors">
+                  <td class="px-6 py-4 font-semibold text-slate-900">Registro Exemplo A</td>
+                  <td class="px-6 py-4">Valor exemplo associado</td>
+                  <td class="px-6 py-4 text-right">
+                    <button class="btn btn-ghost hover:bg-slate-100 text-blue-600 btn-xs font-semibold">Editar</button>
+                  </td>
+                </tr>
+                <tr class="hover:bg-slate-50/50 transition-colors">
+                  <td class="px-6 py-4 font-semibold text-slate-900">Registro Exemplo B</td>
+                  <td class="px-6 py-4">Valor exemplo associado</td>
+                  <td class="px-6 py-4 text-right">
+                    <button class="btn btn-ghost hover:bg-slate-100 text-blue-600 btn-xs font-semibold">Editar</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Code Snippet -->
+          <div class="relative">
+            <span class="absolute top-2 right-2 text-xs font-mono bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">HTML</span>
+            <pre class="bg-slate-900 text-emerald-400 p-4 rounded-lg text-xs overflow-x-auto leading-relaxed">
+&lt;!-- Tabela Consolidada PerGo --&gt;
+&lt;div class="overflow-x-auto border border-zinc-200 rounded-lg shadow-sm"&gt;
+    &lt;table class="table min-w-full divide-y divide-zinc-200"&gt;
+        &lt;thead class="bg-zinc-50 text-zinc-500 text-xs font-semibold uppercase tracking-wider text-left border-b border-zinc-200"&gt;
+            &lt;tr&gt;
+                &lt;th class="px-6 py-3"&gt;Título&lt;/th&gt;
+                &lt;th class="px-6 py-3 text-right"&gt;Ações&lt;/th&gt;
+            &lt;/tr&gt;
+        &lt;/thead&gt;
+        &lt;tbody class="divide-y divide-zinc-200 text-sm text-zinc-700 bg-white"&gt;
+            &lt;tr class="hover:bg-zinc-50/50 transition-colors"&gt;
+                &lt;td class="px-6 py-4"&gt;Dado&lt;/td&gt;
+                &lt;td class="px-6 py-4 text-right"&gt;Botão&lt;/td&gt;
+            &lt;/tr&gt;
+        &lt;/tbody&gt;
+    &lt;/table&gt;
+&lt;/div&gt;</pre>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+</body>
+</html>

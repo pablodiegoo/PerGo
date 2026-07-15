@@ -42,8 +42,7 @@ Spike sessions wrapped: 2026-06-29, 2026-07-03
 | Session Caching | [session-caching.md](file:///.agents/skills/spike-findings-pergo/references/session-caching.md) | In-memory session key caching and instance router. |
 | Campaign Engine & Throttling | [campaign-engine.md](file:///.agents/skills/spike-findings-pergo/references/campaign-engine.md) | Throttled background campaigns with regex variable interpolation, CSV sanitization, and enriched outbound logs. |
 | User & API Action Logs | [user-action-logs.md](file:///.agents/skills/spike-findings-pergo/references/user-action-logs.md) | Polymorphic actor logs separating API vs dashboard operations with JSONB metadata. |
-
-
+| CSS Standardization & Visual Tokens | [css-standardization.md](file:///.agents/skills/spike-findings-pergo/references/css-standardization.md) | Standardize typography, forms, cards, tables, and badges across dashboard views. |
 
 ## Source Files
 
@@ -69,6 +68,7 @@ Original spike source files are preserved in `sources/` for complete reference:
 - [sources/019-session-caching-router/](file:///.agents/skills/spike-findings-pergo/sources/019-session-caching-router/)
 - [sources/020-campaign-engine/](file:///.agents/skills/spike-findings-pergo/sources/020-campaign-engine/)
 - [sources/021-user-action-logs/](file:///.agents/skills/spike-findings-pergo/sources/021-user-action-logs/)
+- [sources/022-css-standardization/](file:///.agents/skills/spike-findings-pergo/sources/022-css-standardization/)
 </findings_index>
 
 <metadata>
@@ -95,4 +95,5 @@ Original spike source files are preserved in `sources/` for complete reference:
 - 019-session-caching-router
 - 020-campaign-engine
 - 021-user-action-logs
+- 022-css-standardization
 </metadata>
