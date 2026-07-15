@@ -554,12 +554,12 @@ func QRFragment(code string, phone string, status string, message string) templ.
 				return templ_7745c5c3_Err
 			}
 		case "paired":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<div class=\"qr-success text-center py-4\"><p class=\"success-icon text-2xl mb-1\">✅</p><p class=\"text-sm font-semibold text-zinc-950\">Dispositivo pareado com sucesso!</p><button class=\"btn btn-primary mt-3 bg-zinc-950 hover:bg-zinc-900 text-white px-4 py-2 rounded-md font-medium\" hx-get=\"/admin/devices\" hx-target=\"main\" hx-swap=\"innerHTML\" onclick=\"this.closest('.modal-backdrop').remove()\">Ver Conexões</button></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<div class=\"qr-success text-center py-4\"><p class=\"success-icon text-2xl mb-1\">✅</p><p class=\"text-sm font-semibold text-zinc-950\">Dispositivo pareado com sucesso!</p><button class=\"btn btn-primary mt-3 bg-zinc-950 hover:bg-zinc-900 text-white px-4 py-2 rounded-md font-medium\" onclick=\"\n\t\t\t\t\t\t\tconst table = document.getElementById('connections-table-container');\n\t\t\t\t\t\t\tconst form = document.getElementById('campaign-create-form');\n\t\t\t\t\t\t\tif (table) {\n\t\t\t\t\t\t\t\thtmx.ajax('GET', '/admin/devices', {target: 'main', swap: 'innerHTML'});\n\t\t\t\t\t\t\t} else if (form) {\n\t\t\t\t\t\t\t\tdocument.body.dispatchEvent(new CustomEvent('connection-created', { bubbles: true }));\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\tthis.closest('.modal-backdrop').remove();\n\t\t\t\t\t\t\">Ver Conexões</button></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		case "error":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<div class=\"qr-error text-center py-4\"><p class=\"error-icon text-2xl mb-1\">❌</p><p class=\"text-sm font-semibold text-zinc-950\">Falha no pareamento. Tente novamente.</p><button class=\"btn btn-secondary mt-3 px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-medium\" hx-get=\"/admin/devices/pair-form\" hx-target=\"body\" hx-swap=\"beforeend\" onclick=\"this.closest('.modal-backdrop').remove()\">Tentar Novamente</button></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<div class=\"qr-error text-center py-4\"><p class=\"error-icon text-2xl mb-1\">❌</p><p class=\"text-sm font-semibold text-zinc-950\">Falha no pareamento. Tente novamente.</p><button class=\"btn btn-secondary mt-3 px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-medium\" onclick=\"\n\t\t\t\t\t\t\tconst modalContainer = document.getElementById('modal-container');\n\t\t\t\t\t\t\tif (modalContainer) {\n\t\t\t\t\t\t\t\thtmx.ajax('GET', '/admin/devices/pair-form', {target: '#modal-container', swap: 'innerHTML'});\n\t\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t\thtmx.ajax('GET', '/admin/devices/pair-form', {target: 'body', swap: 'beforeend'});\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\tthis.closest('.modal-backdrop').remove();\n\t\t\t\t\t\t\">Tentar Novamente</button></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -601,7 +601,7 @@ func TestConnectionModal(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var24 string
 		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 348, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 359, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 		if templ_7745c5c3_Err != nil {
@@ -614,7 +614,7 @@ func TestConnectionModal(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var25 string
 		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.ID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 360, Col: 72}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 371, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 		if templ_7745c5c3_Err != nil {
@@ -627,7 +627,7 @@ func TestConnectionModal(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var26 string
 		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Channel)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 364, Col: 67}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 375, Col: 67}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 		if templ_7745c5c3_Err != nil {
@@ -640,7 +640,7 @@ func TestConnectionModal(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var27 string
 		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(conn.SenderIdentity)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 369, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 380, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 		if templ_7745c5c3_Err != nil {
@@ -708,7 +708,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		var templ_7745c5c3_Var31 string
 		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(eventType)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 432, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 443, Col: 90}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 		if templ_7745c5c3_Err != nil {
@@ -721,7 +721,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(timeStr)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 433, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 444, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {
@@ -734,7 +734,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		var templ_7745c5c3_Var33 string
 		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 435, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 446, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 		if templ_7745c5c3_Err != nil {
@@ -747,7 +747,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		var templ_7745c5c3_Var34 string
 		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(details)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 436, Col: 120}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 447, Col: 120}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {

@@ -313,10 +313,16 @@ templ QRFragment(code string, phone string, status string, message string) {
 					<p class="text-sm font-semibold text-zinc-950">Dispositivo pareado com sucesso!</p>
 					<button
 						class="btn btn-primary mt-3 bg-zinc-950 hover:bg-zinc-900 text-white px-4 py-2 rounded-md font-medium"
-						hx-get="/admin/devices"
-						hx-target="main"
-						hx-swap="innerHTML"
-						onclick="this.closest('.modal-backdrop').remove()"
+						onclick="
+							const table = document.getElementById('connections-table-container');
+							const form = document.getElementById('campaign-create-form');
+							if (table) {
+								htmx.ajax('GET', '/admin/devices', {target: 'main', swap: 'innerHTML'});
+							} else if (form) {
+								document.body.dispatchEvent(new CustomEvent('connection-created', { bubbles: true }));
+							}
+							this.closest('.modal-backdrop').remove();
+						"
 					>
 						Ver Conexões
 					</button>
@@ -327,10 +333,15 @@ templ QRFragment(code string, phone string, status string, message string) {
 					<p class="text-sm font-semibold text-zinc-950">Falha no pareamento. Tente novamente.</p>
 					<button
 						class="btn btn-secondary mt-3 px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-medium"
-						hx-get="/admin/devices/pair-form"
-						hx-target="body"
-						hx-swap="beforeend"
-						onclick="this.closest('.modal-backdrop').remove()"
+						onclick="
+							const modalContainer = document.getElementById('modal-container');
+							if (modalContainer) {
+								htmx.ajax('GET', '/admin/devices/pair-form', {target: '#modal-container', swap: 'innerHTML'});
+							} else {
+								htmx.ajax('GET', '/admin/devices/pair-form', {target: 'body', swap: 'beforeend'});
+							}
+							this.closest('.modal-backdrop').remove();
+						"
 					>
 						Tentar Novamente
 					</button>
