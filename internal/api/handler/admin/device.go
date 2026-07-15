@@ -320,6 +320,12 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 		`, err.Error()))
 	}
 
+	currentURL := c.Request().Header.Get("HX-Current-URL")
+	if strings.Contains(currentURL, "/campaigns") {
+		c.Response().Header().Set("HX-Trigger", "connection-created")
+		return c.NoContent(200)
+	}
+
 	connections, err := h.Connections.ListByWorkspace(ctx, workspaceID)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to reload connections")
