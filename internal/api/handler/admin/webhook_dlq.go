@@ -1,10 +1,10 @@
 package admin
 
 import (
-	"context"
+	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -15,18 +15,26 @@ import (
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/webhook"
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
 type WebhookDLQHandler struct {
 	Repo       *repository.WebhookDLQRepository
+	Subs       *repository.WebhookSubscriptionRepository
 	Workspaces *repository.WorkspaceRepository
 	Publisher  *queue.JetStreamPublisher
 }
 
-func NewWebhookDLQHandler(repo *repository.WebhookDLQRepository, workspaces *repository.WorkspaceRepository, publisher *queue.JetStreamPublisher) *WebhookDLQHandler {
+func NewWebhookDLQHandler(
+	repo *repository.WebhookDLQRepository,
+	subs *repository.WebhookSubscriptionRepository,
+	workspaces *repository.WorkspaceRepository,
+	publisher *queue.JetStreamPublisher,
+) *WebhookDLQHandler {
 	return &WebhookDLQHandler{
 		Repo:       repo,
+		Subs:       subs,
 		Workspaces: workspaces,
 		Publisher:  publisher,
 	}
@@ -48,9 +56,9 @@ func (h *WebhookDLQHandler) Page(c *echo.Context) error {
 		return c.String(http.StatusNotFound, "workspace not found")
 	}
 
-	config, err := h.Repo.GetConfig(c.Request().Context(), workspaceID)
-	if err != nil && !errors.Is(err, repository.ErrWebhookConfigNotFound) {
-		return c.String(http.StatusInternalServerError, "failed to fetch webhook config")
+	subs, err := h.Subs.ListByWorkspace(c.Request().Context(), workspaceID)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to list subscriptions")
 	}
 
 	dlqItems, err := h.Repo.ListDLQ(c.Request().Context(), workspaceID, 100, 0)
@@ -58,12 +66,54 @@ func (h *WebhookDLQHandler) Page(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "failed to list DLQ items")
 	}
 
-	page := pages.WorkspaceWebhooksPage(*ws, config, dlqItems)
+	page := pages.WorkspaceWebhooksPage(*ws, subs, dlqItems)
 	return mw.Render(c, http.StatusOK, page)
 }
 
-// SaveConfig saves or updates the webhook config.
-func (h *WebhookDLQHandler) SaveConfig(c *echo.Context) error {
+// GetSubscriptionNewForm returns the new subscription modal form.
+func (h *WebhookDLQHandler) GetSubscriptionNewForm(c *echo.Context) error {
+	wsIDStr, err := echo.PathParam[string](c, "workspace_id")
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid workspace ID")
+	}
+	workspaceID, err := uuid.Parse(wsIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid workspace ID")
+	}
+
+	return mw.Render(c, http.StatusOK, pages.SubscriptionFormModal(workspaceID, nil))
+}
+
+// GetSubscriptionEditForm returns the edit subscription modal form.
+func (h *WebhookDLQHandler) GetSubscriptionEditForm(c *echo.Context) error {
+	wsIDStr, err := echo.PathParam[string](c, "workspace_id")
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid workspace ID")
+	}
+	workspaceID, err := uuid.Parse(wsIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid workspace ID")
+	}
+
+	subIDStr, err := echo.PathParam[string](c, "subscription_id")
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid subscription ID")
+	}
+	subscriptionID, err := uuid.Parse(subIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid subscription ID")
+	}
+
+	sub, err := h.Subs.Get(c.Request().Context(), subscriptionID)
+	if err != nil {
+		return c.String(http.StatusNotFound, "subscription not found")
+	}
+
+	return mw.Render(c, http.StatusOK, pages.SubscriptionFormModal(workspaceID, sub))
+}
+
+// CreateSubscription creates a new webhook subscription.
+func (h *WebhookDLQHandler) CreateSubscription(c *echo.Context) error {
 	wsIDStr, err := echo.PathParam[string](c, "workspace_id")
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
@@ -75,35 +125,84 @@ func (h *WebhookDLQHandler) SaveConfig(c *echo.Context) error {
 
 	url := c.FormValue("url")
 	secret := c.FormValue("secret")
+	eventTypes := c.Request().Form["event_types"]
 
 	if url == "" || secret == "" {
 		return c.String(http.StatusBadRequest, "url and secret are required")
 	}
 
-	// If secret is the placeholder, fetch the existing config to preserve the original secret
-	var secretBytes []byte
-	if secret == "********" {
-		cfg, err := h.Repo.GetConfig(c.Request().Context(), workspaceID)
-		if err != nil {
-			return c.String(http.StatusBadRequest, "cannot update configuration without a new secret")
-		}
-		secretBytes = cfg.Secret
-	} else {
-		secretBytes = []byte(secret)
+	if len(eventTypes) == 0 {
+		eventTypes = []string{"*"}
 	}
 
-	err = h.Repo.SaveConfig(c.Request().Context(), workspaceID, url, secretBytes)
+	_, err = h.Subs.Create(c.Request().Context(), workspaceID, url, eventTypes, []byte(secret))
 	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to save webhook configuration")
+		return c.String(http.StatusInternalServerError, "failed to create subscription")
 	}
 
-	// Trigger HTMX redirect back to the page
 	c.Response().Header().Set("HX-Refresh", "true")
 	return c.NoContent(http.StatusOK)
 }
 
-// DeleteConfig deletes the webhook configuration.
-func (h *WebhookDLQHandler) DeleteConfig(c *echo.Context) error {
+// UpdateSubscription updates an existing webhook subscription.
+func (h *WebhookDLQHandler) UpdateSubscription(c *echo.Context) error {
+	subIDStr, err := echo.PathParam[string](c, "subscription_id")
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid subscription ID")
+	}
+	subscriptionID, err := uuid.Parse(subIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid subscription ID")
+	}
+
+	url := c.FormValue("url")
+	secret := c.FormValue("secret")
+	active := c.FormValue("active") == "true"
+	eventTypes := c.Request().Form["event_types"]
+
+	if url == "" {
+		return c.String(http.StatusBadRequest, "url is required")
+	}
+
+	if len(eventTypes) == 0 {
+		eventTypes = []string{"*"}
+	}
+
+	var secretBytes []byte
+	if secret != "********" && secret != "" {
+		secretBytes = []byte(secret)
+	}
+
+	err = h.Subs.Update(c.Request().Context(), subscriptionID, url, eventTypes, active, secretBytes)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to update subscription")
+	}
+
+	c.Response().Header().Set("HX-Refresh", "true")
+	return c.NoContent(http.StatusOK)
+}
+
+// DeleteSubscription deletes a webhook subscription.
+func (h *WebhookDLQHandler) DeleteSubscription(c *echo.Context) error {
+	subIDStr, err := echo.PathParam[string](c, "subscription_id")
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid subscription ID")
+	}
+	subscriptionID, err := uuid.Parse(subIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid subscription ID")
+	}
+
+	err = h.Subs.Delete(c.Request().Context(), subscriptionID)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to delete subscription")
+	}
+
+	return c.NoContent(http.StatusOK)
+}
+
+// GetSubscriptionTestForm returns the simulation modal form.
+func (h *WebhookDLQHandler) GetSubscriptionTestForm(c *echo.Context) error {
 	wsIDStr, err := echo.PathParam[string](c, "workspace_id")
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
@@ -113,13 +212,93 @@ func (h *WebhookDLQHandler) DeleteConfig(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
-	err = h.Repo.DeleteConfig(c.Request().Context(), workspaceID)
+	subIDStr, err := echo.PathParam[string](c, "subscription_id")
 	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to delete configuration")
+		return c.String(http.StatusBadRequest, "invalid subscription ID")
+	}
+	subscriptionID, err := uuid.Parse(subIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid subscription ID")
 	}
 
-	c.Response().Header().Set("HX-Refresh", "true")
-	return c.NoContent(http.StatusOK)
+	sub, err := h.Subs.Get(c.Request().Context(), subscriptionID)
+	if err != nil {
+		return c.String(http.StatusNotFound, "subscription not found")
+	}
+
+	return mw.Render(c, http.StatusOK, pages.TestWebhookModal(workspaceID, sub))
+}
+
+// TestSubscription runs a synchronous simulated webhook POST request.
+func (h *WebhookDLQHandler) TestSubscription(c *echo.Context) error {
+	subIDStr, err := echo.PathParam[string](c, "subscription_id")
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid subscription ID")
+	}
+	subscriptionID, err := uuid.Parse(subIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid subscription ID")
+	}
+
+	ctx := c.Request().Context()
+	sub, err := h.Subs.Get(ctx, subscriptionID)
+	if err != nil {
+		return c.String(http.StatusNotFound, "subscription not found")
+	}
+
+	payloadStr := c.FormValue("payload")
+
+	if payloadStr == "" {
+		return c.String(http.StatusBadRequest, "payload is required")
+	}
+
+	// Sign payload using decrypted subscription secret
+	timestamp := fmt.Sprintf("%d", time.Now().Unix())
+	signature := webhook.SignPayload([]byte(payloadStr), sub.Secret, timestamp)
+
+	// Measure roundtrip latency
+	start := time.Now()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sub.URL, bytes.NewReader([]byte(payloadStr)))
+	if err != nil {
+		return c.String(http.StatusInternalServerError, fmt.Sprintf("failed to construct request: %v", err))
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-PerGo-Signature", signature)
+	req.Header.Set("X-Trace-ID", "simulated-"+uuid.New().String()[:8])
+	req.Header.Set("X-PerGo-Simulated", "true")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+
+	latency := time.Since(start).Milliseconds()
+
+	if err != nil {
+		// Log the error and return a failure block
+		return mw.Render(c, http.StatusOK, pages.TestResultFragment(
+			http.StatusGatewayTimeout,
+			latency,
+			signature,
+			fmt.Sprintf("HTTP Request Failed: %v", err),
+			nil,
+		))
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyStr := string(bodyBytes)
+	if len(bodyStr) > 1000 {
+		bodyStr = bodyStr[:1000] + "... (truncated)"
+	}
+
+	return mw.Render(c, http.StatusOK, pages.TestResultFragment(
+		resp.StatusCode,
+		latency,
+		signature,
+		bodyStr,
+		resp.Header,
+	))
 }
 
 // GlobalPage renders the global webhooks and DLQ page for the sidebar.
@@ -130,13 +309,7 @@ func (h *WebhookDLQHandler) GlobalPage(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "failed to list workspaces")
 	}
 
-	// Collect DLQ items across all workspaces
-	// Since we don't have a global ListAllDLQ method in the repo, we can list from the DB directly or fetch for each workspace.
-	// Let's implement a global ListAllDLQ in repo? Or we can query directly using the pool.
-	// Actually, let's list DLQ items for each workspace and combine them, or run a query directly on the handler for simplicity.
-	// Let's run a query directly in the handler, or we can add ListAllDLQ to repository.
-	// Wait, to keep repository clean, let's define listAllDLQ here:
-	dlqItems, err := h.listAllDLQ(ctx, 100, 0)
+	dlqItems, err := h.Repo.ListAllDLQ(ctx, 100, 0)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to fetch dead-lettered logs")
 	}
@@ -145,14 +318,9 @@ func (h *WebhookDLQHandler) GlobalPage(c *echo.Context) error {
 	return mw.Render(c, http.StatusOK, page)
 }
 
-func (h *WebhookDLQHandler) listAllDLQ(ctx context.Context, limit, offset int) ([]*repository.WebhookDLQ, error) {
-	return h.Repo.ListAllDLQ(ctx, limit, offset)
-}
-
 // GetBadgeCount returns the badge count fragment for the sidebar.
 func (h *WebhookDLQHandler) GetBadgeCount(c *echo.Context) error {
 	ctx := c.Request().Context()
-	// Sum counts across all workspaces
 	workspaces, err := h.Workspaces.List(ctx, 100)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to list workspaces")
@@ -207,7 +375,7 @@ func (h *WebhookDLQHandler) DeleteDLQ(c *echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
-// RetryDLQ triggers manual retry by re-enqueueing the event to NATS.
+// RetryDLQ triggers manual retry by re-enqueueing the delivery task to NATS.
 func (h *WebhookDLQHandler) RetryDLQ(c *echo.Context) error {
 	idStr, err := echo.PathParam[string](c, "dlq_id")
 	if err != nil {
@@ -224,33 +392,36 @@ func (h *WebhookDLQHandler) RetryDLQ(c *echo.Context) error {
 		return c.String(http.StatusNotFound, "DLQ log not found")
 	}
 
-	// 1. Publish fresh event to NATS
-	var evt queue.WebhookEvent
-	err = json.Unmarshal(item.Payload, &evt)
+	// Publish directly back to NATS WEBHOOK_DELIVERIES workqueue subject:
+	// webhooks.deliveries.<workspace_id>.<subscription_id>
+	task := webhook.WebhookDeliveryTask{
+		ID:             uuid.New(),
+		SubscriptionID: item.SubscriptionID,
+		WorkspaceID:    item.WorkspaceID,
+		Event:          item.EventType,
+		TraceID:        item.TraceID,
+		MessageID:      item.MessageID,
+		Payload:        item.Payload,
+		Mode:           "outbound", // Retried DLQs are outbound deliveries
+	}
+
+	payload, err := json.Marshal(task)
 	if err != nil {
-		slog.Error("admin: failed to unmarshal DLQ payload for retry", "error", err, "dlq_id", id)
+		return c.String(http.StatusInternalServerError, "failed to marshal retry payload")
+	}
+
+	subject := fmt.Sprintf("webhooks.deliveries.%s.%s", item.WorkspaceID, item.SubscriptionID)
+	err = h.Publisher.Publish(ctx, subject, payload, task.ID.String())
+	if err != nil {
+		slog.Error("admin: failed to publish retry event to NATS", "error", err, "dlq_id", id, "subject", subject)
 		return c.String(http.StatusInternalServerError, "failed to retry webhook delivery: please check your connection and try again.")
 	}
 
-	// Update timestamp of the retry
-	evt.Timestamp = time.Now().UTC().Format(time.RFC3339)
-	payload, err := json.Marshal(evt)
-	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to marshal retry event")
-	}
-
-	err = h.Publisher.Publish(ctx, "webhooks.events", payload, evt.TraceID)
-	if err != nil {
-		slog.Error("admin: failed to publish retry event to NATS", "error", err, "dlq_id", id)
-		return c.String(http.StatusInternalServerError, "failed to retry webhook delivery: please check your connection and try again.")
-	}
-
-	// 2. Delete from DLQ table
+	// Delete from DLQ table
 	err = h.Repo.DeleteDLQ(ctx, id)
 	if err != nil {
 		slog.Error("admin: failed to delete retried DLQ log from DB", "error", err, "dlq_id", id)
 	}
 
-	// Return empty string / status 200 so HTMX removes the row or we can return a success indicator
-	return c.HTML(http.StatusOK, fmt.Sprintf("<td colspan=\"7\" class=\"success-icon\" style=\"color: var(--color-success); text-align: center;\">✓ Re-enqueued for delivery</td>"))
+	return c.HTML(http.StatusOK, fmt.Sprintf("<td colspan=\"8\" class=\"success-icon\" style=\"color: var(--color-success); text-align: center;\">✓ Re-enqueued for delivery</td>"))
 }
