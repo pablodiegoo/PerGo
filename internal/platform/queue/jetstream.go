@@ -58,7 +58,7 @@ func EnsureWebhookStream(ctx context.Context, nc *nats.Conn) (jetstream.Stream, 
 
 	stream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:      "WEBHOOKS",
-		Subjects:  []string{"webhooks.>"},
+		Subjects:  []string{"webhooks.events"},
 		Retention: jetstream.LimitsPolicy,
 		MaxMsgs:   10000,
 		Storage:   jetstream.FileStorage,
@@ -71,6 +71,31 @@ func EnsureWebhookStream(ctx context.Context, nc *nats.Conn) (jetstream.Stream, 
 	slog.Info("jetstream webhook stream ready", "stream", "WEBHOOKS")
 	return stream, nil
 }
+
+// EnsureWebhookDeliveryStream creates or updates the WEBHOOK_DELIVERIES stream.
+func EnsureWebhookDeliveryStream(ctx context.Context, nc *nats.Conn) (jetstream.Stream, error) {
+	js, err := jetstream.New(nc)
+	if err != nil {
+		return nil, fmt.Errorf("jetstream.New: %w", err)
+	}
+
+	stream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:      "WEBHOOK_DELIVERIES",
+		Subjects:  []string{"webhooks.deliveries.>"},
+		Retention: jetstream.WorkQueuePolicy,
+		MaxMsgs:   10000,
+		Discard:   jetstream.DiscardNew,
+		Storage:   jetstream.FileStorage,
+		MaxAge:    24 * time.Hour,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create stream WEBHOOK_DELIVERIES: %w", err)
+	}
+
+	slog.Info("jetstream webhook deliveries stream ready", "stream", "WEBHOOK_DELIVERIES")
+	return stream, nil
+}
+
 
 // EnsureConsumer creates or gets a durable pull consumer on the given stream.
 // Safe to call multiple times — CreateConsumer is idempotent when the config matches.

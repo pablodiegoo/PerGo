@@ -18,14 +18,15 @@ type mockConfigStore struct {
 	cfg       *repository.WebhookConfig
 	getConfig func(workspaceID uuid.UUID) (*repository.WebhookConfig, error)
 	inserted  []struct {
-		workspaceID   uuid.UUID
-		traceID       string
-		messageID     string
-		eventType     string
-		payload       []byte
-		url           string
-		attempts      int
-		failureReason *string
+		workspaceID    uuid.UUID
+		subscriptionID uuid.UUID
+		traceID        string
+		messageID      string
+		eventType      string
+		payload        []byte
+		url            string
+		attempts       int
+		failureReason  *string
 	}
 }
 
@@ -39,6 +40,7 @@ func (m *mockConfigStore) GetConfig(ctx context.Context, workspaceID uuid.UUID) 
 func (m *mockConfigStore) InsertDLQ(
 	ctx context.Context,
 	workspaceID uuid.UUID,
+	subscriptionID uuid.UUID,
 	traceID, messageID, eventType string,
 	payload []byte,
 	url string,
@@ -46,15 +48,16 @@ func (m *mockConfigStore) InsertDLQ(
 	failureReason *string,
 ) error {
 	m.inserted = append(m.inserted, struct {
-		workspaceID   uuid.UUID
-		traceID       string
-		messageID     string
-		eventType     string
-		payload       []byte
-		url           string
-		attempts      int
-		failureReason *string
-	}{workspaceID, traceID, messageID, eventType, payload, url, attempts, failureReason})
+		workspaceID    uuid.UUID
+		subscriptionID uuid.UUID
+		traceID        string
+		messageID      string
+		eventType      string
+		payload        []byte
+		url            string
+		attempts       int
+		failureReason  *string
+	}{workspaceID, subscriptionID, traceID, messageID, eventType, payload, url, attempts, failureReason})
 	return nil
 }
 
@@ -202,6 +205,7 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 func TestDefaultDispatcher_WriteToDLQ(t *testing.T) {
 	wsID := uuid.New()
 	cfg := &repository.WebhookConfig{
+		ID:  uuid.New(),
 		URL: "https://api.myweb.com/events",
 	}
 
@@ -220,6 +224,9 @@ func TestDefaultDispatcher_WriteToDLQ(t *testing.T) {
 	ins := configStore.inserted[0]
 	if ins.workspaceID != wsID {
 		t.Errorf("got workspace ID %s, want %s", ins.workspaceID, wsID)
+	}
+	if ins.subscriptionID != cfg.ID {
+		t.Errorf("got subscription ID %s, want %s", ins.subscriptionID, cfg.ID)
 	}
 	if ins.url != cfg.URL {
 		t.Errorf("got url %s, want %s", ins.url, cfg.URL)

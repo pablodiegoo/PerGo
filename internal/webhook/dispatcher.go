@@ -18,7 +18,7 @@ import (
 // ConfigStore defines the database abstraction for webhook configuration and DLQ persistence.
 type ConfigStore interface {
 	GetConfig(ctx context.Context, workspaceID uuid.UUID) (*repository.WebhookConfig, error)
-	InsertDLQ(ctx context.Context, workspaceID uuid.UUID, traceID, messageID, eventType string, payload []byte, url string, attempts int, failureReason *string) error
+	InsertDLQ(ctx context.Context, workspaceID uuid.UUID, subscriptionID uuid.UUID, traceID, messageID, eventType string, payload []byte, url string, attempts int, failureReason *string) error
 }
 
 // WorkspaceStore defines the database abstraction for workspace settings.
@@ -168,19 +168,19 @@ func (d *DefaultDispatcher) WriteToDLQ(
 ) error {
 	// Retrieve config to get webhook URL for archiving
 	cfg, err := d.configStore.GetConfig(ctx, workspaceID)
-	url := ""
-	if err == nil && cfg != nil {
-		url = cfg.URL
+	if err != nil {
+		return fmt.Errorf("failed to retrieve config for DLQ: %w", err)
 	}
 
 	return d.configStore.InsertDLQ(
 		ctx,
 		workspaceID,
+		cfg.ID,
 		traceID,
 		messageID,
 		event,
 		rawEvent,
-		url,
+		cfg.URL,
 		attempts,
 		&failReason,
 	)
