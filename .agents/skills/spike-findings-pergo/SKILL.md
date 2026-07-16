@@ -45,6 +45,7 @@ Spike sessions wrapped: 2026-06-29, 2026-07-03, 2026-07-16
 | CSS Standardization & Visual Tokens | [css-standardization.md](file:///.agents/skills/spike-findings-pergo/references/css-standardization.md) | Standardize typography, forms, cards, tables, and badges across dashboard views. |
 | Workspace Simplification | [workspace-simplification.md](file:///.agents/skills/spike-findings-pergo/references/workspace-simplification.md) | Deprecate legacy workspace credentials subviews; WABA template sync migrated to connections table. |
 | PRD Implementation Gaps | [prd-implementation-gaps.md](file:///.agents/skills/spike-findings-pergo/references/prd-implementation-gaps.md) | Three unimplemented validated spikes: omnichannel contacts (017), multi-webhook subscriptions (018), messaging verbs engine (015). |
+| WABA Status Receipts | [waba-status-receipts.md](file:///.agents/skills/spike-findings-pergo/references/waba-status-receipts.md) | Route WABA webhook status updates (delivered, read) to update message dispatches status via a provider_message_id index. |
 
 ## Source Files
 
@@ -73,6 +74,7 @@ Original spike source files are preserved in `sources/` for complete reference:
 - [sources/022-css-standardization/](file:///.agents/skills/spike-findings-pergo/sources/022-css-standardization/)
 - [sources/023-deprecated-workspace-subviews/](file:///.agents/skills/spike-findings-pergo/sources/023-deprecated-workspace-subviews/)
 - [sources/024-prd-implementation-gap-audit/](file:///.agents/skills/spike-findings-pergo/sources/024-prd-implementation-gap-audit/)
+- [sources/025-waba-read-receipts-status/](file:///.agents/skills/spike-findings-pergo/sources/025-waba-read-receipts-status/)
 </findings_index>
 
 <metadata>
@@ -102,4 +104,5 @@ Original spike source files are preserved in `sources/` for complete reference:
 - 022-css-standardization
 - 023-deprecated-workspace-subviews
 - 024-prd-implementation-gap-audit
+- 025-waba-read-receipts-status
 </metadata>
