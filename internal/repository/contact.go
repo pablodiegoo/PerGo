@@ -26,9 +26,9 @@ func NewContactRepository(pool *pgxpool.Pool) *ContactRepository {
 func (r *ContactRepository) GetByID(ctx context.Context, workspaceID, contactID uuid.UUID) (*domain.Contact, error) {
 	var c domain.Contact
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, workspace_id, name, email, created_at, updated_at
+		SELECT id, workspace_id, name, email, tags, closed_at, created_at, updated_at
 		FROM contacts WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, contactID).Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &c.CreatedAt, &c.UpdatedAt)
+	`, workspaceID, contactID).Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrContactNotFound
@@ -70,6 +70,12 @@ func (r *ContactRepository) ResolveContact(
 	`, workspaceID, channel, senderIdentity).Scan(&contactID)
 	
 	if err == nil {
+		_, err = r.pool.Exec(ctx, `
+			UPDATE contacts SET closed_at = NULL, updated_at = NOW() WHERE id = $1 AND closed_at IS NOT NULL
+		`, contactID)
+		if err != nil {
+			return nil, err
+		}
 		return r.GetByID(ctx, workspaceID, contactID)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
@@ -90,6 +96,12 @@ func (r *ContactRepository) ResolveContact(
 	`, workspaceID, channel, senderIdentity).Scan(&contactID)
 
 	if err == nil {
+		_, err = tx.Exec(ctx, `
+			UPDATE contacts SET closed_at = NULL, updated_at = NOW() WHERE id = $1 AND closed_at IS NOT NULL
+		`, contactID)
+		if err != nil {
+			return nil, err
+		}
 		_ = tx.Commit(ctx)
 		return r.GetByID(ctx, workspaceID, contactID)
 	}
@@ -124,6 +136,14 @@ func (r *ContactRepository) ResolveContact(
 		`, contactID, workspaceID, displayName)
 		if err != nil {
 			return nil, fmt.Errorf("create contact profile: %w", err)
+		}
+	} else {
+		// Reset closed_at if we matched an existing contact via cross-linking
+		_, err = tx.Exec(ctx, `
+			UPDATE contacts SET closed_at = NULL, updated_at = NOW() WHERE id = $1 AND closed_at IS NOT NULL
+		`, contactID)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -230,7 +250,7 @@ func (r *ContactRepository) MergeContacts(ctx context.Context, workspaceID uuid.
 func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid.UUID, query string, excludeID uuid.UUID, limit int) ([]domain.Contact, error) {
 	q := "%" + strings.ToLower(query) + "%"
 	rows, err := r.pool.Query(ctx, `
-		SELECT DISTINCT c.id, c.name, c.email, c.created_at, c.updated_at
+		SELECT DISTINCT c.id, c.name, c.email, c.tags, c.closed_at, c.created_at, c.updated_at
 		FROM contacts c
 		LEFT JOIN contact_identities ci ON ci.contact_id = c.id
 		WHERE c.workspace_id = $1
@@ -246,7 +266,7 @@ func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid
 	var list []domain.Contact
 	for rows.Next() {
 		var c domain.Contact
-		if err := rows.Scan(&c.ID, &c.Name, &c.Email, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Email, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		list = append(list, c)
@@ -325,4 +345,32 @@ func (r *ContactRepository) HasUnread(ctx context.Context, workspaceID, contactI
 		return false, fmt.Errorf("check contact unread: %w", err)
 	}
 	return hasUnread, nil
+}
+
+// AddTags appends tags to the contact's tag list while preserving uniqueness.
+func (r *ContactRepository) AddTags(ctx context.Context, workspaceID, contactID uuid.UUID, tags []string) error {
+	if len(tags) == 0 {
+		return nil
+	}
+	_, err := r.pool.Exec(ctx, `
+		UPDATE contacts 
+		SET tags = ARRAY(
+			SELECT DISTINCT val 
+			FROM unnest(array_cat(tags, $3)) val 
+			WHERE val IS NOT NULL
+		), 
+		updated_at = NOW() 
+		WHERE workspace_id = $1 AND id = $2
+	`, workspaceID, contactID, tags)
+	return err
+}
+
+// CloseThread sets closed_at to the current timestamp.
+func (r *ContactRepository) CloseThread(ctx context.Context, workspaceID, contactID uuid.UUID) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE contacts 
+		SET closed_at = NOW(), updated_at = NOW() 
+		WHERE workspace_id = $1 AND id = $2
+	`, workspaceID, contactID)
+	return err
 }
