@@ -111,7 +111,8 @@ func TestTelegramWebhookHandler(t *testing.T) {
 	e := echo.New()
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	mediaEngine := media.NewDefaultEngine(nil)
-	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, nil, nil, sessRepo, contactRepo)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, nil, nil, sessRepo, contactRepo, dispatchRepo)
 	h := NewTelegramWebhookHandler(connRepo, inboundProcessor, mediaEngine)
 
 	t.Run("Missing Secret Token Header -> 403", func(t *testing.T) {
@@ -212,7 +213,8 @@ func TestTelegramWebhookHandler(t *testing.T) {
 		defer tgMockServer.Close()
 
 		mediaEngineLocal := media.NewDefaultEngine(s3Client)
-		inboundProcessorLocal := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngineLocal, nil, nil, sessRepo, contactRepo)
+		dispatchRepoLocal := repository.NewMessageDispatchRepository(pool)
+		inboundProcessorLocal := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngineLocal, nil, nil, sessRepo, contactRepo, dispatchRepoLocal)
 		hLocal := NewTelegramWebhookHandler(connRepo, inboundProcessorLocal, mediaEngineLocal)
 		hLocal.telegramBaseURL = tgMockServer.URL
 

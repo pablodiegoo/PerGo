@@ -3,6 +3,7 @@ package inbound
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -66,6 +67,15 @@ type InboundEventPayload struct {
 	Contacts    []InboundContact `json:"contacts,omitempty"`
 }
 
+// MessageStatusUpdatedPayload is the structure of the message status update event published to NATS.
+type MessageStatusUpdatedPayload struct {
+	WorkspaceID string `json:"workspace_id"`
+	DispatchID  string `json:"dispatch_id"`
+	MessageID   string `json:"message_id"` // Provider-specific unique message ID (e.g. wamid)
+	Status      string `json:"status"`     // e.g. "sent", "delivered", "read", "failed"
+	Timestamp   string `json:"timestamp"`
+}
+
 type EventMedia struct {
 	MediaURL  string `json:"media_url"`
 	MediaType string `json:"media_type"`
@@ -88,6 +98,7 @@ type InboundProcessor struct {
 	auditWriter          audit.Writer
 	recipientSessionRepo *repository.RecipientSessionRepository
 	contactRepo          *repository.ContactRepository
+	dispatchRepo         *repository.MessageDispatchRepository
 }
 
 // NewInboundProcessor creates a new InboundProcessor.
@@ -99,6 +110,7 @@ func NewInboundProcessor(
 	auditWriter audit.Writer,
 	recipientSessionRepo *repository.RecipientSessionRepository,
 	contactRepo *repository.ContactRepository,
+	dispatchRepo *repository.MessageDispatchRepository,
 ) *InboundProcessor {
 	return &InboundProcessor{
 		dedupRepo:            dedupRepo,
@@ -108,6 +120,7 @@ func NewInboundProcessor(
 		auditWriter:          auditWriter,
 		recipientSessionRepo: recipientSessionRepo,
 		contactRepo:          contactRepo,
+		dispatchRepo:         dispatchRepo,
 	}
 }
 
@@ -115,6 +128,45 @@ func NewInboundProcessor(
 func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error {
 	if ev.WorkspaceID == uuid.Nil {
 		return fmt.Errorf("inbound: workspace ID is required")
+	}
+
+	if ev.Metadata != nil && ev.Metadata["type"] == "status_update" {
+		if p.dispatchRepo == nil {
+			slog.Warn("inbound processor: status_update received but dispatchRepo is nil")
+			return nil
+		}
+		dispatch, err := p.dispatchRepo.GetByProviderMessageID(ctx, ev.MessageID)
+		if err != nil {
+			if errors.Is(err, repository.ErrDispatchNotFound) {
+				slog.Warn("inbound processor: dispatch not found for status update", "provider_message_id", ev.MessageID)
+				return nil
+			}
+			return fmt.Errorf("inbound processor: failed to get dispatch by provider message ID: %w", err)
+		}
+
+		err = p.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, ev.Body, dispatch.CurrentChannel, dispatch.FallbackIndex, nil)
+		if err != nil {
+			return fmt.Errorf("inbound processor: failed to update dispatch status: %w", err)
+		}
+
+		if p.publisher != nil {
+			payload := MessageStatusUpdatedPayload{
+				WorkspaceID: dispatch.WorkspaceID.String(),
+				DispatchID:  dispatch.ID.String(),
+				MessageID:   ev.MessageID,
+				Status:      ev.Body,
+				Timestamp:   time.Now().UTC().Format(time.RFC3339),
+			}
+			eventData, err := json.Marshal(payload)
+			if err != nil {
+				return fmt.Errorf("inbound processor: failed to marshal status update payload: %w", err)
+			}
+			err = p.publisher.Publish(ctx, "messages.status_updated", eventData, dispatch.TraceID)
+			if err != nil {
+				return fmt.Errorf("inbound processor: failed to publish status update to NATS: %w", err)
+			}
+		}
+		return nil
 	}
 
 	// Resolve/Create Contact Profile

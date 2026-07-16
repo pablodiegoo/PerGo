@@ -101,7 +101,8 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 	defer auditWriter.Close()
 
 	mediaEngine := media.NewDefaultEngine(s3Client)
-	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, sessRepo, contactRepo)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, sessRepo, contactRepo, dispatchRepo)
 	h := NewWABAWebhookHandler(connRepo, inboundProcessor, mediaEngine)
 
 	e := echo.New()
