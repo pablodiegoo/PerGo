@@ -465,7 +465,6 @@ func TestOrchestrator_TelegramContactResolution(t *testing.T) {
 
 	ctx := context.Background()
 	wsRepo := repository.NewWorkspaceRepository(pool)
-	tgContactRepo := repository.NewTelegramContactRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 
 	ws, err := wsRepo.Create(ctx, "tg_res_test_ws_"+uuid.New().String())
@@ -475,8 +474,7 @@ func TestOrchestrator_TelegramContactResolution(t *testing.T) {
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
 
 	// Upsert mapping: username "@my_user" -> "chat_98765"
-	username := "@my_user"
-	err = tgContactRepo.Upsert(ctx, ws.ID, "chat_98765", &username, nil, nil, nil)
+	_, err = contactRepo.ResolveContact(ctx, ws.ID, "telegram", "chat_98765", "My User", "@my_user", "")
 	if err != nil {
 		t.Fatalf("failed to upsert contact: %v", err)
 	}
