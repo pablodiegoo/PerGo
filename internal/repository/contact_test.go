@@ -235,4 +235,72 @@ func TestContactRepository(t *testing.T) {
 			t.Errorf("expected '987654', got %q with error: %v", resPhone, err)
 		}
 	})
+
+	t.Run("TagsAndClosedAtLifecycle", func(t *testing.T) {
+		// 1. Check newly created contact has empty tags and nil closed_at
+		contact, err := repo.ResolveContact(ctx, ws.ID, "telegram", "tags-test-tg", "Tags User", "", "")
+		if err != nil {
+			t.Fatalf("failed to create contact: %v", err)
+		}
+
+		if len(contact.Tags) != 0 {
+			t.Errorf("expected empty tags, got %v", contact.Tags)
+		}
+		if contact.ClosedAt != nil {
+			t.Errorf("expected nil closed_at, got %v", contact.ClosedAt)
+		}
+
+		// 2. Add tags and verify deduplication
+		err = repo.AddTags(ctx, ws.ID, contact.ID, []string{"vip", "support", "vip"})
+		if err != nil {
+			t.Fatalf("failed to add tags: %v", err)
+		}
+
+		contact, err = repo.GetByID(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to reload contact: %v", err)
+		}
+
+		if len(contact.Tags) != 2 {
+			t.Errorf("expected 2 unique tags, got %v", contact.Tags)
+		}
+		hasVIP := false
+		hasSupport := false
+		for _, tag := range contact.Tags {
+			if tag == "vip" {
+				hasVIP = true
+			}
+			if tag == "support" {
+				hasSupport = true
+			}
+		}
+		if !hasVIP || !hasSupport {
+			t.Errorf("expected tags to contain vip and support, got %v", contact.Tags)
+		}
+
+		// 3. Close thread and verify closed_at is set
+		err = repo.CloseThread(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to close thread: %v", err)
+		}
+
+		contact, err = repo.GetByID(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to reload contact: %v", err)
+		}
+
+		if contact.ClosedAt == nil {
+			t.Fatal("expected non-nil closed_at after CloseThread")
+		}
+
+		// 4. Resolve contact again (simulate inbound message) and verify closed_at is reset to nil
+		resolved, err := repo.ResolveContact(ctx, ws.ID, "telegram", "tags-test-tg", "Tags User", "", "")
+		if err != nil {
+			t.Fatalf("failed to resolve contact: %v", err)
+		}
+
+		if resolved.ClosedAt != nil {
+			t.Errorf("expected closed_at to be reset to nil, but got %v", resolved.ClosedAt)
+		}
+	})
 }
