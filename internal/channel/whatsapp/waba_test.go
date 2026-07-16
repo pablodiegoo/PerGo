@@ -512,3 +512,106 @@ func TestWABA_MediaExternalURL(t *testing.T) {
 		t.Fatalf("expected nil error on success, got: %v", err)
 	}
 }
+
+func TestWABAInboundAdapterStatuses(t *testing.T) {
+	ctx := context.Background()
+	adapter := NewWABAInboundAdapter(nil)
+
+	// Create dummy credentials JSON
+	creds := wabaVerifyCreds{
+		VerifyToken: "my_verify_token",
+		Token:       "my_token",
+	}
+	credsJSON, _ := json.Marshal(creds)
+	wsID := uuid.New()
+	conn := &repository.Connection{
+		WorkspaceID: wsID,
+		Credentials: credsJSON,
+	}
+
+	// Payload with sent, delivered, read statuses
+	payload := []byte(`{
+		"object": "whatsapp_business_account",
+		"entry": [
+			{
+				"id": "waba_id",
+				"changes": [
+					{
+						"field": "messages",
+						"value": {
+							"messaging_product": "whatsapp",
+							"metadata": {
+								"display_phone_number": "15550000000",
+								"phone_number_id": "phone_id_123"
+							},
+							"statuses": [
+								{
+									"id": "wamid.sent_123",
+									"status": "sent",
+									"recipient_id": "5511999999999",
+									"timestamp": "1700000000"
+								},
+								{
+									"id": "wamid.delivered_123",
+									"status": "delivered",
+									"recipient_id": "5511999999999",
+									"timestamp": "1700000001"
+								},
+								{
+									"id": "wamid.read_123",
+									"status": "read",
+									"recipient_id": "5511999999999",
+									"timestamp": "1700000002"
+								}
+							]
+						}
+					}
+				]
+			}
+		]
+	}`)
+
+	events, err := adapter.Parse(ctx, payload, nil, conn)
+	if err != nil {
+		t.Fatalf("failed to parse: %v", err)
+	}
+
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(events))
+	}
+
+	expectedStatuses := []struct {
+		id     string
+		status string
+	}{
+		{"wamid.sent_123", "sent"},
+		{"wamid.delivered_123", "delivered"},
+		{"wamid.read_123", "read"},
+	}
+
+	for i, expected := range expectedStatuses {
+		ev := events[i]
+		if ev.WorkspaceID != wsID {
+			t.Errorf("event %d: expected WorkspaceID %s, got %s", i, wsID, ev.WorkspaceID)
+		}
+		if ev.MessageID != expected.id {
+			t.Errorf("event %d: expected MessageID %s, got %s", i, expected.id, ev.MessageID)
+		}
+		if ev.Channel != "whatsapp_cloud" {
+			t.Errorf("event %d: expected Channel whatsapp_cloud, got %s", i, ev.Channel)
+		}
+		if ev.From != "5511999999999" {
+			t.Errorf("event %d: expected From 5511999999999, got %s", i, ev.From)
+		}
+		if ev.To != "15550000000" {
+			t.Errorf("event %d: expected To 15550000000, got %s", i, ev.To)
+		}
+		if ev.Body != expected.status {
+			t.Errorf("event %d: expected Body %s, got %s", i, expected.status, ev.Body)
+		}
+		if ev.Metadata == nil || ev.Metadata["type"] != "status_update" {
+			t.Errorf("event %d: expected Metadata type status_update, got %v", i, ev.Metadata)
+		}
+	}
+}
+
