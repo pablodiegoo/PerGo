@@ -59,6 +59,7 @@ Replace `TelegramContacts *repository.TelegramContactRepository` dependency with
 </action>
 <read_first>
 - internal/api/handler/admin/inbox.go
+- cmd/pergo/main.go
 - .planning/phases/18-omnichannel-contact-merging/18-RESEARCH.md
 </read_first>
 <acceptance_criteria>
