@@ -25,7 +25,15 @@
 - [ ] **VERB-02**: System executes declarative verbs in sequence (e.g. tagging a session, waiting 2s, and replying with a template).
 - [ ] **VERB-03**: Webhook response execution errors are recorded in the workspace audit log and visible to operators.
 
+### WABA Read Receipts & Status Updates
+
+- [ ] **STAT-01**: System stores external provider message IDs (`provider_message_id`) for dispatches to map asynchronous status updates back to original database records.
+- [ ] **STAT-02**: System parses Meta's WABA API responses to extract the message ID (`wamid`) and associates it with the outbound dispatch record in the database.
+- [ ] **STAT-03**: System parses Meta's inbound webhook status payloads (`sent`, `delivered`, `read`) and maps them to status events.
+- [ ] **STAT-04**: System updates the message dispatch status in the database on status events and renders delivery/read receipt indicators in the Inbox chat bubbles.
+
 ## Completed Requirements
+
 
 ### Campaign Management
 - [x] **CAMP-01**: User can upload a CSV mailing list via the admin panel.
@@ -71,13 +79,19 @@
 | VERB-01 | Phase 19 | Pending |
 | VERB-02 | Phase 19 | Pending |
 | VERB-03 | Phase 19 | Pending |
+| STAT-01 | Phase 20 | Pending |
+| STAT-02 | Phase 20 | Pending |
+| STAT-03 | Phase 20 | Pending |
+| STAT-04 | Phase 20 | Pending |
+
 
 **Coverage:**
-- Active requirements: 11 total
-- Mapped to phases: 11
+- Active requirements: 15 total
+- Mapped to phases: 15
 - Completed requirements: 8 total
 - Mapped to phases: 8
 - Unmapped active: 0 ✓
+
 
 ---
 *Requirements defined: 2026-07-16*
