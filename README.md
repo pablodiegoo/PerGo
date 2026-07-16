@@ -51,14 +51,14 @@ It is built for backend developers integrating omnichannel messaging into CRMs/E
 
 Para guias detalhados de configuração, desenvolvimento e implantação do PerGo, consulte a documentação oficial:
 
-* **Arquitetura do PerGo:** [Visão Geral de Arquitetura](file:///home/pablo/Coding/OmniGo/docs/architecture/README.md)
-* **Como Começar:** [Guia de Início Rápido (Getting Started)](file:///home/pablo/Coding/OmniGo/docs/GETTING-STARTED.md)
-* **Configurações:** [Variáveis de Ambiente (.env)](file:///home/pablo/Coding/OmniGo/docs/CONFIGURATION.md)
-* **Referência da API:** [Endpoints, Payloads e Erros](file:///home/pablo/Coding/OmniGo/docs/API.md)
-* **Configuração de Provedores:** [Telegram, WABA e WhatsApp Web Setup](file:///home/pablo/Coding/OmniGo/docs/CHANNELS.md)
-* **Desenvolvimento:** [Estrutura de Pastas e Diretrizes](file:///home/pablo/Coding/OmniGo/docs/DEVELOPMENT.md)
-* **Testes:** [Guia de Escrita e Execução de Testes](file:///home/pablo/Coding/OmniGo/docs/TESTING.md)
-* **Implantação (Deploy):** [Dockerfile e Compose para Produção](file:///home/pablo/Coding/OmniGo/docs/DEPLOYMENT.md)
+* **Arquitetura do PerGo:** [Visão Geral de Arquitetura](file:///home/pablo/Coding/PerGo/docs/architecture/README.md)
+* **Como Começar:** [Guia de Início Rápido (Getting Started)](file:///home/pablo/Coding/PerGo/docs/GETTING-STARTED.md)
+* **Configurações:** [Variáveis de Ambiente (.env)](file:///home/pablo/Coding/PerGo/docs/CONFIGURATION.md)
+* **Referência da API:** [Endpoints, Payloads e Erros](file:///home/pablo/Coding/PerGo/docs/API.md)
+* **Configuração de Provedores:** [Telegram, WABA e WhatsApp Web Setup](file:///home/pablo/Coding/PerGo/docs/CHANNELS.md)
+* **Desenvolvimento:** [Estrutura de Pastas e Diretrizes](file:///home/pablo/Coding/PerGo/docs/DEVELOPMENT.md)
+* **Testes:** [Guia de Escrita e Execução de Testes](file:///home/pablo/Coding/PerGo/docs/TESTING.md)
+* **Implantação (Deploy):** [Dockerfile e Compose para Produção](file:///home/pablo/Coding/PerGo/docs/DEPLOYMENT.md)
 
 ---
 
@@ -263,7 +263,7 @@ We welcome contributions to PerGo! If you want to contribute, please follow thes
    make test-race
    ```
 
-Refer to the [DEVELOPMENT.md](file:///home/pablo/Coding/OmniGo/docs/DEVELOPMENT.md) guide for folder structure details.
+Refer to the [DEVELOPMENT.md](file:///home/pablo/Coding/PerGo/docs/DEVELOPMENT.md) guide for folder structure details.
 <!-- VERIFY: CONTRIBUTING.md file exists and contributing instructions point to standard fork-and-pull-request flow -->
 
 ---

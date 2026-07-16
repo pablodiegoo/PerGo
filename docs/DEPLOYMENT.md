@@ -76,12 +76,12 @@ O **PerGo** foi projetado para rodar em infraestrutura containerizada:
 
 ## Pipeline de Build (Build Pipeline)
 
-O processo de build do PerGo é automatizado e encapsulado no [Dockerfile](file:///home/pablo/Coding/OmniGo/Dockerfile) multi-stage, seguindo os seguintes passos:
+O processo de build do PerGo é automatizado e encapsulado no [Dockerfile](file:///home/pablo/Coding/PerGo/Dockerfile) multi-stage, seguindo os seguintes passos:
 
-1. **Geração de Código (Template compilation)**: A ferramenta `a-h/templ` é executada para compilar os templates HTML tipo-seguros localizados no diretório [templates/](file:///home/pablo/Coding/OmniGo/templates) para código Go nativo (`templ generate ./...`).
-2. **Resolução de Dependências**: As dependências declaradas no [go.mod](file:///home/pablo/Coding/OmniGo/go.mod) são baixadas (`go mod download`).
+1. **Geração de Código (Template compilation)**: A ferramenta `a-h/templ` é executada para compilar os templates HTML tipo-seguros localizados no diretório [templates/](file:///home/pablo/Coding/PerGo/templates) para código Go nativo (`templ generate ./...`).
+2. **Resolução de Dependências**: As dependências declaradas no [go.mod](file:///home/pablo/Coding/PerGo/go.mod) são baixadas (`go mod download`).
 3. **Compilação Estática**: O binário do Go é compilado com a flag `CGO_ENABLED=0` e flags de otimização `-ldflags="-w -s"` para remover tabelas de símbolos e informações de debug, resultando em um binário estático e enxuto.
-4. **Construção da Imagem de Runtime**: O binário compilado, os arquivos estáticos de assets ([static/](file:///home/pablo/Coding/OmniGo/static)) e os certificados de CA atualizados do builder são copiados para a imagem final baseada em `gcr.io/distroless/static-debian12`, garantindo uma imagem final com menos de 50MB e alta segurança.
+4. **Construção da Imagem de Runtime**: O binário compilado, os arquivos estáticos de assets ([static/](file:///home/pablo/Coding/PerGo/static)) e os certificados de CA atualizados do builder são copiados para a imagem final baseada em `gcr.io/distroless/static-debian12`, garantindo uma imagem final com menos de 50MB e alta segurança.
 
 Você também pode realizar o build local do binário (fora de containers) usando o comando:
 ```bash
@@ -95,7 +95,7 @@ make build
 Para configurar o ambiente de produção do zero:
 
 1. **Provisionar Infraestrutura de Apoio**: Suba uma instância segura do PostgreSQL (versão 15+) e um servidor NATS configurado com suporte a JetStream (com opções de persistência ativas).
-2. **Criar Configurações locais/variáveis**: Crie um arquivo `.env` com base no arquivo modelo [.env.example](file:///home/pablo/Coding/OmniGo/.env.example).
+2. **Criar Configurações locais/variáveis**: Crie um arquivo `.env` com base no arquivo modelo [.env.example](file:///home/pablo/Coding/PerGo/.env.example).
 3. **Gerar Segredos**:
    - Defina a senha do administrador via `PERGO_ADMIN_PASSWORD`.
    - Gere uma chave de criptografia mestra segura de 32 bytes codificada em base64 usando:
