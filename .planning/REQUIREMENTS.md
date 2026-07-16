@@ -27,10 +27,10 @@
 
 ### WABA Read Receipts & Status Updates
 
-- [ ] **STAT-01**: System stores external provider message IDs (`provider_message_id`) for dispatches to map asynchronous status updates back to original database records.
-- [ ] **STAT-02**: System parses Meta's WABA API responses to extract the message ID (`wamid`) and associates it with the outbound dispatch record in the database.
-- [ ] **STAT-03**: System parses Meta's inbound webhook status payloads (`sent`, `delivered`, `read`) and maps them to status events.
-- [ ] **STAT-04**: System updates the message dispatch status in the database on status events and renders delivery/read receipt indicators in the Inbox chat bubbles.
+- [x] **STAT-01**: System stores external provider message IDs (`provider_message_id`) for dispatches to map asynchronous status updates back to original database records.
+- [x] **STAT-02**: System parses Meta's WABA API responses to extract the message ID (`wamid`) and associates it with the outbound dispatch record in the database.
+- [x] **STAT-03**: System parses Meta's inbound webhook status payloads (`sent`, `delivered`, `read`) and maps them to status events.
+- [x] **STAT-04**: System updates the message dispatch status in the database on status events and renders delivery/read receipt indicators in the Inbox chat bubbles.
 
 ## Completed Requirements
 
@@ -79,10 +79,10 @@
 | VERB-01 | Phase 19 | Pending |
 | VERB-02 | Phase 19 | Pending |
 | VERB-03 | Phase 19 | Pending |
-| STAT-01 | Phase 20 | Pending |
-| STAT-02 | Phase 20 | Pending |
-| STAT-03 | Phase 20 | Pending |
-| STAT-04 | Phase 20 | Pending |
+| STAT-01 | Phase 20 | Validated |
+| STAT-02 | Phase 20 | Validated |
+| STAT-03 | Phase 20 | Validated |
+| STAT-04 | Phase 20 | Validated |
 
 
 **Coverage:**
