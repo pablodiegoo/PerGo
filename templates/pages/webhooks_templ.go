@@ -10,6 +10,7 @@ import templruntime "github.com/a-h/templ/runtime"
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/layout"
 )
@@ -76,7 +77,7 @@ func WebhooksContent(workspaces []repository.Workspace, dlqItems []*repository.W
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(ws.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 34, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 35, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -89,7 +90,7 @@ func WebhooksContent(workspaces []repository.Workspace, dlqItems []*repository.W
 			var templ_7745c5c3_Var4 templ.SafeURL
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/webhooks", ws.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 36, Col: 84}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 37, Col: 84}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -122,7 +123,7 @@ func WebhooksContent(workspaces []repository.Workspace, dlqItems []*repository.W
 	})
 }
 
-func WorkspaceWebhooksPage(ws repository.Workspace, config *repository.WebhookConfig, dlqItems []*repository.WebhookDLQ) templ.Component {
+func WorkspaceWebhooksPage(ws repository.Workspace, subs []*repository.WebhookSubscription, dlqItems []*repository.WebhookDLQ) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -143,7 +144,7 @@ func WorkspaceWebhooksPage(ws repository.Workspace, config *repository.WebhookCo
 			templ_7745c5c3_Var5 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = layout.Base(fmt.Sprintf("%s - Webhooks", ws.Name), WorkspaceWebhooksContent(ws, config, dlqItems)).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = layout.Base(fmt.Sprintf("%s - Webhooks", ws.Name), WorkspaceWebhooksContent(ws, subs, dlqItems)).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -151,7 +152,7 @@ func WorkspaceWebhooksPage(ws repository.Workspace, config *repository.WebhookCo
 	})
 }
 
-func WorkspaceWebhooksContent(ws repository.Workspace, config *repository.WebhookConfig, dlqItems []*repository.WebhookDLQ) templ.Component {
+func WorkspaceWebhooksContent(ws repository.Workspace, subs []*repository.WebhookSubscription, dlqItems []*repository.WebhookDLQ) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -179,105 +180,171 @@ func WorkspaceWebhooksContent(ws repository.Workspace, config *repository.Webhoo
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(ws.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 63, Col: 82}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 64, Col: 82}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</h1><p class=\"text-zinc-500 text-sm mt-1\">Configure o webhook de destino e gerencie envios pendentes para esta área de trabalho.</p></div><a href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</h1><p class=\"text-zinc-500 text-sm mt-1\">Configure múltiplos destinos de webhook e gerencie falhas de entrega.</p></div><div class=\"flex gap-2\"><button class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\" hx-get=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var8 templ.SafeURL
-		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", ws.ID)))
+		var templ_7745c5c3_Var8 string
+		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/new", ws.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 66, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 70, Col: 82}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\">Back to Workspace</a></div><div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8\"><h2 class=\"text-lg font-semibold text-zinc-900 mb-4\">Webhook Configuration</h2><form hx-post=\"")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var9 string
-		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/webhooks/config", ws.ID))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 72, Col: 71}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" hx-target=\"#modal-container\">+ Add Endpoint</button> <a href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\" hx-swap=\"none\" class=\"space-y-4\"><div class=\"flex flex-col gap-1\"><label for=\"url\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Webhook URL</label> ")
+		var templ_7745c5c3_Var9 templ.SafeURL
+		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", ws.ID)))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 75, Col: 70}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if config != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<input type=\"url\" id=\"url\" name=\"url\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\">Back to Workspace</a></div></div><div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8\"><h2 class=\"text-lg font-semibold text-zinc-900 mb-4 font-bold\">Active Subscriptions</h2><div class=\"overflow-x-auto border border-zinc-200 rounded-lg shadow-sm\"><table class=\"table min-w-full divide-y divide-zinc-200\"><thead class=\"bg-zinc-50 text-zinc-500 text-xs font-semibold uppercase tracking-wider text-left border-b border-zinc-200\"><tr><th class=\"px-6 py-3\">Webhook URL</th><th class=\"px-6 py-3\">Event Filters</th><th class=\"px-6 py-3\">Status</th><th class=\"px-6 py-3 text-right\">Actions</th></tr></thead> <tbody class=\"divide-y divide-zinc-200 text-sm text-zinc-700 bg-white\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		for _, sub := range subs {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<tr id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var10 string
-			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(config.URL)
+			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("sub-row-%s", sub.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 79, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 93, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" placeholder=\"https://yourdomain.com/webhooks\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<input type=\"url\" id=\"url\" name=\"url\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" placeholder=\"https://yourdomain.com/webhooks\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</div><div class=\"flex flex-col gap-1\"><label for=\"secret\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Signing Secret</label> ")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if config != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<input type=\"password\" id=\"secret\" name=\"secret\" value=\"********\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" placeholder=\"Enter signing secret\"> ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<input type=\"password\" id=\"secret\" name=\"secret\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" placeholder=\"Enter signing secret\"> ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<small class=\"text-xs text-zinc-400 block mt-1\">Used to compute HMAC-SHA256 signature in X-PerGo-Signature header.</small></div><div class=\"flex gap-2\"><button type=\"submit\" class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9\">Save Configuration</button> ")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if config != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<button type=\"button\" class=\"btn btn-ghost hover:bg-rose-50 text-rose-600 btn-sm font-semibold px-4 py-2 rounded-md transition h-9\" hx-delete=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "\" class=\"hover:bg-zinc-50/50 transition-colors\"><td class=\"px-6 py-4 font-mono text-xs font-semibold text-zinc-900 max-w-sm truncate\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var11 string
-			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/webhooks/config", ws.ID))
+			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(sub.URL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 101, Col: 76}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 94, Col: 102}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" hx-confirm=\"Are you sure you want to delete this webhook configuration?\" hx-target=\"body\" hx-swap=\"none\">Delete Configuration</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</td><td class=\"px-6 py-4 flex flex-wrap gap-1\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			for _, evt := range sub.EventTypes {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<span class=\"badge badge-sm bg-zinc-100 text-zinc-800 border-zinc-200 px-2 py-0.5 text-xs font-semibold\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var12 string
+				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(evt)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 97, Col: 119}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</span>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</td><td class=\"px-6 py-4\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if sub.Active {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<span class=\"badge badge-sm bg-emerald-50 text-emerald-700 border-emerald-200 px-2 py-0.5 text-xs font-semibold\">Active</span>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<span class=\"badge badge-sm bg-zinc-100 text-zinc-500 border-zinc-200 px-2 py-0.5 text-xs font-semibold\">Inactive</span>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</td><td class=\"px-6 py-4 text-right\"><div class=\"inline-flex gap-2\"><button class=\"btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold\" hx-get=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var13 string
+			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s/test-form", ws.ID, sub.ID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 111, Col: 105}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" hx-target=\"#modal-container\">Test</button> <button class=\"btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold\" hx-get=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var14 string
+			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s/edit", ws.ID, sub.ID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 118, Col: 100}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" hx-target=\"#modal-container\">Edit</button> <button class=\"btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold\" hx-delete=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var15 string
+			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s", ws.ID, sub.ID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 125, Col: 98}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" hx-confirm=\"Are you sure you want to permanently delete this webhook subscription?\" hx-target=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var16 string
+			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("#sub-row-%s", sub.ID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 127, Col: 56}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "\" hx-swap=\"delete\">Delete</button></div></td></tr>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</div></form></div><div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6\"><h2 class=\"text-lg font-semibold text-zinc-900 mb-4\">Workspace Dead-Letter Queue (DLQ)</h2>")
+		if len(subs) == 0 {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<tr><td colspan=\"4\" class=\"px-6 py-12 text-center text-zinc-400\"><div class=\"font-semibold mb-1\">No endpoints configured</div><div class=\"text-xs text-zinc-400\">Click \"+ Add Endpoint\" to register a new webhook destination.</div></td></tr>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</tbody></table></div></div><div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6\"><h2 class=\"text-lg font-semibold text-zinc-900 mb-4\">Workspace Dead-Letter Queue (DLQ)</h2>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -285,7 +352,7 @@ func WorkspaceWebhooksContent(ws repository.Workspace, config *repository.Webhoo
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</div><div id=\"modal-container\"></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -309,217 +376,230 @@ func DLQTable(items []*repository.WebhookDLQ, showWorkspace bool) templ.Componen
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var12 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var12 == nil {
-			templ_7745c5c3_Var12 = templ.NopComponent
+		templ_7745c5c3_Var17 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var17 == nil {
+			templ_7745c5c3_Var17 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<div id=\"dlq-table-container\"><div class=\"overflow-x-auto border border-zinc-200 rounded-lg shadow-sm\"><table class=\"table min-w-full divide-y divide-zinc-200\"><thead class=\"bg-zinc-50 text-zinc-500 text-xs font-semibold uppercase tracking-wider text-left border-b border-zinc-200\"><tr>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<div id=\"dlq-table-container\"><div class=\"overflow-x-auto border border-zinc-200 rounded-lg shadow-sm\"><table class=\"table min-w-full divide-y divide-zinc-200\"><thead class=\"bg-zinc-50 text-zinc-500 text-xs font-semibold uppercase tracking-wider text-left border-b border-zinc-200\"><tr>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if showWorkspace {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<th class=\"px-6 py-3\">Workspace ID</th>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<th class=\"px-6 py-3\">Workspace ID</th>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<th class=\"px-6 py-3\">Trace ID</th><th class=\"px-6 py-3\">Message ID</th><th class=\"px-6 py-3\">Event</th><th class=\"px-6 py-3\">Attempts</th><th class=\"px-6 py-3\">Last Attempt</th><th class=\"px-6 py-3 text-right\">Actions</th></tr></thead> <tbody class=\"divide-y divide-zinc-200 text-sm text-zinc-700 bg-white\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<th class=\"px-6 py-3\">Endpoint URL</th><th class=\"px-6 py-3\">Trace ID</th><th class=\"px-6 py-3\">Message ID</th><th class=\"px-6 py-3\">Event</th><th class=\"px-6 py-3\">Attempts</th><th class=\"px-6 py-3\">Last Attempt</th><th class=\"px-6 py-3 text-right\">Actions</th></tr></thead> <tbody class=\"divide-y divide-zinc-200 text-sm text-zinc-700 bg-white\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, item := range items {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<tr id=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var13 string
-			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("dlq-row-%s", item.ID))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 138, Col: 49}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\" class=\"hover:bg-zinc-50/50 transition-colors\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if showWorkspace {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<td class=\"px-6 py-4 text-xs font-mono text-zinc-500\">")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var14 string
-				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(item.WorkspaceID.String()[:8])
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 140, Col: 93}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</td>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<td class=\"px-6 py-4 text-xs font-mono text-zinc-500\"><code>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var15 string
-			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(item.TraceID)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 142, Col: 81}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</code></td><td class=\"px-6 py-4 text-xs font-mono text-zinc-500\"><code>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var16 string
-			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(item.MessageID)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 143, Col: 83}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</code></td><td class=\"px-6 py-4\"><span class=\"badge badge-sm bg-blue-50 text-blue-700 border-blue-200 px-2 py-0.5 text-xs font-semibold\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var17 string
-			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(item.EventType)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 145, Col: 128}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</span></td><td class=\"px-6 py-4 text-xs font-mono text-zinc-500\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<tr id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var18 string
-			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", item.Attempts))
+			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("dlq-row-%s", item.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 147, Col: 95}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 177, Col: 49}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</td><td class=\"px-6 py-4 text-xs font-mono text-zinc-500\">")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var19 string
-			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(item.LastAttemptAt.Format("02/01/2006 15:04:05"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 148, Col: 111}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" class=\"hover:bg-zinc-50/50 transition-colors\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</td><td class=\"px-6 py-4 text-right\"><div class=\"inline-flex gap-2\"><button class=\"btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold\" hx-get=\"")
+			if showWorkspace {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<td class=\"px-6 py-4 text-xs font-mono text-zinc-500\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var19 string
+				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(item.WorkspaceID.String()[:8])
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 179, Col: 93}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</td>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<td class=\"px-6 py-4 text-xs font-mono text-zinc-500 max-w-xs truncate\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var20 string
-			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/webhooks/dlq/%s/details", item.ID))
+			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(item.WebhookURL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 153, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 181, Col: 96}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "\" hx-target=\"body\" hx-swap=\"beforeend\">Details</button> <button class=\"btn btn-ghost hover:bg-emerald-50 text-emerald-600 btn-xs font-semibold\" hx-post=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</td><td class=\"px-6 py-4 text-xs font-mono text-zinc-500\"><code>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var21 string
-			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/webhooks/dlq/%s/retry", item.ID))
+			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(item.TraceID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 161, Col: 72}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 182, Col: 81}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\" hx-target=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</code></td><td class=\"px-6 py-4 text-xs font-mono text-zinc-500\"><code>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var22 string
-			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("#dlq-row-%s", item.ID))
+			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(item.MessageID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 162, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 183, Col: 83}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" hx-swap=\"outerHTML\">Retry</button> <button class=\"btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold\" hx-delete=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</code></td><td class=\"px-6 py-4\"><span class=\"badge badge-sm bg-blue-50 text-blue-700 border-blue-200 px-2 py-0.5 text-xs font-semibold\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var23 string
-			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/webhooks/dlq/%s", item.ID))
+			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(item.EventType)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 169, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 185, Col: 128}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\" hx-confirm=\"Delete Webhook Log: Are you sure you want to permanently delete this dead-lettered webhook log? This action cannot be undone.\" hx-target=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</span></td><td class=\"px-6 py-4 text-xs font-mono text-zinc-500\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var24 string
-			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("#dlq-row-%s", item.ID))
+			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", item.Attempts))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 171, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 187, Col: 95}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\" hx-swap=\"delete\">Delete</button></div></td></tr>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</td><td class=\"px-6 py-4 text-xs font-mono text-zinc-500\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var25 string
+			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(item.LastAttemptAt.Format("02/01/2006 15:04:05"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 188, Col: 111}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</td><td class=\"px-6 py-4 text-right\"><div class=\"inline-flex gap-2\"><button class=\"btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold\" hx-get=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var26 string
+			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/webhooks/dlq/%s/details", item.ID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 193, Col: 73}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\" hx-target=\"body\" hx-swap=\"beforeend\">Details</button> <button class=\"btn btn-ghost hover:bg-emerald-50 text-emerald-600 btn-xs font-semibold\" hx-post=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var27 string
+			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/webhooks/dlq/%s/retry", item.ID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 201, Col: 72}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var27)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "\" hx-target=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var28 string
+			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("#dlq-row-%s", item.ID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 202, Col: 57}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "\" hx-swap=\"outerHTML\">Retry</button> <button class=\"btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold\" hx-delete=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var29 string
+			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/webhooks/dlq/%s", item.ID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 209, Col: 68}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "\" hx-confirm=\"Delete Webhook Log: Are you sure you want to permanently delete this dead-lettered webhook log? This action cannot be undone.\" hx-target=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var30 string
+			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("#dlq-row-%s", item.ID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 211, Col: 57}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var30)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "\" hx-swap=\"delete\">Delete</button></div></td></tr>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(items) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<tr><td colspan=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<tr><td colspan=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var25 string
-			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%d", map[bool]int{true: 7, false: 6}[showWorkspace]))
+			var templ_7745c5c3_Var31 string
+			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%d", map[bool]int{true: 8, false: 7}[showWorkspace]))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 182, Col: 86}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 222, Col: 86}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\" class=\"px-6 py-12 text-center text-zinc-400\"><div class=\"font-semibold mb-1\">No dead-lettered webhooks</div><div class=\"text-xs text-zinc-400\">Webhook delivery is running smoothly. Any permanently failed deliveries will appear here.</div></td></tr>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" class=\"px-6 py-12 text-center text-zinc-400\"><div class=\"font-semibold mb-1\">No dead-lettered webhooks</div><div class=\"text-xs text-zinc-400\">Webhook delivery is running smoothly. Any permanently failed deliveries will appear here.</div></td></tr>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</tbody></table></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</tbody></table></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -543,152 +623,152 @@ func DLQDetailModal(item *repository.WebhookDLQ) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var26 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var26 == nil {
-			templ_7745c5c3_Var26 = templ.NopComponent
+		templ_7745c5c3_Var32 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var32 == nil {
+			templ_7745c5c3_Var32 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<div class=\"modal-backdrop\" onclick=\"this.closest('.modal-backdrop').remove()\"><div class=\"custom-modal w-full max-w-2xl\" onclick=\"event.stopPropagation()\"><div class=\"modal-header border-b pb-3 mb-4\"><h3 class=\"text-lg font-bold text-zinc-900\">Dead-Letter Log Details</h3></div><div class=\"modal-body space-y-4\"><div class=\"grid grid-cols-2 gap-4 text-xs\"><div><span class=\"block text-zinc-400 font-semibold uppercase\">ID</span> <span class=\"font-mono text-zinc-950 font-medium\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var27 string
-		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(item.ID.String())
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 205, Col: 74}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Workspace ID</span> <span class=\"font-mono text-zinc-950 font-medium\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var28 string
-		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(item.WorkspaceID.String())
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 209, Col: 83}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Trace ID</span> <span class=\"font-mono text-zinc-950 font-medium\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var29 string
-		templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(item.TraceID)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 213, Col: 70}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Message ID</span> <span class=\"font-mono text-zinc-950 font-medium\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var30 string
-		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(item.MessageID)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 217, Col: 72}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Event Type</span> <span><span class=\"badge badge-sm bg-blue-50 text-blue-700 border-blue-200 px-2 py-0.5 text-xs font-semibold\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var31 string
-		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(item.EventType)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 222, Col: 127}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</span></span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Webhook URL</span> <span class=\"font-mono text-zinc-950 font-medium truncate block max-w-xs\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var32 string
-		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(item.WebhookURL)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 227, Col: 97}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Attempts</span> <span class=\"text-zinc-950 font-medium\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<div class=\"modal-backdrop\" onclick=\"this.closest('.modal-backdrop').remove()\"><div class=\"custom-modal w-full max-w-2xl\" onclick=\"event.stopPropagation()\"><div class=\"modal-header border-b pb-3 mb-4\"><h3 class=\"text-lg font-bold text-zinc-900\">Dead-Letter Log Details</h3></div><div class=\"modal-body space-y-4\"><div class=\"grid grid-cols-2 gap-4 text-xs\"><div><span class=\"block text-zinc-400 font-semibold uppercase\">ID</span> <span class=\"font-mono text-zinc-950 font-medium\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var33 string
-		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", item.Attempts))
+		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(item.ID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 231, Col: 80}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 245, Col: 74}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Last Attempt</span> <span class=\"text-zinc-950 font-medium\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Workspace ID</span> <span class=\"font-mono text-zinc-950 font-medium\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var34 string
-		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(item.LastAttemptAt.Format("02/01/2006 15:04:05"))
+		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(item.WorkspaceID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 235, Col: 96}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 249, Col: 83}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</span></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Trace ID</span> <span class=\"font-mono text-zinc-950 font-medium\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if item.FailureReason != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<div><span class=\"block text-xs text-zinc-400 font-semibold uppercase mb-1\">Failure Reason</span><div class=\"alert bg-rose-50 text-rose-800 border border-rose-200 rounded p-3 font-mono text-xs break-all leading-relaxed\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var35 string
-			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(*item.FailureReason)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 243, Col: 28}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</div></div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
+		var templ_7745c5c3_Var35 string
+		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(item.TraceID)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 253, Col: 70}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<div><span class=\"block text-xs text-zinc-400 font-semibold uppercase mb-1\">Payload JSON</span><pre class=\"bg-zinc-950 text-emerald-400 p-4 rounded-lg text-xs leading-relaxed overflow-x-auto max-h-60 select-all font-mono\"><code>")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Message ID</span> <span class=\"font-mono text-zinc-950 font-medium\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var36 string
-		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(string(item.Payload))
+		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(item.MessageID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 251, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 257, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</code></pre></div></div><div class=\"modal-footer flex justify-end border-t pt-4 mt-6\"><button type=\"button\" class=\"btn btn-ghost hover:bg-zinc-100 text-zinc-700 px-4 py-2 rounded-lg text-xs font-semibold\" onclick=\"this.closest('.modal-backdrop').remove()\">Fechar</button></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Event Type</span> <span><span class=\"badge badge-sm bg-blue-50 text-blue-700 border-blue-200 px-2 py-0.5 text-xs font-semibold\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var37 string
+		templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(item.EventType)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 262, Col: 127}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</span></span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Webhook URL</span> <span class=\"font-mono text-zinc-950 font-medium truncate block max-w-xs\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var38 string
+		templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(item.WebhookURL)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 267, Col: 97}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Attempts</span> <span class=\"text-zinc-950 font-medium\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var39 string
+		templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", item.Attempts))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 271, Col: 80}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Last Attempt</span> <span class=\"text-zinc-950 font-medium\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var40 string
+		templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(item.LastAttemptAt.Format("02/01/2006 15:04:05"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 275, Col: 96}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "</span></div></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if item.FailureReason != nil {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<div><span class=\"block text-xs text-zinc-400 font-semibold uppercase mb-1\">Failure Reason</span><div class=\"alert bg-rose-50 text-rose-800 border border-rose-200 rounded p-3 font-mono text-xs break-all leading-relaxed\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var41 string
+			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(*item.FailureReason)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 283, Col: 28}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</div></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<div><span class=\"block text-xs text-zinc-400 font-semibold uppercase mb-1\">Payload JSON</span><pre class=\"bg-zinc-950 text-emerald-400 p-4 rounded-lg text-xs leading-relaxed overflow-x-auto max-h-60 select-all font-mono\"><code>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var42 string
+		templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(string(item.Payload))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 291, Col: 34}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</code></pre></div></div><div class=\"modal-footer flex justify-end border-t pt-4 mt-6\"><button type=\"button\" class=\"btn btn-ghost hover:bg-zinc-100 text-zinc-700 px-4 py-2 rounded-lg text-xs font-semibold\" onclick=\"this.closest('.modal-backdrop').remove()\">Fechar</button></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -712,50 +792,509 @@ func DLQBadgeFragment(count int) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var37 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var37 == nil {
-			templ_7745c5c3_Var37 = templ.NopComponent
+		templ_7745c5c3_Var43 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var43 == nil {
+			templ_7745c5c3_Var43 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		var templ_7745c5c3_Var38 = []any{"badge", templ.KV("badge-danger", count > 0), templ.KV("badge-secondary", count == 0)}
-		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var38...)
+		var templ_7745c5c3_Var44 = []any{"badge", templ.KV("badge-danger", count > 0), templ.KV("badge-secondary", count == 0)}
+		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var44...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<span id=\"sidebar-dlq-badge\" class=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<span id=\"sidebar-dlq-badge\" class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var39 string
-		templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var38).String())
+		var templ_7745c5c3_Var45 string
+		templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var44).String())
 		if templ_7745c5c3_Err != nil {
 			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 1, Col: 0}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var45)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if count > 0 {
-			var templ_7745c5c3_Var40 string
-			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", count))
+			var templ_7745c5c3_Var46 string
+			templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", count))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 272, Col: 29}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 312, Col: 29}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "0")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "0")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "</span>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func SubscriptionFormModal(wsID uuid.UUID, sub *repository.WebhookSubscription) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var47 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var47 == nil {
+			templ_7745c5c3_Var47 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<div class=\"modal-backdrop\" onclick=\"this.closest('.modal-backdrop').remove()\"><div class=\"custom-modal w-full max-w-lg\" onclick=\"event.stopPropagation()\"><div class=\"modal-header border-b pb-3 mb-4\"><h3 class=\"text-lg font-bold text-zinc-900\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if sub != nil {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "Edit Webhook Endpoint")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "Add Webhook Endpoint")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "</h3></div><form")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if sub != nil {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, " hx-post=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var48 string
+			templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s", wsID, sub.ID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 333, Col: 90}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var48)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, " hx-post=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var49 string
+			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions", wsID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 335, Col: 79}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var49)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, " hx-target=\"body\" hx-swap=\"none\" class=\"space-y-4\"><div class=\"flex flex-col gap-1\"><label for=\"url\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Webhook URL</label> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if sub != nil {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "<input type=\"url\" id=\"url\" name=\"url\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var50 string
+			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.ResolveAttributeValue(sub.URL)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 344, Col: 59}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var50)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm bg-white w-full focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent\" placeholder=\"https://yourdomain.com/webhooks\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<input type=\"url\" id=\"url\" name=\"url\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm bg-white w-full focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent\" placeholder=\"https://yourdomain.com/webhooks\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "</div><div class=\"flex flex-col gap-1\"><label for=\"secret\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Signing Secret</label> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if sub != nil {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "<input type=\"password\" id=\"secret\" name=\"secret\" value=\"********\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm bg-white w-full focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent\" placeholder=\"Enter signing secret\"> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "<input type=\"password\" id=\"secret\" name=\"secret\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm bg-white w-full focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent\" placeholder=\"Enter signing secret\"> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "<small class=\"text-xs text-zinc-400 block mt-1\">Used to compute HMAC-SHA256 signature in X-PerGo-Signature header.</small></div><div class=\"flex flex-col gap-1\"><label class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1\">Event Filters</label><div class=\"grid grid-cols-2 gap-2 text-sm\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = checkboxHelper("*", "All Events (*)", sub).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = checkboxHelper("message.received", "message.received", sub).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = checkboxHelper("message.sent", "message.sent", sub).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = checkboxHelper("message.failed", "message.failed", sub).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = checkboxHelper("connection.status", "connection.status", sub).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "</div></div><div class=\"flex items-center gap-2 pt-2\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if sub == nil || sub.Active {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "<input type=\"checkbox\" id=\"active\" name=\"active\" value=\"true\" checked class=\"rounded border-zinc-300 text-zinc-950 focus:ring-zinc-950 h-4 w-4 bg-white\"> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "<input type=\"checkbox\" id=\"active\" name=\"active\" value=\"true\" class=\"rounded border-zinc-300 text-zinc-950 focus:ring-zinc-950 h-4 w-4 bg-white\"> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "<label for=\"active\" class=\"text-sm font-semibold text-zinc-700\">Active</label></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button type=\"button\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\" onclick=\"this.closest('.modal-backdrop').remove()\">Cancel</button> <button type=\"submit\" class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\">Save Endpoint</button></div></form></div></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func checkboxHelper(value string, label string, sub *repository.WebhookSubscription) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var51 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var51 == nil {
+			templ_7745c5c3_Var51 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "<label class=\"flex items-center gap-2 py-1\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if sub != nil && contains(sub.EventTypes, value) {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "<input type=\"checkbox\" name=\"event_types\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var52 string
+			templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.ResolveAttributeValue(value)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 394, Col: 58}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var52)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "\" checked class=\"rounded border-zinc-300 text-zinc-950 focus:ring-zinc-950 h-4 w-4 bg-white\"> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "<input type=\"checkbox\" name=\"event_types\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var53 string
+			templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.ResolveAttributeValue(value)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 396, Col: 58}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var53)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "\" class=\"rounded border-zinc-300 text-zinc-950 focus:ring-zinc-950 h-4 w-4 bg-white\"> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "<span class=\"text-zinc-700\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var54 string
+		templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(label)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 398, Col: 37}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "</span></label>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func contains(arr []string, str string) bool {
+	for _, a := range arr {
+		if a == str {
+			return true
+		}
+	}
+	return false
+}
+
+func TestWebhookModal(wsID uuid.UUID, sub *repository.WebhookSubscription) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var55 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var55 == nil {
+			templ_7745c5c3_Var55 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "<div class=\"modal-backdrop\" onclick=\"this.closest('.modal-backdrop').remove()\"><div class=\"custom-modal w-full max-w-4xl\" onclick=\"event.stopPropagation()\"><div class=\"modal-header border-b pb-3 mb-4\"><h3 class=\"text-lg font-bold text-zinc-900\">Simulate Webhook Delivery</h3></div><div class=\"modal-body grid grid-cols-1 md:grid-cols-2 gap-6\"><form hx-post=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var56 string
+		templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s/test", wsID, sub.ID))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 420, Col: 95}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var56)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "\" hx-target=\"#test-result-container\" hx-swap=\"innerHTML\" class=\"space-y-4\"><div class=\"flex flex-col gap-1\"><label for=\"test-event-type\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Event Type</label> <select id=\"test-event-type\" name=\"event_type\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm bg-white w-full focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent\" onchange=\"updateMockPayload()\"><option value=\"message.received\">message.received</option> <option value=\"message.sent\">message.sent</option> <option value=\"message.failed\">message.failed</option> <option value=\"connection.status\">connection.status</option></select></div><div class=\"flex flex-col gap-1\"><label for=\"test-payload\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Payload JSON</label> <textarea id=\"test-payload\" name=\"payload\" required rows=\"10\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-xs bg-white w-full focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent font-mono leading-relaxed\"></textarea></div><div class=\"flex justify-start\"><button type=\"submit\" class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\">Run Simulation</button></div></form><div class=\"flex flex-col h-full min-h-[300px]\"><label class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1\">Execution Results</label><div id=\"test-result-container\" class=\"flex-1 bg-zinc-50 border border-zinc-200 rounded-lg p-4 font-mono text-xs overflow-auto max-h-[400px]\"><div class=\"text-zinc-400 italic text-center py-12\">Click \"Run Simulation\" to execute a synchronous request and see response logs here.</div></div></div></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\" onclick=\"this.closest('.modal-backdrop').remove()\">Close</button></div><script>\n\t\t\t\t(function() {\n\t\t\t\t\tconst wsID = \"{ wsID.String() }\";\n\t\t\t\t\tconst mockPayloads = {\n\t\t\t\t\t\t\"message.received\": {\n\t\t\t\t\t\t\t\"event\": \"message.received\",\n\t\t\t\t\t\t\t\"trace_id\": \"test-trace-received-123\",\n\t\t\t\t\t\t\t\"message_id\": \"mock-msg-recv-001\",\n\t\t\t\t\t\t\t\"channel\": \"whatsapp\",\n\t\t\t\t\t\t\t\"timestamp\": new Date().toISOString(),\n\t\t\t\t\t\t\t\"workspace_id\": wsID,\n\t\t\t\t\t\t\t\"from\": \"5511999999999\",\n\t\t\t\t\t\t\t\"body\": \"Olá, esta é uma mensagem de teste para o webhook!\"\n\t\t\t\t\t\t},\n\t\t\t\t\t\t\"message.sent\": {\n\t\t\t\t\t\t\t\"event\": \"message.sent\",\n\t\t\t\t\t\t\t\"trace_id\": \"test-trace-sent-456\",\n\t\t\t\t\t\t\t\"message_id\": \"mock-msg-sent-002\",\n\t\t\t\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\t\t\t\"timestamp\": new Date().toISOString(),\n\t\t\t\t\t\t\t\"workspace_id\": wsID,\n\t\t\t\t\t\t\t\"from\": \"5511999999998\",\n\t\t\t\t\t\t\t\"body\": \"Mensagem enviada com sucesso.\"\n\t\t\t\t\t\t},\n\t\t\t\t\t\t\"message.failed\": {\n\t\t\t\t\t\t\t\"event\": \"message.failed\",\n\t\t\t\t\t\t\t\"trace_id\": \"test-trace-failed-789\",\n\t\t\t\t\t\t\t\"message_id\": \"mock-msg-fail-003\",\n\t\t\t\t\t\t\t\"channel\": \"telegram\",\n\t\t\t\t\t\t\t\"timestamp\": new Date().toISOString(),\n\t\t\t\t\t\t\t\"workspace_id\": wsID,\n\t\t\t\t\t\t\t\"from\": \"5511999999997\",\n\t\t\t\t\t\t\t\"error\": \"Message could not be delivered: rate limit exceeded\"\n\t\t\t\t\t\t},\n\t\t\t\t\t\t\"connection.status\": {\n\t\t\t\t\t\t\t\"event\": \"connection.status\",\n\t\t\t\t\t\t\t\"trace_id\": \"test-trace-conn-000\",\n\t\t\t\t\t\t\t\"timestamp\": new Date().toISOString(),\n\t\t\t\t\t\t\t\"workspace_id\": wsID,\n\t\t\t\t\t\t\t\"channel\": \"whatsapp\",\n\t\t\t\t\t\t\t\"status\": \"connected\"\n\t\t\t\t\t\t}\n\t\t\t\t\t};\n\n\t\t\t\t\twindow.updateMockPayload = function() {\n\t\t\t\t\t\tconst eventType = document.getElementById(\"test-event-type\").value;\n\t\t\t\t\t\tconst payload = mockPayloads[eventType];\n\t\t\t\t\t\tdocument.getElementById(\"test-payload\").value = JSON.stringify(payload, null, 2);\n\t\t\t\t\t};\n\n\t\t\t\t\t// Initial update on load\n\t\t\t\t\twindow.updateMockPayload();\n\t\t\t\t})();\n\t\t\t</script></div></div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func TestResultFragment(statusCode int, latencyMs int64, signatureHeader string, responseBody string, responseHeaders map[string][]string) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var57 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var57 == nil {
+			templ_7745c5c3_Var57 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "<div class=\"space-y-4\"><div class=\"grid grid-cols-2 gap-2 text-xs border-b pb-3 mb-3\"><div><span class=\"block text-zinc-400 font-semibold uppercase\">HTTP Status</span> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if statusCode >= 200 && statusCode < 300 {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "<span class=\"text-emerald-600 font-bold\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var58 string
+			templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", statusCode))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 521, Col: 77}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var58))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, " OK</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "<span class=\"text-rose-600 font-bold\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var59 string
+			templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", statusCode))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 523, Col: 74}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var59))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, " Failed</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "</div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Latency</span> <span class=\"text-zinc-900 font-bold\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var60 string
+		templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%dms", latencyMs))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 528, Col: 74}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "</span></div></div><div><span class=\"block text-[10px] text-zinc-400 font-semibold uppercase mb-1\">Generated Signature Header</span><div class=\"bg-zinc-100 p-2 rounded text-[11px] font-mono select-all text-zinc-700 break-all\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var61 string
+		templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(signatureHeader)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 534, Col: 114}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "</div></div><div><span class=\"block text-[10px] text-zinc-400 font-semibold uppercase mb-1\">Response Headers</span><div class=\"bg-zinc-100 p-2 rounded text-[11px] font-mono text-zinc-600 max-h-28 overflow-y-auto space-y-1\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		for k, v := range responseHeaders {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "<div><span class=\"text-zinc-800 font-semibold\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var62 string
+			templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.JoinStringErrs(k)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 541, Col: 55}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var62))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, ":</span> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var63 string
+			templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%v", v))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 541, Col: 88}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var63))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, "</div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		if len(responseHeaders) == 0 {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "<div class=\"text-zinc-400 italic\">No headers returned</div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "</div></div><div><span class=\"block text-[10px] text-zinc-400 font-semibold uppercase mb-1\">Response Body (first 1000 chars)</span><pre class=\"bg-zinc-950 text-zinc-100 p-3 rounded-lg text-[11px] leading-relaxed overflow-x-auto max-h-40 select-all font-mono\"><code>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if responseBody != "" {
+			var templ_7745c5c3_Var64 string
+			templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs(responseBody)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/webhooks.templ`, Line: 554, Col: 20}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, "[Empty Response Body]")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "</code></pre></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

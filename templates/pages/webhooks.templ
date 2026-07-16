@@ -2,6 +2,7 @@ package pages
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/layout"
 )
@@ -53,67 +54,104 @@ templ WebhooksContent(workspaces []repository.Workspace, dlqItems []*repository.
 	</div>
 }
 
-templ WorkspaceWebhooksPage(ws repository.Workspace, config *repository.WebhookConfig, dlqItems []*repository.WebhookDLQ) {
-	@layout.Base(fmt.Sprintf("%s - Webhooks", ws.Name), WorkspaceWebhooksContent(ws, config, dlqItems))
+templ WorkspaceWebhooksPage(ws repository.Workspace, subs []*repository.WebhookSubscription, dlqItems []*repository.WebhookDLQ) {
+	@layout.Base(fmt.Sprintf("%s - Webhooks", ws.Name), WorkspaceWebhooksContent(ws, subs, dlqItems))
 }
 
-templ WorkspaceWebhooksContent(ws repository.Workspace, config *repository.WebhookConfig, dlqItems []*repository.WebhookDLQ) {
+templ WorkspaceWebhooksContent(ws repository.Workspace, subs []*repository.WebhookSubscription, dlqItems []*repository.WebhookDLQ) {
 	<div class="border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end">
 		<div>
 			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Webhooks: { ws.Name }</h1>
-			<p class="text-zinc-500 text-sm mt-1">Configure o webhook de destino e gerencie envios pendentes para esta área de trabalho.</p>
+			<p class="text-zinc-500 text-sm mt-1">Configure múltiplos destinos de webhook e gerencie falhas de entrega.</p>
 		</div>
-		<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", ws.ID)) } class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">Back to Workspace</a>
+		<div class="flex gap-2">
+			<button
+				class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center"
+				hx-get={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/new", ws.ID) }
+				hx-target="#modal-container"
+			>
+				+ Add Endpoint
+			</button>
+			<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", ws.ID)) } class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">Back to Workspace</a>
+		</div>
 	</div>
 
 	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8">
-		<h2 class="text-lg font-semibold text-zinc-900 mb-4">Webhook Configuration</h2>
-		<form
-			hx-post={ fmt.Sprintf("/admin/workspaces/%s/webhooks/config", ws.ID) }
-			hx-swap="none"
-			class="space-y-4"
-		>
-			<div class="flex flex-col gap-1">
-				<label for="url" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Webhook URL</label>
-				if config != nil {
-					<input type="url" id="url" name="url" value={ config.URL } required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="https://yourdomain.com/webhooks"/>
-				} else {
-					<input type="url" id="url" name="url" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="https://yourdomain.com/webhooks"/>
-				}
-			</div>
-			<div class="flex flex-col gap-1">
-				<label for="secret" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Signing Secret</label>
-				if config != nil {
-					<input type="password" id="secret" name="secret" value="********" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="Enter signing secret"/>
-				} else {
-					<input type="password" id="secret" name="secret" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="Enter signing secret"/>
-				}
-				<small class="text-xs text-zinc-400 block mt-1">
-					Used to compute HMAC-SHA256 signature in X-PerGo-Signature header.
-				</small>
-			</div>
-			<div class="flex gap-2">
-				<button type="submit" class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9">Save Configuration</button>
-				if config != nil {
-					<button
-						type="button"
-						class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-sm font-semibold px-4 py-2 rounded-md transition h-9"
-						hx-delete={ fmt.Sprintf("/admin/workspaces/%s/webhooks/config", ws.ID) }
-						hx-confirm="Are you sure you want to delete this webhook configuration?"
-						hx-target="body"
-						hx-swap="none"
-					>
-						Delete Configuration
-					</button>
-				}
-			</div>
-		</form>
+		<h2 class="text-lg font-semibold text-zinc-900 mb-4 font-bold">Active Subscriptions</h2>
+		<div class="overflow-x-auto border border-zinc-200 rounded-lg shadow-sm">
+			<table class="table min-w-full divide-y divide-zinc-200">
+				<thead class="bg-zinc-50 text-zinc-500 text-xs font-semibold uppercase tracking-wider text-left border-b border-zinc-200">
+					<tr>
+						<th class="px-6 py-3">Webhook URL</th>
+						<th class="px-6 py-3">Event Filters</th>
+						<th class="px-6 py-3">Status</th>
+						<th class="px-6 py-3 text-right">Actions</th>
+					</tr>
+				</thead>
+				<tbody class="divide-y divide-zinc-200 text-sm text-zinc-700 bg-white">
+					for _, sub := range subs {
+						<tr id={ fmt.Sprintf("sub-row-%s", sub.ID) } class="hover:bg-zinc-50/50 transition-colors">
+							<td class="px-6 py-4 font-mono text-xs font-semibold text-zinc-900 max-w-sm truncate">{ sub.URL }</td>
+							<td class="px-6 py-4 flex flex-wrap gap-1">
+								for _, evt := range sub.EventTypes {
+									<span class="badge badge-sm bg-zinc-100 text-zinc-800 border-zinc-200 px-2 py-0.5 text-xs font-semibold">{ evt }</span>
+								}
+							</td>
+							<td class="px-6 py-4">
+								if sub.Active {
+									<span class="badge badge-sm bg-emerald-50 text-emerald-700 border-emerald-200 px-2 py-0.5 text-xs font-semibold">Active</span>
+								} else {
+									<span class="badge badge-sm bg-zinc-100 text-zinc-500 border-zinc-200 px-2 py-0.5 text-xs font-semibold">Inactive</span>
+								}
+							</td>
+							<td class="px-6 py-4 text-right">
+								<div class="inline-flex gap-2">
+									<button
+										class="btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold"
+										hx-get={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s/test-form", ws.ID, sub.ID) }
+										hx-target="#modal-container"
+									>
+										Test
+									</button>
+									<button
+										class="btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold"
+										hx-get={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s/edit", ws.ID, sub.ID) }
+										hx-target="#modal-container"
+									>
+										Edit
+									</button>
+									<button
+										class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold"
+										hx-delete={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s", ws.ID, sub.ID) }
+										hx-confirm="Are you sure you want to permanently delete this webhook subscription?"
+										hx-target={ fmt.Sprintf("#sub-row-%s", sub.ID) }
+										hx-swap="delete"
+									>
+										Delete
+									</button>
+								</div>
+							</td>
+						</tr>
+					}
+					if len(subs) == 0 {
+						<tr>
+							<td colspan="4" class="px-6 py-12 text-center text-zinc-400">
+								<div class="font-semibold mb-1">No endpoints configured</div>
+								<div class="text-xs text-zinc-400">Click "+ Add Endpoint" to register a new webhook destination.</div>
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
 	</div>
 
 	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6">
 		<h2 class="text-lg font-semibold text-zinc-900 mb-4">Workspace Dead-Letter Queue (DLQ)</h2>
 		@DLQTable(dlqItems, false)
 	</div>
+
+	<div id="modal-container"></div>
 }
 
 templ DLQTable(items []*repository.WebhookDLQ, showWorkspace bool) {
@@ -125,6 +163,7 @@ templ DLQTable(items []*repository.WebhookDLQ, showWorkspace bool) {
 						if showWorkspace {
 							<th class="px-6 py-3">Workspace ID</th>
 						}
+						<th class="px-6 py-3">Endpoint URL</th>
 						<th class="px-6 py-3">Trace ID</th>
 						<th class="px-6 py-3">Message ID</th>
 						<th class="px-6 py-3">Event</th>
@@ -139,6 +178,7 @@ templ DLQTable(items []*repository.WebhookDLQ, showWorkspace bool) {
 							if showWorkspace {
 								<td class="px-6 py-4 text-xs font-mono text-zinc-500">{ item.WorkspaceID.String()[:8] }</td>
 							}
+							<td class="px-6 py-4 text-xs font-mono text-zinc-500 max-w-xs truncate">{ item.WebhookURL }</td>
 							<td class="px-6 py-4 text-xs font-mono text-zinc-500"><code>{ item.TraceID }</code></td>
 							<td class="px-6 py-4 text-xs font-mono text-zinc-500"><code>{ item.MessageID }</code></td>
 							<td class="px-6 py-4">
@@ -179,7 +219,7 @@ templ DLQTable(items []*repository.WebhookDLQ, showWorkspace bool) {
 					}
 					if len(items) == 0 {
 						<tr>
-							<td colspan={ fmt.Sprintf("%d", map[bool]int{true: 7, false: 6}[showWorkspace]) } class="px-6 py-12 text-center text-zinc-400">
+							<td colspan={ fmt.Sprintf("%d", map[bool]int{true: 8, false: 7}[showWorkspace]) } class="px-6 py-12 text-center text-zinc-400">
 								<div class="font-semibold mb-1">No dead-lettered webhooks</div>
 								<div class="text-xs text-zinc-400">Webhook delivery is running smoothly. Any permanently failed deliveries will appear here.</div>
 							</td>
@@ -274,4 +314,249 @@ templ DLQBadgeFragment(count int) {
 			0
 		}
 	</span>
+}
+
+templ SubscriptionFormModal(wsID uuid.UUID, sub *repository.WebhookSubscription) {
+	<div class="modal-backdrop" onclick="this.closest('.modal-backdrop').remove()">
+		<div class="custom-modal w-full max-w-lg" onclick="event.stopPropagation()">
+			<div class="modal-header border-b pb-3 mb-4">
+				<h3 class="text-lg font-bold text-zinc-900">
+					if sub != nil {
+						Edit Webhook Endpoint
+					} else {
+						Add Webhook Endpoint
+					}
+				</h3>
+			</div>
+			<form
+				if sub != nil {
+					hx-post={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s", wsID, sub.ID) }
+				} else {
+					hx-post={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions", wsID) }
+				}
+				hx-target="body"
+				hx-swap="none"
+				class="space-y-4"
+			>
+				<div class="flex flex-col gap-1">
+					<label for="url" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Webhook URL</label>
+					if sub != nil {
+						<input type="url" id="url" name="url" value={ sub.URL } required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm bg-white w-full focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent" placeholder="https://yourdomain.com/webhooks"/>
+					} else {
+						<input type="url" id="url" name="url" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm bg-white w-full focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent" placeholder="https://yourdomain.com/webhooks"/>
+					}
+				</div>
+
+				<div class="flex flex-col gap-1">
+					<label for="secret" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Signing Secret</label>
+					if sub != nil {
+						<input type="password" id="secret" name="secret" value="********" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm bg-white w-full focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent" placeholder="Enter signing secret"/>
+					} else {
+						<input type="password" id="secret" name="secret" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm bg-white w-full focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent" placeholder="Enter signing secret"/>
+					}
+					<small class="text-xs text-zinc-400 block mt-1">
+						Used to compute HMAC-SHA256 signature in X-PerGo-Signature header.
+					</small>
+				</div>
+
+				<div class="flex flex-col gap-1">
+					<label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Event Filters</label>
+					<div class="grid grid-cols-2 gap-2 text-sm">
+						@checkboxHelper("*", "All Events (*)", sub)
+						@checkboxHelper("message.received", "message.received", sub)
+						@checkboxHelper("message.sent", "message.sent", sub)
+						@checkboxHelper("message.failed", "message.failed", sub)
+						@checkboxHelper("connection.status", "connection.status", sub)
+					</div>
+				</div>
+
+				<div class="flex items-center gap-2 pt-2">
+					if sub == nil || sub.Active {
+						<input type="checkbox" id="active" name="active" value="true" checked class="rounded border-zinc-300 text-zinc-950 focus:ring-zinc-950 h-4 w-4 bg-white"/>
+					} else {
+						<input type="checkbox" id="active" name="active" value="true" class="rounded border-zinc-300 text-zinc-950 focus:ring-zinc-950 h-4 w-4 bg-white"/>
+					}
+					<label for="active" class="text-sm font-semibold text-zinc-700">Active</label>
+				</div>
+
+				<div class="modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6">
+					<button type="button" class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center" onclick="this.closest('.modal-backdrop').remove()">Cancel</button>
+					<button type="submit" class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">Save Endpoint</button>
+				</div>
+			</form>
+		</div>
+	</div>
+}
+
+templ checkboxHelper(value string, label string, sub *repository.WebhookSubscription) {
+	<label class="flex items-center gap-2 py-1">
+		if sub != nil && contains(sub.EventTypes, value) {
+			<input type="checkbox" name="event_types" value={ value } checked class="rounded border-zinc-300 text-zinc-950 focus:ring-zinc-950 h-4 w-4 bg-white"/>
+		} else {
+			<input type="checkbox" name="event_types" value={ value } class="rounded border-zinc-300 text-zinc-950 focus:ring-zinc-950 h-4 w-4 bg-white"/>
+		}
+		<span class="text-zinc-700">{ label }</span>
+	</label>
+}
+
+func contains(arr []string, str string) bool {
+	for _, a := range arr {
+		if a == str {
+			return true
+		}
+	}
+	return false
+}
+
+templ TestWebhookModal(wsID uuid.UUID, sub *repository.WebhookSubscription) {
+	<div class="modal-backdrop" onclick="this.closest('.modal-backdrop').remove()">
+		<div class="custom-modal w-full max-w-4xl" onclick="event.stopPropagation()">
+			<div class="modal-header border-b pb-3 mb-4">
+				<h3 class="text-lg font-bold text-zinc-900">Simulate Webhook Delivery</h3>
+			</div>
+			
+			<div class="modal-body grid grid-cols-1 md:grid-cols-2 gap-6">
+				<form
+					hx-post={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s/test", wsID, sub.ID) }
+					hx-target="#test-result-container"
+					hx-swap="innerHTML"
+					class="space-y-4"
+				>
+					<div class="flex flex-col gap-1">
+						<label for="test-event-type" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Event Type</label>
+						<select id="test-event-type" name="event_type" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm bg-white w-full focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent" onchange="updateMockPayload()">
+							<option value="message.received">message.received</option>
+							<option value="message.sent">message.sent</option>
+							<option value="message.failed">message.failed</option>
+							<option value="connection.status">connection.status</option>
+						</select>
+					</div>
+
+					<div class="flex flex-col gap-1">
+						<label for="test-payload" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Payload JSON</label>
+						<textarea id="test-payload" name="payload" required rows="10" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-xs bg-white w-full focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent font-mono leading-relaxed"></textarea>
+					</div>
+
+					<div class="flex justify-start">
+						<button type="submit" class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">Run Simulation</button>
+					</div>
+				</form>
+
+				<div class="flex flex-col h-full min-h-[300px]">
+					<label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Execution Results</label>
+					<div id="test-result-container" class="flex-1 bg-zinc-50 border border-zinc-200 rounded-lg p-4 font-mono text-xs overflow-auto max-h-[400px]">
+						<div class="text-zinc-400 italic text-center py-12">Click "Run Simulation" to execute a synchronous request and see response logs here.</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6">
+				<button class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center" onclick="this.closest('.modal-backdrop').remove()">Close</button>
+			</div>
+
+			<script>
+				(function() {
+					const wsID = "{ wsID.String() }";
+					const mockPayloads = {
+						"message.received": {
+							"event": "message.received",
+							"trace_id": "test-trace-received-123",
+							"message_id": "mock-msg-recv-001",
+							"channel": "whatsapp",
+							"timestamp": new Date().toISOString(),
+							"workspace_id": wsID,
+							"from": "5511999999999",
+							"body": "Olá, esta é uma mensagem de teste para o webhook!"
+						},
+						"message.sent": {
+							"event": "message.sent",
+							"trace_id": "test-trace-sent-456",
+							"message_id": "mock-msg-sent-002",
+							"channel": "whatsapp_cloud",
+							"timestamp": new Date().toISOString(),
+							"workspace_id": wsID,
+							"from": "5511999999998",
+							"body": "Mensagem enviada com sucesso."
+						},
+						"message.failed": {
+							"event": "message.failed",
+							"trace_id": "test-trace-failed-789",
+							"message_id": "mock-msg-fail-003",
+							"channel": "telegram",
+							"timestamp": new Date().toISOString(),
+							"workspace_id": wsID,
+							"from": "5511999999997",
+							"error": "Message could not be delivered: rate limit exceeded"
+						},
+						"connection.status": {
+							"event": "connection.status",
+							"trace_id": "test-trace-conn-000",
+							"timestamp": new Date().toISOString(),
+							"workspace_id": wsID,
+							"channel": "whatsapp",
+							"status": "connected"
+						}
+					};
+
+					window.updateMockPayload = function() {
+						const eventType = document.getElementById("test-event-type").value;
+						const payload = mockPayloads[eventType];
+						document.getElementById("test-payload").value = JSON.stringify(payload, null, 2);
+					};
+
+					// Initial update on load
+					window.updateMockPayload();
+				})();
+			</script>
+		</div>
+	</div>
+}
+
+templ TestResultFragment(statusCode int, latencyMs int64, signatureHeader string, responseBody string, responseHeaders map[string][]string) {
+	<div class="space-y-4">
+		<div class="grid grid-cols-2 gap-2 text-xs border-b pb-3 mb-3">
+			<div>
+				<span class="block text-zinc-400 font-semibold uppercase">HTTP Status</span>
+				if statusCode >= 200 && statusCode < 300 {
+					<span class="text-emerald-600 font-bold">{ fmt.Sprintf("%d", statusCode) } OK</span>
+				} else {
+					<span class="text-rose-600 font-bold">{ fmt.Sprintf("%d", statusCode) } Failed</span>
+				}
+			</div>
+			<div>
+				<span class="block text-zinc-400 font-semibold uppercase">Latency</span>
+				<span class="text-zinc-900 font-bold">{ fmt.Sprintf("%dms", latencyMs) }</span>
+			</div>
+		</div>
+
+		<div>
+			<span class="block text-[10px] text-zinc-400 font-semibold uppercase mb-1">Generated Signature Header</span>
+			<div class="bg-zinc-100 p-2 rounded text-[11px] font-mono select-all text-zinc-700 break-all">{ signatureHeader }</div>
+		</div>
+
+		<div>
+			<span class="block text-[10px] text-zinc-400 font-semibold uppercase mb-1">Response Headers</span>
+			<div class="bg-zinc-100 p-2 rounded text-[11px] font-mono text-zinc-600 max-h-28 overflow-y-auto space-y-1">
+				for k, v := range responseHeaders {
+					<div><span class="text-zinc-800 font-semibold">{ k }:</span> { fmt.Sprintf("%v", v) }</div>
+				}
+				if len(responseHeaders) == 0 {
+					<div class="text-zinc-400 italic">No headers returned</div>
+				}
+			</div>
+		</div>
+
+		<div>
+			<span class="block text-[10px] text-zinc-400 font-semibold uppercase mb-1">Response Body (first 1000 chars)</span>
+			<pre class="bg-zinc-950 text-zinc-100 p-3 rounded-lg text-[11px] leading-relaxed overflow-x-auto max-h-40 select-all font-mono">
+				<code>
+					if responseBody != "" {
+						{ responseBody }
+					} else {
+						[Empty Response Body]
+					}
+				</code>
+			</pre>
+		</div>
+	</div>
 }
