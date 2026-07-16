@@ -25,13 +25,36 @@ templ MessageBubble(m repository.ThreadMessage) {
 				<p class="text-sm text-white whitespace-pre-wrap break-words">{ msgBody(m.Body) }</p>
 				<div class="flex items-center justify-end gap-1 mt-1">
 					<p class="text-xs text-blue-200">{ m.CreatedAt.Format("15:04") }</p>
-					<!-- Double checkmarks indicating sent -->
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-					</svg>
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-200 -ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-					</svg>
+					if m.Status != nil && *m.Status == "sent" {
+						<!-- Single checkmark -->
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+						</svg>
+					} else if m.Status != nil && *m.Status == "delivered" {
+						<!-- Double checkmark text-blue-200 -->
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+						</svg>
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-200 -ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+						</svg>
+					} else if m.Status != nil && *m.Status == "read" {
+						<!-- Double checkmark text-cyan-200 -->
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-cyan-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+						</svg>
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-cyan-200 -ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+						</svg>
+					} else if m.Status != nil && *m.Status == "failed" {
+						<!-- Red warning icon/text -->
+						<span class="text-xs text-red-400 font-bold" title="Falha no envio">⚠️</span>
+					} else {
+						<!-- single checkmark/queued/sending -->
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-300 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+						</svg>
+					}
 				</div>
 			</div>
 		</div>
