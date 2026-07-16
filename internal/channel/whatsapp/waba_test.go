@@ -133,7 +133,7 @@ func TestWABADispatch(t *testing.T) {
 			}
 
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"messaging_product":"whatsapp","contacts":[{"input":"+5511999999999","wa_id":"5511999999999"}],"messages":[{"id":"wamid.HBgL..."}]}`))
+			_, _ = w.Write([]byte(`{"messaging_product":"whatsapp","contacts":[{"input":"+5511999999999","wa_id":"5511999999999"}],"messages":[{"id":"wamid.test_id_999"}]}`))
 		}))
 		defer server.Close()
 
@@ -147,9 +147,12 @@ func TestWABADispatch(t *testing.T) {
 			Body:           "Hello from PerGo!",
 		}
 
-		_, err := adapter.Dispatch(tenantCtx, payload)
+		resp, err := adapter.Dispatch(tenantCtx, payload)
 		if err != nil {
 			t.Fatalf("expected nil error on success, got: %v", err)
+		}
+		if resp != "wamid.test_id_999" {
+			t.Errorf("expected wamid 'wamid.test_id_999', got %q", resp)
 		}
 	})
 
@@ -174,7 +177,7 @@ func TestWABADispatch(t *testing.T) {
 			}
 
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.HBgL..."}]}`))
+			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.template_test_123"}]}`))
 		}))
 		defer server.Close()
 
@@ -193,9 +196,12 @@ func TestWABADispatch(t *testing.T) {
 			},
 		}
 
-		_, err := adapter.Dispatch(tenantCtx, payload)
+		resp, err := adapter.Dispatch(tenantCtx, payload)
 		if err != nil {
 			t.Fatalf("expected nil error on template dispatch, got: %v", err)
+		}
+		if resp != "wamid.template_test_123" {
+			t.Errorf("expected wamid 'wamid.template_test_123', got %q", resp)
 		}
 	})
 
