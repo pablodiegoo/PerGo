@@ -178,9 +178,10 @@ func main() {
 	slog.Info("campaign worker started", "consumer", "campaign-worker-1")
 
 	// --- Webhook Worker ---
+	webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, encryptor)
 	webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
-	webhookDispatcher := webhook.NewDefaultDispatcher(webhookDLQRepo, wsRepo, nil)
-	webhookWorker, err := queue.NewWebhookWorker(ctx, nc, webhookDispatcher)
+	webhookDispatcher := webhook.NewDefaultDispatcher(webhookSubRepo, webhookDLQRepo, wsRepo, nil)
+	webhookWorker, err := queue.NewWebhookWorker(ctx, nc, webhookDispatcher, webhookSubRepo)
 	if err != nil {
 		slog.Error("failed to start webhook worker", "error", err)
 		os.Exit(1)
@@ -501,7 +502,7 @@ func main() {
 	adminGroup.DELETE("/workspaces/:workspace_id/templates/:template_id", wabaTemplateHandler.Delete)
 
 	// Webhooks & DLQ routes
-	webhookHandler := admin.NewWebhookDLQHandler(webhookDLQRepo, wsRepo, publisher)
+	webhookHandler := admin.NewWebhookDLQHandler(webhookDLQRepo, webhookSubRepo, wsRepo, publisher)
 	adminGroup.GET("/webhooks", webhookHandler.GlobalPage)
 	adminGroup.GET("/webhooks/dlq/badge", webhookHandler.GetBadgeCount)
 	adminGroup.GET("/webhooks/dlq/:dlq_id/details", webhookHandler.GetDetails)
@@ -513,8 +514,13 @@ func main() {
 	adminGroup.GET("/logs/actions/:id/metadata", userLogsHandler.GetMetadata)
 
 	adminGroup.GET("/workspaces/:workspace_id/webhooks", webhookHandler.Page)
-	adminGroup.POST("/workspaces/:workspace_id/webhooks/config", webhookHandler.SaveConfig)
-	adminGroup.DELETE("/workspaces/:workspace_id/webhooks/config", webhookHandler.DeleteConfig)
+	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/new", webhookHandler.GetSubscriptionNewForm)
+	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/edit", webhookHandler.GetSubscriptionEditForm)
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions", webhookHandler.CreateSubscription)
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id", webhookHandler.UpdateSubscription)
+	adminGroup.DELETE("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id", webhookHandler.DeleteSubscription)
+	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/test-form", webhookHandler.GetSubscriptionTestForm)
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/test", webhookHandler.TestSubscription)
 
 	// Campaigns routes
 	campaignHandler := admin.NewCampaignHandler(campaignRepo, wabaTemplateRepo, connectionRepo, publisher)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -34,7 +35,7 @@ func connectNATS(t *testing.T) *nats.Conn {
 	return nc
 }
 
-func setupWebhookRoutes(t *testing.T) (*echo.Echo, *repository.WebhookDLQRepository, *repository.WorkspaceRepository, *queue.JetStreamPublisher) {
+func setupWebhookRoutes(t *testing.T) (*echo.Echo, *repository.WebhookDLQRepository, *repository.WebhookSubscriptionRepository, *repository.WorkspaceRepository, *queue.JetStreamPublisher) {
 	t.Helper()
 	t.Setenv("PERGO_ADMIN_PASSWORD", "testpass123")
 
@@ -67,7 +68,7 @@ func setupWebhookRoutes(t *testing.T) (*echo.Echo, *repository.WebhookDLQReposit
 	// Workspace repository
 	wsRepo := repository.NewWorkspaceRepository(pool)
 
-	// Webhook / DLQ repo
+	// Webhook / DLQ / Subscription repos
 	kek := make([]byte, 32)
 	for i := range kek {
 		kek[i] = byte(i)
@@ -77,12 +78,13 @@ func setupWebhookRoutes(t *testing.T) (*echo.Echo, *repository.WebhookDLQReposit
 		t.Fatalf("failed to create encryptor: %v", err)
 	}
 	dlqRepo := repository.NewWebhookDLQRepository(pool, enc)
+	subRepo := repository.NewWebhookSubscriptionRepository(pool, enc)
 
 	// Publisher
 	publisher := queue.NewJetStreamPublisher(connectNATS(t))
 
 	// Webhook / DLQ Handler
-	whHandler := admin.NewWebhookDLQHandler(dlqRepo, wsRepo, publisher)
+	whHandler := admin.NewWebhookDLQHandler(dlqRepo, subRepo, wsRepo, publisher)
 
 	adminGroup.GET("/webhooks", whHandler.GlobalPage)
 	adminGroup.GET("/webhooks/dlq/badge", whHandler.GetBadgeCount)
@@ -91,14 +93,19 @@ func setupWebhookRoutes(t *testing.T) (*echo.Echo, *repository.WebhookDLQReposit
 	adminGroup.DELETE("/webhooks/dlq/:dlq_id", whHandler.DeleteDLQ)
 
 	adminGroup.GET("/workspaces/:workspace_id/webhooks", whHandler.Page)
-	adminGroup.POST("/workspaces/:workspace_id/webhooks/config", whHandler.SaveConfig)
-	adminGroup.DELETE("/workspaces/:workspace_id/webhooks/config", whHandler.DeleteConfig)
+	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/new", whHandler.GetSubscriptionNewForm)
+	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/edit", whHandler.GetSubscriptionEditForm)
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions", whHandler.CreateSubscription)
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id", whHandler.UpdateSubscription)
+	adminGroup.DELETE("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id", whHandler.DeleteSubscription)
+	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/test-form", whHandler.GetSubscriptionTestForm)
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/test", whHandler.TestSubscription)
 
-	return e, dlqRepo, wsRepo, publisher
+	return e, dlqRepo, subRepo, wsRepo, publisher
 }
 
 func TestAdminWebhookDLQHandlers(t *testing.T) {
-	e, dlqRepo, wsRepo, _ := setupWebhookRoutes(t)
+	e, dlqRepo, subRepo, wsRepo, _ := setupWebhookRoutes(t)
 
 	ctx := context.Background()
 	ws, err := wsRepo.Create(ctx, "wh_admin_test_ws_"+uuid.New().String())
@@ -118,15 +125,16 @@ func TestAdminWebhookDLQHandlers(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200 OK, got %d", rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), "Webhook Configuration") {
+	if !strings.Contains(rec.Body.String(), "Active Subscriptions") {
 		t.Error("expected config section in body")
 	}
 
-	// 2. POST /admin/workspaces/:workspace_id/webhooks/config
+	// 2. POST /admin/workspaces/:workspace_id/webhooks/subscriptions
 	formData := url.Values{}
 	formData.Set("url", "https://example.com/webhook-endpoint")
 	formData.Set("secret", "supersecret123")
-	req = httptest.NewRequest(http.MethodPost, "/admin/workspaces/"+ws.ID.String()+"/webhooks/config", strings.NewReader(formData.Encode()))
+	formData.Add("event_types", "*")
+	req = httptest.NewRequest(http.MethodPost, "/admin/workspaces/"+ws.ID.String()+"/webhooks/subscriptions", strings.NewReader(formData.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(cookie)
 	rec = httptest.NewRecorder()
@@ -136,19 +144,59 @@ func TestAdminWebhookDLQHandlers(t *testing.T) {
 		t.Errorf("expected 200 OK, got %d", rec.Code)
 	}
 	if rec.Header().Get("HX-Refresh") != "true" {
-		t.Error("expected HX-Refresh header to refresh config form page")
+		t.Error("expected HX-Refresh header to refresh page")
 	}
 
-	// Verify config is saved in DB
-	cfg, err := dlqRepo.GetConfig(ctx, ws.ID)
+	// Verify subscription is saved in DB
+	subs, err := subRepo.ListByWorkspace(ctx, ws.ID)
 	if err != nil {
-		t.Fatalf("failed to fetch config: %v", err)
+		t.Fatalf("failed to list subscriptions: %v", err)
 	}
-	if cfg.URL != "https://example.com/webhook-endpoint" || string(cfg.Secret) != "supersecret123" {
-		t.Errorf("config fields mismatch: %+v", cfg)
+	if len(subs) != 1 {
+		t.Fatalf("expected 1 subscription, got %d", len(subs))
+	}
+	sub := subs[0]
+	if sub.URL != "https://example.com/webhook-endpoint" || string(sub.Secret) != "supersecret123" {
+		t.Errorf("subscription fields mismatch: %+v", sub)
 	}
 
-	// 3. GET /admin/webhooks
+	// 3. POST /admin/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id (Edit URL and event types)
+	editFormData := url.Values{}
+	editFormData.Set("url", "https://example.com/updated-endpoint")
+	editFormData.Set("secret", "********") // Placeholder preserves secret
+	editFormData.Set("active", "true")
+	editFormData.Add("event_types", "message.sent")
+	editFormData.Add("event_types", "message.received")
+	req = httptest.NewRequest(
+		http.MethodPost,
+		"/admin/workspaces/"+ws.ID.String()+"/webhooks/subscriptions/"+sub.ID.String(),
+		strings.NewReader(editFormData.Encode()),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 OK, got %d", rec.Code)
+	}
+
+	// Verify updated fields in DB
+	updatedSub, err := subRepo.Get(ctx, sub.ID)
+	if err != nil {
+		t.Fatalf("failed to retrieve updated sub: %v", err)
+	}
+	if updatedSub.URL != "https://example.com/updated-endpoint" {
+		t.Errorf("expected URL to update, got %q", updatedSub.URL)
+	}
+	if string(updatedSub.Secret) != "supersecret123" {
+		t.Errorf("expected secret to be preserved, got %q", string(updatedSub.Secret))
+	}
+	if len(updatedSub.EventTypes) != 2 || updatedSub.EventTypes[0] != "message.sent" || updatedSub.EventTypes[1] != "message.received" {
+		t.Errorf("unexpected event types array: %v", updatedSub.EventTypes)
+	}
+
+	// 4. GET /admin/webhooks
 	req = httptest.NewRequest(http.MethodGet, "/admin/webhooks", nil)
 	req.AddCookie(cookie)
 	rec = httptest.NewRecorder()
@@ -161,7 +209,7 @@ func TestAdminWebhookDLQHandlers(t *testing.T) {
 		t.Error("expected workspaces header in body")
 	}
 
-	// 4. GET /admin/webhooks/dlq/badge
+	// 5. GET /admin/webhooks/dlq/badge
 	req = httptest.NewRequest(http.MethodGet, "/admin/webhooks/dlq/badge", nil)
 	req.AddCookie(cookie)
 	rec = httptest.NewRecorder()
@@ -174,8 +222,19 @@ func TestAdminWebhookDLQHandlers(t *testing.T) {
 		t.Error("expected sidebar-dlq-badge element in body")
 	}
 
-	// 5. Insert dummy DLQ item and test GET Details
-	err = dlqRepo.InsertDLQ(ctx, ws.ID, cfg.ID, "trace-abc", "msg-def", "failed", []byte(`{"status":"failed"}`), "https://example.com/webhook-endpoint", 1, nil)
+	// 6. Insert dummy DLQ item and test GET Details
+	err = dlqRepo.InsertDLQ(
+		ctx,
+		ws.ID,
+		sub.ID,
+		"trace-abc",
+		"msg-def",
+		"failed",
+		[]byte(`{"status":"failed"}`),
+		"https://example.com/updated-endpoint",
+		1,
+		nil,
+	)
 	if err != nil {
 		t.Fatalf("failed to insert DLQ item: %v", err)
 	}
@@ -198,8 +257,8 @@ func TestAdminWebhookDLQHandlers(t *testing.T) {
 		t.Error("expected modal header in details response")
 	}
 
-	// 6. DELETE /admin/webhooks/dlq/:dlq_id
-	req = httptest.NewRequest(http.MethodDelete, "/admin/webhooks/dlq/"+dlqID.String(), nil)
+	// 7. DELETE /admin/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id
+	req = httptest.NewRequest(http.MethodDelete, "/admin/workspaces/"+ws.ID.String()+"/webhooks/subscriptions/"+sub.ID.String(), nil)
 	req.AddCookie(cookie)
 	rec = httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
@@ -209,8 +268,8 @@ func TestAdminWebhookDLQHandlers(t *testing.T) {
 	}
 
 	// Verify deleted from DB
-	_, err = dlqRepo.GetDLQByID(ctx, dlqID)
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("expected not found error, got %v", err)
+	_, err = subRepo.Get(ctx, sub.ID)
+	if !errors.Is(err, repository.ErrWebhookSubscriptionNotFound) {
+		t.Errorf("expected subscription not found error, got %v", err)
 	}
 }

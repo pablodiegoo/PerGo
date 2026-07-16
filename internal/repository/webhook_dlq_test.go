@@ -1,10 +1,8 @@
 package repository
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 
 	"github.com/google/uuid"
@@ -29,6 +27,7 @@ func TestWebhookDLQRepository(t *testing.T) {
 	}
 
 	repo := NewWebhookDLQRepository(pool, enc)
+	subRepo := NewWebhookSubscriptionRepository(pool, enc)
 
 	// 2. Create two test workspaces (for isolation checks)
 	wsRepo := NewWorkspaceRepository(pool)
@@ -46,42 +45,13 @@ func TestWebhookDLQRepository(t *testing.T) {
 	}
 	defer func() { _ = wsRepo.Delete(ctx, ws2.ID) }()
 
-	// --- 3. Test Webhook Config CRUD & Isolation ---
+	// --- 3. Create Webhook Subscription for WS1 ---
 	testURL := "https://example.com/webhooks"
 	testSecret := []byte("very-secure-webhook-secret-token")
 
-	// Save config for WS1
-	err = repo.SaveConfig(ctx, ws1.ID, testURL, testSecret)
+	sub, err := subRepo.Create(ctx, ws1.ID, testURL, []string{"*"}, testSecret)
 	if err != nil {
-		t.Fatalf("failed to save webhook config: %v", err)
-	}
-
-	// Verify DB is encrypted
-	var dbSecret []byte
-	err = pool.QueryRow(ctx, "SELECT secret FROM webhook_subscriptions WHERE workspace_id = $1", ws1.ID).Scan(&dbSecret)
-	if err != nil {
-		t.Fatalf("failed to query raw DB secret: %v", err)
-	}
-	if bytes.Equal(dbSecret, testSecret) {
-		t.Error("expected DB secret to be encrypted, but matched plaintext")
-	}
-
-	// Get config and check values
-	cfg, err := repo.GetConfig(ctx, ws1.ID)
-	if err != nil {
-		t.Fatalf("failed to retrieve config: %v", err)
-	}
-	if cfg.URL != testURL {
-		t.Errorf("expected URL %q, got %q", testURL, cfg.URL)
-	}
-	if !bytes.Equal(cfg.Secret, testSecret) {
-		t.Errorf("expected secret %q, got %q", string(testSecret), string(cfg.Secret))
-	}
-
-	// Check isolation: WS2 should not find WS1's config
-	_, err = repo.GetConfig(ctx, ws2.ID)
-	if !errors.Is(err, ErrWebhookConfigNotFound) {
-		t.Errorf("expected ErrWebhookConfigNotFound for WS2, got: %v", err)
+		t.Fatalf("failed to create webhook subscription: %v", err)
 	}
 
 	// --- 4. Test DLQ Operations ---
@@ -93,7 +63,7 @@ func TestWebhookDLQRepository(t *testing.T) {
 	failReason := "Gateway Timeout 504"
 
 	// Insert into DLQ for WS1
-	err = repo.InsertDLQ(ctx, ws1.ID, cfg.ID, traceID, messageID, eventType, payload, testURL, attempts, &failReason)
+	err = repo.InsertDLQ(ctx, ws1.ID, sub.ID, traceID, messageID, eventType, payload, testURL, attempts, &failReason)
 	if err != nil {
 		t.Fatalf("failed to insert into DLQ: %v", err)
 	}
@@ -126,7 +96,7 @@ func TestWebhookDLQRepository(t *testing.T) {
 	}
 
 	item := items[0]
-	if item.TraceID != traceID || item.MessageID != messageID || item.EventType != eventType || item.SubscriptionID != cfg.ID {
+	if item.TraceID != traceID || item.MessageID != messageID || item.EventType != eventType || item.SubscriptionID != sub.ID {
 		t.Errorf("DLQ fields mismatch: %+v", item)
 	}
 	var expectedMap, actualMap map[string]interface{}
