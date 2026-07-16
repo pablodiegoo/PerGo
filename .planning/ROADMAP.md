@@ -9,6 +9,8 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 - [x] **Phase 17: Multi-Webhook Subscriptions** - Webhook subscriptions database model, wildcard event-type matching, concurrent NATS fan-out, per-subscription DLQs, and dashboard management interface. (completed 2026-07-16)
 - [x] **Phase 18: Omnichannel Contact Merging** - Unified contact and identities schemas, auto-resolution on incoming messages, contact merge API/dashboard UI, and unified inbox conversation views. (completed 2026-07-16)
 - [x] **Phase 19: Webhook Messaging Verbs Engine** - Decoupled parsing of webhook JSON responses, sequential execution of verbs (reply, wait, forward, tag, close), and operator audit logs. (completed 2026-07-16)
+- [ ] **Phase 20: WABA Read Receipts & Status Updates** - Store provider message ID on dispatch, parse Meta webhook statuses (sent, delivered, read), update dispatch status, and propagate status indicators to the Inbox UI.
+
 
 ## Progress
 
@@ -26,6 +28,8 @@ Phases execute in numeric order: 17 → 18 → 19
 | 17. Multi-Webhook Subscriptions | 2/2 | Complete | 2026-07-16 |
 | 18. Omnichannel Contact Merging | 2/2 | Complete | 2026-07-16 |
 | 19. Webhook Messaging Verbs Engine | 2/2 | Complete | 2026-07-16 |
+| 20. WABA Read Receipts & Status | 0/2 | Planned | |
+
 
 ---
 
@@ -66,6 +70,18 @@ Phases execute in numeric order: 17 → 18 → 19
   1. Webhook dispatcher parses valid declarative messaging verbs returned in webhook response payloads.
   2. Verb sequences are processed sequentially, and replies trigger correct outbound routing queue entries.
   3. Action execution errors are logged as workspace audits and visible to operators.
+
+### Phase 20: WABA Read Receipts & Status Updates
+
+**Goal**: Store external provider message ID on outbound dispatch, parse Meta status updates (sent, delivered, read) in webhooks, and propagate status indicators to the Inbox UI.
+**Mode**: standard
+**Depends on**: Phase 19
+**Requirements**: STAT-01, STAT-02, STAT-03, STAT-04
+**Success Criteria**:
+
+  1. The outbound gateway extracts Meta's `wamid` response and saves it as `provider_message_id` on the message dispatch record.
+  2. Incoming Meta status update webhooks are parsed, and the status of the corresponding message dispatch is updated in the database.
+  3. Status updates trigger live UI events (via polling/after_id or SSE) to display delivery/read indicator badges in the active chat thread.
 
 ---
 
