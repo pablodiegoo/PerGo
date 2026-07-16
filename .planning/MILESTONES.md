@@ -1,5 +1,16 @@
 # Milestones
 
+## v1.1 Campaign Engine (Shipped: 2026-07-16)
+
+**Phases completed:** 6 phases (Phases 12, 12.1, 13, 14, 15, 16)
+
+**Key accomplishments:**
+- Campaign Engine: Bulk message scheduling, CSV sanitization, flexible regex variables mapping, NATS JetStream batch throttling, and enriched campaign logging.
+- Media engine: Consolidated media storage pipelines and optimized storage.
+- User action logs: Polymorphic actor action logs tracking dashboard and API key administrative tasks.
+- CSS standardization: Cleaned and unified style guide with standard CSS tokens across dashboard pages.
+- Deprecated workspace subviews: Removed redundant credential cards, routed WABA templates sync directly to Connections system.
+
 ## 1.0 1.0 (Shipped: 2026-07-14)
 
 **Phases completed:** 13 phases, 34 plans, 67 tasks

@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Campaign Engine
-current_phase: 16
-status: completed
-stopped_at: Session resumed, proceeding to complete Milestone v1.1
-last_updated: "2026-07-15T20:56:31.000Z"
-last_activity: 2026-07-15
-last_activity_desc: Phase 16 marked complete
+milestone: v1.2
+milestone_name: PRD Gaps Integration
+status: planning
+last_updated: "2026-07-16T12:38:15.283Z"
+last_activity: 2026-07-16
 progress:
-  total_phases: 6
-  completed_phases: 6
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
-current_phase_name: deprecate-workspace-subviews
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: 16 — COMPLETE
-Plan: 1 of 1
-Status: Phase 16 complete
-Last activity: 2026-07-15 — Phase 16 marked complete
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-07-16 — Milestone v1.2 started
 
 ## Performance Metrics
 
@@ -137,8 +133,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-15T08:34:20-03:00
-Stopped at: Session resumed, proceeding to complete Milestone v1.1
+Last session: 2026-07-16T08:50:00-03:00
+Stopped at: Session resumed, presenting status and options
 Resume file: none
 
 ## Operator Next Steps

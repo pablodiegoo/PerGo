@@ -17,19 +17,17 @@ A single API request delivers a message through any configured channel with auto
 
 ## Current State
 
-- **Shipped Version**: v1.0 (2026-07-14)
-- **Status**: Stable. Fully functional multi-tenant routing gateway with in-memory session caching, split-pane inbox dashboard, multi-device WhatsApp/WABA/Telegram adapters, and JetStream queueing.
+- **Shipped Version**: v1.1 (2026-07-16)
+- **Status**: Stable. Fully functional multi-tenant routing gateway with in-memory session caching, split-pane inbox dashboard, multi-device WhatsApp/WABA/Telegram adapters, JetStream queueing, and campaign engine.
 
-## Current Milestone: v1.1 Campaign Engine
+## Current Milestone: v1.2 PRD Gaps Integration
 
-**Goal:** Permitir que operadores criem campanhas de envio de mensagens em massa através do upload de mailings (CSV), com higienização automática, interpolação flexível de variáveis, agendamento e controle fino de vazão (throttling) para evitar banimentos.
+**Goal:** Complete the remaining PerGo PRD capabilities: multi-webhook subscriptions, omnichannel contact merging, and webhook messaging verbs engine.
 
 **Target Features:**
-- Higienização de Mailing (Scrubbing): Upload de CSV, validação de formato de número de telefone (padrão E.164 entre 10 e 15 dígitos) e remoção automática de duplicatas.
-- Mapeamento Flexível de Variáveis: Campo de texto com resolução regex para variáveis múltiplas concatenadas ou textos manuais (ex: `{{nome}} de {{cidade}}`).
-- Agendador e Calculadora de Duração: Estimativa de tempo real com base no tamanho do lote, atraso e jitter. Configuração de data/hora para disparo.
-- Motor de Disparo com Throttling (Worker NATS): Divisão do mailing higienizado em lotes no NATS JetStream, com atraso fixo configurável entre lotes mais um jitter estocástico aleatório.
-- Logs de Outbound Enriquecidos (Opção A): Armazenamento dos metadados da campanha (`campaign_id`, `template_name`, `variables_json`) diretamente na tabela principal de `outbound_logs` com índices específicos para não degradar a performance.
+- Multi-Webhook Subscriptions (Spike 018): Support for multiple webhook URLs per workspace filtered by event types (with wildcard support).
+- Omnichannel Contact Merging (Spike 017): Unified customer profiles linking WhatsApp and Telegram identities into a single `contacts` and `contact_identities` table.
+- Messaging Verbs Engine (Spike 015): Handling declarative JSON response verbs (`reply`, `wait`, `forward`, `tag`, `close`) returned by webhook endpoints.
 
 ## Requirements
 
@@ -115,5 +113,18 @@ A single API request delivers a message through any configured channel with auto
 
 This document evolves at phase transitions and milestone boundaries.
 
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd-complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
+
 ---
-*Last updated: 2026-07-14 after v1.0 milestone completion*
+*Last updated: 2026-07-16 after v1.1 milestone completion*
