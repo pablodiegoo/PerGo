@@ -436,3 +436,113 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 	})
 }
+
+func TestProcess_StatusUpdate(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+	dedupRepo := repository.NewInboundDedupRepository(pool)
+	sessRepo := repository.NewRecipientSessionRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "status_update_test_ws_" + uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	traceID := uuid.New().String()
+	d, err := dispatchRepo.GetOrCreateDispatch(ctx, ws.ID, traceID, "whatsapp_cloud", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("failed to create dispatch: %v", err)
+	}
+
+	providerID := "wamid.test_status_update_999"
+	err = dispatchRepo.UpdateProviderMessageID(ctx, d.ID, providerID)
+	if err != nil {
+		t.Fatalf("failed to update provider message id: %v", err)
+	}
+
+	// Initial dispatch status should be "queued"
+	if d.Status != "queued" {
+		t.Errorf("expected initial status queued, got %s", d.Status)
+	}
+
+	// Count initial contacts
+	var count int
+	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM contacts WHERE workspace_id = $1", ws.ID).Scan(&count)
+	if err != nil {
+		t.Fatalf("failed to count contacts: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected 0 contacts initially, got %d", count)
+	}
+
+	pub := &fakePublisher{}
+	me := &fakeMediaEngine{}
+	aud := &fakeAuditWriter{}
+
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo)
+
+	event := &inbound.InboundEvent{
+		WorkspaceID: ws.ID,
+		MessageID:   providerID,
+		Channel:     "whatsapp_cloud",
+		From:        "5511999990000",
+		To:          "5511888880000",
+		Body:        "delivered",
+		Metadata:    map[string]string{"type": "status_update"},
+	}
+
+	err = proc.Process(ctx, event)
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+
+	// 1. Verify dispatch record status is updated to "delivered"
+	updated, err := dispatchRepo.GetByProviderMessageID(ctx, providerID)
+	if err != nil {
+		t.Fatalf("failed to retrieve updated dispatch: %v", err)
+	}
+	if updated.Status != "delivered" {
+		t.Errorf("expected status 'delivered', got %q", updated.Status)
+	}
+
+	// 2. Verify contact resolution was not executed (0 contacts in DB)
+	err = pool.QueryRow(ctx, "SELECT COUNT(*) FROM contacts WHERE workspace_id = $1", ws.ID).Scan(&count)
+	if err != nil {
+		t.Fatalf("failed to count contacts: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("expected contact resolution to be bypassed, but contact was created (count = %d)", count)
+	}
+
+	// 3. Verify NATS publish on messages.status_updated
+	if len(pub.published) != 1 {
+		t.Fatalf("expected 1 NATS publish, got %d", len(pub.published))
+	}
+	pubEvent := pub.published[0]
+	if pubEvent.subject != "messages.status_updated" {
+		t.Errorf("expected subject 'messages.status_updated', got %q", pubEvent.subject)
+	}
+
+	var payload inbound.MessageStatusUpdatedPayload
+	if err := json.Unmarshal(pubEvent.data, &payload); err != nil {
+		t.Fatalf("failed to unmarshal NATS payload: %v", err)
+	}
+	if payload.WorkspaceID != ws.ID.String() {
+		t.Errorf("expected workspace ID %s, got %s", ws.ID.String(), payload.WorkspaceID)
+	}
+	if payload.DispatchID != d.ID.String() {
+		t.Errorf("expected dispatch ID %s, got %s", d.ID.String(), payload.DispatchID)
+	}
+	if payload.MessageID != providerID {
+		t.Errorf("expected message ID %s, got %s", providerID, payload.MessageID)
+	}
+	if payload.Status != "delivered" {
+		t.Errorf("expected status 'delivered', got %s", payload.Status)
+	}
+}
