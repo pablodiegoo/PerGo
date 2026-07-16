@@ -180,6 +180,7 @@ type ThreadMessage struct {
 	Direction string    `json:"direction"` // "inbound" or "outbound"
 	Body      string    `json:"body"`
 	CreatedAt time.Time `json:"created_at"`
+	Status    *string   `json:"status"`
 }
 
 // ListConversations lists unified conversations grouped by contact_id.
@@ -252,7 +253,7 @@ func (r *AuditRepository) ListConversations(ctx context.Context, workspaceID uui
 // ListThreadByContact performs a UNION between inbound and outbound messages matching ANY identity owned by the Contact.
 func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID uuid.UUID, contactID uuid.UUID, afterID *uuid.UUID) ([]ThreadMessage, error) {
 	query := `
-		SELECT al.id, al.trace_id, 'inbound' AS direction, COALESCE(al.payload->>'body', '') AS body, al.created_at
+		SELECT al.id, al.trace_id, 'inbound' AS direction, COALESCE(al.payload->>'body', '') AS body, al.created_at, NULL::VARCHAR AS status
 		FROM audit_logs al
 		JOIN contact_identities ci ON ci.workspace_id = al.workspace_id 
 			AND ci.channel = al.payload->>'channel' 
@@ -264,11 +265,12 @@ func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID u
 
 		UNION ALL
 
-		SELECT al.id, al.trace_id, 'outbound' AS direction, COALESCE(al.payload->'request'->>'body', '') AS body, al.created_at
+		SELECT al.id, al.trace_id, 'outbound' AS direction, COALESCE(al.payload->'request'->>'body', '') AS body, al.created_at, md.status AS status
 		FROM audit_logs al
 		JOIN contact_identities ci ON ci.workspace_id = al.workspace_id 
 			AND ci.channel = al.payload->'request'->>'channel' 
 			AND ci.sender_identity = al.payload->'request'->>'to'
+		LEFT JOIN message_dispatches md ON md.trace_id = al.trace_id
 		WHERE al.workspace_id = $1
 		  AND ci.contact_id = $2
 		  AND al.event_type = 'outbound_message'
@@ -286,7 +288,7 @@ func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID u
 	var messages []ThreadMessage
 	for rows.Next() {
 		var m ThreadMessage
-		if err := rows.Scan(&m.ID, &m.TraceID, &m.Direction, &m.Body, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.TraceID, &m.Direction, &m.Body, &m.CreatedAt, &m.Status); err != nil {
 			return nil, fmt.Errorf("scan thread message: %w", err)
 		}
 		messages = append(messages, m)

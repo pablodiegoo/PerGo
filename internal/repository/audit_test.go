@@ -184,4 +184,70 @@ func TestAuditRepository_ConversationsAndThread(t *testing.T) {
 			t.Errorf("expected body 'Hello from Contact Two', got: %s", thread2[0].Body)
 		}
 	})
+
+	// Test ListThread with Dispatch Status join
+	t.Run("ListThreadByContact returns dispatch status for outbound messages", func(t *testing.T) {
+		dispatchRepo := NewMessageDispatchRepository(pool)
+		outboundTraceID := uuid.New().String()
+		
+		// 1. Create a dispatch record with trace ID
+		d, err := dispatchRepo.GetOrCreateDispatch(ctx, ws.ID, outboundTraceID, "telegram", nil, nil, nil)
+		if err != nil {
+			t.Fatalf("failed to create dispatch: %v", err)
+		}
+		
+		// Update dispatch status to "read"
+		err = dispatchRepo.UpdateDispatchStatus(ctx, d.ID, "read", "telegram", 0, nil)
+		if err != nil {
+			t.Fatalf("failed to update dispatch status: %v", err)
+		}
+
+		// 2. Insert outbound log with the same trace ID
+		payloadOut := map[string]any{
+			"request": map[string]any{
+				"to":              "contact1",
+				"channel":         "telegram",
+				"sender_identity": identity1,
+				"body":            "Status Checked Reply",
+			},
+			"status": "read",
+		}
+		payloadBytesOut, _ := json.Marshal(payloadOut)
+		_, err = pool.Exec(ctx, `
+			INSERT INTO audit_logs (id, workspace_id, trace_id, event_type, payload, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, uuid.New(), ws.ID, outboundTraceID, "outbound_message", payloadBytesOut, now.Add(-3*time.Minute))
+		if err != nil {
+			t.Fatalf("failed to insert outbound log: %v", err)
+		}
+
+		// 3. Call ListThreadByContact
+		thread, err := auditRepo.ListThreadByContact(ctx, ws.ID, c1.ID, nil)
+		if err != nil {
+			t.Fatalf("ListThreadByContact failed: %v", err)
+		}
+
+		// Find the outbound message we just inserted in the thread
+		var found bool
+		for _, m := range thread {
+			if m.TraceID == outboundTraceID {
+				found = true
+				if m.Direction != "outbound" {
+					t.Errorf("expected direction 'outbound', got %q", m.Direction)
+				}
+				if m.Status == nil {
+					t.Errorf("expected Status not to be nil")
+				} else if *m.Status != "read" {
+					t.Errorf("expected Status 'read', got %q", *m.Status)
+				}
+			} else if m.Direction == "inbound" {
+				if m.Status != nil {
+					t.Errorf("expected Status to be nil for inbound message, got %q", *m.Status)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("did not find outbound status checked message in thread")
+		}
+	})
 }
