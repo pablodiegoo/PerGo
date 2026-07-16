@@ -16,18 +16,19 @@ var ErrDispatchNotFound = errors.New("dispatch not found")
 
 // MessageDispatch represents a row in the message_dispatches table.
 type MessageDispatch struct {
-	ID             uuid.UUID
-	WorkspaceID    uuid.UUID
-	TraceID        string
-	CurrentChannel string
-	Status         string
-	FallbackIndex  int
-	ErrorMessage   *string
-	CampaignID     *uuid.UUID
-	TemplateName   *string
-	VariablesJSON  map[string]string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID                uuid.UUID
+	WorkspaceID       uuid.UUID
+	TraceID           string
+	CurrentChannel    string
+	Status            string
+	FallbackIndex     int
+	ErrorMessage      *string
+	CampaignID        *uuid.UUID
+	TemplateName      *string
+	VariablesJSON     map[string]string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	ProviderMessageID *string
 }
 
 // MessageDispatchRepository manages message dispatch state in the database.
@@ -66,9 +67,9 @@ func (r *MessageDispatchRepository) GetOrCreateDispatch(
 		 VALUES ($1, $2, $3, 'queued', 0, $4, $5, $6)
 		 ON CONFLICT (trace_id) DO UPDATE 
 		 SET trace_id = EXCLUDED.trace_id -- dummy update to return existing row
-		 RETURNING id, workspace_id, trace_id, current_channel, status, fallback_index, error_message, campaign_id, template_name, variables_json, created_at, updated_at`,
+		 RETURNING id, workspace_id, trace_id, current_channel, status, fallback_index, error_message, campaign_id, template_name, variables_json, created_at, updated_at, provider_message_id`,
 		workspaceID, traceID, initialChannel, campaignID, templateName, varsJSON,
-	).Scan(&d.ID, &d.WorkspaceID, &d.TraceID, &d.CurrentChannel, &d.Status, &d.FallbackIndex, &d.ErrorMessage, &d.CampaignID, &d.TemplateName, &varsRaw, &d.CreatedAt, &d.UpdatedAt)
+	).Scan(&d.ID, &d.WorkspaceID, &d.TraceID, &d.CurrentChannel, &d.Status, &d.FallbackIndex, &d.ErrorMessage, &d.CampaignID, &d.TemplateName, &varsRaw, &d.CreatedAt, &d.UpdatedAt, &d.ProviderMessageID)
 	if err != nil {
 		return nil, err
 	}
@@ -98,10 +99,10 @@ func (r *MessageDispatchRepository) GetByTraceID(ctx context.Context, traceID st
 	var d MessageDispatch
 	var varsRaw []byte
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, workspace_id, trace_id, current_channel, status, fallback_index, error_message, campaign_id, template_name, variables_json, created_at, updated_at
+		`SELECT id, workspace_id, trace_id, current_channel, status, fallback_index, error_message, campaign_id, template_name, variables_json, created_at, updated_at, provider_message_id
 		 FROM message_dispatches WHERE trace_id = $1`,
 		traceID,
-	).Scan(&d.ID, &d.WorkspaceID, &d.TraceID, &d.CurrentChannel, &d.Status, &d.FallbackIndex, &d.ErrorMessage, &d.CampaignID, &d.TemplateName, &varsRaw, &d.CreatedAt, &d.UpdatedAt)
+	).Scan(&d.ID, &d.WorkspaceID, &d.TraceID, &d.CurrentChannel, &d.Status, &d.FallbackIndex, &d.ErrorMessage, &d.CampaignID, &d.TemplateName, &varsRaw, &d.CreatedAt, &d.UpdatedAt, &d.ProviderMessageID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrDispatchNotFound
@@ -117,3 +118,40 @@ func (r *MessageDispatchRepository) GetByTraceID(ctx context.Context, traceID st
 
 	return &d, nil
 }
+
+// UpdateProviderMessageID associates an external provider message ID (e.g. wamid) with a dispatch record.
+func (r *MessageDispatchRepository) UpdateProviderMessageID(ctx context.Context, id uuid.UUID, providerMessageID string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE message_dispatches 
+		 SET provider_message_id = $1, updated_at = now()
+		 WHERE id = $2`,
+		providerMessageID, id,
+	)
+	return err
+}
+
+// GetByProviderMessageID retrieves a message dispatch by its external provider message ID.
+func (r *MessageDispatchRepository) GetByProviderMessageID(ctx context.Context, providerMessageID string) (*MessageDispatch, error) {
+	var d MessageDispatch
+	var varsRaw []byte
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, workspace_id, trace_id, current_channel, status, fallback_index, error_message, campaign_id, template_name, variables_json, created_at, updated_at, provider_message_id
+		 FROM message_dispatches 
+		 WHERE provider_message_id = $1`,
+		providerMessageID,
+	).Scan(&d.ID, &d.WorkspaceID, &d.TraceID, &d.CurrentChannel, &d.Status, &d.FallbackIndex, &d.ErrorMessage, &d.CampaignID, &d.TemplateName, &varsRaw, &d.CreatedAt, &d.UpdatedAt, &d.ProviderMessageID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrDispatchNotFound
+		}
+		return nil, err
+	}
+
+	if len(varsRaw) > 0 {
+		if err := json.Unmarshal(varsRaw, &d.VariablesJSON); err != nil {
+			return nil, err
+		}
+	}
+	return &d, nil
+}
+
