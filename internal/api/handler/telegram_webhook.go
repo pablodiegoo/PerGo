@@ -17,7 +17,6 @@ import (
 // TelegramWebhookHandler handles inbound webhooks from Telegram.
 type TelegramWebhookHandler struct {
 	connectionsRepo     *repository.ConnectionRepository
-	telegramContactRepo *repository.TelegramContactRepository
 	inboundProcessor    *inbound.InboundProcessor
 	adapter             channel.InboundAdapter
 	telegramBaseURL     string
@@ -26,15 +25,13 @@ type TelegramWebhookHandler struct {
 // NewTelegramWebhookHandler creates a new TelegramWebhookHandler.
 func NewTelegramWebhookHandler(
 	connectionsRepo *repository.ConnectionRepository,
-	telegramContactRepo *repository.TelegramContactRepository,
 	inboundProcessor *inbound.InboundProcessor,
 	mediaEngine media.Engine,
 ) *TelegramWebhookHandler {
 	return &TelegramWebhookHandler{
 		connectionsRepo:     connectionsRepo,
-		telegramContactRepo: telegramContactRepo,
 		inboundProcessor:    inboundProcessor,
-		adapter:             telegram.NewTelegramInboundAdapter(telegramContactRepo, mediaEngine),
+		adapter:             telegram.NewTelegramInboundAdapter(mediaEngine),
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/pablojhp.pergo/internal/inbound"
@@ -16,7 +17,6 @@ import (
 
 // TelegramInboundAdapter implements channel.InboundAdapter for Telegram.
 type TelegramInboundAdapter struct {
-	telegramContactRepo *repository.TelegramContactRepository
 	downloader          media.Downloader
 	client              *http.Client
 	telegramBaseURL     string
@@ -24,11 +24,9 @@ type TelegramInboundAdapter struct {
 
 // NewTelegramInboundAdapter creates a new TelegramInboundAdapter.
 func NewTelegramInboundAdapter(
-	telegramContactRepo *repository.TelegramContactRepository,
 	downloader media.Downloader,
 ) *TelegramInboundAdapter {
 	return &TelegramInboundAdapter{
-		telegramContactRepo: telegramContactRepo,
 		downloader:          downloader,
 		client:              &http.Client{Timeout: 30 * time.Second},
 		telegramBaseURL:     "https://api.telegram.org",
@@ -152,47 +150,53 @@ func (a *TelegramInboundAdapter) Parse(
 		botUsername = "@bot"
 	}
 
-	// 5. Contact mapping upsert
-	if a.telegramContactRepo != nil {
-		var usernamePtr *string
-		var firstNamePtr *string
-		var lastNamePtr *string
-		var phonePtr *string
+	// 5. Extract sender's details and metadata
+	var username string
+	var firstName string
+	var lastName string
+	var phone string
 
-		if update.Message.From != nil {
-			if update.Message.From.Username != "" {
-				u := update.Message.From.Username
-				usernamePtr = &u
-			}
-			if update.Message.From.FirstName != "" {
-				f := update.Message.From.FirstName
-				firstNamePtr = &f
-			}
-			if update.Message.From.LastName != "" {
-				l := update.Message.From.LastName
-				lastNamePtr = &l
-			}
-		}
+	if update.Message.From != nil {
+		username = update.Message.From.Username
+		firstName = update.Message.From.FirstName
+		lastName = update.Message.From.LastName
+	}
 
-		if usernamePtr == nil && update.Message.Chat.Username != "" {
-			u := update.Message.Chat.Username
-			usernamePtr = &u
-		}
-		if firstNamePtr == nil && update.Message.Chat.FirstName != "" {
-			f := update.Message.Chat.FirstName
-			firstNamePtr = &f
-		}
-		if lastNamePtr == nil && update.Message.Chat.LastName != "" {
-			l := update.Message.Chat.LastName
-			lastNamePtr = &l
-		}
+	if username == "" && update.Message.Chat.Username != "" {
+		username = update.Message.Chat.Username
+	}
+	if firstName == "" && update.Message.Chat.FirstName != "" {
+		firstName = update.Message.Chat.FirstName
+	}
+	if lastName == "" && update.Message.Chat.LastName != "" {
+		lastName = update.Message.Chat.LastName
+	}
 
-		if update.Message.Contact != nil && update.Message.Contact.PhoneNumber != "" {
-			p := update.Message.Contact.PhoneNumber
-			phonePtr = &p
-		}
+	if update.Message.Contact != nil && update.Message.Contact.PhoneNumber != "" {
+		phone = update.Message.Contact.PhoneNumber
+	}
 
-		_ = a.telegramContactRepo.Upsert(ctx, conn.WorkspaceID, chatIDStr, usernamePtr, phonePtr, firstNamePtr, lastNamePtr)
+	var nameParts []string
+	if firstName != "" {
+		nameParts = append(nameParts, firstName)
+	}
+	if lastName != "" {
+		nameParts = append(nameParts, lastName)
+	}
+	senderName := strings.TrimSpace(strings.Join(nameParts, " "))
+	if senderName == "" {
+		senderName = username
+	}
+	if senderName == "" {
+		senderName = chatIDStr
+	}
+
+	metadata := make(map[string]string)
+	if username != "" {
+		metadata["username"] = username
+	}
+	if phone != "" {
+		metadata["phone_number"] = phone
 	}
 
 	// 6. Media parsing and download
@@ -262,6 +266,8 @@ func (a *TelegramInboundAdapter) Parse(
 			Media:       inboundMedia,
 			Location:    inboundLocation,
 			Contacts:    inboundContacts,
+			SenderName:  senderName,
+			Metadata:    metadata,
 		},
 	}, nil
 }

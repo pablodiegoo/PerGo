@@ -67,6 +67,7 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 	sessRepo := repository.NewRecipientSessionRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	publisher := queue.NewJetStreamPublisher(nc)
+	contactRepo := repository.NewContactRepository(pool)
 
 	// Create workspace with PII Opt-In true
 	ws, err := wsRepo.Create(ctx, "waba_inbound_test_ws_"+uuid.New().String())
@@ -100,7 +101,7 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 	defer auditWriter.Close()
 
 	mediaEngine := media.NewDefaultEngine(s3Client)
-	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, sessRepo)
+	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, sessRepo, contactRepo)
 	h := NewWABAWebhookHandler(connRepo, inboundProcessor, mediaEngine)
 
 	e := echo.New()
