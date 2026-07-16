@@ -67,14 +67,7 @@ func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dispatcher webhook.Web
 	}
 
 	// Ensure INBOUND stream exists
-	inboundStream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
-		Name:      "INBOUND",
-		Subjects:  []string{"inbound.events.>"},
-		Retention: jetstream.LimitsPolicy,
-		MaxMsgs:   10000,
-		Storage:   jetstream.FileStorage,
-		MaxAge:    7 * 24 * time.Hour,
-	})
+	inboundStream, err := EnsureInboundStream(ctx, nc)
 	if err != nil {
 		return nil, fmt.Errorf("ensure inbound stream: %w", err)
 	}

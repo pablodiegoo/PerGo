@@ -96,6 +96,29 @@ func EnsureWebhookDeliveryStream(ctx context.Context, nc *nats.Conn) (jetstream.
 	return stream, nil
 }
 
+// EnsureInboundStream creates or updates a LimitsPolicy stream named "INBOUND".
+func EnsureInboundStream(ctx context.Context, nc *nats.Conn) (jetstream.Stream, error) {
+	js, err := jetstream.New(nc)
+	if err != nil {
+		return nil, fmt.Errorf("jetstream.New: %w", err)
+	}
+
+	stream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:      "INBOUND",
+		Subjects:  []string{"inbound.events.>"},
+		Retention: jetstream.LimitsPolicy,
+		MaxMsgs:   10000,
+		Storage:   jetstream.FileStorage,
+		MaxAge:    7 * 24 * time.Hour,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create stream INBOUND: %w", err)
+	}
+
+	slog.Info("jetstream inbound stream ready", "stream", "INBOUND")
+	return stream, nil
+}
+
 
 // EnsureConsumer creates or gets a durable pull consumer on the given stream.
 // Safe to call multiple times — CreateConsumer is idempotent when the config matches.
