@@ -137,10 +137,10 @@ To set up PerGo on your local machine or server:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/pablodiegoo/PerGo.git
-   cd PerGo
+   git clone https://github.com/pablodiegoo/OmniGo.git
+   cd OmniGo
    ```
-   <!-- VERIFY: The repository URL is https://github.com/pablodiegoo/PerGo.git -->
+   <!-- VERIFY: The repository URL is https://github.com/pablodiegoo/OmniGo.git -->
 
 2. **Install Go dependencies:**
    Make sure you have Go 1.26+ installed, then download the dependencies:
@@ -264,7 +264,7 @@ We welcome contributions to PerGo! If you want to contribute, please follow thes
    ```
 
 Refer to the [DEVELOPMENT.md](file:///home/pablo/Coding/OmniGo/docs/DEVELOPMENT.md) guide for folder structure details.
-<!-- VERIFY: CONTRIBUTING.md file doesn't exist yet but contributing instructions point to standard fork-and-pull-request flow -->
+<!-- VERIFY: CONTRIBUTING.md file exists and contributing instructions point to standard fork-and-pull-request flow -->
 
 ---
 

@@ -147,21 +147,22 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master, main ]
   pull_request:
-    branches: [ main ]
+    branches: [ master, main ]
 
 jobs:
   test:
-    name: Run Linter and Tests
+    name: Test and Lint
     runs-on: ubuntu-latest
+
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:16
         env:
-          POSTGRES_DB: pergo_test
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pergo
         ports:
           - 5432:5432
         options: >-
@@ -174,32 +175,30 @@ jobs:
         image: nats:2.10-alpine
         ports:
           - 4222:4222
+        options: >-
+          --health-cmd "nc -z localhost 4222"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
-      - name: Check out code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.4'
+          go-version: '1.25.x'
           cache: true
-
-      - name: Install Tools
-        run: |
-          go install github.com/a-h/templ/cmd/templ@v0.3.1020
-
-      - name: Generate Templates
-        run: make generate
-
-      - name: Run Linter
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
 
       - name: Run Tests
         env:
-          PERGO_TEST_DSN: postgres://postgres:postgres@localhost:5432/pergo_test?sslmode=disable
-          PERGO_DATABASE_URL: postgres://postgres:postgres@localhost:5432/pergo_test?sslmode=disable
-        run: make test-race
+          PERGO_DATABASE_URL: postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable
+          PERGO_NATS_URL: nats://localhost:4222
+        run: go test ./... -race -count=1
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64
 ```

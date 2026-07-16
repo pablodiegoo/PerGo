@@ -66,7 +66,7 @@ Você pode enviar mídias anexando o objeto `media` ao payload:
 * **Subcampos do objeto `media`:**
   * `media_url` (string, obrigatório): URL direta e pública do arquivo de mídia.
   * `media_type` (string, obrigatório): Tipo de mídia. Valores aceitos: `"image"`, `"document"` ou `"audio"`.
-  * `filename` (string, opcional): Nome do arquivo exibido para o usuário (aplicável a documentos).
+  * `filename` (string, obrigatório se `media_type` for `"document"`, opcional para os demais): Nome do arquivo exibido para o usuário.
   * `caption` (string, opcional): Legenda da imagem ou documento.
 
 ---

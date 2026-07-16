@@ -32,7 +32,7 @@ A integração com o Telegram utiliza a API oficial de Bots.
 2. Cole o **Bot Token** gerado.
 3. Se o seu servidor PerGo estiver rodando sob uma URL pública segura (**HTTPS**):
    * O PerGo registrará o webhook automaticamente no Telegram assim que você salvar as credenciais.
-   * O webhook será registrado apontando para: `https://[seu-dominio]/webhooks/telegram` protegida por um token secreto gerado dinamicamente no cabeçalho `X-Telegram-Bot-Api-Secret-Token`.
+   * O webhook será registrado apontando para: `https://[seu-dominio]/webhooks/telegram/[workspace_id]` protegida por um token secreto gerado dinamicamente no cabeçalho `X-Telegram-Bot-Api-Secret-Token`.
 4. Se você estiver rodando em **localhost (HTTP)**:
    * O Telegram não aceita webhooks em URLs inseguras (HTTP). Para testar localmente, utilize uma ferramenta de túnel como o **ngrok** (`ngrok http 8080`) e configure o `PERGO_EXTERNAL_URL` com a URL do túnel HTTPS fornecida.
 

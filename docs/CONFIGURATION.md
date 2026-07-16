@@ -43,7 +43,7 @@ Abaixo está o mapeamento detalhado das variáveis de ambiente disponíveis.
   ```
 
 ### `PERGO_ADMIN_PASSWORD`
-* **Descrição:** Senha de acesso para o usuário administrador (`admin`) na console de gerenciamento (`/admin`).
+* **Descrição:** Senha de acesso para a console de gerenciamento (`/admin`).
 * **Padrão:** `pergo-dev-2026`
 
 ---
@@ -75,7 +75,7 @@ Abaixo está o mapeamento unificado de todas as variáveis de ambiente aceitas p
 | `PERGO_DEBUG_PORT` | - | `6060` | Não | Porta para endpoints de profiling (`pprof`) e expvar (deve ser isolada em produção). |
 | `PERGO_EXTERNAL_URL` | - | `http://localhost:8080` | Não | URL pública externa usada para compor links de mídia e callbacks. |
 | `PERGO_KEK_BASE64` | - | *Vazio (inseguro por padrão)* | Sim (Produção) | Chave mestre de criptografia (Key Encryption Key) AES-256-GCM em formato Base64. |
-| `PERGO_ADMIN_PASSWORD` | - | `pergo-dev-2026` | Não | Senha da conta do administrador (`admin`) para a console `/admin`. |
+| `PERGO_ADMIN_PASSWORD` | - | `pergo-dev-2026` | Não | Senha de acesso para a console de gerenciamento `/admin`. |
 | `PERGO_SESSION_SECRET` | - | *Gerado aleatoriamente* | Não | Chave secreta de sessão de cookie (usada no login). Se vazia, os logins expiram a cada reinício de processo. |
 | `PERGO_MAX_WHATSAPP_CONNECTIONS` | - | `5` | Não | Limite de conexões ativas de WhatsApp Web (whatsmeow) simultâneas permitidas por workspace. |
 | `PERGO_S3_ENDPOINT` | `S3_ENDPOINT` | `""` | Não | Endpoint personalizado do servidor S3 (ex: AWS, MinIO, Cloudflare R2). |

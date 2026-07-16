@@ -63,9 +63,7 @@ Na primeira inicialização, o PerGo executará automaticamente as migrações e
 ## 5. Primeiro Acesso e Configuração
 
 1. Abra o navegador em: **`http://localhost:8080/admin`**
-2. Faça login com as credenciais administrativas configuradas no seu `.env`:
-   * **Usuário:** `admin`
-   * **Senha:** *Sua senha configurada em `PERGO_ADMIN_PASSWORD`* (padrão de desenvolvimento: `pergo-dev-2026`).
+2. Faça login informando a senha de administrador configurada em `PERGO_ADMIN_PASSWORD` (padrão de desenvolvimento: `pergo-dev-2026`).
 3. Crie o seu primeiro **Workspace** (ex: "Empresa Principal" ou "Ambiente de Testes").
 4. Clique no Workspace criado para acessar a tela de detalhes:
    * **Gerar API Key:** Clique em *Generate Key* e anote a chave gerada. Você usará essa chave no cabeçalho `Authorization: Bearer <key>` para enviar mensagens pela API REST do PerGo.
