@@ -133,6 +133,7 @@ func main() {
 	connectionRepo := repository.NewConnectionRepository(pool, encryptor)
 	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
 	telegramContactRepo := repository.NewTelegramContactRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
 	windowChecker := session.NewWindowChecker(recipientSessionRepo)
 
 	// --- REST Adapters ---
@@ -154,11 +155,11 @@ func main() {
 
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	wsRepo := repository.NewWorkspaceRepository(pool)
-	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo)
+	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo, contactRepo)
 	sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", inboundProcessor)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
-	orchestrator := queue.NewDispatchOrchestrator(dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter, 5, 60*time.Second)
-	orchestrator.SetTelegramContactRepo(telegramContactRepo)
+	orchestrator := queue.NewDispatchOrchestrator(dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter, contactRepo, 5, 60*time.Second)
+	orchestrator.SetContactRepository(contactRepo)
 	worker := queue.NewWorker(ctx, consumer, orchestrator)
 	slog.Info("message worker started", "consumer", "worker-1")
 
@@ -306,7 +307,7 @@ func main() {
 	e.GET("/media/:workspace_id/:hash", mediaHandler.Handle)
 
 	// --- Telegram Inbound Webhook handler ---
-	telegramWebhookHandler := handler.NewTelegramWebhookHandler(connectionRepo, telegramContactRepo, inboundProcessor, mediaEngine)
+	telegramWebhookHandler := handler.NewTelegramWebhookHandler(connectionRepo, inboundProcessor, mediaEngine)
 	e.POST("/webhooks/telegram/:workspace_id", telegramWebhookHandler.Handle)
 
 	// --- WABA Inbound Webhook handler ---
