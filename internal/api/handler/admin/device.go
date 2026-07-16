@@ -230,6 +230,7 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 	var senderIdentity string
 	var credentialsJSON []byte
 	var validationErr error
+	var connID uuid.UUID
 
 	if channel == "telegram" {
 		token := c.FormValue("token")
@@ -283,7 +284,8 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 			VerifyToken:   verifyToken,
 		}
 
-		validationErr = h.syncTemplatesFromMeta(ctx, workspaceID, wabaCfg)
+		connID = uuid.New()
+		validationErr = h.syncTemplatesFromMeta(ctx, workspaceID, connID, wabaCfg)
 		if validationErr == nil {
 			credentialsJSON, _ = json.Marshal(wabaCfg)
 		}
@@ -302,6 +304,7 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 
 	now := time.Now().UTC()
 	conn := &repository.Connection{
+		ID:             connID,
 		WorkspaceID:    workspaceID,
 		Name:           name,
 		Channel:        channel,
@@ -586,7 +589,7 @@ func (h *DeviceHandler) validateTelegramToken(ctx context.Context, token string)
 	return username, nil
 }
 
-func (h *DeviceHandler) syncTemplatesFromMeta(ctx context.Context, workspaceID uuid.UUID, config pages.WABAConfig) error {
+func (h *DeviceHandler) syncTemplatesFromMeta(ctx context.Context, workspaceID uuid.UUID, connectionID uuid.UUID, config pages.WABAConfig) error {
 	baseURL := "https://graph.facebook.com/v18.0"
 	metaURL := fmt.Sprintf("%s/%s/message_templates?limit=100", baseURL, config.WABAAccountID)
 
@@ -652,6 +655,7 @@ func (h *DeviceHandler) syncTemplatesFromMeta(ctx context.Context, workspaceID u
 
 		dbTmpl := &repository.WABATemplate{
 			WorkspaceID:    workspaceID,
+			ConnectionID:   connectionID,
 			MetaTemplateID: t.ID,
 			Name:           t.Name,
 			Language:       t.Language,
