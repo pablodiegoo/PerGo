@@ -32,12 +32,12 @@ const (
 // TTL enforcement, fallback routing, channel dispatch, audit, and
 // webhook events. Tests exercise the full pipeline through Process.
 type DispatchOrchestrator struct {
-	dispatchers         *channel.Registry
-	dispatchRepo        *repository.MessageDispatchRepository
-	publisher           *JetStreamPublisher
-	queueDepth          QueueDepthTracker
-	auditWriter         audit.Writer
-	telegramContactRepo *repository.TelegramContactRepository
+	dispatchers  *channel.Registry
+	dispatchRepo *repository.MessageDispatchRepository
+	publisher    *JetStreamPublisher
+	queueDepth   QueueDepthTracker
+	auditWriter  audit.Writer
+	contactRepo  *repository.ContactRepository
 
 	maxRetries int
 	maxBackoff time.Duration
@@ -53,6 +53,7 @@ func NewDispatchOrchestrator(
 	publisher *JetStreamPublisher,
 	queueDepth QueueDepthTracker,
 	auditWriter audit.Writer,
+	contactRepo *repository.ContactRepository,
 	maxRetries int,
 	maxBackoff time.Duration,
 ) *DispatchOrchestrator {
@@ -69,6 +70,7 @@ func NewDispatchOrchestrator(
 		publisher:    publisher,
 		queueDepth:   queueDepth,
 		auditWriter:  auditWriter,
+		contactRepo:  contactRepo,
 		maxRetries:   maxRetries,
 		maxBackoff:   maxBackoff,
 	}
@@ -241,10 +243,9 @@ func (o *DispatchOrchestrator) Process(
 	return finalErr
 }
 
-// dispatchToChannel looks up the channel dispatcher and sends.
-// SetTelegramContactRepo registers the Telegram contact repository.
-func (o *DispatchOrchestrator) SetTelegramContactRepo(repo *repository.TelegramContactRepository) {
-	o.telegramContactRepo = repo
+// SetContactRepository registers the Contact repository.
+func (o *DispatchOrchestrator) SetContactRepository(repo *repository.ContactRepository) {
+	o.contactRepo = repo
 }
 
 func (o *DispatchOrchestrator) dispatchToChannel(ctx context.Context, channelName string, qMsg *domain.QueueMessage) (string, error) {
@@ -259,8 +260,8 @@ func (o *DispatchOrchestrator) dispatchToChannel(ctx context.Context, channelNam
 	}
 
 	to := qMsg.To
-	if channelName == "telegram" && o.telegramContactRepo != nil {
-		if resolvedChatID, err := o.telegramContactRepo.Resolve(ctx, qMsg.WorkspaceID, qMsg.To); err == nil && resolvedChatID != "" {
+	if channelName == "telegram" && o.contactRepo != nil {
+		if resolvedChatID, err := o.contactRepo.ResolveTelegramChatID(ctx, qMsg.WorkspaceID, qMsg.To); err == nil && resolvedChatID != "" {
 			slog.Info("orchestrator: resolved telegram contact identifier", "original", qMsg.To, "resolved", resolvedChatID, "trace_id", qMsg.TraceID)
 			to = resolvedChatID
 			qMsg.To = resolvedChatID // Normalize so that audit logs also use the resolved numeric ID

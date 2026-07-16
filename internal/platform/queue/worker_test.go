@@ -234,7 +234,7 @@ func getTestPool(t *testing.T) *pgxpool.Pool {
 }
 
 func newTestOrchestrator(dispatchers *channel.Registry, dispatchRepo *repository.MessageDispatchRepository) *DispatchOrchestrator {
-	return NewDispatchOrchestrator(dispatchers, dispatchRepo, nil, nil, nil, 5, 60*time.Second)
+	return NewDispatchOrchestrator(dispatchers, dispatchRepo, nil, nil, nil, nil, 5, 60*time.Second)
 }
 
 func TestOrchestrator_FallbackLoop(t *testing.T) {
@@ -466,6 +466,7 @@ func TestOrchestrator_TelegramContactResolution(t *testing.T) {
 	ctx := context.Background()
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	tgContactRepo := repository.NewTelegramContactRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
 
 	ws, err := wsRepo.Create(ctx, "tg_res_test_ws_"+uuid.New().String())
 	if err != nil {
@@ -486,8 +487,7 @@ func TestOrchestrator_TelegramContactResolution(t *testing.T) {
 		"telegram": tgDisp,
 	})
 
-	orchestrator := NewDispatchOrchestrator(registry, nil, nil, nil, nil, 5, 60*time.Second)
-	orchestrator.SetTelegramContactRepo(tgContactRepo)
+	orchestrator := NewDispatchOrchestrator(registry, nil, nil, nil, nil, contactRepo, 5, 60*time.Second)
 
 	qMsg := &domain.QueueMessage{
 		WorkspaceID: ws.ID,
