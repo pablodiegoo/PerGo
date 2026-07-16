@@ -22,6 +22,7 @@ func TestCampaignWorker_Success(t *testing.T) {
 
 	// Initialize repos
 	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
 	campRepo := repository.NewCampaignRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 
@@ -102,7 +103,7 @@ func TestCampaignWorker_Success(t *testing.T) {
 	}
 
 	// Start Worker
-	worker := NewCampaignWorker(ctx, consumer, campRepo, dispatchRepo, publisher)
+	worker := NewCampaignWorker(ctx, consumer, campRepo, connRepo, dispatchRepo, publisher)
 	defer worker.Stop()
 
 	// Wait for completion in database
@@ -160,6 +161,7 @@ func TestCampaignWorker_Cancelled(t *testing.T) {
 	defer cancel()
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
 	campRepo := repository.NewCampaignRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 
@@ -197,7 +199,7 @@ func TestCampaignWorker_Cancelled(t *testing.T) {
 	taskBytes, _ := json.Marshal(task)
 	_ = publisher.Publish(ctx, "campaigns.batches", taskBytes, uuid.New().String())
 
-	worker := NewCampaignWorker(ctx, consumer, campRepo, dispatchRepo, publisher)
+	worker := NewCampaignWorker(ctx, consumer, campRepo, connRepo, dispatchRepo, publisher)
 	defer worker.Stop()
 
 	// Wait to see if NATS message gets Acked without creating dispatches

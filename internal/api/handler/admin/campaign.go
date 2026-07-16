@@ -141,7 +141,7 @@ func (h *CampaignHandler) UploadCSV(c *echo.Context) error {
 
 	// We look for phone column
 	phoneColIdx := -1
-	phoneKeywords := []string{"phone", "telefone", "to", "number", "numero", "celular"}
+	phoneKeywords := []string{"phone", "telefone", "fone", "tel", "to", "number", "numero", "celular", "contato", "contact"}
 	for i, h := range headers {
 		for _, kw := range phoneKeywords {
 			if strings.Contains(h, kw) {
@@ -251,10 +251,30 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 	}
 
 	name := c.FormValue("name")
-	channel := c.FormValue("channel")
+	connectionIDStr := c.FormValue("channel")
 	batchSizeStr := c.FormValue("batch_size")
 	delayStr := c.FormValue("delay_seconds")
 
+	var connectionID uuid.UUID
+	var channel string
+	var conn *repository.Connection
+
+	if parsedID, err := uuid.Parse(connectionIDStr); err == nil {
+		connectionID = parsedID
+		conn, err = h.ConnectionRepo.GetByID(c.Request().Context(), connectionID)
+		if err != nil {
+			return c.String(http.StatusBadRequest, "connection not found")
+		}
+		channel = conn.Channel
+	} else {
+		// Fallback: treat connectionIDStr as channel name and get default connection
+		conn, err = h.ConnectionRepo.GetDefaultChannelConnection(c.Request().Context(), workspaceID, connectionIDStr)
+		if err != nil {
+			return c.String(http.StatusBadRequest, fmt.Sprintf("no active connection found for channel %s: %v", connectionIDStr, err))
+		}
+		connectionID = conn.ID
+		channel = conn.Channel
+	}
 	batchSize, _ := strconv.Atoi(batchSizeStr)
 	if batchSize <= 0 {
 		batchSize = 100
@@ -310,6 +330,7 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 
 	camp := &domain.Campaign{
 		WorkspaceID:  workspaceID,
+		ConnectionID: &connectionID,
 		Name:         name,
 		Status:       domain.CampaignStatusDraft,
 		BatchSize:    batchSize,

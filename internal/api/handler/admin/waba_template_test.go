@@ -90,7 +90,9 @@ func TestWABATemplateHandler(t *testing.T) {
 		"waba_account_id": "99999",
 	}
 	configBytes, _ := json.Marshal(wabaConfig)
+	connID := uuid.New()
 	err = connRepo.Create(ctx, &repository.Connection{
+		ID:             connID,
 		WorkspaceID:    ws.ID,
 		Name:           "WABA Cloud Test",
 		Channel:        "whatsapp_cloud",
@@ -152,6 +154,7 @@ func TestWABATemplateHandler(t *testing.T) {
 		// Insert local template first
 		tmpl := &repository.WABATemplate{
 			WorkspaceID:    ws.ID,
+			ConnectionID:   connID,
 			MetaTemplateID: "meta-tmpl-id-sync",
 			Name:           "sync_template",
 			Language:       "en_US",

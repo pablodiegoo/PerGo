@@ -26,13 +26,14 @@ type CampaignBatchTask struct {
 
 // CampaignWorker consumes campaign batches sequentially and publishes individual messages.
 type CampaignWorker struct {
-	consumer     jetstream.Consumer
-	cancel       context.CancelFunc
-	done         chan struct{}
-	campaignRepo *repository.CampaignRepository
-	dispatchRepo *repository.MessageDispatchRepository
-	publisher    *JetStreamPublisher
-	msgCtx       jetstream.MessagesContext
+	consumer        jetstream.Consumer
+	cancel          context.CancelFunc
+	done            chan struct{}
+	campaignRepo    *repository.CampaignRepository
+	connectionsRepo *repository.ConnectionRepository
+	dispatchRepo    *repository.MessageDispatchRepository
+	publisher       *JetStreamPublisher
+	msgCtx          jetstream.MessagesContext
 }
 
 // NewCampaignWorker creates and starts a new CampaignWorker.
@@ -40,17 +41,19 @@ func NewCampaignWorker(
 	ctx context.Context,
 	consumer jetstream.Consumer,
 	campaignRepo *repository.CampaignRepository,
+	connectionsRepo *repository.ConnectionRepository,
 	dispatchRepo *repository.MessageDispatchRepository,
 	publisher    *JetStreamPublisher,
 ) *CampaignWorker {
 	ctx, cancel := context.WithCancel(ctx)
 	w := &CampaignWorker{
-		consumer:     consumer,
-		cancel:       cancel,
-		done:         make(chan struct{}),
-		campaignRepo: campaignRepo,
-		dispatchRepo: dispatchRepo,
-		publisher:    publisher,
+		consumer:        consumer,
+		cancel:          cancel,
+		done:            make(chan struct{}),
+		campaignRepo:    campaignRepo,
+		connectionsRepo: connectionsRepo,
+		dispatchRepo:    dispatchRepo,
+		publisher:       publisher,
 	}
 	go w.run(ctx)
 	return w
@@ -126,6 +129,15 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 
 	slog.Info("campaign_worker: processing batch", "campaign_id", task.CampaignID, "batch_index", task.BatchIndex, "recipients_count", len(task.Recipients))
 
+	var connID uuid.UUID
+	var senderIdentity string
+	if campaign.ConnectionID != nil {
+		connID = *campaign.ConnectionID
+		if conn, err := w.connectionsRepo.GetByID(ctx, connID); err == nil && conn != nil {
+			senderIdentity = conn.SenderIdentity
+		}
+	}
+
 	for _, recipient := range task.Recipients {
 		// Double-check cancellation before sending each message
 		if recipientCampaign, err := w.campaignRepo.GetByID(ctx, task.CampaignID); err == nil {
@@ -143,13 +155,15 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 		var variablesJSON map[string]string = recipient.Variables
 
 		qMsg := domain.QueueMessage{
-			WorkspaceID:   task.WorkspaceID,
-			TraceID:       traceID,
-			To:            recipient.To,
-			Channel:       channel,
-			QueuedAt:      time.Now(),
-			CampaignID:    &task.CampaignID,
-			VariablesJSON: variablesJSON,
+			WorkspaceID:    task.WorkspaceID,
+			ConnectionID:   connID,
+			SenderIdentity: senderIdentity,
+			TraceID:        traceID,
+			To:             recipient.To,
+			Channel:        channel,
+			QueuedAt:       time.Now(),
+			CampaignID:     &task.CampaignID,
+			VariablesJSON:  variablesJSON,
 		}
 
 		if channel == "whatsapp_cloud" {

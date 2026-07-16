@@ -176,6 +176,7 @@ func (h *WABATemplateHandler) Create(c *echo.Context) error {
 	// Save to database
 	tmpl := &repository.WABATemplate{
 		WorkspaceID:    workspaceID,
+		ConnectionID:   wabaConn.ID,
 		MetaTemplateID: metaResp.ID,
 		Name:           name,
 		Language:       language,

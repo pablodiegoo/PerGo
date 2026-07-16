@@ -17,7 +17,14 @@ ALTER TABLE waba_templates
 -- Add index
 CREATE INDEX idx_waba_templates_connection ON waba_templates(connection_id);
 
+-- Add connection_id to campaigns
+ALTER TABLE campaigns
+    ADD COLUMN connection_id UUID REFERENCES connections(id) ON DELETE SET NULL;
+
 -- +goose Down
+ALTER TABLE campaigns
+    DROP COLUMN IF EXISTS connection_id;
+
 ALTER TABLE waba_templates
     DROP CONSTRAINT IF EXISTS waba_templates_connection_id_name_language_key;
 

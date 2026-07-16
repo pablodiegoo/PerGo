@@ -35,12 +35,12 @@ func (r *CampaignRepository) Create(ctx context.Context, c *domain.Campaign) (*d
 
 	var dbCampaign domain.Campaign
 	err = r.pool.QueryRow(ctx,
-		`INSERT INTO campaigns (workspace_id, name, status, batch_size, delay_seconds, template_name, channel, recipients, skipped_rows, scheduled_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		 RETURNING id, workspace_id, name, status, batch_size, delay_seconds, template_name, channel, recipients, skipped_rows, scheduled_at, created_at, updated_at`,
-		c.WorkspaceID, c.Name, c.Status, c.BatchSize, c.DelaySeconds, c.TemplateName, c.Channel, recipientsJSON, skippedJSON, c.ScheduledAt,
+		`INSERT INTO campaigns (workspace_id, connection_id, name, status, batch_size, delay_seconds, template_name, channel, recipients, skipped_rows, scheduled_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		 RETURNING id, workspace_id, connection_id, name, status, batch_size, delay_seconds, template_name, channel, recipients, skipped_rows, scheduled_at, created_at, updated_at`,
+		c.WorkspaceID, c.ConnectionID, c.Name, c.Status, c.BatchSize, c.DelaySeconds, c.TemplateName, c.Channel, recipientsJSON, skippedJSON, c.ScheduledAt,
 	).Scan(
-		&dbCampaign.ID, &dbCampaign.WorkspaceID, &dbCampaign.Name, &dbCampaign.Status,
+		&dbCampaign.ID, &dbCampaign.WorkspaceID, &dbCampaign.ConnectionID, &dbCampaign.Name, &dbCampaign.Status,
 		&dbCampaign.BatchSize, &dbCampaign.DelaySeconds, &dbCampaign.TemplateName, &dbCampaign.Channel,
 		&recipientsJSON, &skippedJSON, &dbCampaign.ScheduledAt, &dbCampaign.CreatedAt, &dbCampaign.UpdatedAt,
 	)
@@ -63,11 +63,11 @@ func (r *CampaignRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 	var recipientsJSON, skippedJSON []byte
 
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, workspace_id, name, status, batch_size, delay_seconds, template_name, channel, recipients, skipped_rows, scheduled_at, created_at, updated_at
+		`SELECT id, workspace_id, connection_id, name, status, batch_size, delay_seconds, template_name, channel, recipients, skipped_rows, scheduled_at, created_at, updated_at
 		 FROM campaigns WHERE id = $1`,
 		id,
 	).Scan(
-		&c.ID, &c.WorkspaceID, &c.Name, &c.Status,
+		&c.ID, &c.WorkspaceID, &c.ConnectionID, &c.Name, &c.Status,
 		&c.BatchSize, &c.DelaySeconds, &c.TemplateName, &c.Channel,
 		&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.CreatedAt, &c.UpdatedAt,
 	)
@@ -115,7 +115,7 @@ func (r *CampaignRepository) UpdateRecipients(ctx context.Context, id uuid.UUID,
 
 func (r *CampaignRepository) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]domain.Campaign, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, workspace_id, name, status, batch_size, delay_seconds, template_name, channel, recipients, skipped_rows, scheduled_at, created_at, updated_at
+		`SELECT id, workspace_id, connection_id, name, status, batch_size, delay_seconds, template_name, channel, recipients, skipped_rows, scheduled_at, created_at, updated_at
 		 FROM campaigns WHERE workspace_id = $1 ORDER BY created_at DESC`,
 		workspaceID,
 	)
@@ -129,7 +129,7 @@ func (r *CampaignRepository) ListByWorkspace(ctx context.Context, workspaceID uu
 		var c domain.Campaign
 		var recipientsJSON, skippedJSON []byte
 		err := rows.Scan(
-			&c.ID, &c.WorkspaceID, &c.Name, &c.Status,
+			&c.ID, &c.WorkspaceID, &c.ConnectionID, &c.Name, &c.Status,
 			&c.BatchSize, &c.DelaySeconds, &c.TemplateName, &c.Channel,
 			&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.CreatedAt, &c.UpdatedAt,
 		)

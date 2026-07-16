@@ -170,7 +170,7 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 						<option value="">-- Selecione uma conexão --</option>
 						for _, conn := range connections {
 							if conn.Status == "active" || conn.Status == "connected" {
-								<option value={ conn.Channel }>{ fmt.Sprintf("%s [%s]", conn.Name, conn.Channel) }</option>
+								<option value={ conn.ID.String() } data-channel={ conn.Channel }>{ fmt.Sprintf("%s [%s]", conn.Name, conn.Channel) }</option>
 							}
 						}
 						<option value="add_new_connection">+ Adicionar nova conexão...</option>
@@ -200,7 +200,7 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 					<select id="template_select" name="template_select" onchange="renderWABAVariables()" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full">
 						<option value="">-- Escolha um template --</option>
 						for _, t := range templates {
-							<option value={ t.Name } data-components={ string(t.Components) }>{ t.Name } ({ t.Language })</option>
+							<option value={ t.Name } data-connection={ t.ConnectionID.String() } data-components={ string(t.Components) }>{ t.Name } ({ t.Language })</option>
 						}
 					</select>
 				</div>
@@ -281,7 +281,11 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 		}
 
 		function toggleTemplateSelector() {
-			const channel = document.getElementById('channel').value;
+			const select = document.getElementById('channel');
+			const selectedOption = select.options[select.selectedIndex];
+			const channel = selectedOption ? selectedOption.getAttribute('data-channel') : '';
+			const connId = select.value;
+
 			const tempSelect = document.getElementById('template-selector-container');
 			const bodyText = document.getElementById('body-text-container');
 			const varContainer = document.getElementById('variable-mapping-container');
@@ -290,6 +294,24 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 				tempSelect.style.display = 'block';
 				bodyText.style.display = 'none';
 				varContainer.style.display = 'block';
+
+				// Filter template options by connection
+				const templateSelect = document.getElementById('template_select');
+				for (let i = 0; i < templateSelect.options.length; i++) {
+					const opt = templateSelect.options[i];
+					if (opt.value === '') {
+						opt.style.display = 'block';
+						continue;
+					}
+					const optConn = opt.getAttribute('data-connection');
+					if (optConn === connId) {
+						opt.style.display = 'block';
+					} else {
+						opt.style.display = 'none';
+					}
+				}
+				// Reset selection
+				templateSelect.value = '';
 				renderWABAVariables();
 			} else {
 				tempSelect.style.display = 'none';

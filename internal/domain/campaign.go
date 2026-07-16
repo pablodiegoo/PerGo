@@ -36,6 +36,7 @@ type SkippedRow struct {
 type Campaign struct {
 	ID           uuid.UUID          `json:"id"`
 	WorkspaceID  uuid.UUID          `json:"workspace_id"`
+	ConnectionID *uuid.UUID         `json:"connection_id"`
 	Name         string             `json:"name"`
 	Status       CampaignStatus     `json:"status"`
 	BatchSize    int                `json:"batch_size"`

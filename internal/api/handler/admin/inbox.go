@@ -361,7 +361,21 @@ func (h *InboxHandler) NewMessageModal(c *echo.Context) error {
 	var templates []repository.WABATemplate
 	if h.Templates != nil {
 		var err error
-		templates, err = h.Templates.ListByWorkspace(ctx, workspaceID)
+		if isTemplateOnly && to != "" {
+			conn, cErr := h.Connections.GetBySenderIdentity(ctx, workspaceID, to)
+			if cErr == nil && conn != nil {
+				templates, err = h.Templates.ListByConnection(ctx, conn.ID)
+			} else {
+				templates, err = h.Templates.ListByWorkspace(ctx, workspaceID)
+			}
+		} else {
+			defaultWABAConn, cErr := h.Connections.GetDefaultChannelConnection(ctx, workspaceID, "whatsapp_cloud")
+			if cErr == nil && defaultWABAConn != nil {
+				templates, err = h.Templates.ListByConnection(ctx, defaultWABAConn.ID)
+			} else {
+				templates, err = h.Templates.ListByWorkspace(ctx, workspaceID)
+			}
+		}
 		if err != nil {
 			// Non-blocking log
 		}

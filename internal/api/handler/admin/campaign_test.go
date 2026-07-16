@@ -67,6 +67,20 @@ func TestCampaignHandler(t *testing.T) {
 		_ = wsRepo.Delete(ctx, ws.ID)
 	}()
 
+	// Create default connection
+	err = connectionRepo.Create(ctx, &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "WhatsApp Web",
+		Channel:        "whatsapp",
+		SenderIdentity: "5511999990002",
+		Status:         "connected",
+		IsDefault:      true,
+	})
+	if err != nil {
+		t.Fatalf("failed to create default connection: %v", err)
+	}
+
 	// Ensure stream exists
 	_, err = queue.EnsureCampaignStream(ctx, nc)
 	if err != nil {
