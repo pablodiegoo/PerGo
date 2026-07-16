@@ -23,7 +23,13 @@ import (
 func seedAuditEvent(t *testing.T, pool *pgxpool.Pool,
 	wsID uuid.UUID, traceID, eventType string, payload string, createdAt time.Time) {
 	t.Helper()
-	_, err := pool.Exec(context.Background(),
+	// Dynamically create monthly partition to prevent partition-not-found constraint errors
+	_, err := pool.Exec(context.Background(), "SELECT create_monthly_partition($1::date)", createdAt)
+	if err != nil {
+		t.Fatalf("failed to create partition for seed audit event: %v", err)
+	}
+
+	_, err = pool.Exec(context.Background(),
 		`INSERT INTO audit_logs (id, workspace_id, trace_id, event_type, payload, created_at) VALUES ($1, $2, $3, $4, $5::jsonb, $6)`,
 		uuid.New(), wsID, traceID, eventType, payload, createdAt,
 	)

@@ -175,7 +175,7 @@ func TestAdminWebhookDLQHandlers(t *testing.T) {
 	}
 
 	// 5. Insert dummy DLQ item and test GET Details
-	err = dlqRepo.InsertDLQ(ctx, ws.ID, "trace-abc", "msg-def", "failed", []byte(`{"status":"failed"}`), "https://example.com/webhook-endpoint", 1, nil)
+	err = dlqRepo.InsertDLQ(ctx, ws.ID, cfg.ID, "trace-abc", "msg-def", "failed", []byte(`{"status":"failed"}`), "https://example.com/webhook-endpoint", 1, nil)
 	if err != nil {
 		t.Fatalf("failed to insert DLQ item: %v", err)
 	}
