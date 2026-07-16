@@ -89,7 +89,12 @@ type ValueData struct {
 			} `json:"phones"`
 		} `json:"contacts,omitempty"`
 	} `json:"messages,omitempty"`
-	Statuses []any `json:"statuses,omitempty"`
+	Statuses []struct {
+		ID           string `json:"id"`
+		Status       string `json:"status"` // "sent", "delivered", "read", "failed"
+		RecipientID  string `json:"recipient_id"`
+		Timestamp    string `json:"timestamp"`
+	} `json:"statuses,omitempty"`
 }
 
 type wabaMediaObj struct {
@@ -122,7 +127,18 @@ func (a *WABAInboundAdapter) Parse(
 	for _, entry := range wabaPayload.Entry {
 		for _, change := range entry.Changes {
 			if len(change.Value.Statuses) > 0 {
-				continue // Skip status updates (sent, delivered, read receipts)
+				for _, status := range change.Value.Statuses {
+					events = append(events, &inbound.InboundEvent{
+						WorkspaceID: conn.WorkspaceID,
+						MessageID:   status.ID,
+						Channel:     "whatsapp_cloud",
+						From:        status.RecipientID,
+						To:          change.Value.Metadata.DisplayPhoneNumber,
+						Body:        status.Status,
+						Metadata:    map[string]string{"type": "status_update"},
+					})
+				}
+				continue
 			}
 
 			for _, msg := range change.Value.Messages {
