@@ -7,8 +7,8 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 ## Phases
 
 - [x] **Phase 17: Multi-Webhook Subscriptions** - Webhook subscriptions database model, wildcard event-type matching, concurrent NATS fan-out, per-subscription DLQs, and dashboard management interface. (completed 2026-07-16)
-- [ ] **Phase 18: Omnichannel Contact Merging** - Unified contact and identities schemas, auto-resolution on incoming messages, contact merge API/dashboard UI, and unified inbox conversation views.
-- [ ] **Phase 19: Webhook Messaging Verbs Engine** - Decoupled parsing of webhook JSON responses, sequential execution of verbs (reply, wait, forward, tag, close), and operator audit logs.
+- [x] **Phase 18: Omnichannel Contact Merging** - Unified contact and identities schemas, auto-resolution on incoming messages, contact merge API/dashboard UI, and unified inbox conversation views. (completed 2026-07-16)
+- [x] **Phase 19: Webhook Messaging Verbs Engine** - Decoupled parsing of webhook JSON responses, sequential execution of verbs (reply, wait, forward, tag, close), and operator audit logs. (completed 2026-07-16)
 
 ## Progress
 
@@ -23,9 +23,9 @@ Phases execute in numeric order: 17 → 18 → 19
 | 14. User API action logs | 1/1 | Complete | 2026-07-15 |
 | 15. CSS standardization | 1/1 | Complete | 2026-07-15 |
 | 16. Deprecate workspace subviews | 1/1 | Complete | 2026-07-15 |
-| 17. Multi-Webhook Subscriptions | 2/2 | Complete   | 2026-07-16 |
-| 18. Omnichannel Contact Merging | 0/2 | Pending | — |
-| 19. Webhook Messaging Verbs Engine | 0/1 | Pending | — |
+| 17. Multi-Webhook Subscriptions | 2/2 | Complete | 2026-07-16 |
+| 18. Omnichannel Contact Merging | 2/2 | Complete | 2026-07-16 |
+| 19. Webhook Messaging Verbs Engine | 2/2 | Complete | 2026-07-16 |
 
 ---
 
