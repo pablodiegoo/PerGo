@@ -58,7 +58,7 @@ func TestWebhookDLQRepository(t *testing.T) {
 
 	// Verify DB is encrypted
 	var dbSecret []byte
-	err = pool.QueryRow(ctx, "SELECT secret FROM webhook_configs WHERE workspace_id = $1", ws1.ID).Scan(&dbSecret)
+	err = pool.QueryRow(ctx, "SELECT secret FROM webhook_subscriptions WHERE workspace_id = $1", ws1.ID).Scan(&dbSecret)
 	if err != nil {
 		t.Fatalf("failed to query raw DB secret: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestWebhookDLQRepository(t *testing.T) {
 	failReason := "Gateway Timeout 504"
 
 	// Insert into DLQ for WS1
-	err = repo.InsertDLQ(ctx, ws1.ID, traceID, messageID, eventType, payload, testURL, attempts, &failReason)
+	err = repo.InsertDLQ(ctx, ws1.ID, cfg.ID, traceID, messageID, eventType, payload, testURL, attempts, &failReason)
 	if err != nil {
 		t.Fatalf("failed to insert into DLQ: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestWebhookDLQRepository(t *testing.T) {
 	}
 
 	item := items[0]
-	if item.TraceID != traceID || item.MessageID != messageID || item.EventType != eventType {
+	if item.TraceID != traceID || item.MessageID != messageID || item.EventType != eventType || item.SubscriptionID != cfg.ID {
 		t.Errorf("DLQ fields mismatch: %+v", item)
 	}
 	var expectedMap, actualMap map[string]interface{}
