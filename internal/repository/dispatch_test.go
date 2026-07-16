@@ -99,3 +99,50 @@ func TestMessageDispatchRepository(t *testing.T) {
 		t.Errorf("expected ErrDispatchNotFound, got %v", err)
 	}
 }
+
+func TestMessageDispatchProviderMessageID(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := NewWorkspaceRepository(pool)
+	repo := NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "dispatch_provider_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() {
+		_ = wsRepo.Delete(ctx, ws.ID)
+	}()
+
+	traceID := uuid.New().String()
+	d, err := repo.GetOrCreateDispatch(ctx, ws.ID, traceID, "whatsapp_cloud", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("failed to create dispatch: %v", err)
+	}
+
+	providerID := "wamid.test12345"
+	err = repo.UpdateProviderMessageID(ctx, d.ID, providerID)
+	if err != nil {
+		t.Fatalf("failed to update provider message id: %v", err)
+	}
+
+	retrieved, err := repo.GetByProviderMessageID(ctx, providerID)
+	if err != nil {
+		t.Fatalf("failed to get by provider message id: %v", err)
+	}
+
+	if retrieved.ID != d.ID {
+		t.Errorf("expected ID %s, got %s", d.ID, retrieved.ID)
+	}
+	if retrieved.ProviderMessageID == nil || *retrieved.ProviderMessageID != providerID {
+		t.Errorf("expected ProviderMessageID %s, got %v", providerID, retrieved.ProviderMessageID)
+	}
+
+	_, err = repo.GetByProviderMessageID(ctx, "non-existent-provider-id")
+	if !errors.Is(err, ErrDispatchNotFound) {
+		t.Errorf("expected ErrDispatchNotFound, got %v", err)
+	}
+}
+
