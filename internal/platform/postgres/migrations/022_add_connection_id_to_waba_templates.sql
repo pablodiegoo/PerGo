@@ -2,7 +2,29 @@
 ALTER TABLE waba_templates
     ADD COLUMN connection_id UUID REFERENCES connections(id) ON DELETE CASCADE;
 
--- Since the count is 0, we can safely set it to NOT NULL directly.
+-- Backfill connection_id for existing templates matching the workspace's whatsapp_cloud connection
+UPDATE waba_templates wt
+SET connection_id = (
+    SELECT c.id 
+    FROM connections c 
+    WHERE c.workspace_id = wt.workspace_id 
+      AND c.channel = 'whatsapp_cloud'
+    LIMIT 1
+);
+
+-- Fallback: Use the first connection of the workspace if no whatsapp_cloud connection exists
+UPDATE waba_templates wt
+SET connection_id = (
+    SELECT c.id 
+    FROM connections c 
+    WHERE c.workspace_id = wt.workspace_id 
+    LIMIT 1
+)
+WHERE connection_id IS NULL;
+
+-- Cleanup: Delete orphaned templates belonging to workspaces with zero connections
+DELETE FROM waba_templates WHERE connection_id IS NULL;
+
 ALTER TABLE waba_templates
     ALTER COLUMN connection_id SET NOT NULL;
 
