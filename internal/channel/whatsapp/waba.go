@@ -408,6 +408,14 @@ func (a *WABAAdapter) sendRequest(ctx context.Context, phoneNumberID, token stri
 
 	respBytes, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		var successResp struct {
+			Messages []struct {
+				ID string `json:"id"`
+			} `json:"messages"`
+		}
+		if err := json.Unmarshal(respBytes, &successResp); err == nil && len(successResp.Messages) > 0 && successResp.Messages[0].ID != "" {
+			return successResp.Messages[0].ID, nil
+		}
 		return string(respBytes), nil
 	}
 
