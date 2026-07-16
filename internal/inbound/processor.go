@@ -46,6 +46,8 @@ type InboundEvent struct {
 	Media       *InboundMedia
 	Location    *InboundLocation
 	Contacts    []InboundContact
+	SenderName  string
+	Metadata    map[string]string
 }
 
 // InboundEventPayload is the standard format published to NATS and webhooks.
@@ -85,6 +87,7 @@ type InboundProcessor struct {
 	publisher            Publisher
 	auditWriter          audit.Writer
 	recipientSessionRepo *repository.RecipientSessionRepository
+	contactRepo          *repository.ContactRepository
 }
 
 // NewInboundProcessor creates a new InboundProcessor.
@@ -95,6 +98,7 @@ func NewInboundProcessor(
 	publisher Publisher,
 	auditWriter audit.Writer,
 	recipientSessionRepo *repository.RecipientSessionRepository,
+	contactRepo *repository.ContactRepository,
 ) *InboundProcessor {
 	return &InboundProcessor{
 		dedupRepo:            dedupRepo,
@@ -103,6 +107,7 @@ func NewInboundProcessor(
 		publisher:            publisher,
 		auditWriter:          auditWriter,
 		recipientSessionRepo: recipientSessionRepo,
+		contactRepo:          contactRepo,
 	}
 }
 
@@ -110,6 +115,22 @@ func NewInboundProcessor(
 func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error {
 	if ev.WorkspaceID == uuid.Nil {
 		return fmt.Errorf("inbound: workspace ID is required")
+	}
+
+	// Resolve/Create Contact Profile
+	if p.contactRepo != nil {
+		var username, phone string
+		if ev.Metadata != nil {
+			username = ev.Metadata["username"]
+			phone = ev.Metadata["phone_number"]
+		}
+		if ev.Channel == "whatsapp" || ev.Channel == "whatsapp_cloud" {
+			phone = ev.From
+		}
+		_, err := p.contactRepo.ResolveContact(ctx, ev.WorkspaceID, ev.Channel, ev.From, ev.SenderName, username, phone)
+		if err != nil {
+			slog.Error("inbound processor: failed to resolve contact profile", "error", err, "from", ev.From)
+		}
 	}
 
 	// 1. Recipient Session Tracking

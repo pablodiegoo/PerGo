@@ -159,6 +159,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	sessRepo := repository.NewRecipientSessionRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
 
 	// Create test workspace
 	wsName := "inbound_proc_test_" + uuid.New().String()
@@ -175,7 +176,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -227,7 +228,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -266,7 +267,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -324,7 +325,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -366,7 +367,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 
 		pub2 := &fakePublisher{}
-		proc2 := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub2, aud, sessRepo)
+		proc2 := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub2, aud, sessRepo, contactRepo)
 		event.MessageID = "test-pii-opt-in" // fresh message ID to bypass dedup
 
 		err = proc2.Process(ctx, event)
@@ -398,7 +399,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
