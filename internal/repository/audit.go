@@ -224,7 +224,7 @@ func (r *AuditRepository) ListConversations(ctx context.Context, workspaceID uui
 			total_count
 		FROM RankedConversations
 		WHERE rn = 1
-		  AND ($2 = '' OR channel = $2)
+		  AND ($2 = '' OR recipient_identity = $2)
 		ORDER BY created_at DESC
 	`
 

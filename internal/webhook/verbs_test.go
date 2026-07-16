@@ -27,7 +27,15 @@ func getTestPoolWithMigrations(t *testing.T) *pgxpool.Pool {
 
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
-		t.Fatalf("failed to connect to DB: %v", err)
+		t.Skipf("PostgreSQL not available at %s: %v", dsn, err)
+		return nil
+	}
+
+	err = pool.Ping(ctx)
+	if err != nil {
+		pool.Close()
+		t.Skipf("PostgreSQL ping failed at %s: %v", dsn, err)
+		return nil
 	}
 
 	db, err := postgres.NewSQLDB(pool)
@@ -46,6 +54,9 @@ func getTestPoolWithMigrations(t *testing.T) *pgxpool.Pool {
 
 func TestVerbsEngine(t *testing.T) {
 	pool := getTestPoolWithMigrations(t)
+	if pool == nil {
+		return
+	}
 	defer pool.Close()
 
 	ctx := context.Background()

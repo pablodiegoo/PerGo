@@ -78,17 +78,22 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 // View handles GET /admin/inbox — renders the full split-pane inbox page.
 func (h *InboxHandler) View(c *echo.Context) error {
 	workspaceID := resolveWorkspaceID(c)
-	channelFilter := c.QueryParam("channel")
+	connectionFilter := c.QueryParam("connection")
 
-	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, channelFilter)
+	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, connectionFilter)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to load conversations: "+err.Error())
 	}
 
-	inboxPage := pages.InboxPage(conversations, unreadMap, channelFilter, unreadCount, nil)
+	var connections []*repository.Connection
+	if h.Connections != nil {
+		connections, _ = h.Connections.ListByWorkspace(c.Request().Context(), workspaceID)
+	}
+
+	inboxPage := pages.InboxPage(conversations, unreadMap, connectionFilter, unreadCount, nil, connections)
  
 	if mw.IsHTMX(c) {
-		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, channelFilter, unreadCount, nil))
+		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, connectionFilter, unreadCount, nil, connections))
 	}
 	return mw.Render(c, http.StatusOK, inboxPage)
 }
@@ -97,14 +102,14 @@ func (h *InboxHandler) View(c *echo.Context) error {
 // The response includes the conv-list fragment plus an OOB badge update for the sidebar.
 func (h *InboxHandler) PollConversations(c *echo.Context) error {
 	workspaceID := resolveWorkspaceID(c)
-	channelFilter := c.QueryParam("channel")
+	connectionFilter := c.QueryParam("connection")
 
-	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, channelFilter)
+	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, connectionFilter)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to load conversations")
 	}
 
-	return mw.Render(c, http.StatusOK, components.ConvList(conversations, unreadMap, channelFilter, unreadCount))
+	return mw.Render(c, http.StatusOK, components.ConvList(conversations, unreadMap, connectionFilter, unreadCount))
 }
 
 // ReplyOption holds reply connection options for picker
@@ -197,7 +202,7 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 	}
 
 	chatPanelComp := components.ChatPanel(contact, replyOptions, messages, isWabaBlocked)
-	return mw.Render(c, http.StatusOK, pages.InboxPage(conversations, unreadMap, "", unreadCount, chatPanelComp))
+	return mw.Render(c, http.StatusOK, pages.InboxPage(conversations, unreadMap, "", unreadCount, chatPanelComp, connections))
 }
 
 // channelLabelStr maps to human readable labels

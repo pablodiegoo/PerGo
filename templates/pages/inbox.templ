@@ -17,13 +17,13 @@ type InboxMessage struct {
 }
 
 // InboxPage renders the full split-pane inbox page with sidebar, conversation list, and chat panel.
-templ InboxPage(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component) {
-	@layout.Base("Inbox", InboxContent(conversations, unreadMap, activeChannel, unreadCount, chatPanel))
+templ InboxPage(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection) {
+	@layout.Base("Inbox", InboxContent(conversations, unreadMap, activeChannel, unreadCount, chatPanel, connections))
 }
 
 // InboxContent renders the split-pane layout (conversation list + chat panel).
 // Used both for full-page render and HTMX partial swap.
-templ InboxContent(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component) {
+templ InboxContent(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection) {
 	<div class="inbox-shell flex h-full w-full overflow-hidden">
 		<!-- Left panel: conversation list -->
 		<div class="inbox-sidebar w-80 lg:w-80 md:w-72 flex-shrink-0 border-r border-zinc-200 flex flex-col bg-white h-full overflow-hidden">
@@ -35,18 +35,56 @@ templ InboxContent(conversations []repository.ConversationSummary, unreadMap map
 						<span class="badge-unread text-xs font-bold bg-blue-500 text-white px-2 py-0.5 rounded-full">{ fmt.Sprintf("%d", unreadCount) }</span>
 					}
 				</div>
-				<button
-					class="p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-50 text-zinc-600 hover:text-zinc-900 transition-colors shadow-sm flex items-center justify-center"
-					hx-get="/admin/inbox/new-message-modal"
-					hx-target="#modal-container"
-					hx-swap="innerHTML"
-					onclick="setTimeout(openModal, 50)"
-					title="Novo Chat"
-				>
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-					</svg>
-				</button>
+				<div class="flex items-center gap-1.5">
+					<!-- Filter Dropdown -->
+					<div class="relative inline-block text-left" id="inbox-filter-dropdown-container">
+						<button
+							id="inbox-filter-btn"
+							class={ "p-1.5 rounded-lg border hover:bg-zinc-50 transition-colors shadow-sm flex items-center justify-center", templ.KV("border-indigo-400 bg-indigo-50 text-indigo-600 hover:text-indigo-900", activeChannel != ""), templ.KV("border-zinc-200 bg-white text-zinc-600 hover:text-zinc-900", activeChannel == "") }
+							onclick="toggleFilterDropdown()"
+							title="Filtrar por Canal"
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+							</svg>
+						</button>
+						<div
+							id="inbox-filter-dropdown"
+							class="hidden absolute right-0 mt-1.5 w-56 rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50 py-1"
+							style="top: 100%; right: 0;"
+						>
+							<a
+								href="/admin/inbox"
+								class={ "block px-4 py-2 text-xs font-medium hover:bg-zinc-50 transition-colors border-b border-zinc-100", templ.KV("text-indigo-600 font-bold bg-indigo-50/50", activeChannel == ""), templ.KV("text-zinc-700", activeChannel != "") }
+							>
+								Todos os Canais
+							</a>
+							for _, conn := range connections {
+								<a
+									href={ templ.URL(fmt.Sprintf("/admin/inbox?connection=%s", conn.SenderIdentity)) }
+									class={ "block px-4 py-2 text-xs hover:bg-zinc-50 transition-colors", templ.KV("text-indigo-600 font-bold bg-indigo-50/50", activeChannel == conn.SenderIdentity), templ.KV("text-zinc-600", activeChannel != conn.SenderIdentity) }
+								>
+									<span class="font-semibold block truncate">{ conn.Name }</span>
+									<span class="block text-[10px] text-zinc-400 font-normal truncate">{ conn.Channel } • { conn.SenderIdentity }</span>
+								</a>
+							}
+						</div>
+					</div>
+
+					<!-- Novo Chat -->
+					<button
+						class="p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-50 text-zinc-600 hover:text-zinc-900 transition-colors shadow-sm flex items-center justify-center"
+						hx-get="/admin/inbox/new-message-modal"
+						hx-target="#modal-container"
+						hx-swap="innerHTML"
+						onclick="setTimeout(openModal, 50)"
+						title="Novo Chat"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+						</svg>
+					</button>
+				</div>
 			</div>
 			<!-- Search bar (static UI, future enhancement) -->
 			<div class="inbox-search px-3 py-2 border-b border-zinc-100">
@@ -78,4 +116,23 @@ templ InboxContent(conversations []repository.ConversationSummary, unreadMap map
 			}
 		</div>
 	</div>
+
+	<script>
+		function toggleFilterDropdown() {
+			var dropdown = document.getElementById('inbox-filter-dropdown');
+			if (dropdown) {
+				dropdown.classList.toggle('hidden');
+			}
+		}
+		// Close dropdown when clicking outside
+		window.addEventListener('click', function(e) {
+			var dropdown = document.getElementById('inbox-filter-dropdown');
+			var container = document.getElementById('inbox-filter-dropdown-container');
+			if (dropdown && container && !dropdown.classList.contains('hidden')) {
+				if (!container.contains(e.target)) {
+					dropdown.classList.add('hidden');
+				}
+			}
+		});
+	</script>
 }

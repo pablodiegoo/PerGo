@@ -10,30 +10,11 @@ import (
 templ ConvList(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int) {
 	<div
 		id="conv-list"
-		hx-get="/admin/inbox/conversations/poll"
+		hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s", activeChannel) }
 		hx-trigger="every 5s"
 		hx-swap="outerHTML"
 		class="conv-list flex flex-col h-full"
 	>
-		<!-- Channel filter tabs -->
-		<div class="conv-filters flex items-center gap-1 px-3 py-2 border-b border-zinc-200 bg-white">
-			<a
-				href="/admin/inbox"
-				class={ "filter-tab text-xs font-medium px-2 py-1 rounded transition-colors", templ.KV("bg-zinc-900 text-white", activeChannel == ""), templ.KV("text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100", activeChannel != "") }
-			>Todos</a>
-			<a
-				href="/admin/inbox?channel=whatsapp"
-				class={ "filter-tab text-xs font-medium px-2 py-1 rounded transition-colors", templ.KV("bg-zinc-900 text-white", activeChannel == "whatsapp"), templ.KV("text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100", activeChannel != "whatsapp") }
-			>WA Web</a>
-			<a
-				href="/admin/inbox?channel=whatsapp_cloud"
-				class={ "filter-tab text-xs font-medium px-2 py-1 rounded transition-colors", templ.KV("bg-zinc-900 text-white", activeChannel == "whatsapp_cloud"), templ.KV("text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100", activeChannel != "whatsapp_cloud") }
-			>WA Cloud</a>
-			<a
-				href="/admin/inbox?channel=telegram"
-				class={ "filter-tab text-xs font-medium px-2 py-1 rounded transition-colors", templ.KV("bg-zinc-900 text-white", activeChannel == "telegram"), templ.KV("text-zinc-500 hover:text-zinc-800 hover:bg-zinc-100", activeChannel != "telegram") }
-			>Telegram</a>
-		</div>
 		<!-- Conversation items -->
 		<div class="conv-items flex-1 overflow-y-auto">
 			for _, conv := range conversations {

@@ -325,6 +325,9 @@ func (m *mockRouteResolver) GetDefaultChannelConnection(ctx context.Context, wor
 
 func TestDefaultDispatcher_VerbsIntegration(t *testing.T) {
 	pool := getTestPoolWithMigrations(t)
+	if pool == nil {
+		return
+	}
 	defer pool.Close()
 
 	ctx := context.Background()
