@@ -70,22 +70,24 @@ type WebhookDispatcher interface {
 
 // DefaultDispatcher is the concrete implementation of WebhookDispatcher.
 type DefaultDispatcher struct {
-	subStore SubscriptionStore
-	dlqStore DLQStore
-	wsStore  WorkspaceStore
-	client   HTTPClient
+	subStore    SubscriptionStore
+	dlqStore    DLQStore
+	wsStore     WorkspaceStore
+	client      HTTPClient
+	verbsEngine *VerbsEngine
 }
 
 // NewDefaultDispatcher creates a new DefaultDispatcher instance.
-func NewDefaultDispatcher(subStore SubscriptionStore, dlqStore DLQStore, wsStore WorkspaceStore, client HTTPClient) *DefaultDispatcher {
+func NewDefaultDispatcher(subStore SubscriptionStore, dlqStore DLQStore, wsStore WorkspaceStore, client HTTPClient, verbsEngine *VerbsEngine) *DefaultDispatcher {
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second}
 	}
 	return &DefaultDispatcher{
-		subStore: subStore,
-		dlqStore: dlqStore,
-		wsStore:  wsStore,
-		client:   client,
+		subStore:    subStore,
+		dlqStore:    dlqStore,
+		wsStore:     wsStore,
+		client:      client,
+		verbsEngine: verbsEngine,
 	}
 }
 
