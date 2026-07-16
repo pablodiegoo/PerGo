@@ -174,6 +174,11 @@ func (o *DispatchOrchestrator) Process(
 		if err == nil {
 			if o.dispatchRepo != nil && dispatch != nil {
 				_ = o.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "sent", channelName, i, nil)
+				if channelName == "whatsapp_cloud" && respStr != "" {
+					if errUpdate := o.dispatchRepo.UpdateProviderMessageID(ctx, dispatch.ID, respStr); errUpdate != nil {
+						slog.Error("orchestrator: failed to update provider message ID", "error", errUpdate, "dispatch_id", dispatch.ID, "wamid", respStr)
+					}
+				}
 				o.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "sent", channelName, nil)
 			}
 			slog.Info("orchestrator: message dispatched successfully", "channel", channelName, "trace_id", traceID)
