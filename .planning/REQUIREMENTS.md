@@ -60,24 +60,24 @@
 | CAMP-06 | Phase 12 | Validated |
 | CAMP-07 | Phase 12 | Validated |
 | CAMP-08 | Phase 12 | Validated |
-| SUBS-01 | TBD | Pending |
-| SUBS-02 | TBD | Pending |
-| SUBS-03 | TBD | Pending |
-| SUBS-04 | TBD | Pending |
-| CONT-01 | TBD | Pending |
-| CONT-02 | TBD | Pending |
-| CONT-03 | TBD | Pending |
-| CONT-04 | TBD | Pending |
-| VERB-01 | TBD | Pending |
-| VERB-02 | TBD | Pending |
-| VERB-03 | TBD | Pending |
+| SUBS-01 | Phase 17 | Pending |
+| SUBS-02 | Phase 17 | Pending |
+| SUBS-03 | Phase 17 | Pending |
+| SUBS-04 | Phase 17 | Pending |
+| CONT-01 | Phase 18 | Pending |
+| CONT-02 | Phase 18 | Pending |
+| CONT-03 | Phase 18 | Pending |
+| CONT-04 | Phase 18 | Pending |
+| VERB-01 | Phase 19 | Pending |
+| VERB-02 | Phase 19 | Pending |
+| VERB-03 | Phase 19 | Pending |
 
 **Coverage:**
 - Active requirements: 11 total
-- Mapped to phases: 0
+- Mapped to phases: 11
 - Completed requirements: 8 total
 - Mapped to phases: 8
-- Unmapped active: 11
+- Unmapped active: 0 ✓
 
 ---
 *Requirements defined: 2026-07-16*

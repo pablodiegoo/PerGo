@@ -2,104 +2,88 @@
 
 ## Overview
 
-PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS JetStream as the durability boundary, stateless channel workers behind a plugin Dispatcher interface, PostgreSQL as the system of record for identity and audit, and a server-rendered admin console. For Milestone 1.1, we introduce the Campaign Engine to support batch sending and automated list cleansing directly from the admin panel.
+PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS JetStream as the durability boundary, stateless channel workers behind a plugin Dispatcher interface, PostgreSQL as the system of record for identity and audit, and a server-rendered admin console. For Milestone 1.2, we integrate key PRD gaps: Multi-Webhook Subscriptions, Omnichannel Contact Merging, and the Webhook Messaging Verbs Engine.
 
 ## Phases
 
-- [x] **Phase 12: Campaign Engine** - Bulk messaging campaign dashboard with CSV sanitization, flexible regex variables interpolation, batch throttling via NATS JetStream, and enriched outbound logging. (completed 2026-07-15)
-- [x] **Phase 12.1: Address tech debt: sidebar active highlighting** - Fix active styling highlighting and Settings accordion expansion for workspace-scoped campaigns page. (INSERTED) (completed 2026-07-15)
-
-## Phase Details
-
-### Phase 12: Campaign Engine
-
-**Goal**: Implement throttled campaign sending via CSV mailings, dynamic variable mapping, NATS batches, and enriched logging.
-**Mode**: mvp
-**Depends on**: Phase 11
-**Requirements**: CAMP-01, CAMP-02, CAMP-03, CAMP-04, CAMP-05, CAMP-06, CAMP-07, CAMP-08
-**Success Criteria** (what must be TRUE):
-
-  1. Operator can upload a CSV mailing list via the admin panel, view validation metrics (valid vs duplicate vs formatting errors), and see dynamic columns shortcut buttons.
-  2. Operator can configure template variables via input text fields supporting multi-variable interpolation (e.g. `{{nome}} de {{cidade}}`), schedule campaign dispatch, configure batch size, and view estimated campaign duration.
-  3. System parses CSV, sanitizes data, schedules batches, and dispatches them in the background via NATS JetStream, with configurable delays and random jitter.
-  4. System persists campaign metadata in `outbound_logs` using the Enriched Logs architecture with compound database indexes, verified via tests.
-
-**Plans**: 2/2 plans complete
-
-- [x] 12-01-PLAN.md
-- [x] 12-02-PLAN.md
-
-**UI hint**: yes
+- [ ] **Phase 17: Multi-Webhook Subscriptions** - Webhook subscriptions database model, wildcard event-type matching, concurrent NATS fan-out, per-subscription DLQs, and dashboard management interface.
+- [ ] **Phase 18: Omnichannel Contact Merging** - Unified contact and identities schemas, auto-resolution on incoming messages, contact merge API/dashboard UI, and unified inbox conversation views.
+- [ ] **Phase 19: Webhook Messaging Verbs Engine** - Decoupled parsing of webhook JSON responses, sequential execution of verbs (reply, wait, forward, tag, close), and operator audit logs.
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 12
+Phases execute in numeric order: 17 → 18 → 19
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 12. Campaign Engine | 2/2 | Complete   | 2026-07-15 |
-| 12.1. Address tech debt: sidebar active highlighting | 1/1 | Complete    | 2026-07-15 |
+| 12. Campaign Engine | 2/2 | Complete | 2026-07-15 |
+| 12.1. Address tech debt: sidebar active highlighting | 1/1 | Complete | 2026-07-15 |
 | 13. Deepen media engine | 1/1 | Complete | 2026-07-15 |
 | 14. User API action logs | 1/1 | Complete | 2026-07-15 |
 | 15. CSS standardization | 1/1 | Complete | 2026-07-15 |
 | 16. Deprecate workspace subviews | 1/1 | Complete | 2026-07-15 |
+| 17. Multi-Webhook Subscriptions | 0/2 | Pending | — |
+| 18. Omnichannel Contact Merging | 0/2 | Pending | — |
+| 19. Webhook Messaging Verbs Engine | 0/1 | Pending | — |
 
-### Phase 13: deepen-media-engine-to-consolidate-storage-pipelines
+---
 
-**Goal:** Consolidate media storage pipelines and optimize storage.
-**Requirements**: TBD
-**Depends on:** Phase 12.1
-**Plans:** 1/1 plans complete
+## Phase Details
 
-Plans:
+### Phase 17: Multi-Webhook Subscriptions
 
-- [x] 13-01-PLAN.md (completed 2026-07-15)
+**Goal**: Implement schema and core worker infrastructure for multiple webhook subscriptions, wildcard event matching, concurrent NATS fan-out, and UI dashboard.
+**Mode**: standard
+**Depends on**: Phase 16
+**Requirements**: SUBS-01, SUBS-02, SUBS-03, SUBS-04
+**Success Criteria** (what must be TRUE):
+  1. Operator can configure, test, and manage multiple webhook subscriptions with wildcard filters (e.g. `message.*`) in the settings UI.
+  2. The webhook worker concurrently dispatches webhook events matching event filters using a JetStream fan-out queue.
+  3. Per-subscription retry logic, exponential backoff, and DLQ persistence are functional and verified.
 
-### Phase 14: user-api-action-logs
+### Phase 18: Omnichannel Contact Merging
 
-**Goal:** Implement administrative action audit logging for dashboard operators and API keys.
-**Requirements**: LOG-01, LOG-02, LOG-03
-**Depends on:** Phase 13
-**Plans:** 1/1 plans complete
+**Goal**: Implement unified contacts/identities schema, auto-matching on inbound events, profile merging, and unified conversation inbox views.
+**Mode**: standard
+**Depends on**: Phase 17
+**Requirements**: CONT-01, CONT-02, CONT-03, CONT-04
+**Success Criteria**:
+  1. Incoming messages auto-resolve or instantiate a single contact profile in the `contacts` and `contact_identities` tables.
+  2. Dashboard UI permits searching and merge operations on contacts with full transaction rollbacks on failure.
+  3. Merged contacts display a single consolidated message thread combining WhatsApp and Telegram chat histories in the Inbox.
 
-Plans:
+### Phase 19: Webhook Messaging Verbs Engine
 
-- [x] 14-01-PLAN.md (completed 2026-07-15)
+**Goal**: Implement JSON response verbs executor, sequential scheduling (reply, wait, forward, tag, close), and operator logging.
+**Mode**: standard
+**Depends on**: Phase 18
+**Requirements**: VERB-01, VERB-02, VERB-03
+**Success Criteria**:
+  1. Webhook dispatcher parses valid declarative messaging verbs returned in webhook response payloads.
+  2. Verb sequences are processed sequentially, and replies trigger correct outbound routing queue entries.
+  3. Action execution errors are logged as workspace audits and visible to operators.
 
-### Phase 15: css-standardization
+---
 
-**Goal:** Standardize admin console stylesheet patterns.
-**Requirements**: TBD
-**Depends on:** Phase 14
-**Plans:** 1/1 plans complete
+### Phase 12: Campaign Engine (Completed)
+*Completed on 2026-07-15*
 
-Plans:
+### Phase 12.1: Address tech debt: sidebar active highlighting (Completed)
+*Completed on 2026-07-15*
 
-- [x] 15-01-PLAN.md (completed 2026-07-15)
+### Phase 13: Deepen media engine (Completed)
+*Completed on 2026-07-15*
 
-### Phase 16: deprecate-workspace-subviews
+### Phase 14: User API action logs (Completed)
+*Completed on 2026-07-15*
 
-**Goal:** Deprecate redundant workspace credentials and simplify workspace settings view.
-**Requirements**: TBD
-**Depends on:** Phase 15
-**Plans:** 1/1 plans complete
+### Phase 15: CSS standardization (Completed)
+*Completed on 2026-07-15*
 
-Plans:
-
-- [x] 16-01-PLAN.md (completed 2026-07-15)
+### Phase 16: Deprecate workspace subviews (Completed)
+*Completed on 2026-07-15*
 
 ---
 *Roadmap created: 2026-07-14*
-*Granularity: standard | Mode: mvp | Phase convention: sequential*
-
-### Phase 12.1: Address tech debt: sidebar active highlighting (INSERTED)
-
-**Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
-**Depends on:** Phase 12
-**Plans:** 1/1 plans complete
-
-Plans:
-
-- [x] 12.1-01-PLAN.md (completed 2026-07-15)
+*Last updated: 2026-07-16 after v1.2 definition*
