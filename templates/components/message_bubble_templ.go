@@ -169,7 +169,7 @@ func MessageBubbleList(messages []repository.ThreadMessage) templ.Component {
 }
 
 // PollMessagesResponse renders new message bubbles and an updated out-of-band poll anchor.
-func PollMessagesResponse(from, channel, to string, afterID string, messages []repository.ThreadMessage) templ.Component {
+func PollMessagesResponse(contactID string, afterID string, messages []repository.ThreadMessage) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -199,9 +199,9 @@ func PollMessagesResponse(from, channel, to string, afterID string, messages []r
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var10 string
-		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/inbox/messages?from=" + from + "&channel=" + channel + "&to=" + to + "&after_id=" + afterID)
+		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/inbox/messages?contact_id=" + contactID + "&after_id=" + afterID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 62, Col: 110}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 62, Col: 83}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 		if templ_7745c5c3_Err != nil {

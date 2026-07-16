@@ -305,3 +305,24 @@ func (r *ContactRepository) ResolveTelegramChatID(ctx context.Context, workspace
 
 	return chatID, nil
 }
+
+// HasUnread checks if a contact has any unread sessions in their workspace.
+func (r *ContactRepository) HasUnread(ctx context.Context, workspaceID, contactID uuid.UUID) (bool, error) {
+	var hasUnread bool
+	err := r.pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 
+			FROM contact_identities ci
+			JOIN recipient_sessions rs ON rs.workspace_id = ci.workspace_id
+				AND rs.recipient_phone = ci.sender_identity
+				AND rs.channel = ci.channel
+			WHERE ci.workspace_id = $1
+			  AND ci.contact_id = $2
+			  AND (rs.last_read_at IS NULL OR rs.last_inbound_at > rs.last_read_at)
+		)
+	`, workspaceID, contactID).Scan(&hasUnread)
+	if err != nil {
+		return false, fmt.Errorf("check contact unread: %w", err)
+	}
+	return hasUnread, nil
+}

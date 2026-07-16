@@ -217,7 +217,7 @@ func InboxUnreadBadge(count int) templ.Component {
 
 // convKey generates a unique key for a conversation used in unread map lookups.
 func convKey(conv repository.ConversationSummary) string {
-	return conv.From + "|" + conv.Channel + "|" + conv.RecipientIdentity
+	return conv.ContactID.String()
 }
 
 var _ = templruntime.GeneratedTemplate

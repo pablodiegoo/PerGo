@@ -55,11 +55,11 @@ templ MessageBubbleList(messages []repository.ThreadMessage) {
 }
 
 // PollMessagesResponse renders new message bubbles and an updated out-of-band poll anchor.
-templ PollMessagesResponse(from, channel, to string, afterID string, messages []repository.ThreadMessage) {
+templ PollMessagesResponse(contactID string, afterID string, messages []repository.ThreadMessage) {
 	@MessageBubbleList(messages)
 	<div
 		id="chat-poll-anchor"
-		hx-get={ "/admin/inbox/messages?from=" + from + "&channel=" + channel + "&to=" + to + "&after_id=" + afterID }
+		hx-get={ "/admin/inbox/messages?contact_id=" + contactID + "&after_id=" + afterID }
 		hx-target="#chat-messages"
 		hx-swap="beforeend scroll:bottom"
 		hx-trigger="every 3s"

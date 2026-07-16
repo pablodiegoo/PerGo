@@ -132,7 +132,6 @@ func main() {
 
 	connectionRepo := repository.NewConnectionRepository(pool, encryptor)
 	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
-	telegramContactRepo := repository.NewTelegramContactRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	windowChecker := session.NewWindowChecker(recipientSessionRepo)
 
@@ -448,13 +447,14 @@ func main() {
 
 	// Inbox routes
 	inboxHandler := &admin.InboxHandler{
-		Repo:             auditRepo,
-		Sessions:         recipientSessionRepo,
-		Workspaces:       wsRepo,
-		Connections:      connectionRepo,
-		Publisher:        publisher,
-		Templates:        wabaTemplateRepo,
-		TelegramContacts: telegramContactRepo,
+		Repo:           auditRepo,
+		Sessions:       recipientSessionRepo,
+		Workspaces:     wsRepo,
+		Connections:    connectionRepo,
+		Publisher:      publisher,
+		Templates:      wabaTemplateRepo,
+		ContactRepo:    contactRepo,
+		UserActionLogs: userActionLogRepo,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
 	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)
@@ -463,6 +463,8 @@ func main() {
 	adminGroup.POST("/inbox/send", inboxHandler.SendMessage)
 	adminGroup.GET("/inbox/new-message-modal", inboxHandler.NewMessageModal)
 	adminGroup.POST("/inbox/new-message-send", inboxHandler.NewMessageSend)
+	adminGroup.GET("/contacts/search", inboxHandler.SearchContacts)
+	adminGroup.POST("/contacts/merge", inboxHandler.MergeContacts)
 
 	// Device/Connection management routes
 	deviceHandler := &admin.DeviceHandler{

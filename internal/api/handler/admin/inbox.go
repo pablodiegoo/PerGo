@@ -27,7 +27,8 @@ type InboxHandler struct {
 	Connections      *repository.ConnectionRepository
 	Publisher        *queue.JetStreamPublisher
 	Templates        *repository.WABATemplateRepository
-	TelegramContacts *repository.TelegramContactRepository
+	ContactRepo      *repository.ContactRepository
+	UserActionLogs   *repository.UserActionLogRepository
 }
 
 // resolveWorkspaceID reads the active workspace from the cookie.
@@ -45,7 +46,7 @@ func resolveWorkspaceID(c *echo.Context) uuid.UUID {
 }
 
 // loadConversations fetches conversations and computes unread state.
-// Returns conversations, unreadMap keyed by "from|channel|recipientIdentity", and total unread count.
+// Returns conversations, unreadMap keyed by contact ID, and total unread count.
 func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID, channelFilter string) ([]repository.ConversationSummary, map[string]bool, int, error) {
 	ctx := c.Request().Context()
 
@@ -60,44 +61,11 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 	for i := range conversations {
 		conv := &conversations[i]
 
-		// Resolve display name for Telegram using telegram_contacts
-		if conv.Channel == "telegram" && h.TelegramContacts != nil {
-			if contact, err := h.TelegramContacts.Get(ctx, workspaceID, conv.From); err == nil && contact != nil {
-				parts := []string{}
-				if contact.FirstName != nil && *contact.FirstName != "" {
-					parts = append(parts, *contact.FirstName)
-				}
-				if contact.LastName != nil && *contact.LastName != "" {
-					parts = append(parts, *contact.LastName)
-				}
-				displayName := strings.Join(parts, " ")
-				if contact.Username != nil && *contact.Username != "" {
-					if displayName != "" {
-						displayName += " (@" + *contact.Username + ")"
-					} else {
-						displayName = "@" + *contact.Username
-					}
-				}
-				if displayName != "" {
-					conv.DisplayName = displayName
-				}
-			}
-		}
-
 		isUnread := false
-		if h.Sessions != nil {
-			session, sErr := h.Sessions.Get(ctx, workspaceID, conv.From, conv.Channel, conv.RecipientIdentity)
-			if sErr == nil {
-				// Unread if session has never been read, or if last message is after last read
-				if session.LastReadAt == nil || conv.LastMessageTime.After(*session.LastReadAt) {
-					isUnread = true
-				}
-			} else {
-				// Session doesn't exist yet — treat as unread
-				isUnread = true
-			}
+		if h.ContactRepo != nil {
+			isUnread, _ = h.ContactRepo.HasUnread(ctx, workspaceID, conv.ContactID)
 		}
-		key := conv.From + "|" + conv.Channel + "|" + conv.RecipientIdentity
+		key := conv.ContactID.String()
 		unreadMap[key] = isUnread
 		if isUnread {
 			unreadCount++
@@ -139,43 +107,87 @@ func (h *InboxHandler) PollConversations(c *echo.Context) error {
 	return mw.Render(c, http.StatusOK, components.ConvList(conversations, unreadMap, channelFilter, unreadCount))
 }
 
+// ReplyOption holds reply connection options for picker
+type ReplyOption = components.ReplyOption
+
 // ChatPanel handles GET /admin/inbox/chat — returns the chat history panel for a contact.
-// Query params: from, channel, to (recipient identity).
+// Query params: contact_id.
 func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 	ctx := c.Request().Context()
 	workspaceID := resolveWorkspaceID(c)
 
-	from := c.QueryParam("from")
-	channel := c.QueryParam("channel")
-	to := c.QueryParam("to")
-
-	if from == "" || channel == "" {
-		return c.HTML(http.StatusBadRequest, `<div class="p-4 text-red-500">Parâmetros inválidos: from e channel são obrigatórios.</div>`)
+	contactIDStr := c.QueryParam("contact_id")
+	if contactIDStr == "" {
+		return c.HTML(http.StatusBadRequest, `<div class="p-4 text-red-500">Parâmetro inválido: contact_id é obrigatório.</div>`)
+	}
+	contactID, err := uuid.Parse(contactIDStr)
+	if err != nil {
+		return c.HTML(http.StatusBadRequest, `<div class="p-4 text-red-500">ID de contato inválido.</div>`)
 	}
 
-	// Mark conversation as read
+	contact, err := h.ContactRepo.GetByID(ctx, workspaceID, contactID)
+	if err != nil {
+		return c.HTML(http.StatusNotFound, `<div class="p-4 text-red-500">Contato não encontrado.</div>`)
+	}
+
+	// Mark all conversation sessions for this contact as read
 	if h.Sessions != nil && workspaceID != uuid.Nil {
-		_ = h.Sessions.UpdateLastReadAt(ctx, workspaceID, from, channel, to, time.Now().UTC())
+		_ = h.Sessions.UpdateLastReadAtByContact(ctx, workspaceID, contactID, time.Now().UTC())
 	}
 
 	// Load the thread messages (full history — no cursor)
-	messages, err := h.Repo.ListThread(ctx, workspaceID, from, channel, to, nil)
+	messages, err := h.Repo.ListThreadByContact(ctx, workspaceID, contactID, nil)
 	if err != nil {
 		return c.HTML(http.StatusInternalServerError, `<div class="p-4 text-red-500">Erro ao carregar conversa.</div>`)
 	}
 
+	// Resolve connections in workspace to find default/active senders
+	connections, _ := h.Connections.ListByWorkspace(ctx, workspaceID)
+	defaultSenders := make(map[string]string)
+	for _, conn := range connections {
+		if conn.IsDefault || defaultSenders[conn.Channel] == "" {
+			defaultSenders[conn.Channel] = conn.SenderIdentity
+		}
+	}
+
+	// Build reply options
+	var replyOptions []ReplyOption
+	for _, identity := range contact.Identities {
+		// Filter out non-dispatch channels
+		if identity.Channel == "whatsapp" || identity.Channel == "whatsapp_cloud" || identity.Channel == "telegram" {
+			sender := defaultSenders[identity.Channel]
+			if sender != "" {
+				replyOptions = append(replyOptions, ReplyOption{
+					Channel:        identity.Channel,
+					RecipientPhone: identity.SenderIdentity,
+					SenderIdentity: sender,
+					Label:          fmt.Sprintf("%s (%s)", channelLabelStr(identity.Channel), identity.SenderIdentity),
+				})
+			}
+		}
+	}
+
 	isWabaBlocked := false
-	if channel == "whatsapp_cloud" && workspaceID != uuid.Nil {
-		session, sErr := h.Sessions.Get(ctx, workspaceID, from, channel, to)
-		if sErr != nil {
-			isWabaBlocked = true
-		} else if session.LastInboundAt.IsZero() || time.Since(session.LastInboundAt) > 24*time.Hour {
+	var wabaIdentity *domain.ContactIdentity
+	for _, identity := range contact.Identities {
+		if identity.Channel == "whatsapp_cloud" {
+			wabaIdentity = &identity
+			break
+		}
+	}
+	if wabaIdentity != nil && h.Sessions != nil && workspaceID != uuid.Nil {
+		session, sErr := h.Sessions.Get(ctx, workspaceID, wabaIdentity.SenderIdentity, "whatsapp_cloud", wabaIdentity.SenderIdentity)
+		if sErr == nil {
+			if session.LastInboundAt.IsZero() || time.Since(session.LastInboundAt) > 24*time.Hour {
+				isWabaBlocked = true
+			}
+		} else {
 			isWabaBlocked = true
 		}
 	}
 
 	if mw.IsHTMX(c) {
-		return mw.Render(c, http.StatusOK, components.ChatPanel(from, channel, to, messages, isWabaBlocked))
+		return mw.Render(c, http.StatusOK, components.ChatPanel(contact, replyOptions, messages, isWabaBlocked))
 	}
 
 	// Direct page reload -> render the full page with this chat panel pre-opened
@@ -184,23 +196,40 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "failed to load conversations: "+err.Error())
 	}
 
-	chatPanelComp := components.ChatPanel(from, channel, to, messages, isWabaBlocked)
+	chatPanelComp := components.ChatPanel(contact, replyOptions, messages, isWabaBlocked)
 	return mw.Render(c, http.StatusOK, pages.InboxPage(conversations, unreadMap, "", unreadCount, chatPanelComp))
+}
+
+// channelLabelStr maps to human readable labels
+func channelLabelStr(channel string) string {
+	switch channel {
+	case "whatsapp":
+		return "WhatsApp Web"
+	case "whatsapp_cloud":
+		return "WhatsApp Cloud"
+	case "telegram":
+		return "Telegram"
+	default:
+		return channel
+	}
 }
 
 // PollMessages handles GET /admin/inbox/messages — returns new messages for incremental chat polling.
 // Uses a UUID cursor (after_id) to return only messages newer than the last rendered one.
-// If new messages belong to a different conversation than the open one (different from/channel/to),
-// sets HX-Trigger to showToast so the page can display a notification.
 func (h *InboxHandler) PollMessages(c *echo.Context) error {
 	ctx := c.Request().Context()
 	workspaceID := resolveWorkspaceID(c)
 
-	from := c.QueryParam("from")
-	channel := c.QueryParam("channel")
-	to := c.QueryParam("to")
-	afterIDStr := c.QueryParam("after_id")
+	contactIDStr := c.QueryParam("contact_id")
+	if contactIDStr == "" {
+		return c.HTML(http.StatusBadRequest, `<div class="p-2 text-red-500 text-xs">Parâmetro inválido: contact_id é obrigatório.</div>`)
+	}
+	contactID, err := uuid.Parse(contactIDStr)
+	if err != nil {
+		return c.HTML(http.StatusBadRequest, `<div class="p-2 text-red-500 text-xs">ID de contato inválido.</div>`)
+	}
 
+	afterIDStr := c.QueryParam("after_id")
 	var afterID *uuid.UUID
 	if afterIDStr != "" && afterIDStr != "LAST_ID" {
 		id, err := uuid.Parse(afterIDStr)
@@ -209,45 +238,32 @@ func (h *InboxHandler) PollMessages(c *echo.Context) error {
 		}
 	}
 
-	messages, err := h.Repo.ListThread(ctx, workspaceID, from, channel, to, afterID)
+	messages, err := h.Repo.ListThreadByContact(ctx, workspaceID, contactID, afterID)
 	if err != nil {
 		return c.HTML(http.StatusInternalServerError, `<div class="p-2 text-red-500 text-xs">Erro ao buscar mensagens.</div>`)
 	}
 
-	isWabaBlocked := false
-	if channel == "whatsapp_cloud" && workspaceID != uuid.Nil {
-		session, sErr := h.Sessions.Get(ctx, workspaceID, from, channel, to)
-		if sErr != nil {
-			isWabaBlocked = true
-		} else if session.LastInboundAt.IsZero() || time.Since(session.LastInboundAt) > 24*time.Hour {
-			isWabaBlocked = true
-		}
-	}
-	_ = isWabaBlocked
-
 	if len(messages) == 0 {
-		// Check if there are new messages from OTHER conversations — trigger toast if so.
-		if from != "" && workspaceID != uuid.Nil {
-			h.checkBackgroundMessages(c, ctx, workspaceID, from, channel, to)
+		if workspaceID != uuid.Nil {
+			h.checkBackgroundMessages(c, ctx, workspaceID, contactID)
 		}
 		return c.NoContent(http.StatusNoContent)
 	}
 
 	// Update last_read_at since operator is actively viewing this conversation
 	if h.Sessions != nil && workspaceID != uuid.Nil {
-		_ = h.Sessions.UpdateLastReadAt(ctx, workspaceID, from, channel, to, time.Now().UTC())
+		_ = h.Sessions.UpdateLastReadAtByContact(ctx, workspaceID, contactID, time.Now().UTC())
 	}
 
 	newLastID := messages[len(messages)-1].ID.String()
 
 	// Render new message bubbles and updated OOB poll anchor
-	return mw.Render(c, http.StatusOK, components.PollMessagesResponse(from, channel, to, newLastID, messages))
+	return mw.Render(c, http.StatusOK, components.PollMessagesResponse(contactID.String(), newLastID, messages))
 }
-
 
 // checkBackgroundMessages checks if any OTHER conversation has new unread messages
 // and, if so, fires a showToast HX-Trigger header on the response.
-func (h *InboxHandler) checkBackgroundMessages(c *echo.Context, ctx context.Context, workspaceID uuid.UUID, openFrom, openChannel, openTo string) {
+func (h *InboxHandler) checkBackgroundMessages(c *echo.Context, ctx context.Context, workspaceID uuid.UUID, openContactID uuid.UUID) {
 	if h.Repo == nil {
 		return
 	}
@@ -258,23 +274,17 @@ func (h *InboxHandler) checkBackgroundMessages(c *echo.Context, ctx context.Cont
 
 	for _, conv := range conversations {
 		// Skip the currently open conversation
-		if conv.From == openFrom && conv.Channel == openChannel && conv.RecipientIdentity == openTo {
+		if conv.ContactID == openContactID {
 			continue
 		}
 		// Check unread state for this background conversation
-		if h.Sessions == nil {
+		if h.ContactRepo == nil {
 			continue
 		}
-		session, sErr := h.Sessions.Get(ctx, workspaceID, conv.From, conv.Channel, conv.RecipientIdentity)
-		isUnread := false
-		if sErr != nil {
-			isUnread = true
-		} else if session.LastReadAt == nil || conv.LastMessageTime.After(*session.LastReadAt) {
-			isUnread = true
-		}
+		isUnread, _ := h.ContactRepo.HasUnread(ctx, workspaceID, conv.ContactID)
 		if isUnread {
 			// Fire toast for this background contact
-			trigger := fmt.Sprintf(`{"showToast":{"text":"Nova mensagem de %s"}}`, jsonEscape(conv.From))
+			trigger := fmt.Sprintf(`{"showToast":{"text":"Nova mensagem de %s"}}`, jsonEscape(conv.ContactName))
 			c.Response().Header().Set("HX-Trigger", trigger)
 			return
 		}
@@ -456,6 +466,11 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 		}
 	}
 
+	// Upsert contact profile immediately
+	if h.ContactRepo != nil {
+		_, _ = h.ContactRepo.ResolveContact(ctx, workspaceID, channel, to, to, "", "")
+	}
+
 	traceID := "new-chat-" + uuid.New().String()
 	
 	// Create NATS outbound QueueMessage
@@ -496,6 +511,77 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 	}
 
 	c.Response().Header().Set("HX-Trigger", `{"showToast":{"text":"Nova mensagem/template enviada com sucesso!"}}`)
+	return c.NoContent(http.StatusOK)
+}
+
+// SearchContacts handles GET /admin/contacts/search
+func (h *InboxHandler) SearchContacts(c *echo.Context) error {
+	ctx := c.Request().Context()
+	workspaceID := resolveWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	query := c.QueryParam("q")
+	excludeIDStr := c.QueryParam("exclude_id")
+	var excludeID uuid.UUID
+	if excludeIDStr != "" {
+		excludeID, _ = uuid.Parse(excludeIDStr)
+	}
+
+	results, err := h.ContactRepo.SearchContacts(ctx, workspaceID, query, excludeID, 10)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, err.Error())
+	}
+
+	return mw.Render(c, http.StatusOK, components.ContactSearchResults(results, excludeID))
+}
+
+// MergeContacts handles POST /admin/contacts/merge
+func (h *InboxHandler) MergeContacts(c *echo.Context) error {
+	ctx := c.Request().Context()
+	workspaceID := resolveWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	primaryIDStr := c.QueryParam("primary_id")
+	secondaryIDStr := c.QueryParam("secondary_id")
+
+	primaryID, err := uuid.Parse(primaryIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid primary_id")
+	}
+	secondaryID, err := uuid.Parse(secondaryIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid secondary_id")
+	}
+
+	err = h.ContactRepo.MergeContacts(ctx, workspaceID, primaryID, secondaryID)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to merge contacts: "+err.Error())
+	}
+
+	// Write User Action Log
+	if h.UserActionLogs != nil {
+		metaBytes, _ := json.Marshal(map[string]string{
+			"primary_id":   primaryIDStr,
+			"secondary_id": secondaryIDStr,
+		})
+		logEntry := &repository.UserActionLog{
+			WorkspaceID: workspaceID,
+			ActorType:   "user",
+			ActorID:     "operator",
+			ActorName:   "Operator",
+			Action:      "contact.merge",
+			Source:      "web",
+			Metadata:    metaBytes,
+		}
+		_ = h.UserActionLogs.Insert(ctx, logEntry)
+	}
+
+	// Redirect to the newly consolidated primary chat page
+	c.Response().Header().Set("HX-Location", fmt.Sprintf("/admin/inbox/chat?contact_id=%s", primaryIDStr))
 	return c.NoContent(http.StatusOK)
 }
 

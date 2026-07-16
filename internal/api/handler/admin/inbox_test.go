@@ -35,7 +35,7 @@ func (m *mockAuditRepo) ListConversations(_ context.Context, _ uuid.UUID, _ stri
 	return m.conversations, nil
 }
 
-func (m *mockAuditRepo) ListThread(_ context.Context, _ uuid.UUID, _, _, _ string, _ *uuid.UUID) ([]repository.ThreadMessage, error) {
+func (m *mockAuditRepo) ListThreadByContact(_ context.Context, _ uuid.UUID, _ uuid.UUID, _ *uuid.UUID) ([]repository.ThreadMessage, error) {
 	return m.thread, nil
 }
 
@@ -243,6 +243,7 @@ func TestInboxHandler_PollMessages_NoContent(t *testing.T) {
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
 
 	ws, err := wsRepo.Create(ctx, "Inbox Test Workspace No Content")
 	if err != nil {
@@ -251,6 +252,11 @@ func TestInboxHandler_PollMessages_NoContent(t *testing.T) {
 	defer func() {
 		_, _ = pool.Exec(ctx, "DELETE FROM workspaces WHERE id = $1", ws.ID)
 	}()
+
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "contact1", "Contact One", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact1: %v", err)
+	}
 
 	insertInbound := func(id uuid.UUID, from, channel, to, body string, createdAt time.Time) uuid.UUID {
 		payload := map[string]any{
@@ -280,11 +286,12 @@ func TestInboxHandler_PollMessages_NoContent(t *testing.T) {
 	insertInbound(msgID1, "contact1", "telegram", "bot1", "Old Message", now.Add(-5*time.Minute))
 
 	h := &admin.InboxHandler{
-		Repo: auditRepo,
+		Repo:        auditRepo,
+		ContactRepo: contactRepo,
 	}
 
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/admin/inbox/messages?from=contact1&channel=telegram&to=bot1&after_id="+msgID1.String(), nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/inbox/messages?contact_id="+contact.ID.String()+"&after_id="+msgID1.String(), nil)
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -332,6 +339,7 @@ func TestInboxHandler_PollMessages_NewMessages(t *testing.T) {
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
 
 	ws, err := wsRepo.Create(ctx, "Inbox Test Workspace New Messages")
 	if err != nil {
@@ -340,6 +348,11 @@ func TestInboxHandler_PollMessages_NewMessages(t *testing.T) {
 	defer func() {
 		_, _ = pool.Exec(ctx, "DELETE FROM workspaces WHERE id = $1", ws.ID)
 	}()
+
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "contact1", "Contact One", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact1: %v", err)
+	}
 
 	insertInbound := func(id uuid.UUID, from, channel, to, body string, createdAt time.Time) uuid.UUID {
 		payload := map[string]any{
@@ -371,11 +384,12 @@ func TestInboxHandler_PollMessages_NewMessages(t *testing.T) {
 	insertInbound(msgID2, "contact1", "telegram", "bot1", "New Message Body", now.Add(-5*time.Minute))
 
 	h := &admin.InboxHandler{
-		Repo: auditRepo,
+		Repo:        auditRepo,
+		ContactRepo: contactRepo,
 	}
 
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/admin/inbox/messages?from=contact1&channel=telegram&to=bot1&after_id="+msgID1.String(), nil)
+	req := httptest.NewRequest(http.MethodGet, "/admin/inbox/messages?contact_id="+contact.ID.String()+"&after_id="+msgID1.String(), nil)
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
