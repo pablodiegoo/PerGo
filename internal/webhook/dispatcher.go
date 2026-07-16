@@ -9,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -169,6 +171,25 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, task WebhookDeliveryTa
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return &HTTPError{StatusCode: resp.StatusCode, Status: resp.Status}
+	}
+
+	// Read response body to extract potential messaging verbs
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		slog.Error("failed to read webhook response body", "error", err, "trace_id", task.TraceID)
+		return nil
+	}
+
+	var verbs []Verb
+	if err := json.Unmarshal(bodyBytes, &verbs); err == nil && len(verbs) > 0 {
+		if d.verbsEngine != nil {
+			go func() {
+				execCtx := context.Background()
+				if err := d.verbsEngine.Execute(execCtx, task, verbs); err != nil {
+					slog.Error("verbs engine execution failed", "error", err, "trace_id", task.TraceID)
+				}
+			}()
+		}
 	}
 
 	return nil
