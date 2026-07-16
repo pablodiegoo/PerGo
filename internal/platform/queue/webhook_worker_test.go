@@ -97,16 +97,17 @@ func TestWebhookWorker_Integration(t *testing.T) {
 	defer testServer.Close()
 	serverURL = testServer.URL
 
-	// 4. Save Webhook Config for Workspace
+	// 4. Create Webhook Subscription for Workspace
 	webhookSecret := []byte("my-webhook-signing-secret")
-	err = dlqRepo.SaveConfig(ctx, ws.ID, serverURL, webhookSecret)
+	subRepo := repository.NewWebhookSubscriptionRepository(pool, enc)
+	_, err = subRepo.Create(ctx, ws.ID, serverURL, []string{"*"}, webhookSecret)
 	if err != nil {
-		t.Fatalf("failed to save webhook config: %v", err)
+		t.Fatalf("failed to create webhook subscription: %v", err)
 	}
 
 	// 5. Instantiate and Start WebhookWorker
-	dispatcher := webhook.NewDefaultDispatcher(dlqRepo, wsRepo, nil)
-	worker, err := NewWebhookWorker(ctx, nc, dispatcher)
+	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, nil)
+	worker, err := NewWebhookWorker(ctx, nc, dispatcher, subRepo)
 	if err != nil {
 		t.Fatalf("failed to start webhook worker: %v", err)
 	}
@@ -223,13 +224,14 @@ func TestWebhookWorker_TerminalErrorDLQ(t *testing.T) {
 	}))
 	defer testServer.Close()
 
-	err = dlqRepo.SaveConfig(ctx, ws.ID, testServer.URL, []byte("sec"))
+	subRepo := repository.NewWebhookSubscriptionRepository(pool, enc)
+	_, err = subRepo.Create(ctx, ws.ID, testServer.URL, []string{"*"}, []byte("sec"))
 	if err != nil {
-		t.Fatalf("failed to save config: %v", err)
+		t.Fatalf("failed to create subscription: %v", err)
 	}
 
-	dispatcher := webhook.NewDefaultDispatcher(dlqRepo, wsRepo, nil)
-	worker, err := NewWebhookWorker(ctx, nc, dispatcher)
+	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, nil)
+	worker, err := NewWebhookWorker(ctx, nc, dispatcher, subRepo)
 	if err != nil {
 		t.Fatalf("failed to start worker: %v", err)
 	}
@@ -341,10 +343,14 @@ func TestWebhookWorker_Inbound(t *testing.T) {
 	}))
 	defer testServer.Close()
 
-	_ = dlqRepo.SaveConfig(ctx, ws.ID, testServer.URL, []byte("signing-secret"))
+	subRepo := repository.NewWebhookSubscriptionRepository(pool, enc)
+	_, err = subRepo.Create(ctx, ws.ID, testServer.URL, []string{"*"}, []byte("signing-secret"))
+	if err != nil {
+		t.Fatalf("failed to create subscription: %v", err)
+	}
 
-	dispatcher := webhook.NewDefaultDispatcher(dlqRepo, wsRepo, nil)
-	worker, err := NewWebhookWorker(ctx, nc, dispatcher)
+	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, nil)
+	worker, err := NewWebhookWorker(ctx, nc, dispatcher, subRepo)
 	if err != nil {
 		t.Fatalf("failed to start worker: %v", err)
 	}

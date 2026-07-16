@@ -28,17 +28,19 @@ type WebhookEvent struct {
 }
 
 type WebhookWorker struct {
-	nc              *nats.Conn
-	js              jetstream.JetStream
-	consumer        jetstream.Consumer
-	inboundConsumer jetstream.Consumer
-	dispatcher      webhook.WebhookDispatcher
-	cancel          context.CancelFunc
-	wg              sync.WaitGroup
-	done            chan struct{}
+	nc               *nats.Conn
+	js               jetstream.JetStream
+	consumer         jetstream.Consumer
+	inboundConsumer  jetstream.Consumer
+	deliveryConsumer jetstream.Consumer
+	dispatcher       webhook.WebhookDispatcher
+	subRepo          *repository.WebhookSubscriptionRepository
+	cancel           context.CancelFunc
+	wg               sync.WaitGroup
+	done             chan struct{}
 }
 
-func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dispatcher webhook.WebhookDispatcher) (*WebhookWorker, error) {
+func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dispatcher webhook.WebhookDispatcher, subRepo *repository.WebhookSubscriptionRepository) (*WebhookWorker, error) {
 	js, err := jetstream.New(nc)
 	if err != nil {
 		return nil, fmt.Errorf("jetstream.New: %w", err)
@@ -91,20 +93,43 @@ func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dispatcher webhook.Web
 		return nil, fmt.Errorf("create inbound webhook consumer: %w", err)
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	w := &WebhookWorker{
-		nc:              nc,
-		js:              js,
-		consumer:        consumer,
-		inboundConsumer: inboundConsumer,
-		dispatcher:      dispatcher,
-		cancel:          cancel,
-		done:            make(chan struct{}),
+	// Ensure WEBHOOK_DELIVERIES stream exists
+	deliveryStream, err := EnsureWebhookDeliveryStream(ctx, nc)
+	if err != nil {
+		return nil, fmt.Errorf("ensure webhook delivery stream: %w", err)
 	}
 
-	w.wg.Add(2)
+	// Create delivery consumer
+	deliveryConsumer, err := createConsumerWithRetry(ctx, deliveryStream, jetstream.ConsumerConfig{
+		Durable:       "webhooks-deliveries-consumer",
+		Description:   "Webhook delivery task worker consumer",
+		DeliverPolicy: jetstream.DeliverAllPolicy,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		AckWait:       15 * time.Second,
+		MaxDeliver:    10,
+		FilterSubject: "webhooks.deliveries.>",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create webhook delivery consumer: %w", err)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	w := &WebhookWorker{
+		nc:               nc,
+		js:               js,
+		consumer:         consumer,
+		inboundConsumer:  inboundConsumer,
+		deliveryConsumer: deliveryConsumer,
+		dispatcher:       dispatcher,
+		subRepo:          subRepo,
+		cancel:           cancel,
+		done:             make(chan struct{}),
+	}
+
+	w.wg.Add(3)
 	go w.run(ctx, w.consumer, "outbound")
 	go w.run(ctx, w.inboundConsumer, "inbound")
+	go w.run(ctx, w.deliveryConsumer, "delivery")
 	return w, nil
 }
 
@@ -138,7 +163,11 @@ func (w *WebhookWorker) run(ctx context.Context, cons jetstream.Consumer, mode s
 			}
 
 			for msg := range msgs.Messages() {
-				w.processEvent(ctx, msg, mode)
+				if mode == "delivery" {
+					w.processDelivery(ctx, msg)
+				} else {
+					w.processEvent(ctx, msg, mode)
+				}
 			}
 		}
 	}
@@ -152,19 +181,80 @@ func (w *WebhookWorker) processEvent(ctx context.Context, msg jetstream.Msg, mod
 		return
 	}
 
-	// Delegate compliance, signing, and HTTP dispatch to the WebhookDispatcher
-	err := w.dispatcher.Dispatch(ctx, mode, msg.Data())
+	wsID, err := uuid.Parse(evt.WorkspaceID)
 	if err != nil {
-		slog.Warn("webhook worker: dispatch failed", "error", err, "trace_id", evt.TraceID)
-		w.handleRetry(msg, err, &evt)
+		slog.Error("webhook worker: invalid workspace ID", "error", err, "workspace_id", evt.WorkspaceID)
+		_ = msg.Ack()
 		return
 	}
 
-	slog.Info("webhook worker: dispatched successfully", "trace_id", evt.TraceID, "event", evt.Event)
+	// Look up active subscriptions for this workspace
+	subs, err := w.subRepo.ListByWorkspace(ctx, wsID)
+	if err != nil {
+		slog.Error("webhook worker: failed to list subscriptions", "error", err, "workspace_id", wsID)
+		_ = msg.NakWithDelay(5 * time.Second)
+		return
+	}
+
+	publisher := NewJetStreamPublisher(w.nc)
+
+	for _, sub := range subs {
+		if !sub.Active {
+			continue
+		}
+
+		if webhook.MatchesAny(sub.EventTypes, evt.Event) {
+			task := webhook.WebhookDeliveryTask{
+				ID:             uuid.New(),
+				SubscriptionID: sub.ID,
+				WorkspaceID:    wsID,
+				Event:          evt.Event,
+				TraceID:        evt.TraceID,
+				MessageID:      evt.MessageID,
+				Payload:        msg.Data(),
+				Mode:           mode,
+			}
+
+			taskData, err := json.Marshal(task)
+			if err != nil {
+				slog.Error("webhook worker: failed to marshal delivery task", "error", err, "subscription_id", sub.ID)
+				continue
+			}
+
+			subject := fmt.Sprintf("webhooks.deliveries.%s.%s", wsID, sub.ID)
+			err = publisher.Publish(ctx, subject, taskData, task.ID.String())
+			if err != nil {
+				slog.Error("webhook worker: failed to publish delivery task", "error", err, "subject", subject)
+				_ = msg.NakWithDelay(5 * time.Second)
+				return
+			}
+			slog.Info("webhook worker: fanned out task", "subject", subject, "trace_id", evt.TraceID)
+		}
+	}
+
 	_ = msg.Ack()
 }
 
-func (w *WebhookWorker) handleRetry(msg jetstream.Msg, err error, evt *WebhookEvent) {
+func (w *WebhookWorker) processDelivery(ctx context.Context, msg jetstream.Msg) {
+	var task webhook.WebhookDeliveryTask
+	if err := json.Unmarshal(msg.Data(), &task); err != nil {
+		slog.Error("webhook worker: failed to unmarshal delivery task", "error", err)
+		_ = msg.Ack()
+		return
+	}
+
+	err := w.dispatcher.Dispatch(ctx, task)
+	if err != nil {
+		slog.Warn("webhook worker: delivery dispatch failed", "error", err, "trace_id", task.TraceID, "subscription_id", task.SubscriptionID)
+		w.handleDeliveryRetry(msg, err, &task)
+		return
+	}
+
+	slog.Info("webhook worker: delivered successfully", "trace_id", task.TraceID, "subscription_id", task.SubscriptionID)
+	_ = msg.Ack()
+}
+
+func (w *WebhookWorker) handleDeliveryRetry(msg jetstream.Msg, err error, task *webhook.WebhookDeliveryTask) {
 	numDelivered := uint64(1)
 	if meta, metadataErr := msg.Metadata(); metadataErr == nil && meta != nil {
 		numDelivered = meta.NumDelivered
@@ -179,27 +269,29 @@ func (w *WebhookWorker) handleRetry(msg jetstream.Msg, err error, evt *WebhookEv
 			isTerminalErr = true
 		}
 	}
+	if errors.Is(err, webhook.ErrSubscriptionNotFound) || errors.Is(err, webhook.ErrSubscriptionInactive) {
+		isTerminalErr = true
+	}
 
 	if isTerminalErr || numDelivered >= 10 {
-		slog.Error("webhook worker: moving webhook to DLQ", "error", err, "trace_id", evt.TraceID, "attempts", numDelivered)
+		slog.Error("webhook worker: moving delivery to DLQ", "error", err, "trace_id", task.TraceID, "attempts", numDelivered, "subscription_id", task.SubscriptionID)
 
-		wsID, _ := uuid.Parse(evt.WorkspaceID)
 		failReason := err.Error()
 
 		// Archive permanently failed event via WebhookDispatcher
 		dlqErr := w.dispatcher.WriteToDLQ(
 			context.Background(),
-			wsID,
-			evt.TraceID,
-			evt.MessageID,
-			evt.Event,
-			msg.Data(),
+			task.WorkspaceID,
+			task.SubscriptionID,
+			task.TraceID,
+			task.MessageID,
+			task.Event,
+			task.Payload,
 			int(numDelivered),
 			failReason,
 		)
 		if dlqErr != nil {
-			slog.Error("webhook worker: failed to write to DLQ", "error", dlqErr, "trace_id", evt.TraceID)
-			// If we fail to write to the DLQ DB, Nak with short delay so we don't lose the event!
+			slog.Error("webhook worker: failed to write delivery to DLQ", "error", dlqErr, "trace_id", task.TraceID)
 			_ = msg.NakWithDelay(5 * time.Second)
 			return
 		}
@@ -214,6 +306,6 @@ func (w *WebhookWorker) handleRetry(msg jetstream.Msg, err error, evt *WebhookEv
 		delay = 10 * time.Minute
 	}
 
-	slog.Info("webhook worker: scheduling retry", "trace_id", evt.TraceID, "attempt", numDelivered, "backoff", delay)
+	slog.Info("webhook worker: scheduling delivery retry", "trace_id", task.TraceID, "attempt", numDelivered, "backoff", delay)
 	_ = msg.NakWithDelay(delay)
 }
