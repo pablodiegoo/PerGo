@@ -346,8 +346,8 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, fmt.Sprintf("failed to save campaign: %v", err))
 	}
 
-	// Redirect or return empty to clear and trigger reload of campaigns list via HTMX
-	c.Response().Header().Set("HX-Trigger", "reload-campaigns")
+	// Redirect back to campaigns list page
+	c.Response().Header().Set("HX-Redirect", fmt.Sprintf("/admin/workspaces/%s/campaigns", workspaceIDStr))
 	return c.String(http.StatusOK, "")
 }
 
