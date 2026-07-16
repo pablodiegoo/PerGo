@@ -14,10 +14,23 @@ import (
 	"github.com/pablojhp.pergo/internal/webhook"
 )
 
-type mockConfigStore struct {
-	cfg       *repository.WebhookConfig
-	getConfig func(workspaceID uuid.UUID) (*repository.WebhookConfig, error)
-	inserted  []struct {
+type mockSubscriptionStore struct {
+	sub    *repository.WebhookSubscription
+	getSub func(id uuid.UUID) (*repository.WebhookSubscription, error)
+}
+
+func (m *mockSubscriptionStore) Get(ctx context.Context, id uuid.UUID) (*repository.WebhookSubscription, error) {
+	if m.getSub != nil {
+		return m.getSub(id)
+	}
+	if m.sub != nil {
+		return m.sub, nil
+	}
+	return nil, repository.ErrWebhookSubscriptionNotFound
+}
+
+type mockDLQStore struct {
+	inserted []struct {
 		workspaceID    uuid.UUID
 		subscriptionID uuid.UUID
 		traceID        string
@@ -30,14 +43,7 @@ type mockConfigStore struct {
 	}
 }
 
-func (m *mockConfigStore) GetConfig(ctx context.Context, workspaceID uuid.UUID) (*repository.WebhookConfig, error) {
-	if m.getConfig != nil {
-		return m.getConfig(workspaceID)
-	}
-	return m.cfg, nil
-}
-
-func (m *mockConfigStore) InsertDLQ(
+func (m *mockDLQStore) InsertDLQ(
 	ctx context.Context,
 	workspaceID uuid.UUID,
 	subscriptionID uuid.UUID,
@@ -91,15 +97,20 @@ func (m *mockHTTPClient) Do(req *http.Request) (*http.Response, error) {
 
 func TestDefaultDispatcher_Dispatch(t *testing.T) {
 	wsID := uuid.New()
-	cfg := &repository.WebhookConfig{
-		URL:    "https://api.myweb.com/events",
-		Secret: []byte("signing-secret-key-123"),
+	subID := uuid.New()
+	sub := &repository.WebhookSubscription{
+		ID:          subID,
+		WorkspaceID: wsID,
+		URL:         "https://api.myweb.com/events",
+		Secret:      []byte("signing-secret-key-123"),
+		Active:      true,
 	}
 
 	t.Run("Normal dispatch signs and sends HTTP request", func(t *testing.T) {
-		configStore := &mockConfigStore{cfg: cfg}
+		subStore := &mockSubscriptionStore{sub: sub}
+		dlqStore := &mockDLQStore{}
 		httpClient := &mockHTTPClient{}
-		d := webhook.NewDefaultDispatcher(configStore, nil, httpClient)
+		d := webhook.NewDefaultDispatcher(subStore, dlqStore, nil, httpClient)
 
 		event := map[string]string{
 			"event":        "message.sent",
@@ -109,7 +120,18 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 		}
 		rawBytes, _ := json.Marshal(event)
 
-		err := d.Dispatch(context.Background(), "outbound", rawBytes)
+		task := webhook.WebhookDeliveryTask{
+			ID:             uuid.New(),
+			SubscriptionID: subID,
+			WorkspaceID:    wsID,
+			Event:          "message.sent",
+			TraceID:        "trace-1",
+			MessageID:      "msg-1",
+			Payload:        rawBytes,
+			Mode:           "outbound",
+		}
+
+		err := d.Dispatch(context.Background(), task)
 		if err != nil {
 			t.Fatalf("Dispatch failed: %v", err)
 		}
@@ -118,8 +140,8 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 			t.Fatalf("expected 1 HTTP request, got %d", len(httpClient.requests))
 		}
 		req := httpClient.requests[0]
-		if req.URL.String() != cfg.URL {
-			t.Errorf("got URL %s, want %s", req.URL, cfg.URL)
+		if req.URL.String() != sub.URL {
+			t.Errorf("got URL %s, want %s", req.URL, sub.URL)
 		}
 		if req.Header.Get("X-Trace-ID") != "trace-1" {
 			t.Errorf("got X-Trace-ID %q, want trace-1", req.Header.Get("X-Trace-ID"))
@@ -130,12 +152,13 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 	})
 
 	t.Run("Compliance checks redact PII on inbound events when workspace opted-out", func(t *testing.T) {
-		configStore := &mockConfigStore{cfg: cfg}
+		subStore := &mockSubscriptionStore{sub: sub}
+		dlqStore := &mockDLQStore{}
 		workspaceStore := &mockWorkspaceStore{
 			ws: &repository.Workspace{ID: wsID, PIIOptIn: false},
 		}
 		httpClient := &mockHTTPClient{}
-		d := webhook.NewDefaultDispatcher(configStore, workspaceStore, httpClient)
+		d := webhook.NewDefaultDispatcher(subStore, dlqStore, workspaceStore, httpClient)
 
 		inboundEvent := map[string]any{
 			"event":        "message.received",
@@ -151,7 +174,18 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 		}
 		rawBytes, _ := json.Marshal(inboundEvent)
 
-		err := d.Dispatch(context.Background(), "inbound", rawBytes)
+		task := webhook.WebhookDeliveryTask{
+			ID:             uuid.New(),
+			SubscriptionID: subID,
+			WorkspaceID:    wsID,
+			Event:          "message.received",
+			TraceID:        "trace-2",
+			MessageID:      "msg-2",
+			Payload:        rawBytes,
+			Mode:           "inbound",
+		}
+
+		err := d.Dispatch(context.Background(), task)
 		if err != nil {
 			t.Fatalf("Dispatch failed: %v", err)
 		}
@@ -175,7 +209,8 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 	})
 
 	t.Run("Non-2xx HTTP responses wrap HTTPError", func(t *testing.T) {
-		configStore := &mockConfigStore{cfg: cfg}
+		subStore := &mockSubscriptionStore{sub: sub}
+		dlqStore := &mockDLQStore{}
 		httpClient := &mockHTTPClient{
 			response: &http.Response{
 				StatusCode: 502,
@@ -183,7 +218,7 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 				Body:       io.NopCloser(bytes.NewReader([]byte(""))),
 			},
 		}
-		d := webhook.NewDefaultDispatcher(configStore, nil, httpClient)
+		d := webhook.NewDefaultDispatcher(subStore, dlqStore, nil, httpClient)
 
 		event := map[string]string{
 			"event":        "message.sent",
@@ -191,7 +226,16 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 		}
 		rawBytes, _ := json.Marshal(event)
 
-		err := d.Dispatch(context.Background(), "outbound", rawBytes)
+		task := webhook.WebhookDeliveryTask{
+			ID:             uuid.New(),
+			SubscriptionID: subID,
+			WorkspaceID:    wsID,
+			Event:          "message.sent",
+			Payload:        rawBytes,
+			Mode:           "outbound",
+		}
+
+		err := d.Dispatch(context.Background(), task)
 		var httpErr *webhook.HTTPError
 		if !errors.As(err, &httpErr) {
 			t.Fatalf("expected HTTPError, got %v", err)
@@ -204,32 +248,37 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 
 func TestDefaultDispatcher_WriteToDLQ(t *testing.T) {
 	wsID := uuid.New()
-	cfg := &repository.WebhookConfig{
-		ID:  uuid.New(),
-		URL: "https://api.myweb.com/events",
+	subID := uuid.New()
+	sub := &repository.WebhookSubscription{
+		ID:          subID,
+		WorkspaceID: wsID,
+		URL:         "https://api.myweb.com/events",
+		Secret:      []byte("signing-secret-key-123"),
+		Active:      true,
 	}
 
-	configStore := &mockConfigStore{cfg: cfg}
-	d := webhook.NewDefaultDispatcher(configStore, nil, nil)
+	subStore := &mockSubscriptionStore{sub: sub}
+	dlqStore := &mockDLQStore{}
+	d := webhook.NewDefaultDispatcher(subStore, dlqStore, nil, nil)
 
 	payload := []byte(`{"event":"test"}`)
-	err := d.WriteToDLQ(context.Background(), wsID, "trace-123", "msg-123", "message.sent", payload, 3, "something went wrong")
+	err := d.WriteToDLQ(context.Background(), wsID, subID, "trace-123", "msg-123", "message.sent", payload, 3, "something went wrong")
 	if err != nil {
 		t.Fatalf("WriteToDLQ failed: %v", err)
 	}
 
-	if len(configStore.inserted) != 1 {
-		t.Fatalf("expected 1 DLQ insertion, got %d", len(configStore.inserted))
+	if len(dlqStore.inserted) != 1 {
+		t.Fatalf("expected 1 DLQ insertion, got %d", len(dlqStore.inserted))
 	}
-	ins := configStore.inserted[0]
+	ins := dlqStore.inserted[0]
 	if ins.workspaceID != wsID {
 		t.Errorf("got workspace ID %s, want %s", ins.workspaceID, wsID)
 	}
-	if ins.subscriptionID != cfg.ID {
-		t.Errorf("got subscription ID %s, want %s", ins.subscriptionID, cfg.ID)
+	if ins.subscriptionID != subID {
+		t.Errorf("got subscription ID %s, want %s", ins.subscriptionID, subID)
 	}
-	if ins.url != cfg.URL {
-		t.Errorf("got url %s, want %s", ins.url, cfg.URL)
+	if ins.url != sub.URL {
+		t.Errorf("got url %s, want %s", ins.url, sub.URL)
 	}
 	if *ins.failureReason != "something went wrong" {
 		t.Errorf("got failure reason %s", *ins.failureReason)
