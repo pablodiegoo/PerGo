@@ -298,7 +298,7 @@ func (e *VerbsEngine) executeForward(
 	// Resolve connection for target channel
 	conn, err := e.resolver.GetDefaultChannelConnection(ctx, workspaceID, channel)
 	if err != nil {
-		return fmt.Errorf("cannot resolve default connection for forward channel '%s': %w", err)
+		return fmt.Errorf("cannot resolve default connection for forward channel '%s': %w", channel, err)
 	}
 
 	qMsg := &domain.QueueMessage{
