@@ -110,7 +110,7 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 		subStore := &mockSubscriptionStore{sub: sub}
 		dlqStore := &mockDLQStore{}
 		httpClient := &mockHTTPClient{}
-		d := webhook.NewDefaultDispatcher(subStore, dlqStore, nil, httpClient)
+		d := webhook.NewDefaultDispatcher(subStore, dlqStore, nil, httpClient, nil)
 
 		event := map[string]string{
 			"event":        "message.sent",
@@ -158,7 +158,7 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 			ws: &repository.Workspace{ID: wsID, PIIOptIn: false},
 		}
 		httpClient := &mockHTTPClient{}
-		d := webhook.NewDefaultDispatcher(subStore, dlqStore, workspaceStore, httpClient)
+		d := webhook.NewDefaultDispatcher(subStore, dlqStore, workspaceStore, httpClient, nil)
 
 		inboundEvent := map[string]any{
 			"event":        "message.received",
@@ -218,7 +218,7 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 				Body:       io.NopCloser(bytes.NewReader([]byte(""))),
 			},
 		}
-		d := webhook.NewDefaultDispatcher(subStore, dlqStore, nil, httpClient)
+		d := webhook.NewDefaultDispatcher(subStore, dlqStore, nil, httpClient, nil)
 
 		event := map[string]string{
 			"event":        "message.sent",
@@ -259,7 +259,7 @@ func TestDefaultDispatcher_WriteToDLQ(t *testing.T) {
 
 	subStore := &mockSubscriptionStore{sub: sub}
 	dlqStore := &mockDLQStore{}
-	d := webhook.NewDefaultDispatcher(subStore, dlqStore, nil, nil)
+	d := webhook.NewDefaultDispatcher(subStore, dlqStore, nil, nil, nil)
 
 	payload := []byte(`{"event":"test"}`)
 	err := d.WriteToDLQ(context.Background(), wsID, subID, "trace-123", "msg-123", "message.sent", payload, 3, "something went wrong")

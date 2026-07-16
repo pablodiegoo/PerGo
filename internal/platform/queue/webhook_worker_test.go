@@ -106,7 +106,7 @@ func TestWebhookWorker_Integration(t *testing.T) {
 	}
 
 	// 5. Instantiate and Start WebhookWorker
-	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, nil)
+	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, nil, nil)
 	worker, err := NewWebhookWorker(ctx, nc, dispatcher, subRepo)
 	if err != nil {
 		t.Fatalf("failed to start webhook worker: %v", err)
@@ -230,7 +230,7 @@ func TestWebhookWorker_TerminalErrorDLQ(t *testing.T) {
 		t.Fatalf("failed to create subscription: %v", err)
 	}
 
-	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, nil)
+	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, nil, nil)
 	worker, err := NewWebhookWorker(ctx, nc, dispatcher, subRepo)
 	if err != nil {
 		t.Fatalf("failed to start worker: %v", err)
@@ -349,7 +349,7 @@ func TestWebhookWorker_Inbound(t *testing.T) {
 		t.Fatalf("failed to create subscription: %v", err)
 	}
 
-	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, nil)
+	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, nil, nil)
 	worker, err := NewWebhookWorker(ctx, nc, dispatcher, subRepo)
 	if err != nil {
 		t.Fatalf("failed to start worker: %v", err)

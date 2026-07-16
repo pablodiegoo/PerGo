@@ -133,6 +133,7 @@ func main() {
 	connectionRepo := repository.NewConnectionRepository(pool, encryptor)
 	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
+	userActionLogRepo := repository.NewUserActionLogRepository(pool)
 	windowChecker := session.NewWindowChecker(recipientSessionRepo)
 
 	// --- REST Adapters ---
@@ -180,7 +181,8 @@ func main() {
 	// --- Webhook Worker ---
 	webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, encryptor)
 	webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
-	webhookDispatcher := webhook.NewDefaultDispatcher(webhookSubRepo, webhookDLQRepo, wsRepo, nil)
+	verbsEngine := webhook.NewVerbsEngine(publisher, contactRepo, userActionLogRepo, connectionRepo)
+	webhookDispatcher := webhook.NewDefaultDispatcher(webhookSubRepo, webhookDLQRepo, wsRepo, nil, verbsEngine)
 	webhookWorker, err := queue.NewWebhookWorker(ctx, nc, webhookDispatcher, webhookSubRepo)
 	if err != nil {
 		slog.Error("failed to start webhook worker", "error", err)
@@ -264,7 +266,6 @@ func main() {
 
 	// --- Repositories ---
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
-	userActionLogRepo := repository.NewUserActionLogRepository(pool)
 	wabaTemplateRepo := repository.NewWABATemplateRepository(pool)
 
 	wabaTemplateHandler := admin.NewWABATemplateHandler(wabaTemplateRepo, connectionRepo)
