@@ -7,10 +7,7 @@ We welcome and appreciate contributions to PerGo! Whether you are reporting a bu
 
 ## Development Setup
 
-Before you start writing code, please refer to the following guides to set up your local development environment:
-
-* **[GETTING-STARTED.md](docs/GETTING-STARTED.md)** — Core prerequisites, infrastructure dependencies (Postgres & NATS), and running the application for the first time.
-* **[DEVELOPMENT.md](docs/DEVELOPMENT.md)** — Detailed repository directory layout, build commands, and detailed instructions for modifying UI components.
+See [GETTING-STARTED.md](docs/GETTING-STARTED.md) for prerequisites and first-run instructions, and [DEVELOPMENT.md](docs/DEVELOPMENT.md) for local development setup.
 
 ---
 
@@ -18,51 +15,27 @@ Before you start writing code, please refer to the following guides to set up yo
 
 To maintain consistency and code quality across the codebase, please ensure your changes follow these standards:
 
-* **Code Formatting**: Format all Go code using `go fmt` and template files using `templ fmt` before submitting.
-* **Linter Compliance**: Run static analysis checks locally to verify that your code adheres to standard Go best practices. All code must pass the project linter:
-  ```bash
-  make lint
-  ```
-* **Test Coverage**: We encourage writing table-driven tests for new features. Ensure existing tests pass and run concurrency validation checks using:
-  ```bash
-  make test-race
-  ```
-
----
-
-## Branch and Commit Conventions
-
-We follow structured guidelines for branch naming and commit messages to keep the git history clean and understandable:
-
-* **Branch Naming**: Create a new branch from `master` using the following prefixes:
-  - `feat/<description>` for new features
-  - `fix/<description>` for bug fixes
-  - `refactor/<description>` for structural improvements without logical changes
-  - `docs/<description>` for documentation updates
-* **Commit Messages**: We follow the **Conventional Commits** specification:
-  - Format: `<type>(<scope>): <short summary>`
-  - Examples:
-    - `feat(channel): add discord adapter`
-    - `fix(session): resolve connection race condition on startup`
-    - `docs(api): update rate limiting headers documentation`
+* **Code Formatting**: Format all Go source files using `go fmt` and template files using `templ fmt` before submitting.
+* **Linter Compliance**: All code must pass static analysis using `golangci-lint`. Run `make lint` to verify locally. This is enforced by CI on every push and pull request.
+* **Testing**: Run tests with race detection using `make test-race` to ensure no concurrency issues. CI runs `go test -race` on all submissions.
 
 ---
 
 ## Pull Request Guidelines
 
-When you are ready to submit your contributions, please follow this process:
+When you are ready to submit your contributions, please follow these guidelines:
 
-1. **Verify Locally**: Ensure that all unit tests pass, the race detector reports no issues (`make test-race`), and the linter is green (`make lint`).
-2. **Open a PR**: Submit a Pull Request pointing to the `master` branch.
-3. **Describe Changes**: Provide a clear description of the problem you are solving, the changes you made, and any environment or database schema migrations introduced.
-4. **Code Review**: At least one reviewer must approve the PR before it is merged.
-5. **Integration**: Approved PRs are merged into `master` using the **Squash and Merge** strategy.
+* **Branch Naming**: Create a new branch from `master` using prefixes like `feat/`, `fix/`, `refactor/`, or `docs/`.
+* **Commit Messages**: Follow the **Conventional Commits** specification (e.g., `feat(channel): add discord adapter`).
+* **Verification**: Ensure all tests pass (`make test-race`) and the linter is green (`make lint`) before submitting.
+* **Pull Request**: Open a PR targeting the `master` branch. Provide a clear description of the problem solved, the changes made, and any new env variables or schema migrations.
+* **Review & Merge**: At least one reviewer must approve the PR. Approved PRs are merged into `master` using the **Squash and Merge** strategy.
 
 ---
 
 ## Issue Reporting
 
-If you encounter bugs, performance regressions, or security issues, please report them using our issue tracker:
+If you encounter bugs, performance regressions, or security issues, please report them using the [GitHub Issues](https://github.com/pablodiegoo/OmniGo/issues) tracker.
 
-* **Bug Reports**: Provide a clear description of the bug, steps to reproduce, the expected behavior, and details about your running environment (OS, Go version, Postgres version).
-* **Feature Requests**: Describe the use case, why this feature would be valuable to the community, and any initial thoughts on how it could be designed or structured.
+* **Bug Reports**: Provide a description of the issue, clear steps to reproduce, the expected vs. actual behavior, and details about your environment (OS, Go version, Postgres version).
+* **Feature Requests**: Describe the use case, the value to the community, and any initial design ideas.

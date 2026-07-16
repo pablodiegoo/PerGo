@@ -73,14 +73,24 @@ graph TD
 - The NATS JetStream durability boundary decouples HTTP request acceptance from downstream execution. <!-- VERIFY: NATS server is configured with JetStream enabled to support the outbound message stream. -->
 - The background [Worker](file:///home/pablo/Coding/OmniGo/internal/platform/queue/worker.go#L18) pulls messages from the JetStream stream.
 
-### 3. Execution, Fallback, & Webhooks
+### 3. Outbound Execution, Fallback, & Webhooks
 1. **Idempotency Check**: The worker queries the database via [MessageDispatchRepository](file:///home/pablo/Coding/OmniGo/internal/repository/dispatch.go) to see if the trace ID has already been dispatched. If `sent`, the message is acknowledged (`Ack`) and discarded.
 2. **TTL Verification**: The worker verifies if the message's custom TTL has expired relative to its ingestion time. If expired, it flags the dispatch as `failed`, pushes a webhook event, and acks the queue.
 3. **Execution Loop**: The worker resolves the channel adapter via [channel.Registry](file:///home/pablo/Coding/OmniGo/internal/channel/registry.go#L7). It iterates through the primary channel and any fallback channels:
    - **On Success**: The worker updates the database state to `sent`, notifies the `webhooks.events` channel, saves audit logs via the asynchronous audit recorder, and signals `Ack` to JetStream.
+     - *WABA Provider ID Tracking*: If the successfully dispatched channel is `whatsapp_cloud`, the worker extracts the unique Meta message ID (`wamid`) from the HTTP response payload and associates it with the database record in `message_dispatches.provider_message_id` via [MessageDispatchRepository.UpdateProviderMessageID](file:///home/pablo/Coding/OmniGo/internal/repository/dispatch.go#L123).
    - **On Transient Failure** (e.g., rate-limit, network timeout): The worker updates the DB state to `failed_transient` and sends a negative acknowledgment (`NakWithDelay`) to NATS to trigger exponential backoff redelivery.
    - **On Terminal Failure** (e.g., number not on WhatsApp, credentials invalid): The worker updates the state, logs the error, and falls back to the next channel in the payload's `fallback_channels` slice. If all fallbacks are exhausted, the status is set to `failed` and the message is acked.
 4. **Webhook Dispatch**: The [WebhookWorker](file:///home/pablo/Coding/OmniGo/internal/platform/queue/webhook_worker.go) reads webhook events from NATS and POSTs status updates back to tenant endpoints, routing failures to a Webhook DLQ in Postgres if delivery fails.
+
+### 4. WABA Read Receipts & Status Webhooks
+1. **Webhook Ingress**: Meta Graph API posts status receipts (e.g. `sent`, `delivered`, `read`, or `failed`) to the inbound webhook route (`/api/v1/webhooks/waba`).
+2. **Payload Parsing**: The [WABAInboundAdapter](file:///home/pablo/Coding/OmniGo/internal/channel/whatsapp/waba_inbound.go) parses the `statuses` array of the JSON webhook payload, mapping each entry into an `InboundEvent` with the metadata `type: status_update`, the `wamid` as the message ID, and the status value as the message body.
+3. **Inbound Processing**: The [InboundProcessor](file:///home/pablo/Coding/OmniGo/internal/inbound/processor.go#L128) intercepts events marked as `status_update`:
+   - It bypasses contact resolution, recipient session tracking, and audit logging to avoid duplicate thread/contact creation.
+   - It queries the database via `GetByProviderMessageID` to match the incoming `wamid` to the original `message_dispatches` record.
+   - If found, it updates the dispatch status in the database using `UpdateDispatchStatus`.
+   - It publishes a status update event (`MessageStatusUpdatedPayload`) to the NATS JetStream subject `messages.status_updated` for real-time notification downstream.
 
 ---
 
@@ -99,7 +109,18 @@ PerGo enforces clear interfaces to isolate business rules from transport protoco
 * **[session.ActiveSession](file:///home/pablo/Coding/OmniGo/internal/session/registry.go#L23)**: An in-memory mapping of active WhatsApp JIDs to stateful multi-device WebSocket connections (`whatsmeow`).
 * **[session.Manager](file:///home/pablo/Coding/OmniGo/internal/session/manager.go#L34)**: Co-ordinates WhatsApp Web device lifetimes. Handles concurrent reconnection throttling (limiting startup stampedes), listens to incoming message events, downloads media, and publishes incoming events to NATS.
 * **[repository.ConnectionRepository](file:///home/pablo/Coding/OmniGo/internal/repository/connection.go#L40)**: Manages persistence of workspace credentials. Handles transparent AES-256-GCM envelope encryption/decryption of channel credentials using a Key Encryption Key (KEK).
+* **[repository.MessageDispatchRepository](file:///home/pablo/Coding/OmniGo/internal/repository/dispatch.go#L35)**: Manages outbound message lifecycle states inside the `message_dispatches` table. Features queries to map external provider message IDs (e.g., WhatsApp `wamid`) to internal dispatches (`UpdateProviderMessageID`, `GetByProviderMessageID`) and update dispatch statuses (`UpdateDispatchStatus`).
+* **[inbound.InboundProcessor](file:///home/pablo/Coding/OmniGo/internal/inbound/processor.go#L93)**: Coordinates processing of incoming message events and system status update notifications. Resolves contact identities and sessions for user messages, but routes provider status changes directly to the dispatch repository and NATS JetStream, bypassing unnecessary database lookups and duplication.
+* **[repository.AuditRepository](file:///home/pablo/Coding/OmniGo/internal/repository/audit.go#L36)**: Handles loading of historical logs and unified threads. Its `ListThreadByContact` method runs queries joining the `audit_logs` table with `message_dispatches` to return the status indicator of outbound messages.
 * **[audit.Writer](file:///home/pablo/Coding/OmniGo/internal/platform/audit/batch.go#L15)**: A high-performance async logging recorder. Implemented by [BatchWriter](file:///home/pablo/Coding/OmniGo/internal/platform/audit/batch.go#L47), it streams audit logs into an in-memory buffer channel, allowing background workers to execute bulk database writes via `pgx.CopyFrom` to satisfy latency constraints.
+
+### UI Delivery Indicators
+The Inbox dashboard UI components ([chat_panel.templ](file:///home/pablo/Coding/OmniGo/templates/components/chat_panel.templ) and [message_bubble.templ](file:///home/pablo/Coding/OmniGo/templates/components/message_bubble.templ)) read the `status` string from the thread message records to render corresponding visual checkmarks:
+- **`sent`**: Rendered as a single gray checkmark.
+- **`delivered`**: Rendered as two gray checkmarks.
+- **`read`**: Rendered as two cyan checkmarks.
+- **`failed`**: Rendered as a warning symbol `⚠️`.
+- **Other/queued/sending**: Rendered as an opaque single checkmark.
 
 ---
 
