@@ -231,6 +231,7 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 	var credentialsJSON []byte
 	var validationErr error
 	var connID uuid.UUID
+	var wabaCfg pages.WABAConfig
 
 	if channel == "telegram" {
 		token := c.FormValue("token")
@@ -277,7 +278,7 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 
 		senderIdentity = phoneNumberID
 
-		wabaCfg := pages.WABAConfig{
+		wabaCfg = pages.WABAConfig{
 			PhoneNumberID: phoneNumberID,
 			Token:         token,
 			WABAAccountID: wabaAccountID,
@@ -285,7 +286,7 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 		}
 
 		connID = uuid.New()
-		validationErr = h.syncTemplatesFromMeta(ctx, workspaceID, connID, wabaCfg)
+		validationErr = h.syncTemplatesFromMeta(ctx, workspaceID, connID, wabaCfg, false)
 		if validationErr == nil {
 			credentialsJSON, _ = json.Marshal(wabaCfg)
 		}
@@ -321,6 +322,18 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 				<strong>Erro ao salvar conexão:</strong> %s
 			</div>
 		`, err.Error()))
+	}
+
+	if channel == "whatsapp_cloud" {
+		if err := h.syncTemplatesFromMeta(ctx, workspaceID, connID, wabaCfg, true); err != nil {
+			_ = h.Connections.Delete(ctx, connID)
+			c.Response().Header().Set("HX-Retarget", "#modal-error-container")
+			return c.HTML(http.StatusOK, fmt.Sprintf(`
+				<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">
+					<strong>Erro ao sincronizar templates:</strong> %s
+				</div>
+			`, err.Error()))
+		}
 	}
 
 	currentURL := c.Request().Header.Get("HX-Current-URL")
@@ -589,7 +602,7 @@ func (h *DeviceHandler) validateTelegramToken(ctx context.Context, token string)
 	return username, nil
 }
 
-func (h *DeviceHandler) syncTemplatesFromMeta(ctx context.Context, workspaceID uuid.UUID, connectionID uuid.UUID, config pages.WABAConfig) error {
+func (h *DeviceHandler) syncTemplatesFromMeta(ctx context.Context, workspaceID uuid.UUID, connectionID uuid.UUID, config pages.WABAConfig, saveToDB bool) error {
 	baseURL := "https://graph.facebook.com/v18.0"
 	metaURL := fmt.Sprintf("%s/%s/message_templates?limit=100", baseURL, config.WABAAccountID)
 
@@ -664,10 +677,11 @@ func (h *DeviceHandler) syncTemplatesFromMeta(ctx context.Context, workspaceID u
 			Components:     componentsJSON,
 		}
 
-		if h.TemplatesRepo != nil {
+		if saveToDB && h.TemplatesRepo != nil {
 			_, err = h.TemplatesRepo.Upsert(ctx, dbTmpl)
 			if err != nil {
 				slog.Error("failed to upsert template in local DB", "error", err, "template", t.Name)
+				return fmt.Errorf("failed to save template %s in local DB: %w", t.Name, err)
 			}
 		}
 	}
