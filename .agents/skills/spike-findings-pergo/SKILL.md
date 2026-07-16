@@ -8,7 +8,7 @@ description: Implementation blueprint from spike experiments. Requirements, prov
 
 Redesign the PerGo channel credentials and devices architecture to support multiple instances of WhatsApp Web (whatsmeow), WABA, and Telegram bots per workspace, routing outbound messages dynamically via a `from` sender identity or connection ID.
 
-Spike sessions wrapped: 2026-06-29, 2026-07-03
+Spike sessions wrapped: 2026-06-29, 2026-07-03, 2026-07-16
 </context>
 
 <requirements>
@@ -43,6 +43,8 @@ Spike sessions wrapped: 2026-06-29, 2026-07-03
 | Campaign Engine & Throttling | [campaign-engine.md](file:///.agents/skills/spike-findings-pergo/references/campaign-engine.md) | Throttled background campaigns with regex variable interpolation, CSV sanitization, and enriched outbound logs. |
 | User & API Action Logs | [user-action-logs.md](file:///.agents/skills/spike-findings-pergo/references/user-action-logs.md) | Polymorphic actor logs separating API vs dashboard operations with JSONB metadata. |
 | CSS Standardization & Visual Tokens | [css-standardization.md](file:///.agents/skills/spike-findings-pergo/references/css-standardization.md) | Standardize typography, forms, cards, tables, and badges across dashboard views. |
+| Workspace Simplification | [workspace-simplification.md](file:///.agents/skills/spike-findings-pergo/references/workspace-simplification.md) | Deprecate legacy workspace credentials subviews; WABA template sync migrated to connections table. |
+| PRD Implementation Gaps | [prd-implementation-gaps.md](file:///.agents/skills/spike-findings-pergo/references/prd-implementation-gaps.md) | Three unimplemented validated spikes: omnichannel contacts (017), multi-webhook subscriptions (018), messaging verbs engine (015). |
 
 ## Source Files
 
@@ -69,6 +71,8 @@ Original spike source files are preserved in `sources/` for complete reference:
 - [sources/020-campaign-engine/](file:///.agents/skills/spike-findings-pergo/sources/020-campaign-engine/)
 - [sources/021-user-action-logs/](file:///.agents/skills/spike-findings-pergo/sources/021-user-action-logs/)
 - [sources/022-css-standardization/](file:///.agents/skills/spike-findings-pergo/sources/022-css-standardization/)
+- [sources/023-deprecated-workspace-subviews/](file:///.agents/skills/spike-findings-pergo/sources/023-deprecated-workspace-subviews/)
+- [sources/024-prd-implementation-gap-audit/](file:///.agents/skills/spike-findings-pergo/sources/024-prd-implementation-gap-audit/)
 </findings_index>
 
 <metadata>
@@ -96,4 +100,6 @@ Original spike source files are preserved in `sources/` for complete reference:
 - 020-campaign-engine
 - 021-user-action-logs
 - 022-css-standardization
+- 023-deprecated-workspace-subviews
+- 024-prd-implementation-gap-audit
 </metadata>

@@ -20,3 +20,5 @@ Patterns and stack choices established across spike sessions. New spikes follow 
 - **Theming**: light theme as default (`data-theme="light"`).
 - **Design Tokens**: Standardized card container margins (`p-6 shadow-sm border border-zinc-200 rounded-lg`), tables, labels, and badges.
 - **Throttling**: Staggered dispatching (1-3s random delay) for WhatsApp Web instances.
+- **Credential Migration**: When consolidating credential sources, always migrate handler dependencies from legacy repo to connections repo — never maintain two credential access paths simultaneously.
+- **Gap Auditing**: Cross-reference context/ PRDs against spike MANIFEST → codebase files using parallel subagents for exhaustive coverage.
