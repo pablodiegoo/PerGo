@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Campaign Engine
-current_phase: 15
+current_phase: 16
 status: completed
 stopped_at: Session resumed, proceeding to complete Milestone v1.1
-last_updated: "2026-07-15T18:20:00.000Z"
+last_updated: "2026-07-15T20:56:31.000Z"
 last_activity: 2026-07-15
-last_activity_desc: Phase 15 marked complete
+last_activity_desc: Phase 16 marked complete
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 6
-  completed_plans: 6
+  total_phases: 6
+  completed_phases: 6
+  total_plans: 7
+  completed_plans: 7
   percent: 100
-current_phase_name: css-standardization
+current_phase_name: deprecate-workspace-subviews
 ---
 
 # Project State
@@ -24,14 +24,14 @@ current_phase_name: css-standardization
 See: .planning/PROJECT.md (updated 2026-06-25)
 
 **Core value:** A single API request delivers a message through any configured channel with automatic fallback — without per-message markup, without vendor lock-in, and with full custody of transaction data on infrastructure you control.
-**Current focus:** Phase 15 — css-standardization
+**Current focus:** Phase 16 — deprecate-workspace-subviews
 
 ## Current Position
 
-Phase: 15 — COMPLETE
+Phase: 16 — COMPLETE
 Plan: 1 of 1
-Status: Phase 15 complete
-Last activity: 2026-07-15 — Phase 15 marked complete
+Status: Phase 16 complete
+Last activity: 2026-07-15 — Phase 16 marked complete
 
 ## Performance Metrics
 

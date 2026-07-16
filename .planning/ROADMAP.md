@@ -40,52 +40,54 @@ Phases execute in numeric order: 12
 |-------|----------------|--------|-----------|
 | 12. Campaign Engine | 2/2 | Complete   | 2026-07-15 |
 | 12.1. Address tech debt: sidebar active highlighting | 1/1 | Complete    | 2026-07-15 |
+| 13. Deepen media engine | 1/1 | Complete | 2026-07-15 |
+| 14. User API action logs | 1/1 | Complete | 2026-07-15 |
+| 15. CSS standardization | 1/1 | Complete | 2026-07-15 |
+| 16. Deprecate workspace subviews | 1/1 | Complete | 2026-07-15 |
 
 ### Phase 13: deepen-media-engine-to-consolidate-storage-pipelines
 
-**Goal:** [To be planned]
+**Goal:** Consolidate media storage pipelines and optimize storage.
 **Requirements**: TBD
-**Depends on:** Phase 12
+**Depends on:** Phase 12.1
 **Plans:** 1/1 plans complete
 
 Plans:
 
-- [ ] 13-01-PLAN.md
-
-- [x] TBD (run /gsd-plan-phase 13 to break down) (completed 2026-07-15)
+- [x] 13-01-PLAN.md (completed 2026-07-15)
 
 ### Phase 14: user-api-action-logs
 
 **Goal:** Implement administrative action audit logging for dashboard operators and API keys.
 **Requirements**: LOG-01, LOG-02, LOG-03
 **Depends on:** Phase 13
-**Plans:** 1 plans
+**Plans:** 1/1 plans complete
 
 Plans:
 
-- [ ] 14-01-PLAN.md
+- [x] 14-01-PLAN.md (completed 2026-07-15)
 
 ### Phase 15: css-standardization
 
-**Goal:** [To be planned]
+**Goal:** Standardize admin console stylesheet patterns.
 **Requirements**: TBD
 **Depends on:** Phase 14
-**Plans:** 0 plans
+**Plans:** 1/1 plans complete
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 15 to break down)
+- [x] 15-01-PLAN.md (completed 2026-07-15)
 
 ### Phase 16: deprecate-workspace-subviews
 
 **Goal:** Deprecate redundant workspace credentials and simplify workspace settings view.
 **Requirements**: TBD
 **Depends on:** Phase 15
-**Plans:** 0 plans
+**Plans:** 1/1 plans complete
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 16 to break down)
+- [x] 16-01-PLAN.md (completed 2026-07-15)
 
 ---
 *Roadmap created: 2026-07-14*
@@ -100,6 +102,4 @@ Plans:
 
 Plans:
 
-- [ ] 12.1-01-PLAN.md
-
-- [x] TBD (run /gsd-plan-phase 12.1 to break down) (completed 2026-07-15)
+- [x] 12.1-01-PLAN.md (completed 2026-07-15)
