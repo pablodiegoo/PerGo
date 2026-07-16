@@ -1,0 +1,73 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-07-16T21:03:38.560Z",
+  "phase": "docs-update",
+  "phase_name": "Documentation Update",
+  "phase_dir": ".planning",
+  "status": "paused",
+  "completed_tasks": [
+    {
+      "id": 1,
+      "name": "Update architecture overview docs",
+      "status": "done",
+      "commit": "33fedb6d-8794-401b-bce4-fb8d37f297f6"
+    },
+    {
+      "id": 2,
+      "name": "Update contributing guidelines",
+      "status": "done",
+      "commit": "3cdd9e08-d596-406b-a6cf-2f05777daadd"
+    },
+    {
+      "id": 3,
+      "name": "Fact-check 8 hand-written documentation files",
+      "status": "done"
+    }
+  ],
+  "remaining_tasks": [
+    {
+      "id": 4,
+      "name": "Correct failing claim in README.md (repo URL & contributing guidelines existence)",
+      "status": "not_started"
+    },
+    {
+      "id": 5,
+      "name": "Correct default admin credentials claim in docs/GETTING-STARTED.md",
+      "status": "not_started"
+    },
+    {
+      "id": 6,
+      "name": "Correct media filename parameters claim in docs/API.md",
+      "status": "not_started"
+    },
+    {
+      "id": 7,
+      "name": "Correct webhook routing path and secrets claims in docs/CHANNELS.md",
+      "status": "not_started"
+    },
+    {
+      "id": 8,
+      "name": "Correct CI workflows config example in docs/TESTING.md",
+      "status": "not_started"
+    }
+  ],
+  "blockers": [
+    {
+      "description": "7 factual documentation claims failed verification check",
+      "type": "technical",
+      "workaround": "Correct the claims by editing the respective Markdown files"
+    }
+  ],
+  "async_jobs": [],
+  "human_actions_pending": [],
+  "decisions": [
+    {
+      "decision": "Preserve hand-written docs by default",
+      "rationale": "The user chose to preserve hand-written files and only append/update GSD-managed ones",
+      "phase": "docs-update"
+    }
+  ],
+  "uncommitted_files": [],
+  "next_action": "Correct the 7 minor claim failures found by gsd_doc_verifier in the hand-written docs",
+  "context_notes": "We finished Phase 20 execution & verification. Then the user ran /gsd-docs-update. We updated the GSD-managed docs (architecture/overview.md and CONTRIBUTING.md) and fact-checked all 8 hand-written docs. Handoff points to correcting the failed doc claims on next resume."
+}
