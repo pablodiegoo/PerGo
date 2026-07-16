@@ -162,15 +162,15 @@ func (r *AuditRepository) ListAll(ctx context.Context, filters AuditFilters) ([]
 	return entries, nil
 }
 
-// ConversationSummary represents a conversation view aggregate.
+// ConversationSummary represents a contact-level conversation card.
 type ConversationSummary struct {
-	From              string    `json:"from"`
-	Channel           string    `json:"channel"`
-	RecipientIdentity string    `json:"recipient_identity"`
+	ContactID         uuid.UUID `json:"contact_id"`
+	ContactName       string    `json:"contact_name"`
 	LastMessageBody   string    `json:"last_message_body"`
 	LastMessageTime   time.Time `json:"last_message_time"`
 	TotalMessageCount int64     `json:"total_message_count"`
-	DisplayName       string    `json:"display_name,omitempty"`
+	Channel           string    `json:"channel"`            // channel of last message
+	RecipientIdentity string    `json:"recipient_identity"` // recipient identity of last message
 }
 
 // ThreadMessage represents a single message in a chronological conversation thread.
@@ -182,23 +182,46 @@ type ThreadMessage struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// ListConversations lists all conversation summaries grouped by (from, channel, to) inside audit logs.
+// ListConversations lists unified conversations grouped by contact_id.
 func (r *AuditRepository) ListConversations(ctx context.Context, workspaceID uuid.UUID, channelFilter string) ([]ConversationSummary, error) {
 	query := `
-		WITH RankedConversations AS (
+		WITH MsgWithContact AS (
 			SELECT 
-				payload->>'from' AS contact,
-				payload->>'channel' AS channel,
-				payload->>'to' AS recipient_identity,
-				payload->>'body' AS body,
+				al.id,
+				al.created_at,
+				al.payload->>'body' AS body,
+				al.payload->>'channel' AS channel,
+				al.payload->>'to' AS recipient_identity,
+				ci.contact_id,
+				c.name AS contact_name
+			FROM audit_logs al
+			LEFT JOIN contact_identities ci ON ci.workspace_id = al.workspace_id 
+				AND ci.channel = al.payload->>'channel' 
+				AND ci.sender_identity = al.payload->>'from'
+			LEFT JOIN contacts c ON c.id = ci.contact_id
+			WHERE al.workspace_id = $1 
+			  AND al.event_type = 'inbound_message'
+		),
+		RankedConversations AS (
+			SELECT 
+				contact_id,
+				contact_name,
+				channel,
+				recipient_identity,
+				body,
 				created_at,
-				ROW_NUMBER() OVER(PARTITION BY payload->>'from', payload->>'channel', payload->>'to' ORDER BY created_at DESC) as rn,
-				COUNT(*) OVER(PARTITION BY payload->>'from', payload->>'channel', payload->>'to') as total_count
-			FROM audit_logs
-			WHERE workspace_id = $1 
-			  AND event_type = 'inbound_message'
+				ROW_NUMBER() OVER(PARTITION BY contact_id ORDER BY created_at DESC) as rn,
+				COUNT(*) OVER(PARTITION BY contact_id) as total_count
+			FROM MsgWithContact
 		)
-		SELECT contact, channel, COALESCE(recipient_identity, ''), COALESCE(body, ''), created_at, total_count
+		SELECT 
+			COALESCE(contact_id, '00000000-0000-0000-0000-000000000000'::uuid), 
+			COALESCE(contact_name, ''), 
+			channel, 
+			COALESCE(recipient_identity, ''), 
+			COALESCE(body, ''), 
+			created_at, 
+			total_count
 		FROM RankedConversations
 		WHERE rn = 1
 		  AND ($2 = '' OR channel = $2)
@@ -214,7 +237,7 @@ func (r *AuditRepository) ListConversations(ctx context.Context, workspaceID uui
 	var summaries []ConversationSummary
 	for rows.Next() {
 		var s ConversationSummary
-		if err := rows.Scan(&s.From, &s.Channel, &s.RecipientIdentity, &s.LastMessageBody, &s.LastMessageTime, &s.TotalMessageCount); err != nil {
+		if err := rows.Scan(&s.ContactID, &s.ContactName, &s.Channel, &s.RecipientIdentity, &s.LastMessageBody, &s.LastMessageTime, &s.TotalMessageCount); err != nil {
 			return nil, fmt.Errorf("scan conversation summary: %w", err)
 		}
 		summaries = append(summaries, s)
@@ -226,33 +249,35 @@ func (r *AuditRepository) ListConversations(ctx context.Context, workspaceID uui
 	return summaries, nil
 }
 
-// ListThread performs a UNION between inbound and outbound messages matching the contact, channel, and recipient identity, ordered chronologically.
-func (r *AuditRepository) ListThread(ctx context.Context, workspaceID uuid.UUID, contact, channel, recipientIdentity string, afterID *uuid.UUID) ([]ThreadMessage, error) {
+// ListThreadByContact performs a UNION between inbound and outbound messages matching ANY identity owned by the Contact.
+func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID uuid.UUID, contactID uuid.UUID, afterID *uuid.UUID) ([]ThreadMessage, error) {
 	query := `
-		SELECT id, trace_id, 'inbound' AS direction, COALESCE(payload->>'body', '') AS body, created_at
-		FROM audit_logs
-		WHERE workspace_id = $1
-		  AND event_type = 'inbound_message'
-		  AND payload->>'from' = $2
-		  AND payload->>'channel' = $3
-		  AND payload->>'to' = $4
-		  AND ($5::uuid IS NULL OR id > $5::uuid)
+		SELECT al.id, al.trace_id, 'inbound' AS direction, COALESCE(al.payload->>'body', '') AS body, al.created_at
+		FROM audit_logs al
+		JOIN contact_identities ci ON ci.workspace_id = al.workspace_id 
+			AND ci.channel = al.payload->>'channel' 
+			AND ci.sender_identity = al.payload->>'from'
+		WHERE al.workspace_id = $1
+		  AND ci.contact_id = $2
+		  AND al.event_type = 'inbound_message'
+		  AND ($3::uuid IS NULL OR al.id > $3::uuid)
 
 		UNION ALL
 
-		SELECT id, trace_id, 'outbound' AS direction, COALESCE(payload->'request'->>'body', '') AS body, created_at
-		FROM audit_logs
-		WHERE workspace_id = $1
-		  AND event_type = 'outbound_message'
-		  AND payload->'request'->>'to' = $2
-		  AND payload->'request'->>'channel' = $3
-		  AND payload->'request'->>'sender_identity' = $4
-		  AND ($5::uuid IS NULL OR id > $5::uuid)
+		SELECT al.id, al.trace_id, 'outbound' AS direction, COALESCE(al.payload->'request'->>'body', '') AS body, al.created_at
+		FROM audit_logs al
+		JOIN contact_identities ci ON ci.workspace_id = al.workspace_id 
+			AND ci.channel = al.payload->'request'->>'channel' 
+			AND ci.sender_identity = al.payload->'request'->>'to'
+		WHERE al.workspace_id = $1
+		  AND ci.contact_id = $2
+		  AND al.event_type = 'outbound_message'
+		  AND ($3::uuid IS NULL OR al.id > $3::uuid)
 
 		ORDER BY created_at ASC
 	`
 
-	rows, err := r.pool.Query(ctx, query, workspaceID, contact, channel, recipientIdentity, afterID)
+	rows, err := r.pool.Query(ctx, query, workspaceID, contactID, afterID)
 	if err != nil {
 		return nil, fmt.Errorf("query thread messages: %w", err)
 	}

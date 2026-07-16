@@ -16,6 +16,7 @@ func TestAuditRepository_ConversationsAndThread(t *testing.T) {
 	ctx := context.Background()
 	wsRepo := NewWorkspaceRepository(pool)
 	auditRepo := NewAuditRepository(pool)
+	contactRepo := NewContactRepository(pool)
 
 	// Create test workspace
 	ws, err := wsRepo.Create(ctx, "audit_test_ws_"+uuid.New().String())
@@ -29,6 +30,18 @@ func TestAuditRepository_ConversationsAndThread(t *testing.T) {
 	// We will create two distinct recipient identities to test isolation/multi-instance filtering
 	identity1 := "+5511999990001"
 	identity2 := "+5511999990002"
+	identity3 := "+5511999990003"
+
+	// Resolve contacts in the DB first so the joins in ListConversations/ListThread work
+	c1, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "contact1", "Contact One", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact1: %v", err)
+	}
+
+	c2, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "contact2", "Contact Two", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact2: %v", err)
+	}
 
 	// Helper to insert an inbound message into audit_logs
 	insertInbound := func(from, channel, to, body string, createdAt time.Time) {
@@ -86,6 +99,9 @@ func TestAuditRepository_ConversationsAndThread(t *testing.T) {
 	// Inbound message for contact1 on identity2 (different bot instance)
 	insertInbound("contact1", "telegram", identity2, "Hello bot 2", now.Add(-2*time.Minute))
 
+	// Inbound message for contact2
+	insertInbound("contact2", "whatsapp", identity3, "Hello from Contact Two", now.Add(-1*time.Minute))
+
 	// Test ListConversations
 	t.Run("ListConversations grouping and filters", func(t *testing.T) {
 		conversations, err := auditRepo.ListConversations(ctx, ws.ID, "")
@@ -93,48 +109,54 @@ func TestAuditRepository_ConversationsAndThread(t *testing.T) {
 			t.Fatalf("ListConversations failed: %v", err)
 		}
 
-		// We expect 2 separate conversations grouped by (from, channel, to):
-		// 1. contact1 + telegram + identity2 (last body "Hello bot 2")
-		// 2. contact1 + telegram + identity1 (last body "Hello 2")
+		// We expect 2 separate conversations grouped by contact_id:
+		// 1. contact2 (last body "Hello from Contact Two")
+		// 2. contact1 (last body "Hello bot 2")
 		if len(conversations) != 2 {
 			t.Fatalf("expected 2 conversations, got %d", len(conversations))
 		}
 
 		// Since ordered by latest message created_at DESC:
-		// First conversation should be identity2
-		if conversations[0].RecipientIdentity != identity2 {
-			t.Errorf("expected first conversation to be identity2, got: %s", conversations[0].RecipientIdentity)
+		// First conversation should be contact2 (since -1 min is newer than -2 min)
+		if conversations[0].ContactID != c2.ID {
+			t.Errorf("expected first conversation to be contact2, got: %s", conversations[0].ContactID)
 		}
-		if conversations[0].LastMessageBody != "Hello bot 2" {
-			t.Errorf("expected last body 'Hello bot 2', got: %s", conversations[0].LastMessageBody)
+		if conversations[0].ContactName != "Contact Two" {
+			t.Errorf("expected name Contact Two, got: %s", conversations[0].ContactName)
+		}
+		if conversations[0].LastMessageBody != "Hello from Contact Two" {
+			t.Errorf("expected last body 'Hello from Contact Two', got: %s", conversations[0].LastMessageBody)
 		}
 		if conversations[0].TotalMessageCount != 1 {
 			t.Errorf("expected count 1, got: %d", conversations[0].TotalMessageCount)
 		}
 
-		// Second conversation should be identity1
-		if conversations[1].RecipientIdentity != identity1 {
-			t.Errorf("expected second conversation to be identity1, got: %s", conversations[1].RecipientIdentity)
+		// Second conversation should be contact1
+		if conversations[1].ContactID != c1.ID {
+			t.Errorf("expected second conversation to be contact1, got: %s", conversations[1].ContactID)
 		}
-		if conversations[1].LastMessageBody != "Hello 2" {
-			t.Errorf("expected last body 'Hello 2', got: %s", conversations[1].LastMessageBody)
+		if conversations[1].ContactName != "Contact One" {
+			t.Errorf("expected name Contact One, got: %s", conversations[1].ContactName)
 		}
-		if conversations[1].TotalMessageCount != 2 {
-			t.Errorf("expected count 2, got: %d", conversations[1].TotalMessageCount)
+		if conversations[1].LastMessageBody != "Hello bot 2" {
+			t.Errorf("expected last body 'Hello bot 2', got: %s", conversations[1].LastMessageBody)
+		}
+		if conversations[1].TotalMessageCount != 3 {
+			t.Errorf("expected count 3, got: %d", conversations[1].TotalMessageCount)
 		}
 	})
 
 	// Test ListThread
-	t.Run("ListThread union and isolation", func(t *testing.T) {
-		// Thread for contact1, telegram, identity1
-		thread, err := auditRepo.ListThread(ctx, ws.ID, "contact1", "telegram", identity1, nil)
+	t.Run("ListThreadByContact union and isolation", func(t *testing.T) {
+		// Thread for contact1 (mapped to c1.ID)
+		thread, err := auditRepo.ListThreadByContact(ctx, ws.ID, c1.ID, nil)
 		if err != nil {
-			t.Fatalf("ListThread failed: %v", err)
+			t.Fatalf("ListThreadByContact failed: %v", err)
 		}
 
-		// Expected 3 messages: Inbound "Hello 1", Inbound "Hello 2", Outbound "Reply 1"
-		if len(thread) != 3 {
-			t.Fatalf("expected 3 thread messages, got %d", len(thread))
+		// Expected 4 messages: Inbound "Hello 1", Inbound "Hello 2", Outbound "Reply 1", Inbound "Hello bot 2"
+		if len(thread) != 4 {
+			t.Fatalf("expected 4 thread messages, got %d", len(thread))
 		}
 
 		if thread[0].Body != "Hello 1" || thread[0].Direction != "inbound" {
@@ -146,17 +168,20 @@ func TestAuditRepository_ConversationsAndThread(t *testing.T) {
 		if thread[2].Body != "Reply 1" || thread[2].Direction != "outbound" {
 			t.Errorf("expected third msg to be outbound 'Reply 1', got: %s (%s)", thread[2].Body, thread[2].Direction)
 		}
+		if thread[3].Body != "Hello bot 2" || thread[3].Direction != "inbound" {
+			t.Errorf("expected fourth msg to be inbound 'Hello bot 2', got: %s (%s)", thread[3].Body, thread[3].Direction)
+		}
 
-		// Thread for contact1, telegram, identity2 should only contain "Hello bot 2" (isolation check)
-		thread2, err := auditRepo.ListThread(ctx, ws.ID, "contact1", "telegram", identity2, nil)
+		// Thread for contact2 (mapped to c2.ID) should only contain "Hello from Contact Two"
+		thread2, err := auditRepo.ListThreadByContact(ctx, ws.ID, c2.ID, nil)
 		if err != nil {
-			t.Fatalf("ListThread failed: %v", err)
+			t.Fatalf("ListThreadByContact failed: %v", err)
 		}
 		if len(thread2) != 1 {
 			t.Fatalf("expected 1 thread message, got %d", len(thread2))
 		}
-		if thread2[0].Body != "Hello bot 2" {
-			t.Errorf("expected body 'Hello bot 2', got: %s", thread2[0].Body)
+		if thread2[0].Body != "Hello from Contact Two" {
+			t.Errorf("expected body 'Hello from Contact Two', got: %s", thread2[0].Body)
 		}
 	})
 }
