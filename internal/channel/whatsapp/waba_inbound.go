@@ -129,13 +129,14 @@ func (a *WABAInboundAdapter) Parse(
 			if len(change.Value.Statuses) > 0 {
 				for _, status := range change.Value.Statuses {
 					events = append(events, &inbound.InboundEvent{
-						WorkspaceID: conn.WorkspaceID,
-						MessageID:   status.ID,
-						Channel:     "whatsapp_cloud",
-						From:        status.RecipientID,
-						To:          change.Value.Metadata.DisplayPhoneNumber,
-						Body:        status.Status,
-						Metadata:    map[string]string{"type": "status_update"},
+						WorkspaceID:  conn.WorkspaceID,
+						ConnectionID: conn.ID,
+						MessageID:    status.ID,
+						Channel:      "whatsapp_cloud",
+						From:         status.RecipientID,
+						To:           change.Value.Metadata.DisplayPhoneNumber,
+						Body:         status.Status,
+						Metadata:     map[string]string{"type": "status_update"},
 					})
 				}
 				continue
@@ -213,15 +214,16 @@ func (a *WABAInboundAdapter) Parse(
 				}
 
 				events = append(events, &inbound.InboundEvent{
-					WorkspaceID: conn.WorkspaceID,
-					MessageID:   msg.ID,
-					Channel:     "whatsapp_cloud",
-					From:        msg.From,
-					To:          recipientIdentity,
-					Body:        body,
-					Media:       inboundMedia,
-					Location:    inboundLocation,
-					Contacts:    inboundContacts,
+					WorkspaceID:  conn.WorkspaceID,
+					ConnectionID: conn.ID,
+					MessageID:    msg.ID,
+					Channel:      "whatsapp_cloud",
+					From:         msg.From,
+					To:           recipientIdentity,
+					Body:         body,
+					Media:        inboundMedia,
+					Location:     inboundLocation,
+					Contacts:     inboundContacts,
 				})
 			}
 		}

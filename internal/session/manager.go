@@ -268,15 +268,16 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection)
 				}
 
 				event := &inbound.InboundEvent{
-					WorkspaceID: d.WorkspaceID,
-					MessageID:   v.Info.ID,
-					Channel:     "whatsapp",
-					From:        senderJID,
-					To:          recipientIdentity,
-					Body:        extractWhatsAppBody(v),
-					Media:       inboundMedia,
-					Location:    inboundLocation,
-					Contacts:    inboundContacts,
+					WorkspaceID:  d.WorkspaceID,
+					ConnectionID: d.ID,
+					MessageID:    v.Info.ID,
+					Channel:      "whatsapp",
+					From:         senderJID,
+					To:           recipientIdentity,
+					Body:         extractWhatsAppBody(v),
+					Media:        inboundMedia,
+					Location:     inboundLocation,
+					Contacts:     inboundContacts,
 				}
 
 				_ = m.inboundProcessor.Process(ctxBg, event)

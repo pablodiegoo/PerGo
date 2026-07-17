@@ -9,10 +9,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/repository"
 )
+
+// ChatwootSyncer defines the interface to sync inbound customer messages into Chatwoot.
+type ChatwootSyncer interface {
+	SyncInboundMessage(ctx context.Context, contact *domain.Contact, ev *InboundEvent) error
+}
 
 // InboundMedia carries media bytes and metadata downloaded by the caller/adapter.
 type InboundMedia struct {
@@ -20,6 +26,7 @@ type InboundMedia struct {
 	MediaType string `json:"media_type"` // "image", "document", "audio", "video"
 	Filename  string `json:"filename,omitempty"`
 	Caption   string `json:"caption,omitempty"`
+	MediaURL  string `json:"media_url,omitempty"`
 }
 
 // InboundLocation carries location data.
@@ -38,17 +45,18 @@ type InboundContact struct {
 
 // InboundEvent is the channel-agnostic inbound payload.
 type InboundEvent struct {
-	WorkspaceID uuid.UUID
-	MessageID   string // Provider-specific unique message/update ID
-	Channel     string // "whatsapp", "whatsapp_cloud", "telegram"
-	From        string // Sender JID/phone/chat ID
-	To          string // Recipient identity (our bot/phone)
-	Body        string
-	Media       *InboundMedia
-	Location    *InboundLocation
-	Contacts    []InboundContact
-	SenderName  string
-	Metadata    map[string]string
+	WorkspaceID  uuid.UUID
+	ConnectionID uuid.UUID
+	MessageID    string // Provider-specific unique message/update ID
+	Channel      string // "whatsapp", "whatsapp_cloud", "telegram"
+	From         string // Sender JID/phone/chat ID
+	To           string // Recipient identity (our bot/phone)
+	Body         string
+	Media        *InboundMedia
+	Location     *InboundLocation
+	Contacts     []InboundContact
+	SenderName   string
+	Metadata     map[string]string
 }
 
 // InboundEventPayload is the standard format published to NATS and webhooks.
@@ -99,6 +107,7 @@ type InboundProcessor struct {
 	recipientSessionRepo *repository.RecipientSessionRepository
 	contactRepo          *repository.ContactRepository
 	dispatchRepo         *repository.MessageDispatchRepository
+	chatwootSyncer       ChatwootSyncer
 }
 
 // NewInboundProcessor creates a new InboundProcessor.
@@ -122,6 +131,11 @@ func NewInboundProcessor(
 		contactRepo:          contactRepo,
 		dispatchRepo:         dispatchRepo,
 	}
+}
+
+// SetChatwootSyncer registers a Chatwoot syncer instance.
+func (p *InboundProcessor) SetChatwootSyncer(s ChatwootSyncer) {
+	p.chatwootSyncer = s
 }
 
 // Process executes the ingestion pipeline for an inbound event.
@@ -170,6 +184,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 	}
 
 	// Resolve/Create Contact Profile
+	var contact *domain.Contact
 	if p.contactRepo != nil {
 		var username, phone string
 		if ev.Metadata != nil {
@@ -179,7 +194,8 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		if ev.Channel == "whatsapp" || ev.Channel == "whatsapp_cloud" {
 			phone = ev.From
 		}
-		_, err := p.contactRepo.ResolveContact(ctx, ev.WorkspaceID, ev.Channel, ev.From, ev.SenderName, username, phone)
+		var err error
+		contact, err = p.contactRepo.ResolveContact(ctx, ev.WorkspaceID, ev.Channel, ev.From, ev.SenderName, username, phone)
 		if err != nil {
 			slog.Error("inbound processor: failed to resolve contact profile", "error", err, "from", ev.From)
 		}
@@ -242,6 +258,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 					Filename:  ev.Media.Filename,
 					Caption:   ev.Media.Caption,
 				}
+				ev.Media.MediaURL = mediaURL
 			}
 		}
 	}
@@ -277,6 +294,17 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 				slog.Error("inbound processor: failed to write audit log", "error", err, "trace_id", traceID)
 			}
 		}
+	}
+
+	// 9. Sync asynchronously to Chatwoot
+	if p.chatwootSyncer != nil && contact != nil {
+		go func(c *domain.Contact, e *InboundEvent) {
+			ctxBg, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := p.chatwootSyncer.SyncInboundMessage(ctxBg, c, e); err != nil {
+				slog.Error("inbound processor: failed to sync message to chatwoot", "error", err, "contact_id", c.ID, "workspace_id", e.WorkspaceID)
+			}
+		}(contact, ev)
 	}
 
 	return nil

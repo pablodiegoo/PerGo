@@ -43,6 +43,7 @@ import (
 	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
+	"github.com/pablojhp.pergo/internal/integration/chatwoot"
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
@@ -319,6 +320,9 @@ func main() {
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
 	wabaTemplateRepo := repository.NewWABATemplateRepository(pool)
 	integrationRepo := repository.NewIntegrationRepository(pool, encryptor)
+	chatwootMappingRepo := repository.NewChatwootMappingRepository(pool)
+	chatwootSyncer := chatwoot.NewChatwootSyncer(integrationRepo, chatwootMappingRepo, nil)
+	inboundProcessor.SetChatwootSyncer(chatwootSyncer)
 
 	wabaTemplateHandler := admin.NewWABATemplateHandler(wabaTemplateRepo, connectionRepo)
 	userLogsHandler := admin.NewUserLogsHandler(userActionLogRepo)

@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/platform/audit"
@@ -544,5 +545,78 @@ func TestProcess_StatusUpdate(t *testing.T) {
 	}
 	if payload.Status != "delivered" {
 		t.Errorf("expected status 'delivered', got %s", payload.Status)
+	}
+}
+
+type fakeChatwootSyncer struct {
+	called  chan struct{}
+	contact *domain.Contact
+	event   *inbound.InboundEvent
+}
+
+func (f *fakeChatwootSyncer) SyncInboundMessage(ctx context.Context, contact *domain.Contact, ev *inbound.InboundEvent) error {
+	f.contact = contact
+	f.event = ev
+	close(f.called)
+	return nil
+}
+
+func TestInboundProcessor_ChatwootSyncer(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	dedupRepo := repository.NewInboundDedupRepository(pool)
+	sessRepo := repository.NewRecipientSessionRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "chatwoot_syncer_test_ws_" + uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	pub := &fakePublisher{}
+	me := &fakeMediaEngine{}
+	aud := &fakeAuditWriter{}
+
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo)
+
+	syncer := &fakeChatwootSyncer{
+		called: make(chan struct{}),
+	}
+	proc.SetChatwootSyncer(syncer)
+
+	event := &inbound.InboundEvent{
+		WorkspaceID:  ws.ID,
+		ConnectionID: uuid.New(),
+		MessageID:    "msg_unique_12345",
+		Channel:      "telegram",
+		From:         "5511999990000",
+		To:           "@test_bot",
+		Body:         "Hello to Chatwoot",
+	}
+
+	err = proc.Process(ctx, event)
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+
+	select {
+	case <-syncer.called:
+		if syncer.contact == nil {
+			t.Error("expected contact to be populated")
+		}
+		if syncer.event.Body != "Hello to Chatwoot" {
+			t.Errorf("expected body 'Hello to Chatwoot', got %q", syncer.event.Body)
+		}
+		if syncer.event.ConnectionID != event.ConnectionID {
+			t.Errorf("expected connection ID %s, got %s", event.ConnectionID, syncer.event.ConnectionID)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for ChatwootSyncer to be called")
 	}
 }

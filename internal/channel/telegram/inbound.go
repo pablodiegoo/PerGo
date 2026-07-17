@@ -257,17 +257,18 @@ func (a *TelegramInboundAdapter) Parse(
 
 	return []*inbound.InboundEvent{
 		{
-			WorkspaceID: conn.WorkspaceID,
-			MessageID:   strconv.FormatInt(update.UpdateID, 10),
-			Channel:     "telegram",
-			From:        chatIDStr,
-			To:          botUsername,
-			Body:        update.Message.Text,
-			Media:       inboundMedia,
-			Location:    inboundLocation,
-			Contacts:    inboundContacts,
-			SenderName:  senderName,
-			Metadata:    metadata,
+			WorkspaceID:  conn.WorkspaceID,
+			ConnectionID: conn.ID,
+			MessageID:    strconv.FormatInt(update.UpdateID, 10),
+			Channel:      "telegram",
+			From:         chatIDStr,
+			To:           botUsername,
+			Body:         update.Message.Text,
+			Media:        inboundMedia,
+			Location:     inboundLocation,
+			Contacts:     inboundContacts,
+			SenderName:   senderName,
+			Metadata:     metadata,
 		},
 	}, nil
 }
