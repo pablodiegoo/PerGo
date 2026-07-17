@@ -53,6 +53,7 @@ A single API request delivers a message through any configured channel with auto
 - ✓ Omnichannel Contact Merging: unified profile contact/identities schemas, auto-resolution on inbound/outbound events, transactional merge consolidation — Phase 18
 - ✓ Webhook Response Verbs Engine: sequential execution of reply, wait (capped at 10s), forward, tag, and close actions, with 30s context limits and action logs audits — Phase 19
 - ✓ WABA Read Receipts & Status updates: Meta callback processing, message status updates in database, and visual delivery checkmarks in Chat UI bubbles — Phase 20
+- ✓ Typebot Integration: User configuration of Typebot credentials (API URL, Bot ID, Public Token) per workspace, built-in webhook receiver endpoint to parse and enqueue responses, and asynchronous inbound message forwarder maintaining active conversation session per contact — Phase 22
 
 ### Active
 
@@ -118,6 +119,9 @@ A single API request delivers a message through any configured channel with auto
 | Decoupling webhook verbs execution from HTTP dispatcher request context | Uses context.Background() inside async goroutine execution to avoid worker timeouts | Validated (Phase 19) |
 | Meta status receipts updating message dispatches status directly | Leverage provider_message_id index to map Meta callbacks back to original dispatches | Validated (Phase 20) |
 | Visual indicator delivery SVGs (sent, delivered, read, failed) | Checkmark graphics parsed from dispatch status via LEFT JOIN in ListThreadByContact | Validated (Phase 20) |
+| Reuse central integrations table for Typebot | Store Typebot API URL, Bot ID, and Public Token encrypted as JSON envelope in integrations table | Validated (Phase 22) |
+| Dedicated typebot_sessions mapping table | Map contacts, workspaces, and connections to remote Typebot session IDs in PostgreSQL | Validated (Phase 22) |
+| Webhook receiver for bot replies | Expose public integration endpoint to enqueue bot responses directly to NATS JetStream | Validated (Phase 22) |
 
 ## Evolution
 
@@ -137,4 +141,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-17 after v1.2 milestone completion*
+*Last updated: 2026-07-17 after Phase 22 completion*
