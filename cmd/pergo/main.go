@@ -372,6 +372,10 @@ func main() {
 	e.GET("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandleGet)
 	e.POST("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandlePost)
 
+	// --- Chatwoot Inbound Webhook handler ---
+	chatwootWebhookHandler := handler.NewChatwootWebhookHandler()
+	e.POST("/api/integrations/chatwoot", chatwootWebhookHandler.Handle)
+
 	// --- Landing Page ---
 	e.GET("/", func(c *echo.Context) error {
 		return middleware.Render(c, http.StatusOK, pages.Landing())
