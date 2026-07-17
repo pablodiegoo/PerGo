@@ -14,10 +14,10 @@
 
 ### Typebot Integration
 
-- [ ] **TYPE-01**: User can configure a Typebot connection (API URL, Bot ID, Public Token) per workspace via the active connections settings interface.
-- [ ] **TYPE-02**: System exposes a built-in native integration receiver endpoint (`POST /api/integrations/typebot`) to receive chat message responses from Typebot.
-- [ ] **TYPE-03**: System parses Typebot responses and maps them to the PerGo outbound queue (`messages.outbound`) for dispatch.
-- [ ] **TYPE-04**: System forwards inbound customer messages to the Typebot execution API, maintaining the active chatbot session context (session ID) per contact identity.
+- [x] **TYPE-01**: User can configure a Typebot connection (API URL, Bot ID, Public Token) per workspace via the active connections settings interface.
+- [x] **TYPE-02**: System exposes a built-in native integration receiver endpoint (`POST /api/integrations/typebot`) to receive chat message responses from Typebot.
+- [x] **TYPE-03**: System parses Typebot responses and maps them to the PerGo outbound queue (`messages.outbound`) for dispatch.
+- [x] **TYPE-04**: System forwards inbound customer messages to the Typebot execution API, maintaining the active chatbot session context (session ID) per contact identity.
 
 ### Stateful Handoff Routing
 
@@ -51,10 +51,10 @@
 | CHAT-02 | Phase 21 | Complete |
 | CHAT-03 | Phase 21 | Complete |
 | CHAT-04 | Phase 21 | Complete |
-| TYPE-01 | Phase 22 | Pending |
-| TYPE-02 | Phase 22 | Pending |
-| TYPE-03 | Phase 22 | Pending |
-| TYPE-04 | Phase 22 | Pending |
+| TYPE-01 | Phase 22 | Complete |
+| TYPE-02 | Phase 22 | Complete |
+| TYPE-03 | Phase 22 | Complete |
+| TYPE-04 | Phase 22 | Complete |
 | HAND-01 | Phase 23 | Pending |
 | HAND-02 | Phase 23 | Pending |
 | HAND-03 | Phase 23 | Pending |
