@@ -51,13 +51,14 @@
   CREATE TABLE chatwoot_mappings (
       workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
       contact_id UUID NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
-      chatwoot_contact_id INT NOT NULL,
-      chatwoot_conversation_id INT NOT NULL,
+      connection_id UUID NOT NULL REFERENCES connections(id) ON DELETE CASCADE,
+      chatwoot_contact_id BIGINT NOT NULL,
+      chatwoot_conversation_id BIGINT NOT NULL,
       channel TEXT NOT NULL,
       sender_identity TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-      PRIMARY KEY (workspace_id, contact_id)
+      PRIMARY KEY (workspace_id, contact_id, connection_id)
   );
 
   CREATE INDEX idx_integrations_workspace ON integrations(workspace_id);
@@ -128,6 +129,7 @@
   type ChatwootMapping struct {
       WorkspaceID            uuid.UUID
       ContactID              uuid.UUID
+      ConnectionID           uuid.UUID
       ChatwootContactID      int64
       ChatwootConversationID int64
       Channel                string
@@ -142,17 +144,27 @@
 
   func (r *ChatwootMappingRepository) Upsert(ctx context.Context, m *ChatwootMapping) error {
       _, err := r.pool.Exec(ctx, `
-          INSERT INTO chatwoot_mappings (workspace_id, contact_id, chatwoot_contact_id, chatwoot_conversation_id, channel, sender_identity)
-          VALUES ($1, $2, $3, $4, $5, $6)
-          ON CONFLICT (workspace_id, contact_id)
+          INSERT INTO chatwoot_mappings (workspace_id, contact_id, connection_id, chatwoot_contact_id, chatwoot_conversation_id, channel, sender_identity)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          ON CONFLICT (workspace_id, contact_id, connection_id)
           DO UPDATE SET 
               chatwoot_contact_id = EXCLUDED.chatwoot_contact_id,
               chatwoot_conversation_id = EXCLUDED.chatwoot_conversation_id,
               channel = EXCLUDED.channel,
               sender_identity = EXCLUDED.sender_identity,
               updated_at = NOW()
-      `, m.WorkspaceID, m.ContactID, m.ChatwootContactID, m.ChatwootConversationID, m.Channel, m.SenderIdentity)
+      `, m.WorkspaceID, m.ContactID, m.ConnectionID, m.ChatwootContactID, m.ChatwootConversationID, m.Channel, m.SenderIdentity)
       return err
+  }
+
+  func (r *ChatwootMappingRepository) GetByContactAndConnection(ctx context.Context, workspaceID, contactID, connectionID uuid.UUID) (*ChatwootMapping, error) {
+      // QueryRow mapping with WHERE workspace_id = $1 AND contact_id = $2 AND connection_id = $3
+      return nil, nil
+  }
+
+  func (r *ChatwootMappingRepository) Delete(ctx context.Context, workspaceID, contactID, connectionID uuid.UUID) error {
+      // Exec DELETE FROM chatwoot_mappings WHERE workspace_id = $1 AND contact_id = $2 AND connection_id = $3
+      return nil
   }
   ```
 
@@ -224,17 +236,18 @@
       // HTTP client helper or factory to instantiate ChatwootClient
   }
 
-  func (s *ChatwootSyncer) SyncInboundMessage(ctx context.Context, workspaceID uuid.UUID, contactID uuid.UUID, senderName string, ev *InboundEvent) error {
-      // 1. Fetch integration configuration for workspace_id and check if Active
+  func (s *ChatwootSyncer) SyncInboundMessage(ctx context.Context, contact *domain.Contact, ev *InboundEvent) error {
+      // 1. Fetch integration configuration for workspaceID and check if Active
       // 2. Decrypt configuration details (api_url, token, inbox_id, account_id)
-      // 3. Lookup mapping repository for (workspace_id, contact_id)
+      // 3. Lookup mapping repository for (workspaceID, contact.ID, ev.ConnectionID) using GetByContactAndConnection
       // 4. If mapped:
       //      - Post message directly to Chatwoot Conversation ID
+      //      - If post returns 404 (ErrNotFound), delete local mapping using mappingRepo.Delete(ctx, workspaceID, contact.ID, ev.ConnectionID), and proceed to step 5 (re-resolve & recreate)
       // 5. If not mapped:
-      //      - Search contact in Chatwoot using contactID (UUID string) as "identifier"
+      //      - Search contact in Chatwoot using contact.ID (UUID string) as "identifier"
       //      - If not found, create contact in Chatwoot
       //      - Create conversation in Chatwoot
-      //      - Save mapping (Upsert)
+      //      - Save mapping (Upsert with connection_id and sender_identity)
       //      - Post message to the new Conversation ID
   }
   ```
@@ -278,7 +291,7 @@
           return c.NoContent(http.StatusOK) // Return 200 to acknowledge webhook
       }
 
-      // 5. Query mappingRepo by Chatwoot Conversation ID to retrieve local contact ID and channel
+      // 5. Query mappingRepo by both workspace ID and Chatwoot Conversation ID to retrieve local contact ID and channel (ensuring tenant isolation)
       // 6. Push message out through NATS messages.outbound or outboundProcessor
       return c.NoContent(http.StatusOK)
   }

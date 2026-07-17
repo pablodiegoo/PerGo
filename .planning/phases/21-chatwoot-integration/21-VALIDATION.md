@@ -2,7 +2,7 @@
 phase: 21
 slug: chatwoot-integration
 status: draft
-nyquist_compliant: false
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-17
 ---
@@ -38,10 +38,12 @@ created: 2026-07-17
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 21-01-01 | 01 | 1 | CHAT-01 | T-21-02 | credentials encrypted in DB | unit | `go test -run TestIntegrationRepository ./internal/repository` | ❌ W0 | ⬜ pending |
-| 21-01-02 | 01 | 1 | CHAT-02 | T-21-01 | token middleware validation | integration | `go test -run TestChatwootWebhookHandler ./internal/api/handler` | ❌ W0 | ⬜ pending |
-| 21-02-01 | 02 | 2 | CHAT-03 | T-21-03 | human replies parse & send NATS | system | `go test -run TestChatwootIngressPipeline ./internal/api/handler` | ❌ W0 | ⬜ pending |
-| 21-02-02 | 02 | 2 | CHAT-04 | — | sync incoming msg to Chatwoot | integration | `go test -run TestChatwootSync ./internal/integration/chatwoot` | ❌ W0 | ⬜ pending |
+| 21-01-01 | 01 | 1 | CHAT-01 | T-21-02 | credentials encrypted, mapping isolated | unit | `go test -run TestIntegrationRepository ./internal/repository/...` | ❌ W0 | ⬜ pending |
+| 21-01-02 | 01 | 1 | CHAT-01 | — | integrations settings UI | manual | Verify settings form elements | ❌ W0 | ⬜ pending |
+| 21-01-03 | 01 | 1 | CHAT-02 | T-21-01 | token middleware validation | integration | `go test -run TestChatwootWebhookAuth ./internal/api/handler/...` | ❌ W0 | ⬜ pending |
+| 21-02-01 | 02 | 2 | CHAT-04 | — | sync msg, 404 remote delete | integration | `go test -run TestChatwootClient ./internal/integration/chatwoot/...` | ❌ W0 | ⬜ pending |
+| 21-02-02 | 02 | 2 | CHAT-04 | — | InboundProcessor integration | integration | `go test -run TestInboundProcessor ./internal/inbound/...` | ❌ W0 | ⬜ pending |
+| 21-02-03 | 02 | 2 | CHAT-03 | T-21-03 | human replies parse & NATS isolated | system | `go test -run TestChatwootWebhookHandler ./internal/api/handler/...` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 

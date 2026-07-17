@@ -94,11 +94,11 @@ To support dynamic channel handoff (e.g., when a customer switches from Telegram
 // Pattern for updating mapping status dynamically
 func (r *MappingRepository) Upsert(ctx context.Context, m *ChatwootMapping) error {
     _, err := r.pool.Exec(ctx, `
-        INSERT INTO chatwoot_mappings (workspace_id, contact_id, chatwoot_contact_id, chatwoot_conversation_id, channel, sender_identity)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (workspace_id, contact_id) 
-        DO UPDATE SET channel = EXCLUDED.channel, sender_identity = EXCLUDED.sender_identity, updated_at = NOW()
-    `, m.WorkspaceID, m.ContactID, m.ChatwootContactID, m.ChatwootConversationID, m.Channel, m.SenderIdentity)
+        INSERT INTO chatwoot_mappings (workspace_id, contact_id, connection_id, chatwoot_contact_id, chatwoot_conversation_id, channel, sender_identity)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (workspace_id, contact_id, channel) 
+        DO UPDATE SET connection_id = EXCLUDED.connection_id, sender_identity = EXCLUDED.sender_identity, updated_at = NOW()
+    `, m.WorkspaceID, m.ContactID, m.ConnectionID, m.ChatwootContactID, m.ChatwootConversationID, m.Channel, m.SenderIdentity)
     return err
 }
 ```
@@ -132,7 +132,7 @@ type ChatwootWebhookPayload struct {
 	Private     bool   `json:"private"`      // Must be false
 	Content     string `json:"content"`
 	Sender      struct {
-		Type string `json:"sender_type"` // Must be "user"
+		Type string `json:"type"` // Must be "user"
 	} `json:"sender"`
 	Conversation struct {
 		ID      int64 `json:"id"`
@@ -192,7 +192,7 @@ type ChatwootWebhookPayload struct {
 |---------|--------|---------------------|
 | Webhook Spoofing | Spoofing | Reject requests lacking valid query param `token` signatures. |
 | Credentials Exposure | Information Disclosure | Store credentials inside a `config` column with envelope cryptography. |
-| Infinite Echo Loop | Business Logic Error | Drop webhooks where `sender_type != "user"`. |
+| Infinite Echo Loop | Business Logic Error | Drop webhooks where `sender.type != "user"`. |
 
 ## Sources
 ### Primary (HIGH confidence)
