@@ -1,5 +1,5 @@
 {
-  "runtime": "pi",
+  "runtime": "antigravity",
   "model_profile": "adaptive",
   "model_profile_overrides": {
     "pi": {

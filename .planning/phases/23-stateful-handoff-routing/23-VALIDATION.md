@@ -38,7 +38,7 @@ created: 2026-07-17
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| 23-01-01 | 01 | 1 | HAND-01 | — | N/A | migration | `goose -dir database/migrations status` | ❌ W0 | ⬜ pending |
+| 23-01-01 | 01 | 1 | HAND-01 | — | N/A | migration | `goose -dir internal/platform/postgres/migrations status` | ❌ W0 | ⬜ pending |
 | 23-01-02 | 01 | 1 | HAND-01 | — | N/A | unit | `go test ./internal/repository/...` | ✅ | ⬜ pending |
 | 23-01-03 | 01 | 1 | HAND-02 | — | Skip forwarding to bot when inactive | unit | `go test ./internal/integration/typebot/...` | ✅ | ⬜ pending |
 | 23-01-04 | 01 | 1 | HAND-06 | — | Bot auto-resets after 12h human inactivity | unit | `go test ./internal/inbound/...` | ✅ | ⬜ pending |
