@@ -35,6 +35,11 @@ func NewForwarder(
 }
 
 func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Contact, event *inbound.InboundEvent) error {
+	if !contact.BotActive {
+		slog.Debug("Skipping Typebot forward: bot is inactive for contact", "contact_id", contact.ID)
+		return nil
+	}
+
 	// 1. Look up if workspace has active typebot integration
 	integ, err := f.integRepo.GetByProvider(ctx, event.WorkspaceID, "typebot")
 	if err != nil {
