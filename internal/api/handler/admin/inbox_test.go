@@ -772,3 +772,115 @@ func TestInboxHandler_NewMessageSend_HTTP(t *testing.T) {
 	}
 }
 
+func TestInboxHandler_SendMessage_SuccessAndPauseBot(t *testing.T) {
+	dbURL := os.Getenv("PERGO_DATABASE_URL")
+	natsURL := os.Getenv("PERGO_NATS_URL")
+	if dbURL == "" || natsURL == "" {
+		t.Skip("PostgreSQL and NATS must be available to run this test")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("failed to connect to DB pool: %v", err)
+	}
+	defer pool.Close()
+
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		t.Fatalf("failed to connect to NATS: %v", err)
+	}
+	defer nc.Close()
+
+	_, err = queue.EnsureStream(ctx, nc)
+	if err != nil {
+		t.Fatalf("failed to setup JetStream: %v", err)
+	}
+
+	encryptor, err := crypto.NewEncryptor([]byte("dev-development-key-32-bytes-kek"))
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, encryptor)
+	contactRepo := repository.NewContactRepository(pool)
+	auditRepo := repository.NewAuditRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "SendMessage Success Test Workspace")
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() {
+		_ = wsRepo.Delete(ctx, ws.ID)
+	}()
+
+	// Save active connection for workspace
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "Test Connection WABA",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+5511999990001",
+		Status:         "connected",
+	}
+	err = connRepo.Create(ctx, conn)
+	if err != nil {
+		t.Fatalf("failed to save connection: %v", err)
+	}
+
+	// Resolve/create contact, initially active (default is true)
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511888880002", "Carlos", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact: %v", err)
+	}
+	if !contact.BotActive {
+		t.Fatalf("expected contact bot to be active initially")
+	}
+
+	pub := queue.NewJetStreamPublisher(nc)
+	h := &admin.InboxHandler{
+		Repo:        auditRepo,
+		Workspaces:  wsRepo,
+		Connections: connRepo,
+		ContactRepo: contactRepo,
+		Publisher:   pub,
+	}
+
+	// Prepare request payload
+	fv := url.Values{}
+	fv.Set("contact", "+5511888880002")
+	fv.Set("channel", "whatsapp_cloud")
+	fv.Set("recipient_identity", "+5511999990001")
+	fv.Set("body", "Olá, agente respondendo.")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/admin/inbox/send", strings.NewReader(fv.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err = h.SendMessage(c)
+	if err != nil {
+		t.Fatalf("SendMessage returned error: %v", err)
+	}
+
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("expected StatusNoContent (204), got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Assert database: contact's bot_active must be false
+	updatedContact, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+	if err != nil {
+		t.Fatalf("failed to get contact by ID: %v", err)
+	}
+	if updatedContact.BotActive {
+		t.Errorf("expected contact bot to be paused after sending message")
+	}
+	if updatedContact.BotPausedAt == nil {
+		t.Errorf("expected bot_paused_at to be set")
+	}
+}
+
+

@@ -354,6 +354,14 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 		return c.HTML(http.StatusInternalServerError, `<span class="text-red-400">Erro ao enviar mensagem: `+escapeHTML(err.Error())+`</span>`)
 	}
 
+	if h.ContactRepo != nil {
+		cProfile, err := h.ContactRepo.ResolveContact(ctx, workspaceID, channel, contact, "", "", "")
+		if err == nil && cProfile != nil {
+			now := time.Now().UTC()
+			_ = h.ContactRepo.UpdateBotState(ctx, workspaceID, cProfile.ID, false, &now)
+		}
+	}
+
 	// Return 204 so HTMX clears the status and re-polls naturally
 	return c.NoContent(http.StatusNoContent)
 }
