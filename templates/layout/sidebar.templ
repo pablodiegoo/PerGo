@@ -148,7 +148,10 @@ templ Sidebar() {
 					</li>
 					if ws := getActiveWorkspace(ctx); ws != nil {
 						<li>
-							<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/chatwoot", ws.ID.String())) } class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")) }>Integrations</a>
+							<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/chatwoot", ws.ID.String())) } class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")) }>Chatwoot</a>
+						</li>
+						<li>
+							<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/typebot", ws.ID.String())) } class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/typebot")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/typebot")) }>Typebot</a>
 						</li>
 					}
 				</ul>

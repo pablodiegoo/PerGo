@@ -327,6 +327,7 @@ func main() {
 	wabaTemplateHandler := admin.NewWABATemplateHandler(wabaTemplateRepo, connectionRepo)
 	userLogsHandler := admin.NewUserLogsHandler(userActionLogRepo)
 	chatwootAdminHandler := admin.NewChatwootAdminHandler(integrationRepo)
+	typebotAdminHandler := admin.NewTypebotSettingsHandler(integrationRepo)
 
 	// --- Echo HTTP server ---
 	e := echosrv.New()
@@ -379,6 +380,10 @@ func main() {
 	// --- Chatwoot Inbound Webhook handler ---
 	chatwootWebhookHandler := handler.NewChatwootWebhookHandler(pool, chatwootMappingRepo, publisher)
 	e.POST("/api/integrations/chatwoot", chatwootWebhookHandler.Handle)
+
+	// --- Typebot Inbound Webhook handler ---
+	typebotWebhookHandler := handler.NewTypebotWebhookHandler(pool, publisher)
+	e.POST("/api/integrations/typebot", typebotWebhookHandler.Handle)
 
 	// --- Landing Page ---
 	e.GET("/", func(c *echo.Context) error {
@@ -572,6 +577,10 @@ func main() {
 	// Chatwoot integration routes
 	adminGroup.GET("/workspaces/:workspace_id/integrations/chatwoot", chatwootAdminHandler.GetSettings)
 	adminGroup.POST("/workspaces/:workspace_id/integrations/chatwoot", chatwootAdminHandler.PostSettings)
+	
+	// Typebot integration routes
+	adminGroup.GET("/workspaces/:workspace_id/integrations/typebot", typebotAdminHandler.GetSettings)
+	adminGroup.POST("/workspaces/:workspace_id/integrations/typebot", typebotAdminHandler.PostSettings)
 
 	// Webhooks & DLQ routes
 	webhookHandler := admin.NewWebhookDLQHandler(webhookDLQRepo, webhookSubRepo, wsRepo, publisher)
