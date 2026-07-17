@@ -17,17 +17,12 @@ A single API request delivers a message through any configured channel with auto
 
 ## Current State
 
-- **Shipped Version**: v1.1 (2026-07-16)
-- **Status**: Stable. Fully functional multi-tenant routing gateway with in-memory session caching, split-pane inbox dashboard, multi-device WhatsApp/WABA/Telegram adapters, JetStream queueing, and campaign engine.
+- **Shipped Version**: v1.2 (2026-07-17)
+- **Status**: Stable. Fully functional multi-tenant routing gateway with active contact profiles, multi-webhook subscriptions, sequential JSON Response Verbs engine, and Meta WABA read receipt indicators.
 
-## Current Milestone: v1.2 PRD Gaps Integration
+## Current Milestone: None (Planning next milestone)
 
-**Goal:** Complete the remaining PerGo PRD capabilities: multi-webhook subscriptions, omnichannel contact merging, and webhook messaging verbs engine.
-
-**Target Features:**
-- Multi-Webhook Subscriptions (Spike 018): Support for multiple webhook URLs per workspace filtered by event types (with wildcard support).
-- Omnichannel Contact Merging (Spike 017): Unified customer profiles linking WhatsApp and Telegram identities into a single `contacts` and `contact_identities` table.
-- Messaging Verbs Engine (Spike 015): Handling declarative JSON response verbs (`reply`, `wait`, `forward`, `tag`, `close`) returned by webhook endpoints.
+*(Milestone v1.2 completed on 2026-07-17. Run `/gsd-new-milestone` to start defining the next milestone and its goals.)*
 
 ## Requirements
 
@@ -48,6 +43,10 @@ A single API request delivers a message through any configured channel with auto
 - ✓ Observability: `net/http/pprof` profiling, structured `log/slog` logging, expvar metrics — Phase 1
 - ✓ Conversational Inbox: Server-rendered split-pane conversational dashboard with live HTMX polling, dynamic conversation lists, message thread stitching, and Toast notifications — Phase 9
 - ✓ Settings Layout: Nested settings accordion, active route state persistence, and zero-flash workspace selector — Phase 11
+- ✓ Multi-Webhook Subscriptions: subscription configuration with glob/wildcard filtering, JetStream-driven parallel delivery workers, DLQ diagnostics — Phase 17
+- ✓ Omnichannel Contact Merging: unified profile contact/identities schemas, auto-resolution on inbound/outbound events, transactional merge consolidation — Phase 18
+- ✓ Webhook Response Verbs Engine: sequential execution of reply, wait (capped at 10s), forward, tag, and close actions, with 30s context limits and action logs audits — Phase 19
+- ✓ WABA Read Receipts & Status updates: Meta callback processing, message status updates in database, and visual delivery checkmarks in Chat UI bubbles — Phase 20
 
 ### Active
 
@@ -108,6 +107,11 @@ A single API request delivers a message through any configured channel with auto
 | cmd/pergo as sole composition root | No internal/app "god package"; main.go wires deps, starts HTTP + workers | Validated (Phase 1) |
 | Database-driven inbox read status | Track read/unread states server-side in recipient_sessions to support multi-operator synchronization and prevent cookie limits | Validated (Phase 9) |
 | Multi-instance connection isolation | Extend recipient_sessions PK with recipient_identity to allow multiple active numbers of the same channel | Validated (Phase 9) |
+| Storing Contact tags as PostgreSQL TEXT[] with a GIN index | Leverage native PostgreSQL array search efficiency for contact tagging | Validated (Phase 19) |
+| Resetting contact closed_at to NULL automatically during ResolveContact | Reopens conversation thread automatically on new inbound message | Validated (Phase 19) |
+| Decoupling webhook verbs execution from HTTP dispatcher request context | Uses context.Background() inside async goroutine execution to avoid worker timeouts | Validated (Phase 19) |
+| Meta status receipts updating message dispatches status directly | Leverage provider_message_id index to map Meta callbacks back to original dispatches | Validated (Phase 20) |
+| Visual indicator delivery SVGs (sent, delivered, read, failed) | Checkmark graphics parsed from dispatch status via LEFT JOIN in ListThreadByContact | Validated (Phase 20) |
 
 ## Evolution
 
@@ -127,4 +131,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-16 after v1.1 milestone completion*
+*Last updated: 2026-07-17 after v1.2 milestone completion*

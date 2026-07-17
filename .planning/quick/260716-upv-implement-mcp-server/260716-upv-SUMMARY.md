@@ -1,3 +1,6 @@
+---
+status: complete
+---
 # Summary: Implement MCP Server Support (260716-upv)
 
 Successfully implemented Model Context Protocol (MCP) server support inside PerGo using `github.com/mark3labs/mcp-go`.

@@ -1,10 +1,25 @@
 # Milestones
 
+## v1.2 PRD Gaps Integration (Shipped: 2026-07-17)
+
+**Phases completed:** 4 phases, 8 plans, 34 tasks
+
+**Key accomplishments:**
+
+- Database schema, encrypted repositories, glob pattern matching, and NATS JetStream configurations to support multi-webhook subscriptions
+- Refactored dispatcher/worker execution pipeline, multiple webhook subscriptions admin UI settings dashboard, and simulated webhook delivery diagnostics tool.
+- Establishment of the core omnichannel contacts data models, migration schema, ContactRepository, inbound identity resolution pipeline, adapted legacy Telegram repositories, and queue orchestrator integration.
+- Database schema foundation, WABA adapter outbound wamid extraction, orchestrator mapping, and inbound webhook status event parsing
+- Inbound status updates processing, database updating, thread history querying, and rendering visual delivery indicators in the Inbox UI.
+
+---
+
 ## v1.1 Campaign Engine (Shipped: 2026-07-16)
 
 **Phases completed:** 6 phases (Phases 12, 12.1, 13, 14, 15, 16)
 
 **Key accomplishments:**
+
 - Campaign Engine: Bulk message scheduling, CSV sanitization, flexible regex variables mapping, NATS JetStream batch throttling, and enriched campaign logging.
 - Media engine: Consolidated media storage pipelines and optimized storage.
 - User action logs: Polymorphic actor action logs tracking dashboard and API key administrative tasks.

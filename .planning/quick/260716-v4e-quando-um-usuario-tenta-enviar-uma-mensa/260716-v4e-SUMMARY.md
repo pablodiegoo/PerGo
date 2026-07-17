@@ -1,3 +1,6 @@
+---
+status: complete
+---
 # Summary: WABA Default Templates for Test/New Messages (260716-v4e)
 
 Successfully completed the quick task to default WABA cloud channels to template sends when sending new or test messages.

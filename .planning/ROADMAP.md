@@ -2,113 +2,75 @@
 
 ## Overview
 
-PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS JetStream as the durability boundary, stateless channel workers behind a plugin Dispatcher interface, PostgreSQL as the system of record for identity and audit, and a server-rendered admin console. For Milestone 1.2, we integrate key PRD gaps: Multi-Webhook Subscriptions, Omnichannel Contact Merging, and the Webhook Messaging Verbs Engine.
+PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS JetStream as the durability boundary, stateless channel workers behind a plugin Dispatcher interface, PostgreSQL as the system of record for identity and audit, and a server-rendered admin console. 
+
+## Milestones
+
+- ✅ **v1.0 MVP** — Phases 1-11 (shipped 2026-07-14)
+- ✅ **v1.1 Campaign Engine** — Phases 12-16 (shipped 2026-07-16)
+- ✅ **v1.2 PRD Gaps Integration** — Phases 17-20 (shipped 2026-07-17)
+- 🚧 **v[Next]** — (Planning next milestone)
 
 ## Phases
 
-- [x] **Phase 17: Multi-Webhook Subscriptions** - Webhook subscriptions database model, wildcard event-type matching, concurrent NATS fan-out, per-subscription DLQs, and dashboard management interface. (completed 2026-07-16)
-- [x] **Phase 18: Omnichannel Contact Merging** - Unified contact and identities schemas, auto-resolution on incoming messages, contact merge API/dashboard UI, and unified inbox conversation views. (completed 2026-07-16)
-- [x] **Phase 19: Webhook Messaging Verbs Engine** - Decoupled parsing of webhook JSON responses, sequential execution of verbs (reply, wait, forward, tag, close), and operator audit logs. (completed 2026-07-16)
-- [ ] **Phase 20: WABA Read Receipts & Status Updates** - Store provider message ID on dispatch, parse Meta webhook statuses (sent, delivered, read), update dispatch status, and propagate status indicators to the Inbox UI.
+<details>
+<summary>✅ v1.0 MVP (Phases 1-11) — SHIPPED 2026-07-14</summary>
 
+- [x] Phase 1: Core Foundation & Trace Logging — completed 2026-07-14
+- [x] Phase 2: Multi-Tenant Dashboard Admin Shell — completed 2026-07-14
+- [x] Phase 3: Message Ingest API & Rate Limiting — completed 2026-07-14
+- [x] Phase 4: WhatsApp Web Adapter (whatsmeow) & Pairing UI — completed 2026-07-14
+- [x] Phase 5: Official Channels (WABA/Telegram) & Fallback Engine — completed 2026-07-14
+- [x] Phase 6: Outbound Webhook Delivery & Settings UI — completed 2026-07-14
+- [x] Phase 7: Conversational View Data Layer & Webhook verification — completed 2026-07-14
+- [x] Phase 8: Multi-Instance Connections & Dashboard UI — completed 2026-07-14
+- [x] Phase 9: Conversational Inbox Chat UI & Toast Notifications — completed 2026-07-14
+- [x] Phase 10: OOB Cursor inbox polling & dynamic layout — completed 2026-07-14
+- [x] Phase 11: Settings Configurations accordion nested UI — completed 2026-07-14
+
+</details>
+
+<details>
+<summary>✅ v1.1 Campaign Engine (Phases 12-16) — SHIPPED 2026-07-16</summary>
+
+- [x] Phase 12: Campaign Engine (2/2 plans) — completed 2026-07-15
+- [x] Phase 12.1: Address tech debt: sidebar active highlighting (1/1 plan) — completed 2026-07-15
+- [x] Phase 13: Deepen media engine (1/1 plan) — completed 2026-07-15
+- [x] Phase 14: User API action logs (1/1 plan) — completed 2026-07-15
+- [x] Phase 15: CSS standardization (1/1 plan) — completed 2026-07-15
+- [x] Phase 16: Deprecate workspace subviews (1/1 plan) — completed 2026-07-15
+
+</details>
+
+<details>
+<summary>✅ v1.2 PRD Gaps Integration (Phases 17-20) — SHIPPED 2026-07-17</summary>
+
+- [x] Phase 17: Multi-Webhook Subscriptions (2/2 plans) — completed 2026-07-16
+- [x] Phase 18: Omnichannel Contact Merging (2/2 plans) — completed 2026-07-16
+- [x] Phase 19: Webhook Messaging Verbs Engine (2/2 plans) — completed 2026-07-16
+- [x] Phase 20: WABA Read Receipts & Status Updates (2/2 plans) — completed 2026-07-17
+
+</details>
+
+### 🚧 v[Next] (Planned)
+
+*(No active phases. Run `/gsd-new-milestone` to start the next requirements and roadmap definition.)*
 
 ## Progress
 
-**Execution Order:**
-Phases execute in numeric order: 17 → 18 → 19
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 12. Campaign Engine | 2/2 | Complete | 2026-07-15 |
-| 12.1. Address tech debt: sidebar active highlighting | 1/1 | Complete | 2026-07-15 |
-| 13. Deepen media engine | 1/1 | Complete | 2026-07-15 |
-| 14. User API action logs | 1/1 | Complete | 2026-07-15 |
-| 15. CSS standardization | 1/1 | Complete | 2026-07-15 |
-| 16. Deprecate workspace subviews | 1/1 | Complete | 2026-07-15 |
-| 17. Multi-Webhook Subscriptions | 2/2 | Complete | 2026-07-16 |
-| 18. Omnichannel Contact Merging | 2/2 | Complete | 2026-07-16 |
-| 19. Webhook Messaging Verbs Engine | 2/2 | Complete | 2026-07-16 |
-| 20. WABA Read Receipts & Status | 0/2 | Planned | |
-
-
----
-
-## Phase Details
-
-### Phase 17: Multi-Webhook Subscriptions
-
-**Goal**: Implement schema and core worker infrastructure for multiple webhook subscriptions, wildcard event matching, concurrent NATS fan-out, and UI dashboard.
-**Mode**: standard
-**Depends on**: Phase 16
-**Requirements**: SUBS-01, SUBS-02, SUBS-03, SUBS-04
-**Success Criteria** (what must be TRUE):
-
-  1. Operator can configure, test, and manage multiple webhook subscriptions with wildcard filters (e.g. `message.*`) in the settings UI.
-  2. The webhook worker concurrently dispatches webhook events matching event filters using a JetStream fan-out queue.
-  3. Per-subscription retry logic, exponential backoff, and DLQ persistence are functional and verified.
-
-### Phase 18: Omnichannel Contact Merging
-
-**Goal**: Implement unified contacts/identities schema, auto-matching on inbound events, profile merging, and unified conversation inbox views.
-**Mode**: standard
-**Depends on**: Phase 17
-**Requirements**: CONT-01, CONT-02, CONT-03, CONT-04
-**Success Criteria**:
-
-  1. Incoming messages auto-resolve or instantiate a single contact profile in the `contacts` and `contact_identities` tables.
-  2. Dashboard UI permits searching and merge operations on contacts with full transaction rollbacks on failure.
-  3. Merged contacts display a single consolidated message thread combining WhatsApp and Telegram chat histories in the Inbox.
-
-### Phase 19: Webhook Messaging Verbs Engine
-
-**Goal**: Implement JSON response verbs executor, sequential scheduling (reply, wait, forward, tag, close), and operator logging.
-**Mode**: standard
-**Depends on**: Phase 18
-**Requirements**: VERB-01, VERB-02, VERB-03
-**Success Criteria**:
-
-  1. Webhook dispatcher parses valid declarative messaging verbs returned in webhook response payloads.
-  2. Verb sequences are processed sequentially, and replies trigger correct outbound routing queue entries.
-  3. Action execution errors are logged as workspace audits and visible to operators.
-
-### Phase 20: WABA Read Receipts & Status Updates
-
-**Goal**: Store external provider message ID on outbound dispatch, parse Meta status updates (sent, delivered, read) in webhooks, and propagate status indicators to the Inbox UI.
-**Mode**: standard
-**Depends on**: Phase 19
-**Requirements**: STAT-01, STAT-02, STAT-03, STAT-04
-**Success Criteria**:
-
-  1. The outbound gateway extracts Meta's `wamid` response and saves it as `provider_message_id` on the message dispatch record.
-  2. Incoming Meta status update webhooks are parsed, and the status of the corresponding message dispatch is updated in the database.
-  3. Status updates trigger live UI events (via polling/after_id or SSE) to display delivery/read indicator badges in the active chat thread.
-
----
-
-### Phase 12: Campaign Engine (Completed)
-
-*Completed on 2026-07-15*
-
-### Phase 12.1: Address tech debt: sidebar active highlighting (Completed)
-
-*Completed on 2026-07-15*
-
-### Phase 13: Deepen media engine (Completed)
-
-*Completed on 2026-07-15*
-
-### Phase 14: User API action logs (Completed)
-
-*Completed on 2026-07-15*
-
-### Phase 15: CSS standardization (Completed)
-
-*Completed on 2026-07-15*
-
-### Phase 16: Deprecate workspace subviews (Completed)
-
-*Completed on 2026-07-15*
+| Phase | Milestone | Plans Complete | Status | Completed |
+|---|---|---|---|---|
+| 12. Campaign Engine | v1.1 | 2/2 | Complete | 2026-07-15 |
+| 12.1. Sidebar active highlighting | v1.1 | 1/1 | Complete | 2026-07-15 |
+| 13. Deepen media engine | v1.1 | 1/1 | Complete | 2026-07-15 |
+| 14. User API action logs | v1.1 | 1/1 | Complete | 2026-07-15 |
+| 15. CSS standardization | v1.1 | 1/1 | Complete | 2026-07-15 |
+| 16. Deprecate workspace subviews | v1.1 | 1/1 | Complete | 2026-07-15 |
+| 17. Multi-Webhook Subscriptions | v1.2 | 2/2 | Complete | 2026-07-16 |
+| 18. Omnichannel Contact Merging | v1.2 | 2/2 | Complete | 2026-07-16 |
+| 19. Webhook Messaging Verbs Engine | v1.2 | 2/2 | Complete | 2026-07-16 |
+| 20. WABA Read Receipts & Status | v1.2 | 2/2 | Complete | 2026-07-17 |
 
 ---
 *Roadmap created: 2026-07-14*
-*Last updated: 2026-07-16 after v1.2 definition*
+*Last updated: 2026-07-17 after v1.2 milestone completion*
