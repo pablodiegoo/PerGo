@@ -9,8 +9,8 @@
 
 - [x] **CHAT-01**: User can configure a Chatwoot connection (API URL, Access Token, Inbox ID, and Account ID) per workspace via the active connections settings interface.
 - [x] **CHAT-02**: System exposes a built-in native integration receiver endpoint (`POST /api/integrations/chatwoot`) to ingest outbound webhook payloads from Chatwoot.
-- [ ] **CHAT-03**: System parses Chatwoot agent reply payloads, extracts the recipient identity, and maps the payload to the PerGo outbound queue (`messages.outbound`) for dispatch.
-- [ ] **CHAT-04**: System synchronizes inbound contact messages (from WABA or Telegram connections) to Chatwoot as contact messages, automatically creating or updating contacts in Chatwoot using their active channel identities.
+- [x] **CHAT-03**: System parses Chatwoot agent reply payloads, extracts the recipient identity, and maps the payload to the PerGo outbound queue (`messages.outbound`) for dispatch.
+- [x] **CHAT-04**: System synchronizes inbound contact messages (from WABA or Telegram connections) to Chatwoot as contact messages, automatically creating or updating contacts in Chatwoot using their active channel identities.
 
 ### Typebot Integration
 
@@ -49,8 +49,8 @@
 
 | CHAT-01 | Phase 21 | Complete |
 | CHAT-02 | Phase 21 | Complete |
-| CHAT-03 | Phase 21 | Pending |
-| CHAT-04 | Phase 21 | Pending |
+| CHAT-03 | Phase 21 | Complete |
+| CHAT-04 | Phase 21 | Complete |
 | TYPE-01 | Phase 22 | Pending |
 | TYPE-02 | Phase 22 | Pending |
 | TYPE-03 | Phase 22 | Pending |

@@ -4,17 +4,17 @@ milestone: v1.3
 milestone_name: Chatwoot & Typebot Integrations
 current_phase: 21
 current_phase_name: chatwoot-integration
-status: executing
-stopped_at: Completed 21-01-PLAN.md
-last_updated: "2026-07-17T18:18:55.752Z"
+status: verifying
+stopped_at: Completed 21-02-PLAN.md
+last_updated: "2026-07-17T18:45:32.674Z"
 last_activity: 2026-07-17
 last_activity_desc: Phase 21 execution started
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 0
+  completed_plans: 2
+  percent: 33
 ---
 
 # Project State
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 Phase: 21 (chatwoot-integration) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-17 — Phase 21 execution started
 
 ## Performance Metrics
@@ -67,6 +67,12 @@ Last activity: 2026-07-17 — Phase 21 execution started
 | Phase 07 P03 | - | 6 tasks | - |
 | Phase 07 P04 | - | 4 tasks | - |
 | Phase 21 P01 | 15m | 3 tasks | 9 files |
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 21 P02 | 25m | - tasks | - files |
+| Phase 21 P02 | 25m | 3 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -85,6 +91,8 @@ Recent decisions affecting current work:
 - [Phase 21]: Stored integration-specific credentials as encrypted JSON block using KEK AES-256-GCM — D-02
 - [Phase 21]: Maintained a local mapping database table chatwoot_mappings referencing connection_id — D-03
 - [Phase 21]: Authenticated webhook endpoint using AuthMiddleware query-parameter token validation — D-05
+- [Phase 21]: Checks local mapping cache before routing inbound messages to prevent external API searches — D-04
+- [Phase 21]: Filters incoming Chatwoot webhook payloads strictly to outgoing, public, user-initiated messages — D-06
 
 ### Pending Todos
 
@@ -144,9 +152,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-17T18:18:55.732Z
-Stopped at: Completed 21-01-PLAN.md
-Resume file: 21-02-PLAN.md
+Last session: 2026-07-17T18:45:25.430Z
+Stopped at: Completed 21-02-PLAN.md
+Resume file: None
 
 ## Operator Next Steps
 
