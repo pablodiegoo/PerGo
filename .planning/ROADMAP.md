@@ -69,6 +69,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 **Depends on**: Phase 20
 **Requirements**: CHAT-01, CHAT-02, CHAT-03, CHAT-04
 **Success Criteria**:
+
   1. Operator can save and test a Chatwoot connection configuration in the PerGo connection settings panel.
   2. Incoming WABA/Telegram messages from contacts are automatically sent to the Chatwoot workspace, creating a corresponding contact and message there.
   3. Human agent replies in Chatwoot successfully trigger the `/api/integrations/chatwoot` webhook receiver, enqueuing outbound messages to the target contact in PerGo.
@@ -80,6 +81,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 **Depends on**: Phase 21
 **Requirements**: TYPE-01, TYPE-02, TYPE-03, TYPE-04
 **Success Criteria**:
+
   1. Operator can save and test a Typebot connection configuration in the settings panel.
   2. Inbound messages from contacts are forwarded to Typebot's execution API, initiating/maintaining session context correctly.
   3. Bot replies in Typebot trigger the `/api/integrations/typebot` webhook, enqueuing outbound messages to the contact via PerGo.
@@ -91,6 +93,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 **Depends on**: Phase 22
 **Requirements**: HAND-01, HAND-02, HAND-03, HAND-04, HAND-05, HAND-06
 **Success Criteria**:
+
   1. Contacts table includes a boolean `bot_active` column and `bot_paused_at` timestamp.
   2. When a human agent replies via Chatwoot, `bot_active` is automatically toggled to `false`.
   3. Inbound messages are only forwarded to Typebot when `bot_active` is `true`.
@@ -114,7 +117,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 18. Omnichannel Contact Merging | v1.2 | 2/2 | Complete | 2026-07-16 |
 | 19. Webhook Messaging Verbs Engine | v1.2 | 2/2 | Complete | 2026-07-16 |
 | 20. WABA Read Receipts & Status | v1.2 | 2/2 | Complete | 2026-07-17 |
-| 21. Chatwoot Integration | v1.3 | 0/2 | Not started | - |
+| 21. Chatwoot Integration | v1.3 | 1/2 | In Progress|  |
 | 22. Typebot Integration | v1.3 | 0/2 | Not started | - |
 | 23. Stateful Handoff Routing | v1.3 | 0/2 | Not started | - |
 

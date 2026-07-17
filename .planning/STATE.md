@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Chatwoot & Typebot Integrations
 current_phase: 21
+current_phase_name: chatwoot-integration
 status: executing
-stopped_at: Phase 21 context gathered
-last_updated: "2026-07-17T17:21:58.777Z"
+stopped_at: Completed 21-01-PLAN.md
+last_updated: "2026-07-17T18:18:55.752Z"
 last_activity: 2026-07-17
-last_activity_desc: Milestone v1.3 started
+last_activity_desc: Phase 21 execution started
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 2
+  completed_plans: 1
   percent: 0
-current_phase_name: chatwoot-integration
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: 21 — Not started
-Plan: 0 of 2
+Phase: 21 (chatwoot-integration) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-07-17 — Milestone v1.3 started
+Last activity: 2026-07-17 — Phase 21 execution started
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Last activity: 2026-07-17 — Milestone v1.3 started
 | Phase 07 P02 | - | 5 tasks | - |
 | Phase 07 P03 | - | 6 tasks | - |
 | Phase 07 P04 | - | 4 tasks | - |
+| Phase 21 P01 | 15m | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,10 @@ Recent decisions affecting current work:
 - [Phase 03]: Publisher interface defined now for DI; JetStream implementation deferred to Plan 2 — Enables handler tests without real NATS; Plan 2 implements the interface
 - [Phase 11]: Context-driven active path routing in PathMiddleware to expand accordion and highlight active settings sub-items.
 - [Phase 11]: Context-driven server-side pre-rendering of the workspace selector dropdown to prevent reload flash.
+- [Phase 21]: Used a single unified integrations database table for third-party config storage — D-01
+- [Phase 21]: Stored integration-specific credentials as encrypted JSON block using KEK AES-256-GCM — D-02
+- [Phase 21]: Maintained a local mapping database table chatwoot_mappings referencing connection_id — D-03
+- [Phase 21]: Authenticated webhook endpoint using AuthMiddleware query-parameter token validation — D-05
 
 ### Pending Todos
 
@@ -139,9 +144,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-17T16:22:38.206Z
-Stopped at: Phase 21 context gathered
-Resume file: .planning/phases/21-chatwoot-integration/21-CONTEXT.md
+Last session: 2026-07-17T18:18:55.732Z
+Stopped at: Completed 21-01-PLAN.md
+Resume file: 21-02-PLAN.md
 
 ## Operator Next Steps
 
