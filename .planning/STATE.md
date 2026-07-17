@@ -5,8 +5,8 @@ milestone_name: Chatwoot & Typebot Integrations
 current_phase: 23
 current_phase_name: Stateful Handoff Routing
 status: executing
-stopped_at: Completed 21-02-PLAN.md
-last_updated: "2026-07-17T21:30:22.155Z"
+stopped_at: Phase 23 context gathered
+last_updated: "2026-07-17T21:44:29.143Z"
 last_activity: 2026-07-17
 last_activity_desc: Phase 22 complete, transitioned to Phase 23
 progress:
@@ -154,9 +154,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-17T18:45:25.430Z
-Stopped at: Completed 21-02-PLAN.md
-Resume file: None
+Last session: 2026-07-17T21:44:29.119Z
+Stopped at: Phase 23 context gathered
+Resume file: .planning/phases/23-stateful-handoff-routing/23-CONTEXT.md
 
 ## Operator Next Steps
 
