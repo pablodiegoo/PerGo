@@ -47,29 +47,27 @@
 
 ## Traceability
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| CHAT-01 | | Pending |
-| CHAT-02 | | Pending |
-| CHAT-03 | | Pending |
-| CHAT-04 | | Pending |
-| TYPE-01 | | Pending |
-| TYPE-02 | | Pending |
-| TYPE-03 | | Pending |
-| TYPE-04 | | Pending |
-| HAND-01 | | Pending |
-| HAND-02 | | Pending |
-| HAND-03 | | Pending |
-| HAND-04 | | Pending |
-| HAND-05 | | Pending |
-| HAND-06 | | Pending |
+| CHAT-01 | Phase 21 | Pending |
+| CHAT-02 | Phase 21 | Pending |
+| CHAT-03 | Phase 21 | Pending |
+| CHAT-04 | Phase 21 | Pending |
+| TYPE-01 | Phase 22 | Pending |
+| TYPE-02 | Phase 22 | Pending |
+| TYPE-03 | Phase 22 | Pending |
+| TYPE-04 | Phase 22 | Pending |
+| HAND-01 | Phase 23 | Pending |
+| HAND-02 | Phase 23 | Pending |
+| HAND-03 | Phase 23 | Pending |
+| HAND-04 | Phase 23 | Pending |
+| HAND-05 | Phase 23 | Pending |
+| HAND-06 | Phase 23 | Pending |
 
 **Coverage:**
 - Active requirements: 14 total
-- Mapped to phases: 0
+- Mapped to phases: 14
 - Completed requirements: 0 total
 - Mapped to phases: 0
-- Unmapped active: 14 ✓
+- Unmapped active: 0 ✓
 
 ---
 *Requirements defined: 2026-07-17*

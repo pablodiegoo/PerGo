@@ -2,15 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Chatwoot & Typebot Integrations
+current_phase: 21
 status: planning
 last_updated: "2026-07-17T13:39:11.349Z"
 last_activity: 2026-07-17
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
-  total_plans: 0
+  total_plans: 6
   completed_plans: 0
   percent: 0
+current_phase_name: chatwoot-integration
 ---
 
 # Project State
@@ -20,13 +22,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-25)
 
 **Core value:** A single API request delivers a message through any configured channel with automatic fallback — without per-message markup, without vendor lock-in, and with full custody of transaction data on infrastructure you control.
-**Current focus:** Phase 19 — webhook-messaging-verbs-engine
+**Current focus:** Phase 21 — chatwoot-integration
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
+Phase: 21 — Not started
+Plan: 0 of 2
+Status: Planning Phase 21
 Last activity: 2026-07-17 — Milestone v1.3 started
 
 ## Performance Metrics
@@ -141,4 +143,4 @@ Resume file: none
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Start Phase 21 with /gsd-discuss-phase 21
