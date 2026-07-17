@@ -25,7 +25,7 @@
 - [x] **HAND-02**: System forwards inbound messages to the Typebot integration ONLY if the `bot_active` flag is set to `true` for that contact.
 - [x] **HAND-03**: System automatically sets `bot_active` to `false` and records `bot_paused_at = NOW()` when a human agent reply webhook event is received from Chatwoot.
 - [x] **HAND-04**: System extends the Messaging Verbs Engine with a `pause_bot` verb (accepting an optional duration parameter) to pause bot responses programmatically via webhooks.
-- [ ] **HAND-05**: User can manually toggle the `bot_active` flag per contact via the admin Inbox chat panel UI.
+- [x] **HAND-05**: User can manually toggle the `bot_active` flag per contact via the admin Inbox chat panel UI.
 - [x] **HAND-06**: System automatically resets `bot_active` to `true` after a configurable inactive cooldown duration (defaulting to 12 hours) from the last human agent message.
 
 ## Completed Requirements
@@ -59,7 +59,7 @@
 | HAND-02 | Phase 23 | Complete |
 | HAND-03 | Phase 23 | Complete |
 | HAND-04 | Phase 23 | Complete |
-| HAND-05 | Phase 23 | Pending  |
+| HAND-05 | Phase 23 | Complete |
 | HAND-06 | Phase 23 | Complete |
 
 **Coverage:**
