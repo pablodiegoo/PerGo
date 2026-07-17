@@ -883,4 +883,113 @@ func TestInboxHandler_SendMessage_SuccessAndPauseBot(t *testing.T) {
 	}
 }
 
+func TestInboxHandler_ToggleBot_HTTP(t *testing.T) {
+	dbURL := os.Getenv("PERGO_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("PostgreSQL must be available to run this test")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("failed to connect to DB pool: %v", err)
+	}
+	defer pool.Close()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "ToggleBot HTTP Test Workspace")
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() {
+		_ = wsRepo.Delete(ctx, ws.ID)
+	}()
+
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "+5511777770003", "Test Bot Toggle", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact: %v", err)
+	}
+	if !contact.BotActive {
+		t.Fatalf("expected contact bot to be active initially")
+	}
+
+	h := &admin.InboxHandler{
+		ContactRepo: contactRepo,
+	}
+
+	// 1. Post to toggle bot status (Active -> Paused)
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/admin/contacts/"+contact.ID.String()+"/toggle-bot", nil)
+	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPathValues(echo.PathValues{
+		{Name: "id", Value: contact.ID.String()},
+	})
+
+	err = h.ToggleBot(c)
+	if err != nil {
+		t.Fatalf("ToggleBot returned error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected StatusOK (200), got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "Bot Pausado") {
+		t.Errorf("expected HTML response to contain 'Bot Pausado', got: %s", body)
+	}
+
+	// Check DB state
+	contact1, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+	if err != nil {
+		t.Fatalf("failed to load contact: %v", err)
+	}
+	if contact1.BotActive {
+		t.Errorf("expected BotActive to be false after toggle")
+	}
+	if contact1.BotPausedAt == nil {
+		t.Errorf("expected BotPausedAt to be set")
+	}
+
+	// 2. Toggle again (Paused -> Active)
+	req2 := httptest.NewRequest(http.MethodPost, "/admin/contacts/"+contact.ID.String()+"/toggle-bot", nil)
+	req2.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	rec2 := httptest.NewRecorder()
+	c2 := e.NewContext(req2, rec2)
+	c2.SetPathValues(echo.PathValues{
+		{Name: "id", Value: contact.ID.String()},
+	})
+
+	err = h.ToggleBot(c2)
+	if err != nil {
+		t.Fatalf("ToggleBot returned error: %v", err)
+	}
+
+	if rec2.Code != http.StatusOK {
+		t.Errorf("expected StatusOK (200), got %d: %s", rec2.Code, rec2.Body.String())
+	}
+
+	body2 := rec2.Body.String()
+	if !strings.Contains(body2, "Bot Ativo") {
+		t.Errorf("expected HTML response to contain 'Bot Ativo', got: %s", body2)
+	}
+
+	// Check DB state again
+	contact2, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+	if err != nil {
+		t.Fatalf("failed to load contact: %v", err)
+	}
+	if !contact2.BotActive {
+		t.Errorf("expected BotActive to be true after second toggle")
+	}
+	if contact2.BotPausedAt != nil {
+		t.Errorf("expected BotPausedAt to be nil after second toggle")
+	}
+}
+
+
 

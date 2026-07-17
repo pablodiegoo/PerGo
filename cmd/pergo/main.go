@@ -535,6 +535,7 @@ func main() {
 	adminGroup.POST("/inbox/new-message-send", inboxHandler.NewMessageSend)
 	adminGroup.GET("/contacts/search", inboxHandler.SearchContacts)
 	adminGroup.POST("/contacts/merge", inboxHandler.MergeContacts)
+	adminGroup.POST("/contacts/:id/toggle-bot", inboxHandler.ToggleBot)
 
 	// Device/Connection management routes
 	deviceHandler := &admin.DeviceHandler{

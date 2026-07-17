@@ -643,3 +643,43 @@ func jsonEscape(s string) string {
 	// Marshal returns JSON with surrounding quotes; strip them
 	return string(b[1 : len(b)-1])
 }
+
+// ToggleBot handles POST /admin/contacts/:id/toggle-bot
+func (h *InboxHandler) ToggleBot(c *echo.Context) error {
+	ctx := c.Request().Context()
+	workspaceID := resolveWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	contactIDStr, err := echo.PathParam[string](c, "id")
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid contact_id parameter")
+	}
+	contactID, err := uuid.Parse(contactIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid contact_id")
+	}
+
+	contact, err := h.ContactRepo.GetByID(ctx, workspaceID, contactID)
+	if err != nil {
+		return c.String(http.StatusNotFound, "contact not found")
+	}
+
+	newActive := !contact.BotActive
+	var pausedAt *time.Time
+	if !newActive {
+		now := time.Now().UTC()
+		pausedAt = &now
+	}
+
+	err = h.ContactRepo.UpdateBotState(ctx, workspaceID, contactID, newActive, pausedAt)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to update bot state: "+err.Error())
+	}
+
+	contact.BotActive = newActive
+	contact.BotPausedAt = pausedAt
+	return mw.Render(c, http.StatusOK, components.BotStatusBadge(contact))
+}
+
