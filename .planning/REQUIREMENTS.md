@@ -21,12 +21,12 @@
 
 ### Stateful Handoff Routing
 
-- [ ] **HAND-01**: System persists a boolean `bot_active` flag (defaulting to `true`) and `bot_paused_at` timestamp on the `contacts` table to track conversational control.
-- [ ] **HAND-02**: System forwards inbound messages to the Typebot integration ONLY if the `bot_active` flag is set to `true` for that contact.
-- [ ] **HAND-03**: System automatically sets `bot_active` to `false` and records `bot_paused_at = NOW()` when a human agent reply webhook event is received from Chatwoot.
-- [ ] **HAND-04**: System extends the Messaging Verbs Engine with a `pause_bot` verb (accepting an optional duration parameter) to pause bot responses programmatically via webhooks.
+- [x] **HAND-01**: System persists a boolean `bot_active` flag (defaulting to `true`) and `bot_paused_at` timestamp on the `contacts` table to track conversational control.
+- [x] **HAND-02**: System forwards inbound messages to the Typebot integration ONLY if the `bot_active` flag is set to `true` for that contact.
+- [x] **HAND-03**: System automatically sets `bot_active` to `false` and records `bot_paused_at = NOW()` when a human agent reply webhook event is received from Chatwoot.
+- [x] **HAND-04**: System extends the Messaging Verbs Engine with a `pause_bot` verb (accepting an optional duration parameter) to pause bot responses programmatically via webhooks.
 - [ ] **HAND-05**: User can manually toggle the `bot_active` flag per contact via the admin Inbox chat panel UI.
-- [ ] **HAND-06**: System automatically resets `bot_active` to `true` after a configurable inactive cooldown duration (defaulting to 12 hours) from the last human agent message.
+- [x] **HAND-06**: System automatically resets `bot_active` to `true` after a configurable inactive cooldown duration (defaulting to 12 hours) from the last human agent message.
 
 ## Completed Requirements
 
@@ -55,19 +55,19 @@
 | TYPE-02 | Phase 22 | Complete |
 | TYPE-03 | Phase 22 | Complete |
 | TYPE-04 | Phase 22 | Complete |
-| HAND-01 | Phase 23 | Pending |
-| HAND-02 | Phase 23 | Pending |
-| HAND-03 | Phase 23 | Pending |
-| HAND-04 | Phase 23 | Pending |
-| HAND-05 | Phase 23 | Pending |
-| HAND-06 | Phase 23 | Pending |
+| HAND-01 | Phase 23 | Complete |
+| HAND-02 | Phase 23 | Complete |
+| HAND-03 | Phase 23 | Complete |
+| HAND-04 | Phase 23 | Complete |
+| HAND-05 | Phase 23 | Pending  |
+| HAND-06 | Phase 23 | Complete |
 
 **Coverage:**
 
 - Active requirements: 14 total
 - Mapped to phases: 14
-- Completed requirements: 0 total
-- Mapped to phases: 0
+- Completed requirements: 13 total
+- Mapped to phases: 13
 - Unmapped active: 0 ✓
 
 ---
