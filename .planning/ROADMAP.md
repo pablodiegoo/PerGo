@@ -55,7 +55,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 ### 🚧 v1.3 Chatwoot & Typebot Integrations (Phases 21-23)
 
 - [x] Phase 21: Chatwoot Integration (2 plans) (completed 2026-07-17)
-- [ ] Phase 22: Typebot Integration (2 plans)
+- [x] Phase 22: Typebot Integration (2 plans) (completed 2026-07-17)
 - [ ] Phase 23: Stateful Handoff Routing (2 plans)
 
 ---
@@ -118,7 +118,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 19. Webhook Messaging Verbs Engine | v1.2 | 2/2 | Complete | 2026-07-16 |
 | 20. WABA Read Receipts & Status | v1.2 | 2/2 | Complete | 2026-07-17 |
 | 21. Chatwoot Integration | v1.3 | 2/2 | Complete    | 2026-07-17 |
-| 22. Typebot Integration | v1.3 | 1/2 | In Progress|  |
+| 22. Typebot Integration | v1.3 | 2/2 | Complete   | 2026-07-17 |
 | 23. Stateful Handoff Routing | v1.3 | 0/2 | Not started | - |
 
 ---
