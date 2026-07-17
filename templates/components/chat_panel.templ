@@ -58,7 +58,10 @@ templ ChatPanel(contact *domain.Contact, replyOptions []ReplyOption, messages []
 				{ safeInitialStr(contact.Name) }
 			</div>
 			<div>
-				<p class="font-semibold text-sm text-zinc-900">{ contact.Name }</p>
+				<div class="flex items-center gap-2">
+					<p class="font-semibold text-sm text-zinc-900">{ contact.Name }</p>
+					@BotStatusBadge(contact)
+				</div>
 				<div class="flex items-center gap-1.5 mt-0.5">
 					for i, identity := range contact.Identities {
 						if i > 0 {
@@ -296,4 +299,23 @@ templ ContactSearchResults(results []domain.Contact, primaryID uuid.UUID) {
 	if len(results) == 0 {
 		<p class="text-xs text-zinc-400 text-center py-2">Nenhum contato encontrado.</p>
 	}
+}
+
+templ BotStatusBadge(contact *domain.Contact) {
+	<button
+		id="bot-status-badge"
+		hx-post={ fmt.Sprintf("/admin/contacts/%s/toggle-bot", contact.ID.String()) }
+		hx-swap="outerHTML"
+		class={ "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors border select-none",
+			templ.KV("bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100", contact.BotActive),
+			templ.KV("bg-zinc-100 text-zinc-600 border-zinc-200 hover:bg-zinc-200", !contact.BotActive) }
+	>
+		if contact.BotActive {
+			<span class="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1" aria-hidden="true"></span>
+			Bot Ativo
+		} else {
+			<span class="h-1.5 w-1.5 rounded-full bg-zinc-400 mr-1" aria-hidden="true"></span>
+			Bot Pausado
+		}
+	</button>
 }
