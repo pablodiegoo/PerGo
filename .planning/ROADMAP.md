@@ -119,7 +119,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 20. WABA Read Receipts & Status | v1.2 | 2/2 | Complete | 2026-07-17 |
 | 21. Chatwoot Integration | v1.3 | 2/2 | Complete    | 2026-07-17 |
 | 22. Typebot Integration | v1.3 | 2/2 | Complete    | 2026-07-17 |
-| 23. Stateful Handoff Routing | v1.3 | 2/2 | Complete   | 2026-07-17 |
+| 23. Stateful Handoff Routing | v1.3 | 2/2 | Complete    | 2026-07-17 |
 
 ---
 *Roadmap created: 2026-07-14*
