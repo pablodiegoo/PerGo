@@ -86,6 +86,7 @@ func TestChatwootWebhookAuth(t *testing.T) {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
 	mappingRepo := repository.NewChatwootMappingRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
 	pub := &fakePublisher{}
 
 	ws, err := wsRepo.Create(ctx, "chatwoot_webhook_auth_test_ws_"+uuid.New().String())
@@ -99,7 +100,7 @@ func TestChatwootWebhookAuth(t *testing.T) {
 		t.Fatalf("failed to create API Key: %v", err)
 	}
 
-	h := handler.NewChatwootWebhookHandler(pool, mappingRepo, pub)
+	h := handler.NewChatwootWebhookHandler(pool, mappingRepo, contactRepo, pub)
 
 	t.Run("ValidTokenQueryParam_Returns200", func(t *testing.T) {
 		e := echo.New()
@@ -209,7 +210,7 @@ func TestChatwootWebhookHandler_Integration(t *testing.T) {
 	}
 
 	pub := &fakePublisher{}
-	h := handler.NewChatwootWebhookHandler(pool, mappingRepo, pub)
+	h := handler.NewChatwootWebhookHandler(pool, mappingRepo, contactRepo, pub)
 
 	e := echo.New()
 	e.Use(middleware.AuthMiddleware(apiKeyRepo))
@@ -331,6 +332,18 @@ func TestChatwootWebhookHandler_Integration(t *testing.T) {
 		}
 		if queueMsg.Body != "hello customer, this is agent" {
 			t.Errorf("expected body 'hello customer, this is agent', got %q", queueMsg.Body)
+		}
+
+		// Verify contact bot state was updated to inactive
+		updatedContact, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to get updated contact: %v", err)
+		}
+		if updatedContact.BotActive {
+			t.Error("expected bot_active to be false after agent reply")
+		}
+		if updatedContact.BotPausedAt == nil {
+			t.Error("expected bot_paused_at to be set after agent reply")
 		}
 	})
 }

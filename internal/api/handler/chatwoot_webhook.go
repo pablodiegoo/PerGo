@@ -37,6 +37,7 @@ type ChatwootWebhookPayload struct {
 type ChatwootWebhookHandler struct {
 	pool        *pgxpool.Pool
 	mappingRepo *repository.ChatwootMappingRepository
+	contactRepo *repository.ContactRepository
 	publisher   Publisher
 }
 
@@ -44,11 +45,13 @@ type ChatwootWebhookHandler struct {
 func NewChatwootWebhookHandler(
 	pool *pgxpool.Pool,
 	mappingRepo *repository.ChatwootMappingRepository,
+	contactRepo *repository.ContactRepository,
 	publisher Publisher,
 ) *ChatwootWebhookHandler {
 	return &ChatwootWebhookHandler{
 		pool:        pool,
 		mappingRepo: mappingRepo,
+		contactRepo: contactRepo,
 		publisher:   publisher,
 	}
 }
@@ -96,6 +99,14 @@ func (h *ChatwootWebhookHandler) Handle(c *echo.Context) error {
 			"code":    "internal_error",
 			"message": "failed to query mapping",
 		})
+	}
+
+	if h.contactRepo != nil {
+		now := time.Now().UTC()
+		err = h.contactRepo.UpdateBotState(c.Request().Context(), workspaceID, mapping.ContactID, false, &now)
+		if err != nil {
+			slog.Error("failed to update contact bot active state on Chatwoot reply", "error", err, "contact_id", mapping.ContactID)
+		}
 	}
 
 	// Resolve customer's channel identity (sender_identity column in contact_identities represents customer destination)

@@ -378,7 +378,7 @@ func main() {
 	e.POST("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandlePost)
 
 	// --- Chatwoot Inbound Webhook handler ---
-	chatwootWebhookHandler := handler.NewChatwootWebhookHandler(pool, chatwootMappingRepo, publisher)
+	chatwootWebhookHandler := handler.NewChatwootWebhookHandler(pool, chatwootMappingRepo, contactRepo, publisher)
 	e.POST("/api/integrations/chatwoot", chatwootWebhookHandler.Handle)
 
 	// --- Typebot Inbound Webhook handler ---
