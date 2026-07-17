@@ -18,6 +18,7 @@ import (
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -168,12 +169,30 @@ func TestChatwootWebhookHandler_Integration(t *testing.T) {
 		t.Fatalf("failed to create API Key: %v", err)
 	}
 
+	kek := make([]byte, 32)
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	connRepo := repository.NewConnectionRepository(pool, enc)
+
 	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "contact_tg_123", "Test Cust", "testcust", "+123")
 	if err != nil {
 		t.Fatalf("failed to resolve contact: %v", err)
 	}
 
 	connectionID := uuid.New()
+	conn := &repository.Connection{
+		ID:             connectionID,
+		WorkspaceID:    ws.ID,
+		Name:           "Test Connection",
+		Channel:        "telegram",
+		SenderIdentity: "@my_bot",
+		Credentials:    []byte(`{}`),
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("failed to create connection: %v", err)
+	}
 
 	mapping := &repository.ChatwootMapping{
 		WorkspaceID:            ws.ID,
