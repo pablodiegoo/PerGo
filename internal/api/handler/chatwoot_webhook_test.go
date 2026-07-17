@@ -181,13 +181,14 @@ func TestChatwootWebhookHandler_Integration(t *testing.T) {
 		t.Fatalf("failed to resolve contact: %v", err)
 	}
 
+	senderIdentity := "@my_bot_" + uuid.New().String()
 	connectionID := uuid.New()
 	conn := &repository.Connection{
 		ID:             connectionID,
 		WorkspaceID:    ws.ID,
 		Name:           "Test Connection",
 		Channel:        "telegram",
-		SenderIdentity: "@my_bot",
+		SenderIdentity: senderIdentity,
 		Credentials:    []byte(`{}`),
 	}
 	if err := connRepo.Create(ctx, conn); err != nil {
@@ -201,7 +202,7 @@ func TestChatwootWebhookHandler_Integration(t *testing.T) {
 		ChatwootContactID:      101,
 		ChatwootConversationID: 202,
 		Channel:                "telegram",
-		SenderIdentity:         "@my_bot",
+		SenderIdentity:         senderIdentity,
 	}
 	if err := mappingRepo.Upsert(ctx, mapping); err != nil {
 		t.Fatalf("failed to upsert mapping: %v", err)
@@ -319,8 +320,8 @@ func TestChatwootWebhookHandler_Integration(t *testing.T) {
 		if queueMsg.ConnectionID != connectionID {
 			t.Errorf("expected connection ID %s, got %s", connectionID, queueMsg.ConnectionID)
 		}
-		if queueMsg.SenderIdentity != "@my_bot" {
-			t.Errorf("expected sender identity @my_bot, got %q", queueMsg.SenderIdentity)
+		if queueMsg.SenderIdentity != senderIdentity {
+			t.Errorf("expected sender identity %q, got %q", senderIdentity, queueMsg.SenderIdentity)
 		}
 		if queueMsg.To != "contact_tg_123" {
 			t.Errorf("expected recipient (customer address) contact_tg_123, got %q", queueMsg.To)
