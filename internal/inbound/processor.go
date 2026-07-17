@@ -210,6 +210,19 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		if err != nil {
 			slog.Error("inbound processor: failed to resolve contact profile", "error", err, "from", ev.From)
 		}
+
+		if contact != nil && !contact.BotActive && contact.BotPausedAt != nil {
+			if time.Since(*contact.BotPausedAt) > 12*time.Hour {
+				slog.Info("inbound processor: bot inactive for > 12 hours, auto-resetting to active", "contact_id", contact.ID)
+				err := p.contactRepo.UpdateBotState(ctx, ev.WorkspaceID, contact.ID, true, nil)
+				if err != nil {
+					slog.Error("inbound processor: failed to reset bot state to active", "error", err, "contact_id", contact.ID)
+				} else {
+					contact.BotActive = true
+					contact.BotPausedAt = nil
+				}
+			}
+		}
 	}
 
 	// 1. Recipient Session Tracking

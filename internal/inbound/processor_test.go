@@ -620,3 +620,112 @@ func TestInboundProcessor_ChatwootSyncer(t *testing.T) {
 		t.Fatal("timeout waiting for ChatwootSyncer to be called")
 	}
 }
+
+func TestInboundProcessor_BotCooldown(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	dedupRepo := repository.NewInboundDedupRepository(pool)
+	sessRepo := repository.NewRecipientSessionRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "cooldown_test_ws_" + uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	pub := &fakePublisher{}
+	me := &fakeMediaEngine{}
+	aud := &fakeAuditWriter{}
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo)
+
+	t.Run("Reset bot when paused for > 12 hours", func(t *testing.T) {
+		// 1. Resolve contact
+		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "cooldown-gt-12", "Cooldown Greater", "", "")
+		if err != nil {
+			t.Fatalf("failed to resolve contact: %v", err)
+		}
+
+		// 2. Set bot paused state to 13 hours ago
+		pausedAt := time.Now().UTC().Add(-13 * time.Hour)
+		err = contactRepo.UpdateBotState(ctx, ws.ID, contact.ID, false, &pausedAt)
+		if err != nil {
+			t.Fatalf("failed to update bot state: %v", err)
+		}
+
+		// 3. Process an inbound event
+		event := &inbound.InboundEvent{
+			WorkspaceID: ws.ID,
+			MessageID:   "msg-cooldown-gt-12",
+			Channel:     "telegram",
+			From:        "cooldown-gt-12",
+			To:          "@test_bot",
+			Body:        "Hello, is bot active?",
+		}
+
+		err = proc.Process(ctx, event)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+
+		// 4. Verify contact in DB has bot_active = true and bot_paused_at = nil
+		updated, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to get contact: %v", err)
+		}
+
+		if !updated.BotActive {
+			t.Error("expected bot_active to be reset to true")
+		}
+		if updated.BotPausedAt != nil {
+			t.Errorf("expected bot_paused_at to be nil, got %v", updated.BotPausedAt)
+		}
+	})
+
+	t.Run("Do NOT reset bot when paused for < 12 hours", func(t *testing.T) {
+		// 1. Resolve contact
+		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "cooldown-lt-12", "Cooldown Less", "", "")
+		if err != nil {
+			t.Fatalf("failed to resolve contact: %v", err)
+		}
+
+		// 2. Set bot paused state to 1 hour ago
+		pausedAt := time.Now().UTC().Add(-1 * time.Hour)
+		err = contactRepo.UpdateBotState(ctx, ws.ID, contact.ID, false, &pausedAt)
+		if err != nil {
+			t.Fatalf("failed to update bot state: %v", err)
+		}
+
+		// 3. Process an inbound event
+		event := &inbound.InboundEvent{
+			WorkspaceID: ws.ID,
+			MessageID:   "msg-cooldown-lt-12",
+			Channel:     "telegram",
+			From:        "cooldown-lt-12",
+			To:          "@test_bot",
+			Body:        "Hello, is bot active?",
+		}
+
+		err = proc.Process(ctx, event)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+
+		// 4. Verify contact in DB still has bot_active = false and bot_paused_at set
+		updated, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to get contact: %v", err)
+		}
+
+		if updated.BotActive {
+			t.Error("expected bot_active to remain false")
+		}
+		if updated.BotPausedAt == nil {
+			t.Error("expected bot_paused_at to remain set")
+		}
+	})
+}
