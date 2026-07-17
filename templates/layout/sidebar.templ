@@ -2,6 +2,7 @@ package layout
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -50,6 +51,9 @@ func isSettingsActive(activePath string) bool {
 }
 
 func isSubmenuActive(activePath, target string) bool {
+	if strings.Contains(target, "/integrations/chatwoot") {
+		return strings.Contains(activePath, "/integrations/chatwoot")
+	}
 	if target == "/admin/connections" {
 		return strings.HasPrefix(activePath, "/admin/connections") || strings.HasPrefix(activePath, "/admin/devices")
 	}
@@ -59,7 +63,8 @@ func isSubmenuActive(activePath, target string) bool {
 	if target == "/admin/workspace" {
 		return (strings.HasPrefix(activePath, "/admin/workspace") || strings.HasPrefix(activePath, "/admin/workspaces")) &&
 			!strings.Contains(activePath, "/webhooks") &&
-			!strings.Contains(activePath, "/campaigns")
+			!strings.Contains(activePath, "/campaigns") &&
+			!strings.Contains(activePath, "/integrations")
 	}
 	if target == "/admin/webhooks" {
 		return strings.HasPrefix(activePath, "/admin/webhooks") || strings.Contains(activePath, "/webhooks")
@@ -141,6 +146,11 @@ templ Sidebar() {
 					<li>
 						<a href="/admin/telemetry" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/telemetry")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/telemetry")) }>Telemetry</a>
 					</li>
+					if ws := getActiveWorkspace(ctx); ws != nil {
+						<li>
+							<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/chatwoot", ws.ID.String())) } class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")) }>Integrations</a>
+						</li>
+					}
 				</ul>
 			</li>
 		</ul>

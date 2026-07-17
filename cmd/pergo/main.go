@@ -318,9 +318,11 @@ func main() {
 	// --- Repositories ---
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
 	wabaTemplateRepo := repository.NewWABATemplateRepository(pool)
+	integrationRepo := repository.NewIntegrationRepository(pool, encryptor)
 
 	wabaTemplateHandler := admin.NewWABATemplateHandler(wabaTemplateRepo, connectionRepo)
 	userLogsHandler := admin.NewUserLogsHandler(userActionLogRepo)
+	chatwootAdminHandler := admin.NewChatwootAdminHandler(integrationRepo)
 
 	// --- Echo HTTP server ---
 	e := echosrv.New()
@@ -558,6 +560,10 @@ func main() {
 	adminGroup.GET("/workspaces/:workspace_id/templates/new", wabaTemplateHandler.NewForm)
 	adminGroup.POST("/workspaces/:workspace_id/templates/:template_id/sync", wabaTemplateHandler.Sync)
 	adminGroup.DELETE("/workspaces/:workspace_id/templates/:template_id", wabaTemplateHandler.Delete)
+
+	// Chatwoot integration routes
+	adminGroup.GET("/workspaces/:workspace_id/integrations/chatwoot", chatwootAdminHandler.GetSettings)
+	adminGroup.POST("/workspaces/:workspace_id/integrations/chatwoot", chatwootAdminHandler.PostSettings)
 
 	// Webhooks & DLQ routes
 	webhookHandler := admin.NewWebhookDLQHandler(webhookDLQRepo, webhookSubRepo, wsRepo, publisher)

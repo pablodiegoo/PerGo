@@ -1,0 +1,136 @@
+package pages
+
+import (
+	"fmt"
+	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/templates/layout"
+)
+
+type ChatwootConfig struct {
+	APIURL      string `json:"api_url"`
+	AccessToken string `json:"access_token"`
+	InboxID     int64  `json:"inbox_id"`
+	AccountID   int64  `json:"account_id"`
+}
+
+templ ChatwootSettingsPage(workspaceID uuid.UUID, cfg ChatwootConfig, active bool, successMsg string, errorMsg string) {
+	@layout.Base("Chatwoot Integration", ChatwootSettingsContent(workspaceID, cfg, active, successMsg, errorMsg))
+}
+
+templ ChatwootSettingsContent(workspaceID uuid.UUID, cfg ChatwootConfig, active bool, successMsg string, errorMsg string) {
+	<div class="border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end">
+		<div>
+			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Integração Chatwoot</h1>
+			<p class="text-zinc-500 text-sm mt-1">Conecte o PerGo ao Chatwoot para sincronizar mensagens com agentes humanos.</p>
+		</div>
+	</div>
+
+	if successMsg != "" {
+		<div class="alert bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg p-4 mb-6 flex flex-col items-start gap-1">
+			<h3 class="text-sm font-bold">Sucesso</h3>
+			<p class="text-xs text-emerald-700">{ successMsg }</p>
+		</div>
+	}
+
+	if errorMsg != "" {
+		<div class="alert bg-rose-50 text-rose-800 border border-rose-200 rounded-lg p-4 mb-6 flex flex-col items-start gap-1">
+			<h3 class="text-sm font-bold">Erro</h3>
+			<p class="text-xs text-rose-700">{ errorMsg }</p>
+		</div>
+	}
+
+	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6 max-w-2xl">
+		<h2 class="text-lg font-semibold text-zinc-900 mb-6 font-bold">Configuração de Credenciais</h2>
+		
+		<form
+			method="POST"
+			action={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/chatwoot", workspaceID.String())) }
+			class="space-y-6"
+		>
+			<div class="flex flex-col gap-1.5">
+				<label for="api_url" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Chatwoot API URL</label>
+				<input 
+					type="url" 
+					id="api_url" 
+					name="api_url" 
+					value={ cfg.APIURL } 
+					required 
+					placeholder="https://chatwoot.suaempresa.com"
+					class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"
+				/>
+				<p class="text-xs text-zinc-400">URL base do seu servidor Chatwoot.</p>
+			</div>
+
+			<div class="flex flex-col gap-1.5">
+				<label for="access_token" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Access Token / API Key</label>
+				<input 
+					type="password" 
+					id="access_token" 
+					name="access_token" 
+					value={ cfg.AccessToken } 
+					required 
+					placeholder="••••••••••••••••"
+					class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"
+				/>
+				<p class="text-xs text-zinc-400">Token de acesso do agente ou da conta no Chatwoot.</p>
+			</div>
+
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+				<div class="flex flex-col gap-1.5">
+					<label for="account_id" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Account ID</label>
+					<input 
+						type="number" 
+						id="account_id" 
+						name="account_id" 
+						value={ fmt.Sprintf("%d", cfg.AccountID) } 
+						required 
+						placeholder="1"
+						class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"
+					/>
+					<p class="text-xs text-zinc-400">ID numérico da conta Chatwoot.</p>
+				</div>
+
+				<div class="flex flex-col gap-1.5">
+					<label for="inbox_id" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Inbox ID</label>
+					<input 
+						type="number" 
+						id="inbox_id" 
+						name="inbox_id" 
+						value={ fmt.Sprintf("%d", cfg.InboxID) } 
+						required 
+						placeholder="1"
+						class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"
+					/>
+					<p class="text-xs text-zinc-400">ID da Inbox API configurada no Chatwoot.</p>
+				</div>
+			</div>
+
+			<div class="flex items-center gap-2 pt-2">
+				<input 
+					type="checkbox" 
+					id="active" 
+					name="active" 
+					value="true" 
+					if active { checked } 
+					class="checkbox checkbox-sm checkbox-black border-zinc-300 rounded focus:ring-zinc-950"
+				/>
+				<label for="active" class="text-sm font-medium text-zinc-700">Ativar Integração</label>
+			</div>
+
+			<div class="flex gap-3 pt-4 border-t border-zinc-200">
+				<button 
+					type="submit" 
+					class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-5 py-2 rounded-md transition h-9 flex items-center justify-center"
+				>
+					Salvar Configurações
+				</button>
+				<a 
+					href="/admin/" 
+					class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-5 py-2 rounded-md transition h-9 flex items-center justify-center"
+				>
+					Cancelar
+				</a>
+			</div>
+		</form>
+	</div>
+}
