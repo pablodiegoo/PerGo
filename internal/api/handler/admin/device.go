@@ -364,7 +364,16 @@ func (h *DeviceHandler) TestForm(c *echo.Context) error {
 		return c.String(http.StatusNotFound, "connection not found")
 	}
 
-	return mw.Render(c, http.StatusOK, pages.TestConnectionModal(conn))
+	var templates []repository.WABATemplate
+	if conn.Channel == "whatsapp_cloud" && h.TemplatesRepo != nil {
+		var err error
+		templates, err = h.TemplatesRepo.ListByConnection(c.Request().Context(), conn.ID)
+		if err != nil {
+			slog.Warn("failed to list templates for testing", "error", err)
+		}
+	}
+
+	return mw.Render(c, http.StatusOK, pages.TestConnectionModal(conn, templates))
 }
 
 // RunTest publishes a test outbound message to the messages.outbound JetStream subject.
@@ -373,6 +382,8 @@ func (h *DeviceHandler) RunTest(c *echo.Context) error {
 	connIDStr := c.FormValue("connection_id")
 	to := c.FormValue("to")
 	body := c.FormValue("body")
+	isTemplate := c.FormValue("is_template") == "true"
+	templateName := c.FormValue("template_name")
 
 	connID, err := uuid.Parse(connIDStr)
 	if err != nil {
@@ -382,6 +393,27 @@ func (h *DeviceHandler) RunTest(c *echo.Context) error {
 	conn, err := h.Connections.GetByID(c.Request().Context(), connID)
 	if err != nil {
 		return c.HTML(http.StatusOK, `<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Conexão não encontrada</div>`)
+	}
+
+	var componentsList []domain.TemplateComponent
+	if isTemplate && templateName != "" {
+		var params []domain.TemplateParameter
+		for i := 1; i <= 3; i++ {
+			val := c.FormValue(fmt.Sprintf("param_%d", i))
+			if val != "" {
+				params = append(params, domain.TemplateParameter{
+					Type: "text",
+					Text: val,
+				})
+			}
+		}
+		componentsList = []domain.TemplateComponent{
+			{
+				Type:       "body",
+				Parameters: params,
+			},
+		}
+		body = fmt.Sprintf("[Template: %s] Params: %v", templateName, params)
 	}
 
 	traceID := "test-" + uuid.New().String()
@@ -394,6 +426,12 @@ func (h *DeviceHandler) RunTest(c *echo.Context) error {
 		Channel:        conn.Channel,
 		Body:           body,
 		QueuedAt:       time.Now().UTC(),
+	}
+
+	if isTemplate {
+		qMsg.TemplateName = templateName
+		qMsg.Language = "pt_BR" // Default language
+		qMsg.Components = componentsList
 	}
 
 	payload, err := json.Marshal(qMsg)

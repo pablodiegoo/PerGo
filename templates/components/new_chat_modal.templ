@@ -64,26 +64,26 @@ templ NewChatModal(templates []repository.WABATemplate, fromContact string, isTe
 						</div>
 					</div>
 				} else {
-					<input type="hidden" name="is_template" value="false" id="new-chat-is-template" />
+					<input type="hidden" name="is_template" value={ fmt.Sprintf("%t", channel == "whatsapp_cloud") } id="new-chat-is-template" />
 					<div>
 						<label class="block text-xs font-bold text-zinc-500 uppercase mb-2">Destinatário (Telefone ou Username)</label>
-						<input type="text" name="to" required placeholder="Ex: +5511999990002 ou @usuario" class="w-full rounded-lg border border-zinc-200 p-2.5 text-sm text-zinc-800" />
+						<input type="text" name="to" required value={ to } placeholder="Ex: +5511999990002 ou @usuario" class="w-full rounded-lg border border-zinc-200 p-2.5 text-sm text-zinc-800" />
 					</div>
 					<div>
 						<label class="block text-xs font-bold text-zinc-500 uppercase mb-2">Canal de Disparo</label>
 						<select name="channel" class="w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-white text-zinc-800" onchange="toggleNewChatFields(this.value)">
-							<option value="whatsapp">WhatsApp Web</option>
-							<option value="telegram">Telegram Bot</option>
-							<option value="whatsapp_cloud">WABA Cloud (API Oficial - Requer Template)</option>
+							<option value="whatsapp" selected?={ channel == "whatsapp" || channel == "" }>WhatsApp Web</option>
+							<option value="telegram" selected?={ channel == "telegram" }>Telegram Bot</option>
+							<option value="whatsapp_cloud" selected?={ channel == "whatsapp_cloud" }>WABA Cloud (API Oficial - Requer Template)</option>
 						</select>
 					</div>
 
-					<div id="new-chat-message-input">
+					<div id="new-chat-message-input" class={ templ.KV("hidden", channel == "whatsapp_cloud") }>
 						<label class="block text-xs font-bold text-zinc-500 uppercase mb-2">Mensagem Inicial</label>
 						<textarea name="body" placeholder="Digite sua mensagem inicial..." class="w-full rounded-lg border border-zinc-200 p-2.5 text-sm h-20 resize-none text-zinc-800"></textarea>
 					</div>
 
-					<div id="new-chat-waba-input" class="hidden flex-col gap-3">
+					<div id="new-chat-waba-input" class={ "flex-col gap-3", templ.KV("hidden", channel != "whatsapp_cloud"), templ.KV("flex", channel == "whatsapp_cloud") }>
 						<div>
 							<label class="block text-xs font-bold text-zinc-500 uppercase mb-2">Template</label>
 							<select name="template_name" class="w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-white text-zinc-800" onchange="showTemplatePreview(this.value)">

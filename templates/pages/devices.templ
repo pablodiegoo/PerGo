@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"fmt"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/components"
 	"github.com/pablojhp.pergo/templates/layout"
@@ -353,7 +354,7 @@ templ QRFragment(code string, phone string, status string, message string) {
 }
 
 // TestConnectionModal renders the modal to test message sending and view NATS streams.
-templ TestConnectionModal(conn *repository.Connection) {
+templ TestConnectionModal(conn *repository.Connection, templates []repository.WABATemplate) {
 	<script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js"></script>
 	<div class="modal-backdrop" onclick="this.closest('.modal-backdrop').remove()">
 		<div class="custom-modal w-full max-w-4xl" onclick="event.stopPropagation()">
@@ -395,17 +396,55 @@ templ TestConnectionModal(conn *repository.Connection) {
 							/>
 						</div>
 
-						<div class="flex flex-col gap-1">
-							<label for="test-body" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Corpo da Mensagem</label>
-							<textarea
-								name="body"
-								id="test-body"
-								rows="4"
-								class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full resize-y"
-								placeholder="Mensagem de teste do PerGo!"
-								required
-							></textarea>
-						</div>
+						if conn.Channel == "whatsapp_cloud" {
+							<input type="hidden" name="is_template" value="true" />
+							<div class="flex flex-col gap-1">
+								<label for="test-template-name" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Template</label>
+								<select
+									name="template_name"
+									id="test-template-name"
+									class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"
+									required
+									onchange="showTestTemplatePreview(this.value)"
+								>
+									<option value="">Selecione um template...</option>
+									for _, t := range templates {
+										<option value={ t.Name }>{ fmt.Sprintf("%s (%s)", t.Name, t.Language) }</option>
+									}
+								</select>
+							</div>
+
+							<div id="test-template-vars" class="flex flex-col gap-3 bg-zinc-50 p-3 rounded border border-zinc-200 hidden">
+								<p class="text-xs font-bold text-zinc-600">Variáveis do Template</p>
+								<div class="flex flex-col gap-2">
+									<div class="flex items-center gap-2">
+										<span class="text-xs text-zinc-400 font-semibold w-16">{"{{1}}"}</span>
+										<input type="text" name="param_1" placeholder="Variável 1" class="flex-1 rounded border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800" />
+									</div>
+									<div class="flex items-center gap-2">
+										<span class="text-xs text-zinc-400 font-semibold w-16">{"{{2}}"}</span>
+										<input type="text" name="param_2" placeholder="Variável 2 (Opcional)" class="flex-1 rounded border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800" />
+									</div>
+									<div class="flex items-center gap-2">
+										<span class="text-xs text-zinc-400 font-semibold w-16">{"{{3}}"}</span>
+										<input type="text" name="param_3" placeholder="Variável 3 (Opcional)" class="flex-1 rounded border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800" />
+									</div>
+								</div>
+							</div>
+						} else {
+							<input type="hidden" name="is_template" value="false" />
+							<div class="flex flex-col gap-1">
+								<label for="test-body" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Corpo da Mensagem</label>
+								<textarea
+									name="body"
+									id="test-body"
+									rows="4"
+									class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full resize-y"
+									placeholder="Mensagem de teste do PerGo!"
+									required
+								></textarea>
+							</div>
+						}
 
 						<button type="submit" class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none w-full font-semibold py-2 rounded-md transition h-10">
 							Enviar Mensagem de Teste
@@ -432,6 +471,19 @@ templ TestConnectionModal(conn *repository.Connection) {
 			</div>
 		</div>
 	</div>
+
+	<script>
+		function showTestTemplatePreview(val) {
+			var container = document.getElementById('test-template-vars');
+			if (container) {
+				if (val) {
+					container.classList.remove('hidden');
+				} else {
+					container.classList.add('hidden');
+				}
+			}
+		}
+	</script>
 }
 
 // TestEventRow renders a single event card for the WS feed.
