@@ -48,9 +48,9 @@ Exceptions: none
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
 | Body | 14px | 400 | 1.5 |
-| Label | 12px | 500 | 1.2 |
+| Label | 12px | 400 | 1.2 |
 | Heading | 18px | 600 | 1.2 |
-| Display | 24px | 700 | 1.1 |
+| Display | 24px | 600 | 1.1 |
 
 ---
 
@@ -71,11 +71,18 @@ Accent reserved for: Status badge toggles, primary CTA buttons
 
 | Element | Copy |
 |---------|------|
-| Primary CTA | Toggle Bot Status |
-| Empty state heading | No contacts available |
-| Empty state body | Select or create a contact to start messaging. |
-| Error state | Could not update bot status. Please try again. |
-| Destructive confirmation | Pause Bot: Are you sure you want to pause automated replies? |
+| Primary CTA | Bot Ativo / Bot Pausado |
+| Empty state heading | Nenhum contato selecionado |
+| Empty state body | Selecione um contato para iniciar a conversa. |
+| Error state | Não foi possível atualizar o status do bot. Tente novamente. |
+| Destructive confirmation | none |
+
+---
+
+## Visuals and Accessibility
+
+- **Visual Anchor/Focal Point**: Status badge toggle button in the chat panel header next to the contact name for bot control.
+- **Accessible Icons**: Decorative icons will use `aria-hidden="true"`, and interactive/toggling icons will use descriptive `aria-label` or `sr-only` text for screen readers.
 
 ---
 
