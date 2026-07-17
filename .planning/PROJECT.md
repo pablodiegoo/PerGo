@@ -20,9 +20,15 @@ A single API request delivers a message through any configured channel with auto
 - **Shipped Version**: v1.2 (2026-07-17)
 - **Status**: Stable. Fully functional multi-tenant routing gateway with active contact profiles, multi-webhook subscriptions, sequential JSON Response Verbs engine, and Meta WABA read receipt indicators.
 
-## Current Milestone: None (Planning next milestone)
+## Current Milestone: v1.3 Chatwoot & Typebot Integrations
 
-*(Milestone v1.2 completed on 2026-07-17. Run `/gsd-new-milestone` to start defining the next milestone and its goals.)*
+**Goal:** Enable seamless customer support and bot automation by integrating Chatwoot and Typebot directly with PerGo, supporting concurrent event forwarding and stateful bot-to-human session handoff.
+
+**Target Features:**
+- Chatwoot Integration: Built-in webhook receiver (`POST /api/integrations/chatwoot`) to map agent messages to the outbound queue.
+- Typebot Integration: Built-in webhook receiver (`POST /api/integrations/typebot`) to map bot responses to the outbound queue.
+- Stateful Handoff Routing: A stateful `bot_active` flag stored on contacts to manage conversational control and prevent bot/human crosstalk.
+- Control Verbs: Extend the Messaging Verbs Engine with a `pause_bot` verb to toggle bot activity via webhooks.
 
 ## Requirements
 

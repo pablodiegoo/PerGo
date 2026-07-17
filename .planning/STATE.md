@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: PRD Gaps Integration
-current_phase: 2
-status: Awaiting next milestone
-stopped_at: Documentation update completed, ready for milestone completion
-last_updated: "2026-07-17T12:55:54.072Z"
+milestone: v1.3
+milestone_name: Chatwoot & Typebot Integrations
+status: planning
+last_updated: "2026-07-17T13:39:11.349Z"
 last_activity: 2026-07-17
-last_activity_desc: Milestone v1.2 completed and archived
 progress:
-  total_phases: 10
-  completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
-  percent: 40
-current_phase_name: waba-read-receipts-status
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: Milestone v1.2 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-07-17 — Milestone v1.2 completed and archived
+Status: Defining requirements
+Last activity: 2026-07-17 — Milestone v1.3 started
 
 ## Performance Metrics
 
