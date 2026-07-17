@@ -278,4 +278,138 @@ func TestVerbsEngine(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("Pause bot indefinitely", func(t *testing.T) {
+		c, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "sender-pause-indef", "", "", "")
+		if err != nil {
+			t.Fatalf("ResolveContact failed: %v", err)
+		}
+
+		evt := inbound.InboundEventPayload{
+			Event:       "message.received",
+			TraceID:     "trace-pause-1",
+			MessageID:   "msg-pause-1",
+			Channel:     "telegram",
+			WorkspaceID: ws.ID.String(),
+			From:        "sender-pause-indef",
+		}
+		evtBytes, _ := json.Marshal(evt)
+		task := webhook.WebhookDeliveryTask{
+			ID:          uuid.New(),
+			WorkspaceID: ws.ID,
+			Payload:     evtBytes,
+		}
+
+		verbs := []webhook.Verb{
+			{
+				Action: "pause_bot",
+				Params: json.RawMessage(`{}`),
+			},
+		}
+
+		err = engine.Execute(ctx, task, verbs)
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+
+		// Verify database state
+		var botActive bool
+		var botPausedAt *time.Time
+		err = pool.QueryRow(ctx, "SELECT bot_active, bot_paused_at FROM contacts WHERE id = $1", c.ID).Scan(&botActive, &botPausedAt)
+		if err != nil {
+			t.Fatalf("query contact failed: %v", err)
+		}
+
+		if botActive {
+			t.Error("expected bot_active to be false")
+		}
+		if botPausedAt == nil {
+			t.Fatal("expected bot_paused_at to be set")
+		}
+		if time.Since(*botPausedAt) > 10*time.Second {
+			t.Errorf("expected bot_paused_at to be close to now, got %v", botPausedAt)
+		}
+	})
+
+	t.Run("Pause bot with duration", func(t *testing.T) {
+		c, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "sender-pause-dur", "", "", "")
+		if err != nil {
+			t.Fatalf("ResolveContact failed: %v", err)
+		}
+
+		evt := inbound.InboundEventPayload{
+			Event:       "message.received",
+			TraceID:     "trace-pause-2",
+			MessageID:   "msg-pause-2",
+			Channel:     "telegram",
+			WorkspaceID: ws.ID.String(),
+			From:        "sender-pause-dur",
+		}
+		evtBytes, _ := json.Marshal(evt)
+		task := webhook.WebhookDeliveryTask{
+			ID:          uuid.New(),
+			WorkspaceID: ws.ID,
+			Payload:     evtBytes,
+		}
+
+		verbs := []webhook.Verb{
+			{
+				Action: "pause_bot",
+				Params: json.RawMessage(`{"duration": "2h"}`),
+			},
+		}
+
+		err = engine.Execute(ctx, task, verbs)
+		if err != nil {
+			t.Fatalf("Execute failed: %v", err)
+		}
+
+		// Verify database state
+		var botActive bool
+		var botPausedAt *time.Time
+		err = pool.QueryRow(ctx, "SELECT bot_active, bot_paused_at FROM contacts WHERE id = $1", c.ID).Scan(&botActive, &botPausedAt)
+		if err != nil {
+			t.Fatalf("query contact failed: %v", err)
+		}
+
+		if botActive {
+			t.Error("expected bot_active to be false")
+		}
+		if botPausedAt == nil {
+			t.Fatal("expected bot_paused_at to be set")
+		}
+		elapsed := time.Since(*botPausedAt)
+		if elapsed < 9*time.Hour || elapsed > 11*time.Hour {
+			t.Errorf("expected bot_paused_at to be offset by ~10h (since 12h - 2h = 10h), got %v (elapsed: %v)", botPausedAt, elapsed)
+		}
+	})
+
+	t.Run("Pause bot with invalid duration", func(t *testing.T) {
+		evt := inbound.InboundEventPayload{
+			Event:       "message.received",
+			TraceID:     "trace-pause-3",
+			MessageID:   "msg-pause-3",
+			Channel:     "telegram",
+			WorkspaceID: ws.ID.String(),
+			From:        "sender-pause-invalid",
+		}
+		evtBytes, _ := json.Marshal(evt)
+		task := webhook.WebhookDeliveryTask{
+			ID:          uuid.New(),
+			WorkspaceID: ws.ID,
+			Payload:     evtBytes,
+		}
+
+		verbs := []webhook.Verb{
+			{
+				Action: "pause_bot",
+				Params: json.RawMessage(`{"duration": "invalid"}`),
+			},
+		}
+
+		err := engine.Execute(ctx, task, verbs)
+		if err == nil {
+			t.Fatal("expected error on invalid duration")
+		}
+	})
 }

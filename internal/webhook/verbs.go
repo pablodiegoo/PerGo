@@ -46,6 +46,11 @@ type CloseParams struct {
 	// Currently empty, but reserved for future options
 }
 
+// PauseBotParams defines the payload structure for the 'pause_bot' action.
+type PauseBotParams struct {
+	Duration string `json:"duration,omitempty"`
+}
+
 type VerbsEngine struct {
 	publisher   outbound.Publisher
 	contactRepo *repository.ContactRepository
@@ -217,6 +222,42 @@ func (e *VerbsEngine) Execute(ctx context.Context, task WebhookDeliveryTask, ver
 			if err := e.contactRepo.CloseThread(execCtx, wsID, contactID); err != nil {
 				log.Status, log.Error = "failed", err.Error()
 				execErr = fmt.Errorf("verb %d (close) db update failed: %w", i, err)
+				executedLogs = append(executedLogs, log)
+				break
+			}
+
+		case "pause_bot":
+			if contactID == uuid.Nil {
+				log.Status, log.Error = "failed", "contact not resolved"
+				execErr = fmt.Errorf("verb %d (pause_bot) contact resolution failed", i)
+				executedLogs = append(executedLogs, log)
+				break
+			}
+			var p PauseBotParams
+			if len(verb.Params) > 0 && string(verb.Params) != "null" {
+				if err := json.Unmarshal(verb.Params, &p); err != nil {
+					log.Status, log.Error = "failed", err.Error()
+					execErr = fmt.Errorf("verb %d (pause_bot) invalid params: %w", i, err)
+					executedLogs = append(executedLogs, log)
+					break
+				}
+			}
+
+			pausedAt := time.Now().UTC()
+			if p.Duration != "" {
+				d, err := time.ParseDuration(p.Duration)
+				if err != nil {
+					log.Status, log.Error = "failed", err.Error()
+					execErr = fmt.Errorf("verb %d (pause_bot) invalid duration '%s': %w", i, p.Duration, err)
+					executedLogs = append(executedLogs, log)
+					break
+				}
+				pausedAt = time.Now().UTC().Add(-12 * time.Hour).Add(d)
+			}
+
+			if err := e.contactRepo.UpdateBotState(execCtx, wsID, contactID, false, &pausedAt); err != nil {
+				log.Status, log.Error = "failed", err.Error()
+				execErr = fmt.Errorf("verb %d (pause_bot) db update failed: %w", i, err)
 				executedLogs = append(executedLogs, log)
 				break
 			}
