@@ -19,8 +19,10 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/nats-io/nats.go"
 
+	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
+	"github.com/pablojhp.pergo/internal/api/mcp"
 	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/channel/telegram"
@@ -45,6 +47,54 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+		slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+		cfg := config.Load()
+		ctx := context.Background()
+
+		pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
+		if err != nil {
+			slog.Error("failed to create pgxpool", "error", err)
+			os.Exit(1)
+		}
+		defer pool.Close()
+
+		kek := cfg.KEKBytes
+		if len(kek) != 32 {
+			kek = make([]byte, 32)
+			copy(kek, []byte("dev-development-key-32-bytes-kek"))
+		}
+		encryptor, err := crypto.NewEncryptor(kek)
+		if err != nil {
+			slog.Error("failed to initialize encryptor", "error", err)
+			os.Exit(1)
+		}
+
+		nc, err := nats.Connect(cfg.NATSUrl)
+		if err != nil {
+			slog.Error("failed to connect to NATS", "error", err)
+			os.Exit(1)
+		}
+		defer nc.Close()
+		publisher := queue.NewJetStreamPublisher(nc)
+
+		wsRepo := repository.NewWorkspaceRepository(pool)
+		connectionRepo := repository.NewConnectionRepository(pool, encryptor)
+		contactRepo := repository.NewContactRepository(pool)
+		auditRepo := repository.NewAuditRepository(pool)
+
+		ingestor := outbound.NewProcessor(nil, nil, connectionRepo, publisher)
+		mcpServer := mcp.NewServer(wsRepo, connectionRepo, contactRepo, auditRepo, ingestor)
+
+		stdServer := mcpserver.NewStdioServer(mcpServer.MCPServer)
+		slog.Info("starting MCP server in stdio mode")
+		if err := stdServer.Listen(ctx, os.Stdin, os.Stdout); err != nil {
+			slog.Error("MCP stdio server execution failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
 	// --- Config from env vars ---
@@ -156,6 +206,7 @@ func main() {
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+	auditRepo := repository.NewAuditRepository(pool)
 	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo, contactRepo, dispatchRepo)
 	sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", inboundProcessor)
 	orchestrator := queue.NewDispatchOrchestrator(dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter, contactRepo, 5, 60*time.Second)
@@ -302,6 +353,10 @@ func main() {
 	}
 	messageHandler.RegisterRoutes(e, middleware.RateLimiterMiddleware(rateLimiter))
 
+	// --- MCP Server (Model Context Protocol) ---
+	mcpServer := mcp.NewServer(wsRepo, connectionRepo, contactRepo, auditRepo, outboundProcessor)
+	e.Any("/api/mcp/*", echo.WrapHandler(mcpServer.SSEServer))
+
 	// --- Media proxy handler (GET /media/:workspace_id/:hash) ---
 	mediaHandler := handler.NewMediaHandler(s3Client)
 	e.GET("/media/:workspace_id/:hash", mediaHandler.Handle)
@@ -431,7 +486,6 @@ func main() {
 	adminGroup.DELETE("/workspaces/:id/keys/:key_id", apiKeyHandler.Revoke)
 
 	// Audit log review routes
-	auditRepo := repository.NewAuditRepository(pool)
 	auditHandler := &admin.AuditHandler{Repo: auditRepo, Workspaces: wsRepo}
 	adminGroup.GET("/audit", auditHandler.Redirect)
 	adminGroup.GET("/logs", func(c *echo.Context) error {

@@ -23,23 +23,20 @@ func AuthMiddleware(repo *repository.APIKeyRepository) echo.MiddlewareFunc {
 			}
 
 			authHeader := c.Request().Header.Get("Authorization")
-			if authHeader == "" {
-				return c.JSON(http.StatusUnauthorized, map[string]string{
-					"code":    "unauthorized",
-					"message": "invalid or missing API key",
-				})
+			var key string
+			if authHeader != "" {
+				parts := strings.SplitN(authHeader, " ", 2)
+				if len(parts) == 2 && strings.EqualFold(parts[0], "Bearer") {
+					key = parts[1]
+				}
+			} else {
+				key = c.QueryParam("api_key")
+				if key == "" {
+					key = c.QueryParam("token")
+				}
 			}
 
-			// Parse "Bearer <key>"
-			parts := strings.SplitN(authHeader, " ", 2)
-			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-				return c.JSON(http.StatusUnauthorized, map[string]string{
-					"code":    "unauthorized",
-					"message": "invalid or missing API key",
-				})
-			}
-			key := parts[1]
-			if len(key) < 8 {
+			if key == "" || len(key) < 8 {
 				return c.JSON(http.StatusUnauthorized, map[string]string{
 					"code":    "unauthorized",
 					"message": "invalid or missing API key",
