@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -301,6 +302,61 @@ func TestContactRepository(t *testing.T) {
 
 		if resolved.ClosedAt != nil {
 			t.Errorf("expected closed_at to be reset to nil, but got %v", resolved.ClosedAt)
+		}
+	})
+
+	t.Run("UpdateBotState", func(t *testing.T) {
+		contact, err := repo.ResolveContact(ctx, ws.ID, "telegram", "bot-state-test-tg", "Bot State User", "", "")
+		if err != nil {
+			t.Fatalf("failed to create contact: %v", err)
+		}
+
+		// Initially bot_active should be true, bot_paused_at should be nil
+		if !contact.BotActive {
+			t.Error("expected bot_active to be true initially")
+		}
+		if contact.BotPausedAt != nil {
+			t.Errorf("expected bot_paused_at to be nil initially, got %v", contact.BotPausedAt)
+		}
+
+		// Update to inactive
+		pausedAt := time.Now().UTC()
+		err = repo.UpdateBotState(ctx, ws.ID, contact.ID, false, &pausedAt)
+		if err != nil {
+			t.Fatalf("failed to update bot state: %v", err)
+		}
+
+		updated, err := repo.GetByID(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to get contact: %v", err)
+		}
+
+		if updated.BotActive {
+			t.Error("expected bot_active to be false after update")
+		}
+		if updated.BotPausedAt == nil {
+			t.Fatal("expected bot_paused_at to be set")
+		}
+		if updated.BotPausedAt.Sub(pausedAt).Abs() > time.Second {
+			t.Errorf("expected bot_paused_at close to %v, got %v", pausedAt, *updated.BotPausedAt)
+		}
+
+		// Update to active again
+		err = repo.UpdateBotState(ctx, ws.ID, contact.ID, true, nil)
+		if err != nil {
+			t.Fatalf("failed to update bot state: %v", err)
+		}
+
+		updated2, err := repo.GetByID(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to get contact: %v", err)
+		}
+
+		if !updated2.BotActive {
+			t.Error("expected bot_active to be true after reactivating")
+		}
+		if updated2.BotPausedAt != nil {
+			t.Errorf("expected bot_paused_at to be nil after reactivation, got %v", updated2.BotPausedAt)
 		}
 	})
 }

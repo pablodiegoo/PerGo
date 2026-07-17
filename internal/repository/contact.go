@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -26,9 +27,9 @@ func NewContactRepository(pool *pgxpool.Pool) *ContactRepository {
 func (r *ContactRepository) GetByID(ctx context.Context, workspaceID, contactID uuid.UUID) (*domain.Contact, error) {
 	var c domain.Contact
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, workspace_id, name, email, tags, closed_at, created_at, updated_at
+		SELECT id, workspace_id, name, email, tags, closed_at, created_at, updated_at, bot_active, bot_paused_at
 		FROM contacts WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, contactID).Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt)
+	`, workspaceID, contactID).Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt, &c.BotActive, &c.BotPausedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrContactNotFound
@@ -250,7 +251,7 @@ func (r *ContactRepository) MergeContacts(ctx context.Context, workspaceID uuid.
 func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid.UUID, query string, excludeID uuid.UUID, limit int) ([]domain.Contact, error) {
 	q := "%" + strings.ToLower(query) + "%"
 	rows, err := r.pool.Query(ctx, `
-		SELECT DISTINCT c.id, c.name, c.email, c.tags, c.closed_at, c.created_at, c.updated_at
+		SELECT DISTINCT c.id, c.name, c.email, c.tags, c.closed_at, c.created_at, c.updated_at, c.bot_active, c.bot_paused_at
 		FROM contacts c
 		LEFT JOIN contact_identities ci ON ci.contact_id = c.id
 		WHERE c.workspace_id = $1
@@ -266,7 +267,7 @@ func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid
 	var list []domain.Contact
 	for rows.Next() {
 		var c domain.Contact
-		if err := rows.Scan(&c.ID, &c.Name, &c.Email, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Email, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt, &c.BotActive, &c.BotPausedAt); err != nil {
 			return nil, err
 		}
 		list = append(list, c)
@@ -372,5 +373,15 @@ func (r *ContactRepository) CloseThread(ctx context.Context, workspaceID, contac
 		SET closed_at = NOW(), updated_at = NOW() 
 		WHERE workspace_id = $1 AND id = $2
 	`, workspaceID, contactID)
+	return err
+}
+
+// UpdateBotState toggles bot activity and sets the paused timestamp for a contact.
+func (r *ContactRepository) UpdateBotState(ctx context.Context, workspaceID, contactID uuid.UUID, botActive bool, pausedAt *time.Time) error {
+	_, err := r.pool.Exec(ctx, `
+		UPDATE contacts 
+		SET bot_active = $3, bot_paused_at = $4, updated_at = NOW() 
+		WHERE workspace_id = $1 AND id = $2
+	`, workspaceID, contactID, botActive, pausedAt)
 	return err
 }
