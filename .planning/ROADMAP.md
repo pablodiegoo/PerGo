@@ -121,6 +121,17 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 22. Typebot Integration | v1.3 | 2/2 | Complete    | 2026-07-17 |
 | 23. Stateful Handoff Routing | v1.3 | 2/2 | Complete    | 2026-07-17 |
 
+### Phase 24: Refactor Webhook Verbs Engine to Polymorphic VerbHandlers
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 23
+**Plans:** 0 plans
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 24 to break down)
+
 ---
 *Roadmap created: 2026-07-14*
 *Last updated: 2026-07-17 after v1.3 definition*
