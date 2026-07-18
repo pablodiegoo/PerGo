@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -51,11 +50,23 @@ type PauseBotParams struct {
 	Duration string `json:"duration,omitempty"`
 }
 
+// VerbHandler defines the interface for webhook verb processors.
+type VerbHandler interface {
+	Execute(ctx context.Context, vc VerbContext, params json.RawMessage) error
+}
+
+// VerbContext carries context shared across verbs in the same execution block.
+type VerbContext struct {
+	WorkspaceID uuid.UUID
+	ContactID   uuid.UUID
+	TraceID     string
+	Event       inbound.InboundEventPayload
+}
+
 type VerbsEngine struct {
-	publisher   outbound.Publisher
+	handlers    map[string]VerbHandler
 	contactRepo *repository.ContactRepository
 	logsRepo    *repository.UserActionLogRepository
-	resolver    outbound.RouteResolver
 }
 
 func NewVerbsEngine(
@@ -64,11 +75,18 @@ func NewVerbsEngine(
 	logsRepo *repository.UserActionLogRepository,
 	resolver outbound.RouteResolver,
 ) *VerbsEngine {
+	handlers := map[string]VerbHandler{
+		"reply":     NewReplyHandler(publisher, resolver),
+		"wait":      NewWaitHandler(),
+		"forward":   NewForwardHandler(publisher, resolver),
+		"tag":       NewTagHandler(contactRepo),
+		"close":     NewCloseHandler(contactRepo),
+		"pause_bot": NewPauseBotHandler(contactRepo),
+	}
 	return &VerbsEngine{
-		publisher:   publisher,
+		handlers:    handlers,
 		contactRepo: contactRepo,
 		logsRepo:    logsRepo,
-		resolver:    resolver,
 	}
 }
 
@@ -118,6 +136,13 @@ func (e *VerbsEngine) Execute(ctx context.Context, task WebhookDeliveryTask, ver
 	var executedLogs []ExecutedVerbLog
 	var execErr error
 
+	vc := VerbContext{
+		WorkspaceID: wsID,
+		ContactID:   contactID,
+		TraceID:     task.TraceID,
+		Event:       evt,
+	}
+
 	for i, verb := range verbs {
 		select {
 		case <-execCtx.Done():
@@ -130,147 +155,21 @@ func (e *VerbsEngine) Execute(ctx context.Context, task WebhookDeliveryTask, ver
 
 		log := ExecutedVerbLog{Action: verb.Action, Status: "success"}
 
-		switch verb.Action {
-		case "reply":
-			var p ReplyParams
-			if err := json.Unmarshal(verb.Params, &p); err != nil {
-				log.Status, log.Error = "failed", err.Error()
-				execErr = fmt.Errorf("verb %d (reply) invalid params: %w", i, err)
-				executedLogs = append(executedLogs, log)
-				break
-			}
-			if err := e.executeReply(execCtx, wsID, evt.From, evt.Channel, evt.To, p.Body, task.TraceID); err != nil {
-				log.Status, log.Error = "failed", err.Error()
-				execErr = fmt.Errorf("verb %d (reply) execution failed: %w", i, err)
-				executedLogs = append(executedLogs, log)
-				break
-			}
-
-		case "wait":
-			var p WaitParams
-			if err := json.Unmarshal(verb.Params, &p); err != nil {
-				log.Status, log.Error = "failed", err.Error()
-				execErr = fmt.Errorf("verb %d (wait) invalid params: %w", i, err)
-				executedLogs = append(executedLogs, log)
-				break
-			}
-			d, err := time.ParseDuration(p.Duration)
-			if err != nil {
-				log.Status, log.Error = "failed", err.Error()
-				execErr = fmt.Errorf("verb %d (wait) invalid duration '%s': %w", i, p.Duration, err)
-				executedLogs = append(executedLogs, log)
-				break
-			}
-			// Cap duration at 10 seconds, prevent negative values
-			if d > 10*time.Second {
-				d = 10 * time.Second
-			}
-			if d < 0 {
-				d = 0
-			}
-
-			select {
-			case <-time.After(d):
-			case <-execCtx.Done():
-				log.Status, log.Error = "failed", execCtx.Err().Error()
-				execErr = execCtx.Err()
-			}
-
-		case "forward":
-			var p ForwardParams
-			if err := json.Unmarshal(verb.Params, &p); err != nil {
-				log.Status, log.Error = "failed", err.Error()
-				execErr = fmt.Errorf("verb %d (forward) invalid params: %w", i, err)
-				executedLogs = append(executedLogs, log)
-				break
-			}
-			if err := e.executeForward(execCtx, wsID, p.To, p.Channel, evt.Body, task.TraceID); err != nil {
-				log.Status, log.Error = "failed", err.Error()
-				execErr = fmt.Errorf("verb %d (forward) execution failed: %w", i, err)
-				executedLogs = append(executedLogs, log)
-				break
-			}
-
-		case "tag":
-			var p TagParams
-			if err := json.Unmarshal(verb.Params, &p); err != nil {
-				log.Status, log.Error = "failed", err.Error()
-				execErr = fmt.Errorf("verb %d (tag) invalid params: %w", i, err)
-				executedLogs = append(executedLogs, log)
-				break
-			}
-			if contactID == uuid.Nil {
-				log.Status, log.Error = "failed", "contact not resolved"
-				execErr = fmt.Errorf("verb %d (tag) contact resolution failed", i)
-				executedLogs = append(executedLogs, log)
-				break
-			}
-			if err := e.contactRepo.AddTags(execCtx, wsID, contactID, p.Tags); err != nil {
-				log.Status, log.Error = "failed", err.Error()
-				execErr = fmt.Errorf("verb %d (tag) db update failed: %w", i, err)
-				executedLogs = append(executedLogs, log)
-				break
-			}
-
-		case "close":
-			if contactID == uuid.Nil {
-				log.Status, log.Error = "failed", "contact not resolved"
-				execErr = fmt.Errorf("verb %d (close) contact resolution failed", i)
-				executedLogs = append(executedLogs, log)
-				break
-			}
-			if err := e.contactRepo.CloseThread(execCtx, wsID, contactID); err != nil {
-				log.Status, log.Error = "failed", err.Error()
-				execErr = fmt.Errorf("verb %d (close) db update failed: %w", i, err)
-				executedLogs = append(executedLogs, log)
-				break
-			}
-
-		case "pause_bot":
-			if contactID == uuid.Nil {
-				log.Status, log.Error = "failed", "contact not resolved"
-				execErr = fmt.Errorf("verb %d (pause_bot) contact resolution failed", i)
-				executedLogs = append(executedLogs, log)
-				break
-			}
-			var p PauseBotParams
-			if len(verb.Params) > 0 && string(verb.Params) != "null" {
-				if err := json.Unmarshal(verb.Params, &p); err != nil {
-					log.Status, log.Error = "failed", err.Error()
-					execErr = fmt.Errorf("verb %d (pause_bot) invalid params: %w", i, err)
-					executedLogs = append(executedLogs, log)
-					break
-				}
-			}
-
-			pausedAt := time.Now().UTC()
-			if p.Duration != "" {
-				d, err := time.ParseDuration(p.Duration)
-				if err != nil {
-					log.Status, log.Error = "failed", err.Error()
-					execErr = fmt.Errorf("verb %d (pause_bot) invalid duration '%s': %w", i, p.Duration, err)
-					executedLogs = append(executedLogs, log)
-					break
-				}
-				pausedAt = time.Now().UTC().Add(-12 * time.Hour).Add(d)
-			}
-
-			if err := e.contactRepo.UpdateBotState(execCtx, wsID, contactID, false, &pausedAt); err != nil {
-				log.Status, log.Error = "failed", err.Error()
-				execErr = fmt.Errorf("verb %d (pause_bot) db update failed: %w", i, err)
-				executedLogs = append(executedLogs, log)
-				break
-			}
-
-		default:
+		handler, ok := e.handlers[verb.Action]
+		if !ok {
 			log.Status, log.Error = "failed", "unknown action"
 			execErr = fmt.Errorf("verb %d unknown action: %s", i, verb.Action)
 			executedLogs = append(executedLogs, log)
-		}
-
-		if execErr != nil {
 			break
 		}
+
+		if err := handler.Execute(execCtx, vc, verb.Params); err != nil {
+			log.Status, log.Error = "failed", err.Error()
+			execErr = fmt.Errorf("verb %d (%s): %w", i, verb.Action, err)
+			executedLogs = append(executedLogs, log)
+			break
+		}
+
 		executedLogs = append(executedLogs, log)
 	}
 
@@ -278,87 +177,6 @@ func (e *VerbsEngine) Execute(ctx context.Context, task WebhookDeliveryTask, ver
 	e.logActionResults(ctx, wsID, task.SubscriptionID, contactID, evt.Channel, evt.From, task.TraceID, executedLogs, execErr)
 
 	return execErr
-}
-
-func (e *VerbsEngine) executeReply(
-	ctx context.Context,
-	workspaceID uuid.UUID,
-	recipient string,
-	channel string,
-	inboundTo string,
-	body string,
-	traceID string,
-) error {
-	if e.publisher == nil || e.resolver == nil {
-		// If mock environment or parts not wired, skip publishing
-		return nil
-	}
-
-	// Resolve Connection
-	conn, err := e.resolver.GetBySenderIdentity(ctx, workspaceID, inboundTo)
-	if err != nil {
-		// Fallback to default channel connection
-		conn, err = e.resolver.GetDefaultChannelConnection(ctx, workspaceID, channel)
-		if err != nil {
-			return fmt.Errorf("cannot resolve connection for reply: %w", err)
-		}
-	}
-
-	qMsg := &domain.QueueMessage{
-		WorkspaceID:    workspaceID,
-		ConnectionID:   conn.ID,
-		SenderIdentity: conn.SenderIdentity,
-		TraceID:        traceID,
-		To:             recipient,
-		Channel:        channel,
-		Body:           body,
-		QueuedAt:       time.Now().UTC(),
-	}
-
-	payload, err := json.Marshal(qMsg)
-	if err != nil {
-		return err
-	}
-
-	return e.publisher.Publish(ctx, "messages.outbound", payload, traceID)
-}
-
-func (e *VerbsEngine) executeForward(
-	ctx context.Context,
-	workspaceID uuid.UUID,
-	to string,
-	channel string,
-	originalBody string,
-	traceID string,
-) error {
-	if e.publisher == nil || e.resolver == nil {
-		// If mock environment or parts not wired, skip publishing
-		return nil
-	}
-
-	// Resolve connection for target channel
-	conn, err := e.resolver.GetDefaultChannelConnection(ctx, workspaceID, channel)
-	if err != nil {
-		return fmt.Errorf("cannot resolve default connection for forward channel '%s': %w", channel, err)
-	}
-
-	qMsg := &domain.QueueMessage{
-		WorkspaceID:    workspaceID,
-		ConnectionID:   conn.ID,
-		SenderIdentity: conn.SenderIdentity,
-		TraceID:        traceID,
-		To:             to,
-		Channel:        channel,
-		Body:           originalBody,
-		QueuedAt:       time.Now().UTC(),
-	}
-
-	payload, err := json.Marshal(qMsg)
-	if err != nil {
-		return err
-	}
-
-	return e.publisher.Publish(ctx, "messages.outbound", payload, traceID)
 }
 
 func (e *VerbsEngine) logActionResults(
