@@ -1,3 +1,8 @@
+---
+last_mapped_commit: 99448836f14aa64e923a366b95721858185d878b
+last_mapped_date: 2026-07-18
+---
+
 # Tech Stack Map
 
 This document describes the technologies, libraries, versions, configuration approach, build system, and deployment mechanisms for PerGo.

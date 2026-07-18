@@ -1,3 +1,8 @@
+---
+last_mapped_commit: 99448836f14aa64e923a366b95721858185d878b
+last_mapped_date: 2026-07-18
+---
+
 # Conventions Map
 
 This document establishes the coding standards, patterns, error handling conventions, database access style, and logging standards in PerGo.
@@ -30,7 +35,7 @@ This document establishes the coding standards, patterns, error handling convent
 ## 3. Structured Logging (slog)
 
 - **Library**: Uses Go standard library `log/slog`.
-- **Key-Value Context**: Avoid formatting log messages. Pass structured attributes instead:
+- **Key-Value Context**: Pass structured attributes instead of formatted messages:
   ```go
   slog.Error("failed to publish outbound message", "error", err, "trace_id", traceID, "connection_id", connID)
   ```

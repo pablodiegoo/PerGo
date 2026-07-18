@@ -1,3 +1,8 @@
+---
+last_mapped_commit: 99448836f14aa64e923a366b95721858185d878b
+last_mapped_date: 2026-07-18
+---
+
 # Structure Map
 
 This document describes the directory layout, folder purposes, key files, and naming conventions of the PerGo codebase.
@@ -19,13 +24,16 @@ The project follows a standard Go project layout with a clean separation of conc
 │   │   └── whatsapp/          # WABA & WhatsApp Web adapters
 │   ├── config/                # Environment variables parsing
 │   ├── domain/                # Core business entities & validations
+│   ├── inbound/               # Inbound Ingestion Pipeline & Inbound Router
+│   ├── integration/           # External integration adapters (Chatwoot, Typebot)
 │   ├── platform/              # Shared infrastructure clients
 │   │   ├── crypto/            # AES-256-GCM encryption utilities
 │   │   ├── postgres/          # DB connection & migrations
 │   │   ├── queue/             # NATS JetStream client & queue workers
 │   │   └── storage/           # S3 compatible storage client
 │   ├── repository/            # DB Access Layer (pure SQL queries)
-│   └── session/               # whatsmeow client daemon management
+│   ├── session/               # whatsmeow client daemon management
+│   └── webhook/               # Webhooks, Verbs Engine, polymorphic VerbHandlers
 ├── static/                    # Static UI assets (CSS, JS, logo)
 ├── templates/                 # Compiled type-safe Templ templates
 │   ├── components/            # Reusable HTML snippets (chat, item, list, modals)
@@ -46,14 +54,22 @@ The project follows a standard Go project layout with a clean separation of conc
   - **`inbox.go`**: Serves `/admin/inbox` endpoints, thread list loading, active chat retrieval, and real-time polling updates.
   - **`workspace.go`**: Manages workspaces, tenant configurations, and credential setups.
 
+### `internal/inbound/`
+- **`processor.go`**: Orchestrates duplicate checks, S3 uploads for media events, and session updates when a new inbound WhatsApp message is captured.
+- **`router.go`**: Implements `InboundRouter`, routing events asynchronously to Chatwoot/Typebot integrations.
+
 ### `internal/session/`
 - **`manager.go`**: Manages the lifecycles of whatsmeow client sessions for multiple WhatsApp Web numbers within a workspace.
-- **`inbound_processor.go`**: Orchestrates duplicate checks, S3 uploads for media events, and session updates when a new inbound WhatsApp message is captured.
 
 ### `internal/platform/queue/`
 - **`jetstream.go`**: Defines the streams for `MESSAGES` and `WEBHOOKS` and manages durable pull consumers.
 - **`worker.go`**: The dispatcher worker loop that reads messages from JetStream and sends them down the channel adapters.
 - **`webhook_worker.go`**: Delivers events to registered client endpoints, pushing failing payloads to the DLQ.
+
+### `internal/webhook/`
+- **`dispatcher.go`**: Orchestrates signature signing and HTTP delivery of outbound webhooks.
+- **`verbs.go`**: Orchestrates parsing and execution of action verbs returned in webhook responses.
+- **`verb_handlers.go`**: Contains polymorphic implementations of individual verbs (`reply`, `wait`, `forward`, `tag`, `close`, `pause_bot`).
 
 ### `templates/`
 - Renders server-side templates type-compiled into Go by `a-h/templ`.

@@ -1,3 +1,8 @@
+---
+last_mapped_commit: 99448836f14aa64e923a366b95721858185d878b
+last_mapped_date: 2026-07-18
+---
+
 # Technical Concerns Map
 
 This document outlines key technical debt, security, performance, reliability, and operational risks identified in the PerGo codebase.

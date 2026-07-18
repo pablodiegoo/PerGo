@@ -1,3 +1,8 @@
+---
+last_mapped_commit: 99448836f14aa64e923a366b95721858185d878b
+last_mapped_date: 2026-07-18
+---
+
 # Architecture Map
 
 This document describes the architectural design, architectural patterns, abstractions, entry points, and data flow of PerGo.
@@ -50,7 +55,10 @@ The design guarantees data sovereignty and self-hosting efficiency:
 2. **Inbound Enrichment & Deduplication**:
    - `InboundProcessor` handles deduplication (`inbound_dedup` table check), extracts message body, downloads and uploads media attachment payloads to S3, and captures recipient identities.
    - Updates target session's unread counter and active state in `recipient_sessions`.
-3. **Auditing & Webhook Publishing**:
+3. **Inbound Router (`internal/inbound/router.go`)**:
+   - Acts as a clean interface seam, decoupling the core ingestion flow from external sync implementations (Chatwoot, Typebot).
+   - Offloads external synchronization tasks asynchronously in separate background goroutines with isolated context timeouts (10s).
+4. **Auditing & Webhook Publishing**:
    - Writes an event to `audit_logs`.
    - Publishes an event to NATS JetStream `webhooks.inbound` subject for forwarding.
 
@@ -92,5 +100,6 @@ The design guarantees data sovereignty and self-hosting efficiency:
       ├──► Deduplicate (inbound_dedup)
       ├──► Store Media (S3 Storage)
       ├──► Update Session (recipient_sessions)
+      ├──► Route via Seam ──► [InboundRouter (Async goroutines)] ──► [Chatwoot / Typebot]
       └──► Log Audit Event & Publish (audit_logs & NATS WEBHOOKS Stream)
 ```

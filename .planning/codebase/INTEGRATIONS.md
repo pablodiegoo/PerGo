@@ -1,3 +1,8 @@
+---
+last_mapped_commit: 99448836f14aa64e923a366b95721858185d878b
+last_mapped_date: 2026-07-18
+---
+
 # Integrations Map
 
 This document catalogs all external integrations, communication brokers, databases, and third-party APIs used by PerGo.
@@ -54,3 +59,17 @@ Telegram bot channel adapter.
 - **Storage Client**: `internal/platform/storage/s3.go` connects to AWS S3 or MinIO.
 - **Media Download/Upload**: Incoming media URLs are downloaded, size-validated (max 25MB), content-hashed, and stored in S3 at `{workspace_id}/{hash}.{ext}`.
 - **Media Proxy**: Exposes media files securely at `/media/{workspace_id}/{hash}.{ext}`.
+
+## 8. Chatwoot Integration
+
+Human agent synchronization.
+- **Syncers**: `internal/integration/chatwoot/syncer.go` implements `inbound.ChatwootSyncer` interface.
+- **Mappings**: `chatwoot_mappings` table maps Chatwoot conversation IDs to PerGo connection IDs.
+- **Inbound Webhook**: Receives Chatwoot event webhooks at `/api/v1/webhooks/chatwoot`, filters public outgoing agent messages, and publishes them as outbound messaging tasks.
+
+## 9. Typebot Integration
+
+Bot conversation automation.
+- **Forwarder**: `internal/integration/typebot/forwarder.go` implements `inbound.TypebotForwarder` interface.
+- **Sessions**: `typebot_sessions` table manages active session states.
+- **Inactivity Timeout**: Inbound processor monitors contact inactivity; if a contact has had no agent replies for 12 hours, bot status is auto-reset to active on the next message event.

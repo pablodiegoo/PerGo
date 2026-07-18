@@ -1,3 +1,8 @@
+---
+last_mapped_commit: 99448836f14aa64e923a366b95721858185d878b
+last_mapped_date: 2026-07-18
+---
+
 # Testing Map
 
 This document describes the testing framework, test structures, mock strategies, and execution commands in PerGo.
@@ -22,13 +27,10 @@ This document describes the testing framework, test structures, mock strategies,
   ```bash
   go test -race -count=1 ./...
   ```
-- **Run tests in a specific package**:
+- **Sequential DB Execution Constraint**:
+  Integration tests that run goose migrations or alter table structures concurrently against the shared test DB container will race and fail. Always run integration tests sequentially using `-p 1` when executing across multiple packages:
   ```bash
-  go test -v ./internal/api/handler/admin/...
-  ```
-- **Clean test execution (disable caching)**:
-  ```bash
-  go test -count=1 ./...
+  PERGO_DATABASE_URL="postgres://postgres:postgres@localhost:5433/pergo?sslmode=disable" go test -p 1 ./...
   ```
 
 ## 3. Web Layer Testing (Echo Handlers)
