@@ -122,6 +122,10 @@ A single API request delivers a message through any configured channel with auto
 | Reuse central integrations table for Typebot | Store Typebot API URL, Bot ID, and Public Token encrypted as JSON envelope in integrations table | Validated (Phase 22) |
 | Dedicated typebot_sessions mapping table | Map contacts, workspaces, and connections to remote Typebot session IDs in PostgreSQL | Validated (Phase 22) |
 | Webhook receiver for bot replies | Expose public integration endpoint to enqueue bot responses directly to NATS JetStream | Validated (Phase 22) |
+| Polymorphic VerbHandler implementations (D-01, D-05) | Extract reply, wait, forward, tag, close, and pause_bot actions into separate structs implementing a shared interface within the webhook package | Validated (Phase 24) |
+| Static VerbHandler routing map (D-02) | Map action strings to respective VerbHandler interface instances within the NewVerbsEngine constructor | Validated (Phase 24) |
+| Raw JSON parameter delegation (D-03) | Let individual VerbHandlers unmarshal and validate their own parameter schemas from json.RawMessage | Validated (Phase 24) |
+| Shared VerbContext passing (D-04) | Resolve contact profile once at execution start and pass down trace/identity context to prevent redundant DB queries | Validated (Phase 24) |
 
 ## Evolution
 
@@ -141,4 +145,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-17 after Phase 22 completion*
+*Last updated: 2026-07-18 after Phase 24 completion*
