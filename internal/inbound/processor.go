@@ -25,6 +25,11 @@ type TypebotForwarder interface {
 	SyncInboundMessage(ctx context.Context, contact *domain.Contact, ev *InboundEvent) error
 }
 
+// InboundRouter defines the interface for routing unified inbound events to integration syncers.
+type InboundRouter interface {
+	Route(ctx context.Context, contact *domain.Contact, ev *InboundEvent) error
+}
+
 // InboundMedia carries media bytes and metadata downloaded by the caller/adapter.
 type InboundMedia struct {
 	Bytes     []byte `json:"-"`
@@ -112,8 +117,7 @@ type InboundProcessor struct {
 	recipientSessionRepo *repository.RecipientSessionRepository
 	contactRepo          *repository.ContactRepository
 	dispatchRepo         *repository.MessageDispatchRepository
-	chatwootSyncer       ChatwootSyncer
-	typebotForwarder     TypebotForwarder
+	router               InboundRouter
 }
 
 // NewInboundProcessor creates a new InboundProcessor.
@@ -126,6 +130,7 @@ func NewInboundProcessor(
 	recipientSessionRepo *repository.RecipientSessionRepository,
 	contactRepo *repository.ContactRepository,
 	dispatchRepo *repository.MessageDispatchRepository,
+	router InboundRouter,
 ) *InboundProcessor {
 	return &InboundProcessor{
 		dedupRepo:            dedupRepo,
@@ -136,17 +141,8 @@ func NewInboundProcessor(
 		recipientSessionRepo: recipientSessionRepo,
 		contactRepo:          contactRepo,
 		dispatchRepo:         dispatchRepo,
+		router:               router,
 	}
-}
-
-// SetChatwootSyncer registers a Chatwoot syncer instance.
-func (p *InboundProcessor) SetChatwootSyncer(s ChatwootSyncer) {
-	p.chatwootSyncer = s
-}
-
-// SetTypebotForwarder registers a Typebot forwarder instance.
-func (p *InboundProcessor) SetTypebotForwarder(f TypebotForwarder) {
-	p.typebotForwarder = f
 }
 
 // Process executes the ingestion pipeline for an inbound event.
@@ -320,26 +316,11 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		}
 	}
 
-	// 9. Sync asynchronously to Chatwoot
-	if p.chatwootSyncer != nil && contact != nil {
-		go func(c *domain.Contact, e *InboundEvent) {
-			ctxBg, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := p.chatwootSyncer.SyncInboundMessage(ctxBg, c, e); err != nil {
-				slog.Error("inbound processor: failed to sync message to chatwoot", "error", err, "contact_id", c.ID, "workspace_id", e.WorkspaceID)
-			}
-		}(contact, ev)
-	}
-
-	// 10. Sync asynchronously to Typebot
-	if p.typebotForwarder != nil && contact != nil {
-		go func(c *domain.Contact, e *InboundEvent) {
-			ctxBg, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := p.typebotForwarder.SyncInboundMessage(ctxBg, c, e); err != nil {
-				slog.Error("inbound processor: failed to sync message to typebot", "error", err, "contact_id", c.ID, "workspace_id", e.WorkspaceID)
-			}
-		}(contact, ev)
+	// 9. Route inbound event via InboundRouter
+	if p.router != nil && contact != nil {
+		if err := p.router.Route(ctx, contact, ev); err != nil {
+			slog.Error("inbound processor: router failed to route event", "error", err, "contact_id", contact.ID)
+		}
 	}
 
 	return nil

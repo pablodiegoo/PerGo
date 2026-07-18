@@ -40,4 +40,9 @@ _Avoid_: Webhook controller, message parser, channel translator
 The consolidated module that orchestrates downloading, validation, and storage of media files across inbound and outbound channels.
 _Avoid_: S3 helper, HTTP downloader, storage client
 
+**Inbound Router**:
+The consolidated module that orchestrates routing of unified inbound events to external integration syncers asynchronously.
+_Avoid_: Event routing manager, syncer coordinator
+
+
 

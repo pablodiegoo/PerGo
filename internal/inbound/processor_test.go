@@ -178,7 +178,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -230,7 +230,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -269,7 +269,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -327,7 +327,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -369,7 +369,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 
 		pub2 := &fakePublisher{}
-		proc2 := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub2, aud, sessRepo, contactRepo, dispatchRepo)
+		proc2 := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub2, aud, sessRepo, contactRepo, dispatchRepo, nil)
 		event.MessageID = "test-pii-opt-in" // fresh message ID to bypass dedup
 
 		err = proc2.Process(ctx, event)
@@ -401,7 +401,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -486,7 +486,7 @@ func TestProcess_StatusUpdate(t *testing.T) {
 	me := &fakeMediaEngine{}
 	aud := &fakeAuditWriter{}
 
-	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo)
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
 
 	event := &inbound.InboundEvent{
 		WorkspaceID: ws.ID,
@@ -583,12 +583,11 @@ func TestInboundProcessor_ChatwootSyncer(t *testing.T) {
 	me := &fakeMediaEngine{}
 	aud := &fakeAuditWriter{}
 
-	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo)
-
 	syncer := &fakeChatwootSyncer{
 		called: make(chan struct{}),
 	}
-	proc.SetChatwootSyncer(syncer)
+	router := inbound.NewDefaultRouter(syncer, nil)
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, router)
 
 	event := &inbound.InboundEvent{
 		WorkspaceID:  ws.ID,
@@ -641,7 +640,7 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 	pub := &fakePublisher{}
 	me := &fakeMediaEngine{}
 	aud := &fakeAuditWriter{}
-	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo)
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
 
 	t.Run("Reset bot when paused for > 12 hours", func(t *testing.T) {
 		// 1. Resolve contact

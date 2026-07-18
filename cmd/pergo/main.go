@@ -208,7 +208,13 @@ func main() {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
-	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo, contactRepo, dispatchRepo)
+
+	integrationRepo := repository.NewIntegrationRepository(pool, encryptor)
+	chatwootMappingRepo := repository.NewChatwootMappingRepository(pool)
+	chatwootSyncer := chatwoot.NewChatwootSyncer(integrationRepo, chatwootMappingRepo, nil)
+	inboundRouter := inbound.NewDefaultRouter(chatwootSyncer, nil)
+
+	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo, contactRepo, dispatchRepo, inboundRouter)
 	sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", inboundProcessor)
 	orchestrator := queue.NewDispatchOrchestrator(dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter, contactRepo, 5, 60*time.Second)
 	orchestrator.SetContactRepository(contactRepo)
@@ -319,10 +325,6 @@ func main() {
 	// --- Repositories ---
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
 	wabaTemplateRepo := repository.NewWABATemplateRepository(pool)
-	integrationRepo := repository.NewIntegrationRepository(pool, encryptor)
-	chatwootMappingRepo := repository.NewChatwootMappingRepository(pool)
-	chatwootSyncer := chatwoot.NewChatwootSyncer(integrationRepo, chatwootMappingRepo, nil)
-	inboundProcessor.SetChatwootSyncer(chatwootSyncer)
 
 	wabaTemplateHandler := admin.NewWABATemplateHandler(wabaTemplateRepo, connectionRepo)
 	userLogsHandler := admin.NewUserLogsHandler(userActionLogRepo)
