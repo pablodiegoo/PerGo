@@ -1,5 +1,18 @@
 # Milestones
 
+## v1.3 Chatwoot & Typebot Integrations (Shipped: 2026-07-18)
+
+**Phases completed:** 4 phases, 7 plans, 19 tasks
+
+**Key accomplishments:**
+
+- Implemented the core database schemas, encryption-at-rest repository interfaces, admin UI settings forms, and query-parameter authenticated receiver webhook stub.
+- Stateful handoff routing foundation including schema migration, Typebot sync interception, lazy-evaluated cooldowns, pause_bot verb, and Chatwoot agent reply auto-pausing.
+- Operator console UI integration including native outbound message auto-pausing, manual status toggle badge component rendering, and toggle-bot HTMX endpoint routing.
+- Refactored the monolithic VerbsEngine execution loop into a clean, polymorphic design using a VerbHandler map and decoupled handler structs.
+
+---
+
 ## v1.2 PRD Gaps Integration (Shipped: 2026-07-17)
 
 **Phases completed:** 4 phases, 8 plans, 34 tasks

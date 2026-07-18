@@ -17,23 +17,17 @@ A single API request delivers a message through any configured channel with auto
 
 ## Current State
 
-- **Shipped Version**: v1.2 (2026-07-17)
-- **Status**: Stable. Fully functional multi-tenant routing gateway with active contact profiles, multi-webhook subscriptions, sequential JSON Response Verbs engine, and Meta WABA read receipt indicators.
-
-## Current Milestone: v1.3 Chatwoot & Typebot Integrations
-
-**Goal:** Enable seamless customer support and bot automation by integrating Chatwoot and Typebot directly with PerGo, supporting concurrent event forwarding and stateful bot-to-human session handoff.
-
-**Target Features:**
-- Chatwoot Integration: Built-in webhook receiver (`POST /api/integrations/chatwoot`) to map agent messages to the outbound queue.
-- Typebot Integration: Built-in webhook receiver (`POST /api/integrations/typebot`) to map bot responses to the outbound queue.
-- Stateful Handoff Routing: A stateful `bot_active` flag stored on contacts to manage conversational control and prevent bot/human crosstalk.
-- Control Verbs: Extend the Messaging Verbs Engine with a `pause_bot` verb to toggle bot activity via webhooks.
+- **Shipped Version**: v1.3 (2026-07-18)
+- **Status**: Stable. Fully functional multi-tenant routing gateway with active contact profiles, multi-webhook subscriptions, sequential JSON Response Verbs engine, Meta WABA read receipt indicators, and built-in Chatwoot and Typebot integrations with stateful human/bot handoff control.
 
 ## Requirements
 
 ### Validated
 
+- ✓ Chatwoot Integration: connection settings panel, built-in query-parameter authenticated webhook receiver, and bidirectional client/syncer sync engine (CHAT-01 to CHAT-04) — Phase 21
+- ✓ Typebot Integration: settings panel, asynchronous forwarder, session mapping repository, and outbound webhook receiver (TYPE-01 to TYPE-04) — Phase 22
+- ✓ Stateful Handoff Routing: contact bot_active/bot_paused_at database schema, automatic agent response interceptors, manual chat panel HTMX toggle badge, pause_bot messaging verb, and 12-hour inactivity cooldown reset (HAND-01 to HAND-06) — Phase 23
+- ✓ Webhook Verbs Refactoring: polymorphic VerbHandler extraction and static registration (D-01 to D-05) — Phase 24
 - ✓ Unified message ingestion gateway: `POST /messages` → validate → Trace-ID → NATS JetStream queue → `202 Accepted` — Phase 3
 - ✓ Multi-tenant dashboard control panel: server-rendered (Echo + Templ + HTMX), workspace management, QR pairing, connection telemetry, audit review — Phase 2, 4
 - ✓ Multi-session connection controller: WhatsApp Web device pairing, persistent session store in PostgreSQL, reconnect on restart — Phase 4
