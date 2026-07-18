@@ -29,6 +29,33 @@
 - Decoupling execution context via `context.Background()` is crucial when spawning asynchronous tasks from request contexts.
 - Keep quick task SUMMARY.md files structured with frontmatter (`status: complete`) from the beginning to pass automatic audit scanners.
 
+## Milestone: v1.3 — Chatwoot & Typebot Integrations
+
+**Shipped:** 2026-07-18
+**Phases:** 4 | **Plans:** 7
+
+### What Was Built
+- Chatwoot integration: Workspace-scoped configuration dashboard, native outbound webhook receiver, bidirectional client/syncer sync engine mapping contacts and messages.
+- Typebot integration: Settings panel, postgres session mapping, asynchronous customer message forwarder, and bot replies webhook receiver.
+- Stateful Handoff Routing: Contact `bot_active`/`bot_paused_at` state model, automatic agent reply interceptors (webhooks + composer), manual status toggle HTMX badge, `pause_bot` verb, and 12h lazy inactivity reset.
+- Polymorphic Verbs Refactoring: Decoupled monolithic switch block into testable polymorphic `VerbHandler` structs wired statically in the constructor.
+
+### What Worked
+- Reusing the same `integrations` table with encrypted JSON configurations kept the schema clean and modular.
+- Isolating bot execution control to a single interceptor layer in `TypebotForwarder` simplified conditional checks.
+- Mapping webhook integration tests using mocks (mockPublisher, mockRouteResolver) allowed testing handler routing logic without NATS or DB dependencies.
+
+### What Was Inefficient
+- Serializing tests sequentially with `-p 1` was required due to parallel package test runs conflicting on the same dev PostgreSQL database migration state.
+
+### Patterns Established
+- Polymorphic Command Pattern: Encapsulating individual execution steps into self-contained handlers implementing a common interface to improve code leverage.
+- Stateful Session Handoff: Managing conversational ownership between bot and human agents using database status states and lazy-evaluated inactivity resets.
+
+### Key Lessons
+- Static mapping maps within constructors are effective for resolving polymorphic interfaces in Go without dependency injection frameworks.
+- Lazy evaluation of timeouts (e.g. cooldown reset on incoming message) avoids running persistent background crons/daemons for state management.
+
 ---
 
 ## Cross-Milestone Trends
@@ -39,6 +66,7 @@
 |-----------|--------|------------|
 | v1.1 | 6 | Campaign Engine bulk messaging with JetStream batch throttling. |
 | v1.2 | 4 | PRD gaps integration: webhook subscriptions, contact merging, verbs engine, read receipts. |
+| v1.3 | 4 | Chatwoot & Typebot integrations, stateful handoff routing, polymorphic VerbHandlers. |
 
 ### Cumulative Quality
 
@@ -46,3 +74,4 @@
 |-----------|-------|-------------------|
 | v1.1 | Passed | goose, uuid |
 | v1.2 | Passed | mark3labs/mcp-go |
+| v1.3 | Passed | *(none)* |
