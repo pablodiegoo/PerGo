@@ -46,7 +46,7 @@ make generate
 ```
 *Dica: Durante o desenvolvimento ativo na UI, o `make dev` usando `air` detecta e executa essa compilação automaticamente a cada salvamento.*
 
-### 2. Rodar Testes Unitários
+### 2. Rodar Testes
 Utilize o comando rápido para testes simples (sem detector de concorrência):
 ```bash
 make test
@@ -54,6 +54,10 @@ make test
 Para garantir que não há condições de corrida nas goroutines concorrentes dos workers de envio:
 ```bash
 make test-race
+```
+**Importante:** Os testes de integração realizam migrações no banco de dados e devem ser executados **sequencialmente** (`-p 1`) para evitar concorrência nas tabelas compartilhadas:
+```bash
+PERGO_DATABASE_URL="postgres://postgres:postgres@localhost:5433/pergo?sslmode=disable" go test -p 1 ./...
 ```
 
 ### 3. Análise Estática (Linter)

@@ -78,6 +78,12 @@ Os testes podem ser executados usando o `go test` padrão ou através dos target
    ```
    *Equivalente a:* `go test ./... -race -count=1`
 
+3. **Testes de Integração Sequenciais (Banco de Dados Compartilhado):**
+   Como as diferentes suítes de teste realizam migrações Goose concorrentes no mesmo banco de dados, eles devem ser rodados sequencialmente (`-p 1`) e com a URL correta:
+   ```bash
+   PERGO_DATABASE_URL="postgres://postgres:postgres@localhost:5433/pergo?sslmode=disable" go test -p 1 ./...
+   ```
+
 3. **Execução Manual com Filtro:**
    Para rodar apenas um pacote ou teste específico:
    ```bash
