@@ -69,7 +69,7 @@ func (h *TypebotWebhookHandler) Handle(c *echo.Context) error {
 	// Resolve the connection's sender identity and channel
 	var senderIdentity, channel string
 	err = h.pool.QueryRow(c.Request().Context(), `
-		SELECT external_id, provider
+		SELECT sender_identity, channel
 		FROM connections
 		WHERE workspace_id = $1 AND id = $2
 	`, workspaceID, payload.ConnectionID).Scan(&senderIdentity, &channel)
