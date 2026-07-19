@@ -5,16 +5,16 @@ milestone_name: Chatwoot & Typebot Integrations
 current_phase: 3
 status: Awaiting next milestone
 stopped_at: Completed 24-1-PLAN.md
-last_updated: "2026-07-18T23:55:35.275Z"
+last_updated: "2026-07-19T14:47:55.628Z"
 last_activity: 2026-07-18
 last_activity_desc: Milestone v1.3 completed and archived
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
   total_plans: 7
   completed_plans: 7
-  percent: 100
-current_phase_name: refactor-webhook-verbs-engine-to-polymorphic-verbhandlers
+  percent: 80
+current_phase_name: close-gap-wire-typebot-forwarder-and-reconcile-form-schema
 ---
 
 # Project State
@@ -117,6 +117,7 @@ Recent decisions affecting current work:
 - Phase 9 added: Conversational Inbox
 - Phase 10.1 inserted after Phase 10: Close gaps (URGENT)
 - Phase 12.1 inserted after Phase 12: Address tech debt: sidebar active highlighting (URGENT)
+- Phase 24.1 inserted after Phase 24: Close gap: wire Typebot forwarder and reconcile form schema (URGENT)
 
 ## Deferred Items
 
