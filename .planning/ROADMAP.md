@@ -79,7 +79,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 23. Stateful Handoff Routing | v1.3 | 2/2 | Complete    | 2026-07-17 |
 | 24. Refactor Webhook Verbs Engine to Polymorphic VerbHandlers | v1.3 | 1/1 | Complete | 2026-07-18 |
 | 24.1. Close gap: wire Typebot forwarder and reconcile form schema | v1.3 | 1/1 | Complete | 2026-07-19 |
-| 24.2. Close gap: TYPE-04 (TraceID) | v1.3 | 1/1 | Complete | 2026-07-19 |
+| 24.2. Close gap: TYPE-04 (TraceID) | v1.3 | 1/1 | Complete    | 2026-07-19 |
 
 ---
 *Roadmap created: 2026-07-14*
