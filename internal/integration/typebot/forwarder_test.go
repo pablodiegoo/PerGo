@@ -3,6 +3,7 @@ package typebot_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -120,9 +121,56 @@ func TestTypebotForwarder_PopulatesRoutingFields(t *testing.T) {
 	}
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
 
+	connID := uuid.New()
+	connRepo := repository.NewConnectionRepository(pool, noOpCryptoProvider{})
+	conn := &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    ws.ID,
+		Name:           "Test Connection",
+		Channel:        "whatsapp",
+		SenderIdentity: "+987654321",
+		Status:         "connected",
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("failed to create connection: %v", err)
+	}
+
 	// 1. Setup mock typebot API
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		
+		if r.URL.Path == "/api/v1/typebots/bot1/startChat" {
+			var requestBody typebot.StartChatRequest
+			if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+				t.Errorf("failed to decode request body: %v", err)
+			}
+			
+			expectedSessionId := fmt.Sprintf("%s:+123456789", connID.String())
+			if requestBody.SessionID != expectedSessionId {
+				t.Errorf("expected sessionId %q, got %q", expectedSessionId, requestBody.SessionID)
+			}
+			
+			if requestBody.Message != "[Media Attachment]" {
+				t.Errorf("expected message %q, got %q", "[Media Attachment]", requestBody.Message)
+			}
+			
+			if requestBody.PrefilledVariables == nil {
+				t.Errorf("expected prefilledVariables to be populated")
+			} else {
+				pergoMeta, ok := requestBody.PrefilledVariables["pergo_metadata"].(map[string]any)
+				if !ok {
+					t.Errorf("expected pergo_metadata to be map[string]any, got %T", requestBody.PrefilledVariables["pergo_metadata"])
+				} else {
+					if pergoMeta["media_url"] != "https://example.com/image.png" {
+						t.Errorf("expected media_url %q, got %q", "https://example.com/image.png", pergoMeta["media_url"])
+					}
+					if pergoMeta["media_type"] != "image" {
+						t.Errorf("expected media_type %q, got %q", "image", pergoMeta["media_type"])
+					}
+				}
+			}
+		}
+
 		// Mock start chat response
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{
@@ -147,7 +195,6 @@ func TestTypebotForwarder_PopulatesRoutingFields(t *testing.T) {
 	defer server.Close()
 
 	// 2. Create Typebot Integration with config
-	connID := uuid.New()
 	cfg := typebot.Config{
 		APIURL: server.URL,
 		Bots: []typebot.BotConfig{
@@ -175,11 +222,12 @@ func TestTypebotForwarder_PopulatesRoutingFields(t *testing.T) {
 	pub := &mockPublisher{}
 	f := typebot.NewForwarder(sessionRepo, integrationRepo, pub)
 
-	contact := &domain.Contact{
-		ID:        uuid.New(),
-		BotActive: true,
-		Name:      "Test User",
+	contactRepo := repository.NewContactRepository(pool)
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "+123456789", "Test User", "", "+123456789")
+	if err != nil {
+		t.Fatalf("failed to resolve contact: %v", err)
 	}
+	contact.BotActive = true
 
 	ev := &inbound.InboundEvent{
 		WorkspaceID:  ws.ID,
@@ -188,6 +236,10 @@ func TestTypebotForwarder_PopulatesRoutingFields(t *testing.T) {
 		From:         "+123456789",
 		To:           "+987654321",
 		Body:         "Hello!",
+		Media: &inbound.InboundMedia{
+			MediaURL:  "https://example.com/image.png",
+			MediaType: "image",
+		},
 	}
 
 	err = f.SyncInboundMessage(ctx, contact, ev)
