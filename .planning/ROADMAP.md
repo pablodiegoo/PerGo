@@ -57,7 +57,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 - [x] Phase 23: Stateful Handoff Routing (2/2 plans) — completed 2026-07-17
 - [x] Phase 24: Refactor Webhook Verbs Engine to Polymorphic VerbHandlers (1/1 plan) — completed 2026-07-18
 - [x] Phase 24.2: Close gap: TYPE-04 — populate ConnectionID, SenderIdentity, and TraceID in TypebotForwarder queue message (1/1 plan) — completed 2026-07-19
-- [ ] Phase 24.1: Close gap: wire Typebot forwarder and reconcile form schema
+- [x] Phase 24.1: Close gap: wire Typebot forwarder and reconcile form schema (1/1 plan) — completed 2026-07-19
 
 ## Progress
 
@@ -77,6 +77,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 22. Typebot Integration | v1.3 | 2/2 | Complete    | 2026-07-17 |
 | 23. Stateful Handoff Routing | v1.3 | 2/2 | Complete    | 2026-07-17 |
 | 24. Refactor Webhook Verbs Engine to Polymorphic VerbHandlers | v1.3 | 1/1 | Complete | 2026-07-18 |
+| 24.1. Close gap: wire Typebot forwarder and reconcile form schema | v1.3 | 1/1 | Complete | 2026-07-19 |
 | 24.2. Close gap: TYPE-04 (TraceID) | v1.3 | 1/1 | Complete | 2026-07-19 |
 
 ---
