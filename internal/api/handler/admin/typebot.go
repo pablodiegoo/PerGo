@@ -4,22 +4,29 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	typebot "github.com/pablojhp.pergo/internal/integration/typebot"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
 type TypebotSettingsHandler struct {
 	integrationRepo *repository.IntegrationRepository
+	connectionRepo  *repository.ConnectionRepository
 }
 
-func NewTypebotSettingsHandler(integrationRepo *repository.IntegrationRepository) *TypebotSettingsHandler {
+func NewTypebotSettingsHandler(
+	integrationRepo *repository.IntegrationRepository,
+	connectionRepo *repository.ConnectionRepository,
+) *TypebotSettingsHandler {
 	return &TypebotSettingsHandler{
 		integrationRepo: integrationRepo,
+		connectionRepo:  connectionRepo,
 	}
 }
 
@@ -44,13 +51,38 @@ func (h *TypebotSettingsHandler) GetSettings(c *echo.Context) error {
 	} else {
 		active = integration.Active
 		if len(integration.Config) > 0 {
-			if err := json.Unmarshal(integration.Config, &cfg); err != nil {
-				return c.String(http.StatusInternalServerError, "failed to parse integration configuration")
+			var storeCfg typebot.Config
+			// Tolerant of legacy phase-22 shape: missing fields default to zero values
+			if err := json.Unmarshal(integration.Config, &storeCfg); err == nil {
+				cfg.APIURL = storeCfg.APIURL
+				cfg.Bots = make([]pages.TypebotBot, len(storeCfg.Bots))
+				for i, b := range storeCfg.Bots {
+					cfg.Bots[i] = pages.TypebotBot{
+						BotID:           b.BotID,
+						PublicToken:     b.PublicToken,
+						ConnectionID:    b.ConnectionID,
+						TriggerKeywords: strings.Join(b.TriggerWords, ","),
+						IsDefault:       b.IsDefault,
+					}
+				}
 			}
 		}
 	}
 
-	return mw.Render(c, http.StatusOK, pages.TypebotSettingsPage(workspaceID, cfg, active, "", ""))
+	conns, err := h.connectionRepo.ListByWorkspace(c.Request().Context(), workspaceID)
+	if err != nil {
+		conns = []*repository.Connection{}
+	}
+	connectionsOpts := make([]pages.ConnectionOption, len(conns))
+	for i, conn := range conns {
+		connectionsOpts[i] = pages.ConnectionOption{
+			ID:      conn.ID.String(),
+			Name:    conn.Name,
+			Channel: conn.Channel,
+		}
+	}
+
+	return mw.Render(c, http.StatusOK, pages.TypebotSettingsPage(workspaceID, cfg, connectionsOpts, active, "", ""))
 }
 
 func (h *TypebotSettingsHandler) PostSettings(c *echo.Context) error {
@@ -64,28 +96,76 @@ func (h *TypebotSettingsHandler) PostSettings(c *echo.Context) error {
 	}
 
 	apiURL := c.FormValue("api_url")
-	publicToken := c.FormValue("public_token")
 	botID := c.FormValue("bot_id")
-	triggerKeyword := c.FormValue("trigger_keyword")
+	botPublicToken := c.FormValue("bot_public_token")
+	connectionID := c.FormValue("connection_id")
+	triggerKeywords := c.FormValue("trigger_keywords")
+	isDefault := c.FormValue("is_default") == "true"
 	active := c.FormValue("active") == "true"
 
-	var cfg pages.TypebotConfig
-	cfg.APIURL = apiURL
-	cfg.PublicToken = publicToken
-	cfg.Bots = []pages.TypebotBot{
-		{
-			BotID:          botID,
-			TriggerKeyword: triggerKeyword,
+	displayCfg := pages.TypebotConfig{
+		APIURL: apiURL,
+		Bots: []pages.TypebotBot{
+			{
+				BotID:           botID,
+				PublicToken:     botPublicToken,
+				ConnectionID:    connectionID,
+				TriggerKeywords: triggerKeywords,
+				IsDefault:       isDefault,
+			},
 		},
 	}
 
-	if apiURL == "" || botID == "" {
-		return mw.Render(c, http.StatusOK, pages.TypebotSettingsPage(workspaceID, cfg, active, "", "API URL and Bot ID are required"))
+	conns, err := h.connectionRepo.ListByWorkspace(c.Request().Context(), workspaceID)
+	if err != nil {
+		conns = []*repository.Connection{}
+	}
+	connectionsOpts := make([]pages.ConnectionOption, len(conns))
+	for i, conn := range conns {
+		connectionsOpts[i] = pages.ConnectionOption{
+			ID:      conn.ID.String(),
+			Name:    conn.Name,
+			Channel: conn.Channel,
+		}
 	}
 
-	configBytes, err := json.Marshal(cfg)
+	if apiURL == "" || botID == "" || botPublicToken == "" || connectionID == "" {
+		return mw.Render(c, http.StatusOK, pages.TypebotSettingsPage(workspaceID, displayCfg, connectionsOpts, active, "", "API URL, Bot ID, Bot Public Token, and Connection are required"))
+	}
+
+	connUUID, err := uuid.Parse(connectionID)
 	if err != nil {
-		return mw.Render(c, http.StatusOK, pages.TypebotSettingsPage(workspaceID, cfg, active, "", "Error serializing configuration"))
+		return mw.Render(c, http.StatusOK, pages.TypebotSettingsPage(workspaceID, displayCfg, connectionsOpts, active, "", "Invalid Connection ID"))
+	}
+
+	var triggerWords []string
+	if triggerKeywords != "" {
+		parts := strings.Split(triggerKeywords, ",")
+		for _, part := range parts {
+			trimmed := strings.TrimSpace(part)
+			if trimmed != "" {
+				triggerWords = append(triggerWords, trimmed)
+			}
+		}
+	}
+
+	storeCfg := typebot.Config{
+		APIURL: apiURL,
+		Bots: []typebot.BotConfig{
+			{
+				BotID:          botID,
+				PublicToken:    botPublicToken,
+				ConnectionID:   connUUID.String(),
+				TriggerWords:   triggerWords,
+				IsDefault:      isDefault,
+				SessionTimeout: 0,
+			},
+		},
+	}
+
+	configBytes, err := json.Marshal(storeCfg)
+	if err != nil {
+		return mw.Render(c, http.StatusOK, pages.TypebotSettingsPage(workspaceID, displayCfg, connectionsOpts, active, "", "Error serializing configuration"))
 	}
 
 	var integrationID uuid.UUID
@@ -106,8 +186,8 @@ func (h *TypebotSettingsHandler) PostSettings(c *echo.Context) error {
 	}
 
 	if err := h.integrationRepo.Save(c.Request().Context(), integration); err != nil {
-		return mw.Render(c, http.StatusOK, pages.TypebotSettingsPage(workspaceID, cfg, active, "", "Error saving credentials: "+err.Error()))
+		return mw.Render(c, http.StatusOK, pages.TypebotSettingsPage(workspaceID, displayCfg, connectionsOpts, active, "", "Error saving credentials: "+err.Error()))
 	}
 
-	return mw.Render(c, http.StatusOK, pages.TypebotSettingsPage(workspaceID, cfg, active, "Settings saved successfully!", ""))
+	return mw.Render(c, http.StatusOK, pages.TypebotSettingsPage(workspaceID, displayCfg, connectionsOpts, active, "Settings saved successfully!", ""))
 }

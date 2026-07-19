@@ -5,22 +5,30 @@ import (
 	"github.com/pablojhp.pergo/templates/layout"
 )
 
+type ConnectionOption struct {
+	ID      string
+	Name    string
+	Channel string
+}
+
 type TypebotBot struct {
-	BotID          string `json:"bot_id"`
-	TriggerKeyword string `json:"trigger_keyword"`
+	BotID           string `json:"bot_id"`
+	PublicToken     string `json:"public_token"`
+	ConnectionID    string `json:"connection_id"`
+	TriggerKeywords string `json:"trigger_keywords"`
+	IsDefault       bool   `json:"is_default"`
 }
 
 type TypebotConfig struct {
-	APIURL      string       `json:"api_url"`
-	PublicToken string       `json:"public_token"`
-	Bots        []TypebotBot `json:"bots"`
+	APIURL string       `json:"api_url"`
+	Bots   []TypebotBot `json:"bots"`
 }
 
-templ TypebotSettingsPage(workspaceID uuid.UUID, cfg TypebotConfig, active bool, successMsg string, errorMsg string) {
-	@layout.Base("Typebot Integration", TypebotSettingsContent(workspaceID, cfg, active, successMsg, errorMsg))
+templ TypebotSettingsPage(workspaceID uuid.UUID, cfg TypebotConfig, connections []ConnectionOption, active bool, successMsg string, errorMsg string) {
+	@layout.Base("Typebot Integration", TypebotSettingsContent(workspaceID, cfg, connections, active, successMsg, errorMsg))
 }
 
-templ TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, active bool, successMsg string, errorMsg string) {
+templ TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connections []ConnectionOption, active bool, successMsg string, errorMsg string) {
 	<div class="px-4 sm:px-6 lg:px-8 py-8">
 			<div class="sm:flex sm:items-center">
 				<div class="sm:flex-auto">
@@ -62,13 +70,6 @@ templ TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, active bo
 								<p class="mt-3 text-sm leading-6 text-gray-600">The base URL of your Typebot instance (e.g. https://typebot.example.com).</p>
 							</div>
 
-							<div class="sm:col-span-4">
-								<label for="public_token" class="block text-sm font-medium leading-6 text-gray-900">Public Token</label>
-								<div class="mt-2">
-									<input type="text" name="public_token" id="public_token" value={ cfg.PublicToken } class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"/>
-								</div>
-							</div>
-
 							<div class="sm:col-span-6">
 								<h3 class="text-sm font-medium leading-6 text-gray-900">Bot Settings</h3>
 								<!-- Simplified to single bot for now since UI doesn't mention multiple complex setup -->
@@ -83,16 +84,69 @@ templ TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, active bo
 											}
 										</div>
 									</div>
-									<div class="sm:col-span-4">
-										<label for="trigger_keyword" class="block text-sm font-medium leading-6 text-gray-900">Trigger Keyword</label>
+
+									<div class="sm:col-span-4 mb-4">
+										<label for="bot_public_token" class="block text-sm font-medium leading-6 text-gray-900">Bot Public Token</label>
 										<div class="mt-2">
 											if len(cfg.Bots) > 0 {
-												<input type="text" name="trigger_keyword" id="trigger_keyword" value={ cfg.Bots[0].TriggerKeyword } class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"/>
+												<input type="text" name="bot_public_token" id="bot_public_token" value={ cfg.Bots[0].PublicToken } class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"/>
 											} else {
-												<input type="text" name="trigger_keyword" id="trigger_keyword" value="" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"/>
+												<input type="text" name="bot_public_token" id="bot_public_token" value="" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"/>
 											}
 										</div>
 									</div>
+
+									<div class="sm:col-span-4 mb-4">
+										<label for="connection_id" class="block text-sm font-medium leading-6 text-gray-900">Connection</label>
+										<div class="mt-2">
+											if len(connections) > 0 {
+												<select name="connection_id" id="connection_id" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 bg-white">
+													<option value="">-- select a connection --</option>
+													for _, conn := range connections {
+														if len(cfg.Bots) > 0 && cfg.Bots[0].ConnectionID == conn.ID {
+															<option value={ conn.ID } selected>{ conn.Name } ({ conn.Channel })</option>
+														} else {
+															<option value={ conn.ID }>{ conn.Name } ({ conn.Channel })</option>
+														}
+													}
+												</select>
+											} else {
+												if len(cfg.Bots) > 0 {
+													<input type="text" name="connection_id" id="connection_id" value={ cfg.Bots[0].ConnectionID } class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"/>
+												} else {
+													<input type="text" name="connection_id" id="connection_id" value="" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"/>
+												}
+												<p class="mt-3 text-sm leading-6 text-gray-600">Type a connection UUID. Set up a connection first if the list is empty.</p>
+											}
+										</div>
+									</div>
+
+									<div class="sm:col-span-4 mb-4">
+										<label for="trigger_keywords" class="block text-sm font-medium leading-6 text-gray-900">Trigger Keywords</label>
+										<div class="mt-2">
+											if len(cfg.Bots) > 0 {
+												<input type="text" name="trigger_keywords" id="trigger_keywords" value={ cfg.Bots[0].TriggerKeywords } class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"/>
+											} else {
+												<input type="text" name="trigger_keywords" id="trigger_keywords" value="" class="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"/>
+											}
+										</div>
+										<p class="mt-3 text-sm leading-6 text-gray-600">Comma-separated list of keywords that trigger this bot.</p>
+									</div>
+
+									<div class="relative flex gap-x-3 mb-4">
+										<div class="flex h-6 items-center">
+											if len(cfg.Bots) > 0 && cfg.Bots[0].IsDefault {
+												<input id="is_default" name="is_default" type="checkbox" value="true" checked class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"/>
+											} else {
+												<input id="is_default" name="is_default" type="checkbox" value="true" class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-600"/>
+											}
+										</div>
+										<div class="text-sm leading-6">
+											<label for="is_default" class="font-medium text-gray-900">Default bot for this connection</label>
+											<p class="text-gray-500">Enable to handle all messages on this connection that don't match any other bot's trigger keywords.</p>
+										</div>
+									</div>
+
 								</div>
 							</div>
 
