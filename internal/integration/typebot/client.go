@@ -36,7 +36,9 @@ type Message struct {
 }
 
 type StartChatRequest struct {
-	PrefilledVariables map[string]string `json:"prefilledVariables,omitempty"`
+	SessionID          string         `json:"sessionId,omitempty"`
+	Message            string         `json:"message,omitempty"`
+	PrefilledVariables map[string]any `json:"prefilledVariables,omitempty"`
 }
 
 type ContinueChatRequest struct {
@@ -65,24 +67,24 @@ func NewClient() *Client {
 	return &Client{client: &http.Client{}}
 }
 
-func (c *Client) StartChat(ctx context.Context, apiURL, botID, publicToken string, prefilledVariables map[string]string) (string, []Message, error) {
+func (c *Client) StartChat(ctx context.Context, apiURL, botID, publicToken string, req StartChatRequest) (string, []Message, error) {
 	url := fmt.Sprintf("%s/api/v1/typebots/%s/startChat", apiURL, botID)
 	
-	reqBody := StartChatRequest{
-		PrefilledVariables: prefilledVariables,
-	}
-	b, _ := json.Marshal(reqBody)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
+	b, err := json.Marshal(req)
 	if err != nil {
 		return "", nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
+	if err != nil {
+		return "", nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
 	if publicToken != "" {
-		req.Header.Set("Authorization", "Bearer "+publicToken)
+		httpReq.Header.Set("Authorization", "Bearer "+publicToken)
 	}
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(httpReq)
 	if err != nil {
 		return "", nil, err
 	}
