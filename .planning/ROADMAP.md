@@ -59,6 +59,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 - [x] Phase 22: Typebot Integration (2/2 plans) — completed 2026-07-17
 - [x] Phase 23: Stateful Handoff Routing (2/2 plans) — completed 2026-07-17
 - [x] Phase 24: Refactor Webhook Verbs Engine to Polymorphic VerbHandlers (1/1 plan) — completed 2026-07-18
+- [ ] Phase 24.2: Close gap: TYPE-04 — populate ConnectionID, SenderIdentity, and TraceID in TypebotForwarder queue message
 - [ ] Phase 24.1: Close gap: wire Typebot forwarder and reconcile form schema
 
 </details>
