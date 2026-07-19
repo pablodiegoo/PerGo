@@ -44,6 +44,7 @@ import (
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
 	"github.com/pablojhp.pergo/internal/integration/chatwoot"
+	"github.com/pablojhp.pergo/internal/integration/typebot"
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
@@ -212,7 +213,10 @@ func main() {
 	integrationRepo := repository.NewIntegrationRepository(pool, encryptor)
 	chatwootMappingRepo := repository.NewChatwootMappingRepository(pool)
 	chatwootSyncer := chatwoot.NewChatwootSyncer(integrationRepo, chatwootMappingRepo, nil)
-	inboundRouter := inbound.NewDefaultRouter(chatwootSyncer, nil)
+
+	typebotSessionRepo := repository.NewTypebotSessionRepository(pool)
+	typebotForwarder := typebot.NewForwarder(typebotSessionRepo, integrationRepo, publisher)
+	inboundRouter := inbound.NewDefaultRouter(chatwootSyncer, typebotForwarder)
 
 	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo, contactRepo, dispatchRepo, inboundRouter)
 	sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", inboundProcessor)
@@ -329,7 +333,7 @@ func main() {
 	wabaTemplateHandler := admin.NewWABATemplateHandler(wabaTemplateRepo, connectionRepo)
 	userLogsHandler := admin.NewUserLogsHandler(userActionLogRepo)
 	chatwootAdminHandler := admin.NewChatwootAdminHandler(integrationRepo)
-	typebotAdminHandler := admin.NewTypebotSettingsHandler(integrationRepo)
+	typebotAdminHandler := admin.NewTypebotSettingsHandler(integrationRepo, connectionRepo)
 
 	// --- Echo HTTP server ---
 	e := echosrv.New()

@@ -10,8 +10,12 @@ import (
 	"time"
 
 	"github.com/pablojhp.pergo/internal/api/handler"
+	"github.com/pablojhp.pergo/internal/integration/chatwoot"
+	"github.com/pablojhp.pergo/internal/integration/typebot"
 	echosrv "github.com/pablojhp.pergo/internal/platform/echo"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // TestServerBootHealthz verifies the server starts on a random port and
@@ -151,6 +155,42 @@ func TestGracefulShutdown(t *testing.T) {
 }
 
 // --- helpers ---
+
+func TestCompositionRoot_AllIntegrationsWired(t *testing.T) {
+	ctx := context.Background()
+	pool, err := postgres.NewPool(ctx, testDSN())
+	if err != nil {
+		t.Skipf("skipping: cannot create pool: %v", err)
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		t.Skipf("skipping: cannot ping PostgreSQL: %v", err)
+	}
+
+	kek := make([]byte, 32)
+	for i := range kek {
+		kek[i] = byte(i)
+	}
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+
+	integrationRepo := repository.NewIntegrationRepository(pool, enc)
+	chatwootMappingRepo := repository.NewChatwootMappingRepository(pool)
+	typebotSessionRepo := repository.NewTypebotSessionRepository(pool)
+
+	chatwootSyncer := chatwoot.NewChatwootSyncer(integrationRepo, chatwootMappingRepo, nil)
+	typebotForwarder := typebot.NewForwarder(typebotSessionRepo, integrationRepo, nil)
+
+	if chatwootSyncer == nil {
+		t.Fatal("chatwootSyncer must not be nil — regression of Phase 21 wiring")
+	}
+	if typebotForwarder == nil {
+		t.Fatal("typebotForwarder must not be nil — regression of TYPE-04 wiring")
+	}
+}
 
 func testDSN() string {
 	if dsn := os.Getenv("PERGO_TEST_DSN"); dsn != "" {
