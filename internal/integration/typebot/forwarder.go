@@ -82,6 +82,25 @@ func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Cont
 		}
 	}
 
+	var messageText string
+	var pergoMetadata map[string]any
+
+	if event.Media != nil {
+		messageText = "[Media Attachment]"
+		pergoMetadata = map[string]any{
+			"media_url":  event.Media.MediaURL,
+			"media_type": event.Media.MediaType,
+		}
+	} else if event.Location != nil {
+		messageText = "[Unsupported message: location]"
+	} else if len(event.Contacts) > 0 {
+		messageText = "[Unsupported message: contact]"
+	} else {
+		messageText = event.Body
+	}
+
+	sessionId := fmt.Sprintf("%s:%s", event.ConnectionID.String(), event.From)
+
 	// 3. Check for active session
 	session, err := f.sessionRepo.GetSession(ctx, event.WorkspaceID, contact.ID, event.ConnectionID)
 	if err != nil && !errors.Is(err, repository.ErrTypebotSessionNotFound) {
@@ -107,7 +126,7 @@ func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Cont
 
 		if activeBot != nil {
 			var contErr error
-			messages, contErr = f.client.ContinueChat(ctx, cfg.APIURL, session.TypebotSessionID, activeBot.PublicToken, event.Body)
+			messages, contErr = f.client.ContinueChat(ctx, cfg.APIURL, session.TypebotSessionID, activeBot.PublicToken, messageText)
 			if contErr != nil {
 				if strings.Contains(contErr.Error(), "404") {
 					// Session expired, delete it and retry with StartChat
@@ -132,13 +151,22 @@ func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Cont
 			return nil // No matching bot and no default bot
 		}
 
-		prefilled := map[string]string{
+		prefilled := map[string]any{
 			"Name":  contact.Name,
 			"Phone": event.From, // Or derived from contact
 		}
+		if pergoMetadata != nil {
+			prefilled["pergo_metadata"] = pergoMetadata
+		}
+
+		req := StartChatRequest{
+			SessionID:          sessionId,
+			Message:            messageText,
+			PrefilledVariables: prefilled,
+		}
 		
 		var startErr error
-		typebotSessionID, messages, startErr = f.client.StartChat(ctx, cfg.APIURL, matchingBot.BotID, matchingBot.PublicToken, prefilled)
+		typebotSessionID, messages, startErr = f.client.StartChat(ctx, cfg.APIURL, matchingBot.BotID, matchingBot.PublicToken, req)
 		if startErr != nil {
 			return fmt.Errorf("failed to start typebot chat: %w", startErr)
 		}
