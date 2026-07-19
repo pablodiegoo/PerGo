@@ -33,7 +33,14 @@ func TestTypebotClient_StartChat(t *testing.T) {
 	defer ts.Close()
 
 	client := NewClient()
-	sessionID, messages, err := client.StartChat(context.Background(), ts.URL, "bot123", "token", nil)
+	req := StartChatRequest{
+		SessionID: "sess_123",
+		Message:   "hello",
+		PrefilledVariables: map[string]any{
+			"var1": "val1",
+		},
+	}
+	sessionID, messages, err := client.StartChat(context.Background(), ts.URL, "bot123", "token", req)
 	if err != nil {
 		t.Fatalf("StartChat failed: %v", err)
 	}
