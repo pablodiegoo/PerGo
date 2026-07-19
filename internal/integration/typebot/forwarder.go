@@ -157,12 +157,17 @@ func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Cont
 
 	// 5. Publish returned messages from Typebot to messages.outbound
 	for _, m := range messages {
+		traceID := uuid.New().String()
+		
 		// Create an outbound QueueMessage
 		outMsg := domain.QueueMessage{
-			WorkspaceID: event.WorkspaceID,
-			Channel:     event.Channel,
-			To:          event.From,
-			Body:        extractText(m),
+			WorkspaceID:    event.WorkspaceID,
+			Channel:        event.Channel,
+			To:             event.From,
+			Body:           extractText(m),
+			ConnectionID:   event.ConnectionID,
+			SenderIdentity: event.To,
+			TraceID:        traceID,
 		}
 
 		// Ensure body is not empty before sending
@@ -173,7 +178,6 @@ func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Cont
 				continue
 			}
 
-			traceID := uuid.New().String()
 			err = f.publisher.Publish(ctx, "messages.outbound", b, traceID)
 			if err != nil {
 				slog.Error("failed to publish outbound message from typebot", "error", err)
