@@ -65,6 +65,10 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 
 </details>
 
+## Current Milestone (v1.4)
+
+- [ ] Phase 25: Implement JSON-to-Protobuf mapping for rich interactive messages (hybrid approach)
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
