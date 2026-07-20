@@ -30,9 +30,20 @@ type TelegramConfig struct {
 	Token string `json:"token"`
 }
 
+type inlineKeyboardButton struct {
+	Text         string `json:"text"`
+	CallbackData string `json:"callback_data"`
+}
+
+type inlineKeyboardMarkup struct {
+	InlineKeyboard [][]inlineKeyboardButton `json:"inline_keyboard"`
+}
+
 type telegramMessageRequest struct {
-	ChatID string `json:"chat_id"`
-	Text   string `json:"text"`
+	ChatID          string                `json:"chat_id"`
+	MessageThreadID string                `json:"message_thread_id,omitempty"`
+	Text            string                `json:"text"`
+	ReplyMarkup     *inlineKeyboardMarkup `json:"reply_markup,omitempty"`
 }
 
 // TelegramErrorResponse represents the Telegram Bot API error body.
@@ -111,6 +122,33 @@ func (a *TelegramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 			return "", err
 		}
 
+		// Set message_thread_id
+		if m.Metadata != nil && m.Metadata["thread_id"] != "" {
+			if err := writer.WriteField("message_thread_id", m.Metadata["thread_id"]); err != nil {
+				return "", err
+			}
+		}
+
+		// Set reply_markup
+		if m.Interactive != nil && m.Interactive.Type == "button" {
+			var keyboard [][]inlineKeyboardButton
+			for _, b := range m.Interactive.Action.Buttons {
+				keyboard = append(keyboard, []inlineKeyboardButton{
+					{
+						Text:         b.Reply.Title,
+						CallbackData: b.Reply.ID,
+					},
+				})
+			}
+			if len(keyboard) > 0 {
+				rm := inlineKeyboardMarkup{InlineKeyboard: keyboard}
+				rmBytes, _ := json.Marshal(rm)
+				if err := writer.WriteField("reply_markup", string(rmBytes)); err != nil {
+					return "", err
+				}
+			}
+		}
+
 		// Set caption
 		if m.Media.Caption != "" {
 			if err := writer.WriteField("caption", m.Media.Caption); err != nil {
@@ -164,9 +202,42 @@ func (a *TelegramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 		return a.executeRequest(req)
 	}
 
+	var replyMarkup *inlineKeyboardMarkup
+	if m.Interactive != nil && m.Interactive.Type == "button" {
+		var keyboard [][]inlineKeyboardButton
+		for _, b := range m.Interactive.Action.Buttons {
+			keyboard = append(keyboard, []inlineKeyboardButton{
+				{
+					Text:         b.Reply.Title,
+					CallbackData: b.Reply.ID,
+				},
+			})
+		}
+		if len(keyboard) > 0 {
+			replyMarkup = &inlineKeyboardMarkup{
+				InlineKeyboard: keyboard,
+			}
+		}
+	}
+
+	var messageThreadID string
+	if m.Metadata != nil {
+		messageThreadID = m.Metadata["thread_id"]
+	}
+
+	text := m.Body
+	if m.Interactive != nil {
+		if text != "" {
+			text += "\n"
+		}
+		text += m.Interactive.Body.Text
+	}
+
 	reqPayload := telegramMessageRequest{
-		ChatID: m.To,
-		Text:   m.Body,
+		ChatID:          m.To,
+		MessageThreadID: messageThreadID,
+		Text:            text,
+		ReplyMarkup:     replyMarkup,
 	}
 
 	bodyBytes, err := json.Marshal(reqPayload)
