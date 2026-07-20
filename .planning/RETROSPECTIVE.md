@@ -31,14 +31,15 @@
 
 ## Milestone: v1.3 — Chatwoot & Typebot Integrations
 
-**Shipped:** 2026-07-18
-**Phases:** 4 | **Plans:** 7
+**Shipped:** 2026-07-20
+**Phases:** 7 | **Plans:** 10
 
 ### What Was Built
 - Chatwoot integration: Workspace-scoped configuration dashboard, native outbound webhook receiver, bidirectional client/syncer sync engine mapping contacts and messages.
 - Typebot integration: Settings panel, postgres session mapping, asynchronous customer message forwarder, and bot replies webhook receiver.
 - Stateful Handoff Routing: Contact `bot_active`/`bot_paused_at` state model, automatic agent reply interceptors (webhooks + composer), manual status toggle HTMX badge, `pause_bot` verb, and 12h lazy inactivity reset.
 - Polymorphic Verbs Refactoring: Decoupled monolithic switch block into testable polymorphic `VerbHandler` structs wired statically in the constructor.
+- Typebot Ingestion & E2E Tracing: Reconciled settings schema and wired TypebotForwarder inside the composition root (Phase 24.1). Enriched forwarder queue messages with ConnectionID, SenderIdentity, and TraceID (Phase 24.2). Implemented media placeholder mapping and unique session formats (Phase 24.2.1).
 
 ### What Worked
 - Reusing the same `integrations` table with encrypted JSON configurations kept the schema clean and modular.
@@ -66,7 +67,7 @@
 |-----------|--------|------------|
 | v1.1 | 6 | Campaign Engine bulk messaging with JetStream batch throttling. |
 | v1.2 | 4 | PRD gaps integration: webhook subscriptions, contact merging, verbs engine, read receipts. |
-| v1.3 | 4 | Chatwoot & Typebot integrations, stateful handoff routing, polymorphic VerbHandlers. |
+| v1.3 | 7 | Chatwoot & Typebot integrations, stateful handoff routing, polymorphic VerbHandlers, and gap closures. |
 
 ### Cumulative Quality
 
