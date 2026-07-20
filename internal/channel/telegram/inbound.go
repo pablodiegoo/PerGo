@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -46,16 +47,25 @@ type telegramUser struct {
 	Username  string `json:"username,omitempty"`
 }
 
+type telegramCallbackQuery struct {
+	ID      string           `json:"id"`
+	From    *telegramUser    `json:"from"`
+	Message *telegramMessage `json:"message,omitempty"`
+	Data    string           `json:"data"`
+}
+
 type telegramUpdate struct {
-	UpdateID int64            `json:"update_id"`
-	Message  *telegramMessage `json:"message"`
+	UpdateID      int64                  `json:"update_id"`
+	Message       *telegramMessage       `json:"message,omitempty"`
+	CallbackQuery *telegramCallbackQuery `json:"callback_query,omitempty"`
 }
 
 type telegramMessage struct {
-	MessageID int64             `json:"message_id"`
-	From      *telegramUser     `json:"from,omitempty"`
-	Chat      *telegramChat     `json:"chat"`
-	Text      string            `json:"text,omitempty"`
+	MessageID       int64             `json:"message_id"`
+	MessageThreadID int64             `json:"message_thread_id,omitempty"`
+	From            *telegramUser     `json:"from,omitempty"`
+	Chat            *telegramChat     `json:"chat"`
+	Text            string            `json:"text,omitempty"`
 	Caption   string            `json:"caption,omitempty"`
 	Photo     []telegramPhoto   `json:"photo,omitempty"`
 	Document  *telegramDocument `json:"document,omitempty"`
@@ -140,11 +150,64 @@ func (a *TelegramInboundAdapter) Parse(
 		return nil, fmt.Errorf("failed to parse telegram update: %w", err)
 	}
 
-	if update.Message == nil || update.Message.Chat == nil {
-		return nil, nil // Not a message event we want to ingest (could be edit, inline query, status update)
+	var chat *telegramChat
+	var fromUser *telegramUser
+	var messageThreadIDInt int64
+	var text string
+	var isCallback bool
+	var callbackData string
+	var callbackID string
+	var caption string
+	var photo []telegramPhoto
+	var document *telegramDocument
+	var audio *telegramAudio
+	var video *telegramVideo
+	var location *telegramLocation
+	var contact *telegramContact
+
+	if update.CallbackQuery != nil {
+		isCallback = true
+		callbackData = update.CallbackQuery.Data
+		callbackID = update.CallbackQuery.ID
+		fromUser = update.CallbackQuery.From
+		if update.CallbackQuery.Message != nil {
+			chat = update.CallbackQuery.Message.Chat
+			messageThreadIDInt = update.CallbackQuery.Message.MessageThreadID
+		}
+
+		// Acknowledge the callback query in background
+		go func(cbID, token string) {
+			ackURL := fmt.Sprintf("%s/bot%s/answerCallbackQuery", a.telegramBaseURL, token)
+			reqBody, _ := json.Marshal(map[string]string{"callback_query_id": cbID})
+			req, err := http.NewRequest(http.MethodPost, ackURL, bytes.NewReader(reqBody))
+			if err == nil {
+				req.Header.Set("Content-Type", "application/json")
+				resp, err := a.client.Do(req)
+				if err == nil {
+					resp.Body.Close()
+				}
+			}
+		}(callbackID, config.Token)
+
+	} else if update.Message != nil {
+		chat = update.Message.Chat
+		fromUser = update.Message.From
+		messageThreadIDInt = update.Message.MessageThreadID
+		text = update.Message.Text
+		caption = update.Message.Caption
+		photo = update.Message.Photo
+		document = update.Message.Document
+		audio = update.Message.Audio
+		video = update.Message.Video
+		location = update.Message.Location
+		contact = update.Message.Contact
 	}
 
-	chatIDStr := strconv.FormatInt(update.Message.Chat.ID, 10)
+	if chat == nil {
+		return nil, nil // Not a message event we want to ingest
+	}
+
+	chatIDStr := strconv.FormatInt(chat.ID, 10)
 	botUsername := config.BotUsername
 	if botUsername == "" {
 		botUsername = "@bot"
@@ -156,24 +219,24 @@ func (a *TelegramInboundAdapter) Parse(
 	var lastName string
 	var phone string
 
-	if update.Message.From != nil {
-		username = update.Message.From.Username
-		firstName = update.Message.From.FirstName
-		lastName = update.Message.From.LastName
+	if fromUser != nil {
+		username = fromUser.Username
+		firstName = fromUser.FirstName
+		lastName = fromUser.LastName
 	}
 
-	if username == "" && update.Message.Chat.Username != "" {
-		username = update.Message.Chat.Username
+	if username == "" && chat.Username != "" {
+		username = chat.Username
 	}
-	if firstName == "" && update.Message.Chat.FirstName != "" {
-		firstName = update.Message.Chat.FirstName
+	if firstName == "" && chat.FirstName != "" {
+		firstName = chat.FirstName
 	}
-	if lastName == "" && update.Message.Chat.LastName != "" {
-		lastName = update.Message.Chat.LastName
+	if lastName == "" && chat.LastName != "" {
+		lastName = chat.LastName
 	}
 
-	if update.Message.Contact != nil && update.Message.Contact.PhoneNumber != "" {
-		phone = update.Message.Contact.PhoneNumber
+	if contact != nil && contact.PhoneNumber != "" {
+		phone = contact.PhoneNumber
 	}
 
 	var nameParts []string
@@ -198,25 +261,28 @@ func (a *TelegramInboundAdapter) Parse(
 	if phone != "" {
 		metadata["phone_number"] = phone
 	}
+	if messageThreadIDInt != 0 {
+		metadata["thread_id"] = strconv.FormatInt(messageThreadIDInt, 10)
+	}
 
 	// 6. Media parsing and download
 	var fileID string
 	var mediaType string
 	var filename string
 
-	if len(update.Message.Photo) > 0 {
-		best := update.Message.Photo[len(update.Message.Photo)-1]
+	if len(photo) > 0 {
+		best := photo[len(photo)-1]
 		fileID = best.FileID
 		mediaType = "image"
-	} else if update.Message.Document != nil {
-		fileID = update.Message.Document.FileID
+	} else if document != nil {
+		fileID = document.FileID
 		mediaType = "document"
-		filename = update.Message.Document.FileName
-	} else if update.Message.Audio != nil {
-		fileID = update.Message.Audio.FileID
+		filename = document.FileName
+	} else if audio != nil {
+		fileID = audio.FileID
 		mediaType = "audio"
-	} else if update.Message.Video != nil {
-		fileID = update.Message.Video.FileID
+	} else if video != nil {
+		fileID = video.FileID
 		mediaType = "video"
 	}
 
@@ -228,7 +294,7 @@ func (a *TelegramInboundAdapter) Parse(
 				Bytes:     mediaBytes,
 				MediaType: mediaType,
 				Filename:  filename,
-				Caption:   update.Message.Caption,
+				Caption:   caption,
 			}
 		} else {
 			slog.Error("tg inbound: failed to download media file", "error", err, "file_id", fileID)
@@ -236,23 +302,36 @@ func (a *TelegramInboundAdapter) Parse(
 	}
 
 	var inboundLocation *inbound.InboundLocation
-	if update.Message.Location != nil {
+	if location != nil {
 		inboundLocation = &inbound.InboundLocation{
-			Latitude:  update.Message.Location.Latitude,
-			Longitude: update.Message.Location.Longitude,
+			Latitude:  location.Latitude,
+			Longitude: location.Longitude,
 		}
 	}
 
 	var inboundContacts []inbound.InboundContact
-	if update.Message.Contact != nil {
-		fullName := update.Message.Contact.FirstName
-		if update.Message.Contact.LastName != "" {
-			fullName += " " + update.Message.Contact.LastName
+	if contact != nil {
+		fullName := contact.FirstName
+		if contact.LastName != "" {
+			fullName += " " + contact.LastName
 		}
 		inboundContacts = append(inboundContacts, inbound.InboundContact{
 			Name:  fullName,
-			Phone: update.Message.Contact.PhoneNumber,
+			Phone: contact.PhoneNumber,
 		})
+	}
+
+	var interactive *inbound.InboundInteractive
+	if isCallback {
+		interactive = &inbound.InboundInteractive{
+			Type: "button_reply",
+			ButtonReply: &inbound.InboundButtonReply{
+				ID: callbackData,
+				// Telegram doesn't send the button title in the callback query, only the data.
+				// We populate Title with the same data for now.
+				Title: callbackData,
+			},
+		}
 	}
 
 	return []*inbound.InboundEvent{
@@ -263,10 +342,11 @@ func (a *TelegramInboundAdapter) Parse(
 			Channel:      "telegram",
 			From:         chatIDStr,
 			To:           botUsername,
-			Body:         update.Message.Text,
+			Body:         text,
 			Media:        inboundMedia,
 			Location:     inboundLocation,
 			Contacts:     inboundContacts,
+			Interactive:  interactive,
 			SenderName:   senderName,
 			Metadata:     metadata,
 		},
