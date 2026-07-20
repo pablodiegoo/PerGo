@@ -1,19 +1,19 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: Chatwoot & Typebot Integrations
-current_phase: 3
-status: Awaiting next milestone
-stopped_at: Phase 24.2 context gathered
-last_updated: "2026-07-20T00:38:46.851Z"
+milestone: v1.4
+milestone_name: Current Milestone
+current_phase: 25
+status: Phase 25 needs planning
+stopped_at: Phase 25 context gathered
+last_updated: "2026-07-20T13:05:50.851Z"
 last_activity: 2026-07-20
-last_activity_desc: Milestone v1.3 completed and archived
+last_activity_desc: Milestone v1.4 created
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 10
-  completed_plans: 10
-  percent: 100
+  total_phases: 3
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 current_phase_name: fix typebot message construction gap
 ---
 
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: Milestone v1.3 complete
+Phase: 25. JSON-to-Protobuf mapping for rich interactive messages
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-07-20 — Milestone v1.3 completed and archived
+Status: Phase 25 needs planning
+Last activity: 2026-07-20 — Milestone v1.4 created
 
 ## Performance Metrics
 
@@ -162,9 +162,9 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-19T18:10:22.526Z
-Stopped at: Phase 24.2 context gathered
-Resume file: .planning/phases/24.2-close-gap-type-04-populate-connectionid-senderidentity-and-t/24.2-CONTEXT.md
+Last session: 2026-07-20T13:05:50.831Z
+Stopped at: Phase 25 context gathered
+Resume file: .planning/phases/25-implement-json-to-protobuf-mapping-for-rich-interactive-mess/25-CONTEXT.md
 
 ## Operator Next Steps
 
