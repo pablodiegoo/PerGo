@@ -1,5 +1,17 @@
 # Milestones
 
+## v1.4 Omnichannel Integrations (Shipped: 2026-07-20)
+
+**Phases completed:** 3 phases, 3 plans, 11 tasks
+
+**Key accomplishments:**
+
+- Unified interactive message mapping and override handling for WABA and Whatsmeow with graceful degradation fallbacks.
+- Telegram inline keyboards and forum threads support via `Interactive` payloads and `thread_id` metadata
+- Instagram channel adapters implemented with full support for Outbound messaging, Story Mentions, and Quick Replies
+
+---
+
 ## v1.3 Chatwoot & Typebot Integrations (Shipped: 2026-07-20)
 
 **Phases completed:** 7 phases, 10 plans, 29 tasks
