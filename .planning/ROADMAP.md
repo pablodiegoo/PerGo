@@ -69,7 +69,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 
 - [x] Phase 25: Implement JSON-to-Protobuf mapping for rich interactive messages (hybrid approach) (completed 2026-07-20)
 - [x] Phase 26: Implement Telegram Inline Keyboards and Forum Threads mapping (completed 2026-07-20)
-- [ ] Phase 27: Implement Instagram Stories handling and Quick Replies mapping
+- [x] Phase 27: Implement Instagram Stories handling and Quick Replies mapping (completed 2026-07-20)
 
 ### Phase 25: Implement JSON-to-Protobuf mapping for rich interactive messages (hybrid approach)
 
@@ -104,8 +104,8 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 24.1. Close gap: wire Typebot forwarder and reconcile form schema | v1.3 | 1/1 | Complete | 2026-07-19 |
 | 24.2. Close gap: TYPE-04 (TraceID) | v1.3 | 1/1 | Complete    | 2026-07-19 |
 | 25. Implement JSON-to-Protobuf mapping for rich interactive messages | v1.4 | 1/1 | Complete    | 2026-07-20 |
-| 26. Implement Telegram Inline Keyboards and Forum Threads mapping | v1.4 | 1/1 | Complete   | 2026-07-20 |
-| 27. Implement Instagram Stories handling and Quick Replies mapping | v1.4 | 0/0 | Pending | |
+| 26. Implement Telegram Inline Keyboards and Forum Threads mapping | v1.4 | 1/1 | Complete    | 2026-07-20 |
+| 27. Implement Instagram Stories handling and Quick Replies mapping | v1.4 | 1/1 | Complete | 2026-07-20 |
 
 ---
 *Roadmap created: 2026-07-14*
