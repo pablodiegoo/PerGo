@@ -27,6 +27,7 @@ var ValidChannels = map[string]bool{
 	"whatsapp":       true,
 	"whatsapp_cloud": true,
 	"telegram":       true,
+	"instagram":      true,
 }
 
 // Media represents media payload (URL, type, filename, caption).
@@ -178,7 +179,7 @@ func ValidateMessage(req *CreateMessageRequest) *ErrorResponse {
 	} else if !ValidChannels[req.Channel] {
 		details = append(details, FieldError{
 			Field:   "channel",
-			Message: "must be one of: whatsapp, whatsapp_cloud, telegram",
+			Message: "must be one of: whatsapp, whatsapp_cloud, telegram, instagram",
 		})
 	}
 
@@ -213,7 +214,7 @@ func ValidateMessage(req *CreateMessageRequest) *ErrorResponse {
 		if !ValidChannels[fb] {
 			details = append(details, FieldError{
 				Field:   fmt.Sprintf("fallback_channels[%d]", i),
-				Message: "unsupported channel: must be one of: whatsapp, whatsapp_cloud, telegram",
+				Message: "unsupported channel: must be one of: whatsapp, whatsapp_cloud, telegram, instagram",
 			})
 		}
 		if seen[fb] {

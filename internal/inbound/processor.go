@@ -65,6 +65,12 @@ type InboundInteractive struct {
 	ButtonReply *InboundButtonReply `json:"button_reply,omitempty"`
 }
 
+// InboundStoryEvent represents an Instagram story mention or reply.
+type InboundStoryEvent struct {
+	Subtype  string `json:"subtype"`
+	MediaURL string `json:"media_url,omitempty"`
+}
+
 // InboundEvent is the channel-agnostic inbound payload.
 type InboundEvent struct {
 	WorkspaceID  uuid.UUID
@@ -78,6 +84,7 @@ type InboundEvent struct {
 	Location     *InboundLocation
 	Contacts     []InboundContact
 	Interactive  *InboundInteractive
+	Story        *InboundStoryEvent
 	SenderName   string
 	Metadata     map[string]string
 }
@@ -97,6 +104,7 @@ type InboundEventPayload struct {
 	Location    *InboundLocation    `json:"location,omitempty"`
 	Contacts    []InboundContact    `json:"contacts,omitempty"`
 	Interactive *InboundInteractive `json:"interactive,omitempty"`
+	Story       *InboundStoryEvent  `json:"story_event,omitempty"`
 }
 
 // MessageStatusUpdatedPayload is the structure of the message status update event published to NATS.
@@ -276,6 +284,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		To:          ev.To,
 		Body:        ev.Body,
 		Interactive: ev.Interactive,
+		Story:       ev.Story,
 	}
 
 	// 5. Upload media to S3 if present
@@ -305,7 +314,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 	}
 
 	// 7. Drop event if it's completely empty
-	if payload.Body == "" && payload.Media == nil && payload.Location == nil && len(payload.Contacts) == 0 && payload.Interactive == nil {
+	if payload.Body == "" && payload.Media == nil && payload.Location == nil && len(payload.Contacts) == 0 && payload.Interactive == nil && payload.Story == nil {
 		slog.Debug("inbound processor: ignoring empty inbound event payload")
 		return nil
 	}
