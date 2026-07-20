@@ -17,13 +17,24 @@ A single API request delivers a message through any configured channel with auto
 
 ## Current State
 
+- **Shipped Version**: v1.4 (2026-07-20)
+- **Status**: Stable. Fully functional multi-tenant routing gateway with interactive message schema mapping, Telegram threads and inline keyboards, Instagram Stories, active contact profiles, multi-webhook subscriptions, sequential JSON Response Verbs engine, Meta WABA read receipt indicators, and built-in Chatwoot and Typebot integrations with stateful human/bot handoff control.
+
+<details>
+<summary>Archived State (v1.3)</summary>
+
 - **Shipped Version**: v1.3 (2026-07-20)
 - **Status**: Stable. Fully functional multi-tenant routing gateway with active contact profiles, multi-webhook subscriptions, sequential JSON Response Verbs engine, Meta WABA read receipt indicators, and built-in Chatwoot and Typebot integrations with stateful human/bot handoff control.
+
+</details>
 
 ## Requirements
 
 ### Validated
 
+- ✓ Omnichannel Interactive Schema & Routing: unified Interactive schema, JSON-to-Protobuf mapping, and `channel_overrides` fallback for vendor-specific payload structures (WABA-01) — Phase 25
+- ✓ Telegram Integration: mapped Telegram inline keyboards and threaded message routing (TELE-01) — Phase 26
+- ✓ Instagram Integration: handled inbound IG Stories and mapped generic Quick Replies (INSTA-01) — Phase 27
 - ✓ Chatwoot Integration: connection settings panel, built-in query-parameter authenticated webhook receiver, and bidirectional client/syncer sync engine (CHAT-01 to CHAT-04) — Phase 21
 - ✓ Typebot Integration: settings panel, asynchronous forwarder, session mapping repository, and outbound webhook receiver (TYPE-01 to TYPE-04) — Phase 22
 - ✓ Stateful Handoff Routing: contact bot_active/bot_paused_at database schema, automatic agent response interceptors, manual chat panel HTMX toggle badge, pause_bot messaging verb, and 12-hour inactivity cooldown reset (HAND-01 to HAND-06) — Phase 23
@@ -122,6 +133,9 @@ A single API request delivers a message through any configured channel with auto
 | Shared VerbContext passing (D-04) | Resolve contact profile once at execution start and pass down trace/identity context to prevent redundant DB queries | Validated (Phase 24) |
 | Populate ConnectionID, SenderIdentity, and TraceID in TypebotForwarder (D-01 to D-03) | Enriched outbound queue messages with metadata to maintain traceability boundaries and support downstream dispatching | Validated (Phase 24.2) |
 | Deterministic Typebot message mapping (D-01 to D-09) | Map media messages to [Media Attachment] placeholders and contact identities to custom session formats to act as a proper channel-to-Typebot bridge | Validated (Phase 24.2.1) |
+| Shared unified Interactive schema | Extends `POST /messages` to support buttons and lists without leaking channel specifics | Validated (Phase 25) |
+| Channel-specific overrides | Introduced `channel_overrides` payload field to bypass schema strictness for raw WABA/Whatsmeow payloads | Validated (Phase 25) |
+| Telegram threading mapped | Mapped Telegram's `message_thread_id` to standard payload metadata | Validated (Phase 26) |
 
 ## Evolution
 
@@ -141,4 +155,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-20 after v1.3 milestone completion*
+*Last updated: 2026-07-20 after v1.4 milestone completion*
