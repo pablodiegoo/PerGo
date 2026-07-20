@@ -27,6 +27,7 @@ import (
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/channel/telegram"
 	"github.com/pablojhp.pergo/internal/channel/whatsapp"
+	"github.com/pablojhp.pergo/internal/channel/instagram"
 	"github.com/pablojhp.pergo/internal/config"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/outbound"
@@ -192,6 +193,7 @@ func main() {
 	wabaAdapter := whatsapp.NewWABAAdapter(connectionRepo, nil, windowChecker, cfg.ExternalURL)
 	telegramAdapter := telegram.NewTelegramAdapter(connectionRepo, nil, s3Client)
 	whatsAppAdapter := whatsapp.NewWhatsAppAdapter(nil, s3Client)
+	instagramAdapter := instagram.NewAdapter(connectionRepo, nil, cfg.ExternalURL)
 
 	// --- Worker (reads from JetStream, dispatches with retry/TTL/dedup) ---
 	sessionRegistry := session.NewActiveSession()
@@ -201,6 +203,7 @@ func main() {
 	dispatcherRegistry.Register("whatsapp_cloud", wabaAdapter)
 	dispatcherRegistry.Register("telegram", telegramAdapter)
 	dispatcherRegistry.Register("whatsapp", whatsAppAdapter)
+	dispatcherRegistry.Register("instagram", instagramAdapter)
 
 	// --- Audit writer ---
 	auditWriter := audit.NewWriter(pool, 5000, 2)
