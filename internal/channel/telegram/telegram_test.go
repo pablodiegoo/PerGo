@@ -292,4 +292,66 @@ func TestTelegramDispatch(t *testing.T) {
 			t.Fatalf("expected nil error on success, got: %v", err)
 		}
 	})
+	t.Run("Success Send Interactive", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/bot123456:ABC-DEF_test_token/sendMessage" {
+				t.Errorf("path = %q, want /bot123456:ABC-DEF_test_token/sendMessage", r.URL.Path)
+			}
+
+			bodyBytes, _ := io.ReadAll(r.Body)
+			var req telegramMessageRequest
+			if err := json.Unmarshal(bodyBytes, &req); err != nil {
+				t.Fatalf("failed to unmarshal request body: %v", err)
+			}
+
+			if req.MessageThreadID != "42" {
+				t.Errorf("expected message_thread_id 42, got %s", req.MessageThreadID)
+			}
+
+			if req.ReplyMarkup == nil || len(req.ReplyMarkup.InlineKeyboard) == 0 {
+				t.Errorf("expected reply_markup with inline_keyboard, got %+v", req.ReplyMarkup)
+			} else {
+				btn := req.ReplyMarkup.InlineKeyboard[0][0]
+				if btn.Text != "Click Me" || btn.CallbackData != "btn_1" {
+					t.Errorf("unexpected button data: %+v", btn)
+				}
+			}
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":12346}}`))
+		}))
+		defer server.Close()
+
+		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
+		adapter.SetBaseURL(server.URL)
+
+		payload := &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "@test_bot",
+			To:             "987654321",
+			Body:           "Hello with Buttons!",
+			Metadata: map[string]string{
+				"thread_id": "42",
+			},
+			Interactive: &domain.Interactive{
+				Type: "button",
+				Action: domain.Action{
+					Buttons: []domain.Button{
+						{
+							Type: "reply",
+							Reply: domain.Reply{
+								ID:    "btn_1",
+								Title: "Click Me",
+							},
+						},
+					},
+				},
+			},
+		}
+
+		_, err := adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on success, got: %v", err)
+		}
+	})
 }

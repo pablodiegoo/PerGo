@@ -1,0 +1,3 @@
+### Phase 26: Implement Telegram Inline Keyboards and Forum Threads mapping
+
+**Goal:** Map Telegram inline keyboards and forum threads
