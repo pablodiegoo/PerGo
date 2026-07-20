@@ -373,3 +373,158 @@ func TestValidateMessageTemplateMissingLanguage(t *testing.T) {
 		t.Errorf("expected field error for 'language', got %+v", err.Details)
 	}
 }
+
+func TestValidateMessageFallbackBehavior(t *testing.T) {
+	tests := []struct {
+		name        string
+		behavior    string
+		expectError bool
+	}{
+		{"empty is valid", "", false},
+		{"degrade is valid", "degrade", false},
+		{"fail is valid", "fail", false},
+		{"invalid behavior", "ignore", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &CreateMessageRequest{
+				To:               "+1234567890",
+				Channel:          "whatsapp",
+				Body:             "Hello",
+				FallbackBehavior: tt.behavior,
+			}
+			err := ValidateMessage(req)
+			if tt.expectError {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				found := false
+				for _, d := range err.Details {
+					if d.Field == "fallback_behavior" {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected field error for 'fallback_behavior', got %+v", err.Details)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("expected no error, got %+v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateMessageInteractiveStructure(t *testing.T) {
+	tests := []struct {
+		name        string
+		interactive *Interactive
+		expectError bool
+		errField    string
+	}{
+		{
+			name: "valid button",
+			interactive: &Interactive{
+				Type: "button",
+				Body: TextContent{Text: "Choose an option"},
+				Action: Action{
+					Buttons: []Button{
+						{Type: "reply", Reply: Reply{ID: "1", Title: "Yes"}},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "missing type",
+			interactive: &Interactive{
+				Body: TextContent{Text: "Choose an option"},
+			},
+			expectError: true,
+			errField:    "interactive.type",
+		},
+		{
+			name: "missing body text",
+			interactive: &Interactive{
+				Type: "button",
+				Action: Action{
+					Buttons: []Button{
+						{Type: "reply", Reply: Reply{ID: "1", Title: "Yes"}},
+					},
+				},
+			},
+			expectError: true,
+			errField:    "interactive.body.text",
+		},
+		{
+			name: "button missing buttons array",
+			interactive: &Interactive{
+				Type: "button",
+				Body: TextContent{Text: "Choose an option"},
+				Action: Action{},
+			},
+			expectError: true,
+			errField:    "interactive.action.buttons",
+		},
+		{
+			name: "list missing sections",
+			interactive: &Interactive{
+				Type: "list",
+				Body: TextContent{Text: "Choose an option"},
+				Action: Action{},
+			},
+			expectError: true,
+			errField:    "interactive.action.sections",
+		},
+		{
+			name: "allows 4+ buttons (deferred validation)",
+			interactive: &Interactive{
+				Type: "button",
+				Body: TextContent{Text: "Choose an option"},
+				Action: Action{
+					Buttons: []Button{
+						{Type: "reply", Reply: Reply{ID: "1", Title: "Opt 1"}},
+						{Type: "reply", Reply: Reply{ID: "2", Title: "Opt 2"}},
+						{Type: "reply", Reply: Reply{ID: "3", Title: "Opt 3"}},
+						{Type: "reply", Reply: Reply{ID: "4", Title: "Opt 4"}},
+						{Type: "reply", Reply: Reply{ID: "5", Title: "Opt 5"}},
+					},
+				},
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := &CreateMessageRequest{
+				To:          "+1234567890",
+				Channel:     "whatsapp",
+				Interactive: tt.interactive,
+			}
+			err := ValidateMessage(req)
+			if tt.expectError {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				found := false
+				for _, d := range err.Details {
+					if d.Field == tt.errField {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected field error for %q, got %+v", tt.errField, err.Details)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("expected no error, got %+v", err)
+				}
+			}
+		})
+	}
+}

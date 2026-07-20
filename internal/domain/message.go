@@ -3,6 +3,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -36,6 +37,52 @@ type Media struct {
 	Caption   string `json:"caption,omitempty"`
 }
 
+// Interactive represents the unified schema for rich interactive messages.
+type Interactive struct {
+	Type   string       `json:"type"` // "button", "list", etc.
+	Header *TextContent `json:"header,omitempty"`
+	Body   TextContent  `json:"body"`
+	Footer *TextContent `json:"footer,omitempty"`
+	Action Action       `json:"action"`
+}
+
+// TextContent represents text within an interactive component.
+type TextContent struct {
+	Text string `json:"text"`
+}
+
+// Action represents the interactive elements.
+type Action struct {
+	Button   string    `json:"button,omitempty"` // For list messages
+	Buttons  []Button  `json:"buttons,omitempty"`
+	Sections []Section `json:"sections,omitempty"`
+}
+
+// Button represents a reply button.
+type Button struct {
+	Type  string `json:"type"` // e.g. "reply"
+	Reply Reply  `json:"reply"`
+}
+
+// Reply holds the content of a button.
+type Reply struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+// Section represents a section of a list message.
+type Section struct {
+	Title string `json:"title,omitempty"`
+	Rows  []Row  `json:"rows"`
+}
+
+// Row represents an item in a list message section.
+type Row struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+}
+
 // CreateMessageRequest is the JSON payload for POST /messages.
 type CreateMessageRequest struct {
 	To               string              `json:"to"`
@@ -47,8 +94,11 @@ type CreateMessageRequest struct {
 	TTLSeconds       *int                `json:"ttl_seconds,omitempty"`
 	TemplateName     string              `json:"template_name,omitempty"`
 	Language         string              `json:"language,omitempty"`
-	Components       []TemplateComponent `json:"components,omitempty"`
-	FallbackChannels []string            `json:"fallback_channels,omitempty"`
+	Components       []TemplateComponent        `json:"components,omitempty"`
+	FallbackChannels []string                   `json:"fallback_channels,omitempty"`
+	Interactive      *Interactive               `json:"interactive,omitempty"`
+	ChannelOverrides map[string]json.RawMessage `json:"channel_overrides,omitempty"`
+	FallbackBehavior string                     `json:"fallback_behavior,omitempty"`
 }
 
 // QueueMessage wraps the published payload for JetStream queues.
@@ -68,8 +118,11 @@ type QueueMessage struct {
 	TemplateName     string              `json:"template_name,omitempty"`
 	Language         string              `json:"language,omitempty"`
 	Components       []TemplateComponent `json:"components,omitempty"`
-	CampaignID       *uuid.UUID          `json:"campaign_id,omitempty"`
-	VariablesJSON    map[string]string   `json:"variables_json,omitempty"`
+	CampaignID       *uuid.UUID                 `json:"campaign_id,omitempty"`
+	VariablesJSON    map[string]string          `json:"variables_json,omitempty"`
+	Interactive      *Interactive               `json:"interactive,omitempty"`
+	ChannelOverrides map[string]json.RawMessage `json:"channel_overrides,omitempty"`
+	FallbackBehavior string                     `json:"fallback_behavior,omitempty"`
 }
 
 // TemplateComponent represents a template component payload.
@@ -205,11 +258,45 @@ func ValidateMessage(req *CreateMessageRequest) *ErrorResponse {
 				Message: "is required when media_type is document",
 			})
 		}
-	} else if req.TemplateName == "" && req.Body == "" {
+	} else if req.TemplateName == "" && req.Body == "" && req.Interactive == nil {
 		details = append(details, FieldError{
 			Field:   "body",
-			Message: "either body or media is required",
+			Message: "either body, media, or interactive is required",
 		})
+	}
+
+	if req.FallbackBehavior != "" && req.FallbackBehavior != "degrade" && req.FallbackBehavior != "fail" {
+		details = append(details, FieldError{
+			Field:   "fallback_behavior",
+			Message: `must be either "degrade" or "fail"`,
+		})
+	}
+
+	if req.Interactive != nil {
+		if req.Interactive.Type == "" {
+			details = append(details, FieldError{
+				Field:   "interactive.type",
+				Message: "is required",
+			})
+		}
+		if req.Interactive.Body.Text == "" {
+			details = append(details, FieldError{
+				Field:   "interactive.body.text",
+				Message: "is required",
+			})
+		}
+		if req.Interactive.Type == "button" && len(req.Interactive.Action.Buttons) == 0 {
+			details = append(details, FieldError{
+				Field:   "interactive.action.buttons",
+				Message: "is required when type is button",
+			})
+		}
+		if req.Interactive.Type == "list" && len(req.Interactive.Action.Sections) == 0 {
+			details = append(details, FieldError{
+				Field:   "interactive.action.sections",
+				Message: "is required when type is list",
+			})
+		}
 	}
 
 	if len(details) > 0 {
