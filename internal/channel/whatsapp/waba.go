@@ -41,9 +41,10 @@ type wabaMessageRequest struct {
 	MessagingProduct string        `json:"messaging_product"`
 	RecipientType    string        `json:"recipient_type"`
 	To               string        `json:"to"`
-	Type             string        `json:"type"`
-	Text             *wabaText     `json:"text,omitempty"`
-	Template         *wabaTemplate `json:"template,omitempty"`
+	Type             string           `json:"type"`
+	Text             *wabaText        `json:"text,omitempty"`
+	Template         *wabaTemplate    `json:"template,omitempty"`
+	Interactive      *wabaInteractive `json:"interactive,omitempty"`
 }
 
 type wabaText struct {
@@ -76,6 +77,46 @@ type wabaParameter struct {
 
 type wabaParameterMedia struct {
 	Link string `json:"link"`
+}
+
+type wabaInteractive struct {
+	Type   string                `json:"type"`
+	Header *wabaInteractiveText  `json:"header,omitempty"`
+	Body   wabaInteractiveText   `json:"body"`
+	Footer *wabaInteractiveText  `json:"footer,omitempty"`
+	Action wabaInteractiveAction `json:"action"`
+}
+
+type wabaInteractiveText struct {
+	Type string `json:"type,omitempty"`
+	Text string `json:"text"`
+}
+
+type wabaInteractiveAction struct {
+	Button   string                       `json:"button,omitempty"`
+	Buttons  []wabaInteractiveReplyButton `json:"buttons,omitempty"`
+	Sections []wabaInteractiveSection     `json:"sections,omitempty"`
+}
+
+type wabaInteractiveReplyButton struct {
+	Type  string                     `json:"type"`
+	Reply wabaInteractiveButtonReply `json:"reply"`
+}
+
+type wabaInteractiveButtonReply struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+type wabaInteractiveSection struct {
+	Title string                     `json:"title,omitempty"`
+	Rows  []wabaInteractiveSectionRow `json:"rows"`
+}
+
+type wabaInteractiveSectionRow struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
 }
 
 // MetaErrorResponse is the structure returned by Meta on API errors.
@@ -130,6 +171,10 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 
 	if config.PhoneNumberID == "" || config.Token == "" {
 		return "", channel.NewTerminalError(errors.New("missing phone_number_id or token in credentials"))
+	}
+
+	if override, ok := m.ChannelOverrides["whatsapp_cloud"]; ok {
+		return a.sendRequest(ctx, config.PhoneNumberID, config.Token, override)
 	}
 
 	reqPayload := wabaMessageRequest{
@@ -229,6 +274,55 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 
 		reqPayload.Type = "template"
 		reqPayload.Template = &tmpl
+	} else if m.Interactive != nil {
+		reqPayload.Type = "interactive"
+		
+		var header, footer *wabaInteractiveText
+		if m.Interactive.Header != nil {
+			header = &wabaInteractiveText{
+				Type: "text",
+				Text: m.Interactive.Header.Text,
+			}
+		}
+		if m.Interactive.Footer != nil {
+			footer = &wabaInteractiveText{
+				Text: m.Interactive.Footer.Text,
+			}
+		}
+
+		action := wabaInteractiveAction{
+			Button: m.Interactive.Action.Button,
+		}
+		
+		for _, b := range m.Interactive.Action.Buttons {
+			action.Buttons = append(action.Buttons, wabaInteractiveReplyButton{
+				Type: "reply",
+				Reply: wabaInteractiveButtonReply{
+					ID:    b.Reply.ID,
+					Title: b.Reply.Title,
+				},
+			})
+		}
+
+		for _, s := range m.Interactive.Action.Sections {
+			section := wabaInteractiveSection{Title: s.Title}
+			for _, r := range s.Rows {
+				section.Rows = append(section.Rows, wabaInteractiveSectionRow{
+					ID:          r.ID,
+					Title:       r.Title,
+					Description: r.Description,
+				})
+			}
+			action.Sections = append(action.Sections, section)
+		}
+
+		reqPayload.Interactive = &wabaInteractive{
+			Type:   m.Interactive.Type,
+			Header: header,
+			Body:   wabaInteractiveText{Text: m.Interactive.Body.Text},
+			Footer: footer,
+			Action: action,
+		}
 	} else {
 		reqPayload.Type = "text"
 		reqPayload.Text = &wabaText{

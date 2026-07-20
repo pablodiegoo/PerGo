@@ -426,6 +426,105 @@ func TestWABADispatch(t *testing.T) {
 			t.Fatalf("expected nil error on success, got: %v", err)
 		}
 	})
+
+	t.Run("Success Interactive Message", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			var req struct {
+				Type        string `json:"type"`
+				Interactive *struct {
+					Type   string `json:"type"`
+					Body   struct{ Text string } `json:"body"`
+					Action struct {
+						Buttons []struct {
+							Type  string `json:"type"`
+							Reply struct {
+								ID    string `json:"id"`
+								Title string `json:"title"`
+							} `json:"reply"`
+						} `json:"buttons"`
+					} `json:"action"`
+				} `json:"interactive"`
+			}
+			_ = json.Unmarshal(bodyBytes, &req)
+
+			if req.Type != "interactive" || req.Interactive == nil {
+				t.Errorf("expected interactive message, got %+v", string(bodyBytes))
+				return
+			}
+			if req.Interactive.Type != "button" {
+				t.Errorf("unexpected interactive type: %s", req.Interactive.Type)
+			}
+			if req.Interactive.Body.Text != "Choose one" {
+				t.Errorf("unexpected body text: %s", req.Interactive.Body.Text)
+			}
+			if len(req.Interactive.Action.Buttons) != 1 || req.Interactive.Action.Buttons[0].Reply.Title != "Yes" {
+				t.Errorf("unexpected buttons content: %+v", req.Interactive.Action.Buttons)
+			}
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.interactive_test_123"}]}`))
+		}))
+		defer server.Close()
+
+		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter.SetBaseURL(server.URL)
+
+		payload := &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
+			To:             "+5511999999999",
+			Interactive: &domain.Interactive{
+				Type: "button",
+				Body: domain.TextContent{Text: "Choose one"},
+				Action: domain.Action{
+					Buttons: []domain.Button{
+						{Type: "reply", Reply: domain.Reply{ID: "btn1", Title: "Yes"}},
+					},
+				},
+			},
+		}
+
+		resp, err := adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on interactive dispatch, got: %v", err)
+		}
+		if resp != "wamid.interactive_test_123" {
+			t.Errorf("expected wamid 'wamid.interactive_test_123', got %q", resp)
+		}
+	})
+
+	t.Run("Success Override whatsapp_cloud", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			if string(bodyBytes) != `{"custom":"payload"}` {
+				t.Errorf("expected override payload, got: %s", string(bodyBytes))
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.override_123"}]}`))
+		}))
+		defer server.Close()
+
+		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter.SetBaseURL(server.URL)
+
+		payload := &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
+			To:             "+5511999999999", // To is ignored if override dictates, but required by struct
+			ChannelOverrides: map[string]json.RawMessage{
+				"whatsapp_cloud": json.RawMessage(`{"custom":"payload"}`),
+			},
+		}
+
+		resp, err := adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on override dispatch, got: %v", err)
+		}
+		if resp != "wamid.override_123" {
+			t.Errorf("expected wamid 'wamid.override_123', got %q", resp)
+		}
+	})
 }
 
 type mockWABAWindowChecker struct {
