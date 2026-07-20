@@ -1,34 +1,23 @@
 {
   "version": "1.0",
-  "timestamp": "2026-07-17T20:02:01.616Z",
-  "phase": "22",
-  "phase_name": "typebot-integration",
-  "phase_dir": ".planning/phases/22-typebot-integration",
-  "plan": null,
-  "task": null,
+  "timestamp": "'$timestamp'",
+  "phase": "",
+  "phase_name": "",
+  "phase_dir": "",
+  "plan": 0,
+  "task": 0,
   "total_tasks": 0,
   "status": "paused",
-  "workflow_step": "plan-phase: step 7.8 (pattern mapper)",
   "completed_tasks": [],
-  "remaining_tasks": [
-    {"id": "pattern-mapper", "name": "Spawn gsd-pattern-mapper for analog extraction", "status": "not_started"},
-    {"id": "planner", "name": "Spawn gsd-planner to create PLAN.md files", "status": "not_started"},
-    {"id": "plan-checker", "name": "Spawn gsd-plan-checker to verify plans", "status": "not_started"},
-    {"id": "commit-plans", "name": "Commit plans and update STATE.md/ROADMAP.md", "status": "not_started"}
-  ],
+  "remaining_tasks": [],
   "blockers": [],
   "async_jobs": [],
   "human_actions_pending": [],
   "decisions": [
-    {"decision": "D-01: Reuse unified integrations table with provider=typebot", "rationale": "Same encryption envelope pattern as Chatwoot", "phase": "22"},
-    {"decision": "D-02: Store multiple bot configs in encrypted JSON config envelope", "rationale": "One integration row per workspace, bots array inside", "phase": "22"},
-    {"decision": "D-03: Map bots to connection channels with trigger keywords + default fallback", "rationale": "User requested per-connection bot mapping", "phase": "22"},
-    {"decision": "D-04: Ignore trigger keywords during active sessions", "rationale": "User decided active sessions should not be interrupted", "phase": "22"},
-    {"decision": "D-05: Dedicated typebot_sessions table with composite PK (workspace_id, contact_id, connection_id)", "rationale": "One active session per contact per connection", "phase": "22"},
-    {"decision": "D-06: Hybrid flow — sync responses from startChat/continueChat + async webhook endpoint", "rationale": "User selected recommended option", "phase": "22"},
-    {"decision": "D-07: POST /api/integrations/typebot secured with standard API key query param", "rationale": "Consistent with Chatwoot webhook pattern", "phase": "22"}
+    {"decision": "Use Hybrid Approach for Omnichannel Interactive Messaging", "rationale": "Avoid vendor lock-in for standard features but allow native WABA JSON escapes", "phase": ""},
+    {"decision": "Support Telegram & Instagram Rich Messaging", "rationale": "Match industry standard for Telegram and build competitive edge on Instagram", "phase": ""}
   ],
   "uncommitted_files": [],
-  "next_action": "Run /gsd-plan-phase 22 to resume the planning pipeline. CONTEXT.md and RESEARCH.md are already committed — the pipeline will detect them and skip to pattern mapping + planner spawn.",
-  "context_notes": "Phase 21 (Chatwoot Integration) was completed and verified (6/6 UAT passed). Phase 22 discussion captured 7 implementation decisions. Research completed covering Typebot API contract (startChat/continueChat), existing Chatwoot patterns to reuse, InboundProcessor hook point, typebot_sessions schema, and admin UI patterns. The pattern mapper subagent was spawned but killed before completion when user requested pause."
+  "next_action": "Start a new phase or execute a phase from the v1.4 milestone.",
+  "context_notes": "We just finished an exploration session for Telegram and Instagram rich messaging, and appended new phases 26 and 27 to the ROADMAP."
 }
