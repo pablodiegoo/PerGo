@@ -57,6 +57,29 @@
 - Static mapping maps within constructors are effective for resolving polymorphic interfaces in Go without dependency injection frameworks.
 - Lazy evaluation of timeouts (e.g. cooldown reset on incoming message) avoids running persistent background crons/daemons for state management.
 
+## Milestone: v1.4 — Omnichannel Integrations
+
+**Shipped:** 2026-07-20
+**Phases:** 3 | **Plans:** 3
+
+### What Was Built
+- Unified interactive message mapping and override handling for WABA and Whatsmeow with graceful degradation fallbacks.
+- Telegram inline keyboards and forum threads support via `Interactive` payloads and `thread_id` metadata.
+- Instagram channel adapters implemented with full support for Outbound messaging, Story Mentions, and Quick Replies.
+
+### What Worked
+- Domain separation between the unified schema (Interactive) and channel-specific adapters (WABA, Whatsmeow, Telegram, Instagram) proved highly effective for omnichannel support without leaky abstractions.
+- Leveraging `channel_overrides` provided a robust escape hatch for features not yet unified in the platform.
+
+### What Was Inefficient
+- Requirement tracking fell out of sync with actual development velocity and had to be caught during the audit phase.
+
+### Patterns Established
+- Channel overrides escape hatch for vendor-specific JSON configurations.
+
+### Key Lessons
+- Regular tracking and maintenance of requirements traceability matrix prevents audit surprises at milestone completion.
+
 ---
 
 ## Cross-Milestone Trends
@@ -68,6 +91,7 @@
 | v1.1 | 6 | Campaign Engine bulk messaging with JetStream batch throttling. |
 | v1.2 | 4 | PRD gaps integration: webhook subscriptions, contact merging, verbs engine, read receipts. |
 | v1.3 | 7 | Chatwoot & Typebot integrations, stateful handoff routing, polymorphic VerbHandlers, and gap closures. |
+| v1.4 | 3 | Unified Interactive schemas, Telegram threads/keyboards, Instagram Stories/replies. |
 
 ### Cumulative Quality
 
@@ -76,3 +100,4 @@
 | v1.1 | Passed | goose, uuid |
 | v1.2 | Passed | mark3labs/mcp-go |
 | v1.3 | Passed | *(none)* |
+| v1.4 | Passed | *(none)* |
