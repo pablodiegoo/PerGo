@@ -67,19 +67,21 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 
 ### Current Milestone (v1.4)
 
-- [ ] Phase 25: Implement JSON-to-Protobuf mapping for rich interactive messages (hybrid approach)
+- [x] Phase 25: Implement JSON-to-Protobuf mapping for rich interactive messages (hybrid approach) (completed 2026-07-20)
 - [ ] Phase 26: Implement Telegram Inline Keyboards and Forum Threads mapping
 - [ ] Phase 27: Implement Instagram Stories handling and Quick Replies mapping
 
 ### Phase 25: Implement JSON-to-Protobuf mapping for rich interactive messages (hybrid approach)
+
 **Goal:** Map JSON to Protobuf for interactive messages
 
 ### Phase 26: Implement Telegram Inline Keyboards and Forum Threads mapping
+
 **Goal:** Map Telegram inline keyboards and forum threads
 
 ### Phase 27: Implement Instagram Stories handling and Quick Replies mapping
-**Goal:** Handle IG stories and quick replies
 
+**Goal:** Handle IG stories and quick replies
 
 ## Progress
 
@@ -101,7 +103,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 24. Refactor Webhook Verbs Engine to Polymorphic VerbHandlers | v1.3 | 1/1 | Complete | 2026-07-18 |
 | 24.1. Close gap: wire Typebot forwarder and reconcile form schema | v1.3 | 1/1 | Complete | 2026-07-19 |
 | 24.2. Close gap: TYPE-04 (TraceID) | v1.3 | 1/1 | Complete    | 2026-07-19 |
-| 25. Implement JSON-to-Protobuf mapping for rich interactive messages | v1.4 | 0/0 | Planned | |
+| 25. Implement JSON-to-Protobuf mapping for rich interactive messages | v1.4 | 1/1 | Complete   | 2026-07-20 |
 | 26. Implement Telegram Inline Keyboards and Forum Threads mapping | v1.4 | 0/0 | Pending | |
 | 27. Implement Instagram Stories handling and Quick Replies mapping | v1.4 | 0/0 | Pending | |
 
