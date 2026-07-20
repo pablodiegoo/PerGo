@@ -42,6 +42,10 @@ Todos os repositórios listados aqui foram clonados para o diretório `context/i
 - **Origem:** [novuhq/novu](https://github.com/novuhq/novu)
 - **Por que é relevante:** Plataforma open-source focada em infraestrutura de notificações e omnichannel (SMS, E-mail, Push, Chat). Excelente para visualizar estratégias de fallback de mensagens (ex: se falhar no WhatsApp, tente Telegram ou Email) e gerenciamento de providers.
 
+### 10. Typebot (TypeScript)
+- **Origem:** [baptisteArno/typebot.io](https://github.com/baptisteArno/typebot.io)
+- **Por que é relevante:** Construtor de chatbots open-source (no-code). Útil para analisar fluxos conversacionais, integração com múltiplos canais (como WhatsApp) e a estruturação de mensagens interativas e variáveis.
+
 ---
 
 *Estes repositórios servem de fonte de aprendizado. Para analisá-los, basta navegar na pasta `context/inspiration`.*
