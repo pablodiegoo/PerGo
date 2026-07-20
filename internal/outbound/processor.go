@@ -162,6 +162,9 @@ func (p *Processor) Ingest(
 		TemplateName:     req.TemplateName,
 		Language:         req.Language,
 		Components:       req.Components,
+		Interactive:      req.Interactive,
+		ChannelOverrides: req.ChannelOverrides,
+		FallbackBehavior: req.FallbackBehavior,
 	}
 
 	if p.publisher != nil {

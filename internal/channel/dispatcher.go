@@ -6,6 +6,7 @@ package channel
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -25,9 +26,12 @@ type MessagePayload struct {
 	Body           string
 	Media          *domain.Media
 	Metadata       map[string]string
-	TemplateName   string
-	Language       string
-	Components     []domain.TemplateComponent
+	TemplateName     string
+	Language         string
+	Components       []domain.TemplateComponent
+	Interactive      *domain.Interactive
+	ChannelOverrides map[string]json.RawMessage
+	FallbackBehavior string
 }
 
 // Dispatcher sends a message through a specific channel adapter.

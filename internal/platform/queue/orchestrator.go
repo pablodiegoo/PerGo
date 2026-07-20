@@ -283,9 +283,12 @@ func (o *DispatchOrchestrator) dispatchToChannel(ctx context.Context, channelNam
 		Body:           qMsg.Body,
 		Media:          qMsg.Media,
 		Metadata:       qMsg.Metadata,
-		TemplateName:   qMsg.TemplateName,
-		Language:       qMsg.Language,
-		Components:     qMsg.Components,
+		TemplateName:     qMsg.TemplateName,
+		Language:         qMsg.Language,
+		Components:       qMsg.Components,
+		Interactive:      qMsg.Interactive,
+		ChannelOverrides: qMsg.ChannelOverrides,
+		FallbackBehavior: qMsg.FallbackBehavior,
 	})
 }
 
