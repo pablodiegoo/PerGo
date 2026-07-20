@@ -37,3 +37,5 @@ tmp/
 /skills-lock.json
 /.gemini/
 
+# CPaaS References
+/context/inspiration/

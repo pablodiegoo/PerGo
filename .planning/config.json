@@ -13,15 +13,15 @@
       "haiku": "opencode-go/mimo-v2.5"
     },
     "antigravity": {
-      "opus": "gemini-3.5-thinking",
-      "sonnet": "gemini-3.5-flash",
-      "haiku": "gemini-3.5-flash-low"
+      "opus": "gemini-3.1-pro-high",
+      "sonnet": "gemini-3.5-thinking",
+      "haiku": "gemini-3.5-flash"
     }
   },
   "model_overrides_commented": {
-    "gsd-executor": "opencode-go/mimo-v2.5",
-    "gsd-plan-checker": "opencode-go/deepseek-v4-pro",
-    "gsd-nyquist-auditor": "opencode-go/deepseek-v4-pro"
+    "gsd-executor": "gemini-3.1-pro-high",
+    "gsd-plan-checker": "gemini-3.1-pro-high",
+    "gsd-nyquist-auditor": "gemini-3.1-pro-high"
   },
   "commit_docs": true,
   "parallelization": true,
