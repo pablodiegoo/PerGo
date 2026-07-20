@@ -53,6 +53,18 @@ type InboundContact struct {
 	Phone string `json:"phone"`
 }
 
+// InboundButtonReply represents a button interaction reply.
+type InboundButtonReply struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+}
+
+// InboundInteractive represents the unified inbound interactive payload.
+type InboundInteractive struct {
+	Type        string              `json:"type"` // e.g. "button_reply"
+	ButtonReply *InboundButtonReply `json:"button_reply,omitempty"`
+}
+
 // InboundEvent is the channel-agnostic inbound payload.
 type InboundEvent struct {
 	WorkspaceID  uuid.UUID
@@ -65,24 +77,26 @@ type InboundEvent struct {
 	Media        *InboundMedia
 	Location     *InboundLocation
 	Contacts     []InboundContact
+	Interactive  *InboundInteractive
 	SenderName   string
 	Metadata     map[string]string
 }
 
 // InboundEventPayload is the standard format published to NATS and webhooks.
 type InboundEventPayload struct {
-	Event       string           `json:"event"`
-	TraceID     string           `json:"trace_id"`
-	MessageID   string           `json:"message_id"`
-	Channel     string           `json:"channel"`
-	Timestamp   string           `json:"timestamp"`
-	WorkspaceID string           `json:"workspace_id"`
-	From        string           `json:"from"`
-	To          string           `json:"to"`
-	Body        string           `json:"body,omitempty"`
-	Media       *EventMedia      `json:"media,omitempty"`
-	Location    *InboundLocation `json:"location,omitempty"`
-	Contacts    []InboundContact `json:"contacts,omitempty"`
+	Event       string              `json:"event"`
+	TraceID     string              `json:"trace_id"`
+	MessageID   string              `json:"message_id"`
+	Channel     string              `json:"channel"`
+	Timestamp   string              `json:"timestamp"`
+	WorkspaceID string              `json:"workspace_id"`
+	From        string              `json:"from"`
+	To          string              `json:"to"`
+	Body        string              `json:"body,omitempty"`
+	Media       *EventMedia         `json:"media,omitempty"`
+	Location    *InboundLocation    `json:"location,omitempty"`
+	Contacts    []InboundContact    `json:"contacts,omitempty"`
+	Interactive *InboundInteractive `json:"interactive,omitempty"`
 }
 
 // MessageStatusUpdatedPayload is the structure of the message status update event published to NATS.
@@ -261,6 +275,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		From:        ev.From,
 		To:          ev.To,
 		Body:        ev.Body,
+		Interactive: ev.Interactive,
 	}
 
 	// 5. Upload media to S3 if present
@@ -290,7 +305,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 	}
 
 	// 7. Drop event if it's completely empty
-	if payload.Body == "" && payload.Media == nil && payload.Location == nil && len(payload.Contacts) == 0 {
+	if payload.Body == "" && payload.Media == nil && payload.Location == nil && len(payload.Contacts) == 0 && payload.Interactive == nil {
 		slog.Debug("inbound processor: ignoring empty inbound event payload")
 		return nil
 	}
