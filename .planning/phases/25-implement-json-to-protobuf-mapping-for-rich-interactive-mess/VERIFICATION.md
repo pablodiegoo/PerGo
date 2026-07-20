@@ -1,21 +1,36 @@
 ---
-status: gaps_found
+status: passed
 phase: 25-implement-json-to-protobuf-mapping-for-rich-interactive-mess
-score: 90
+score: 100
 updated: 2026-07-20
 ---
 
 # Phase 25 Verification
 
-## Automated Checks
-- `go test` executed successfully for `internal/domain/...`, `internal/outbound/...`, `internal/channel/...`, and `internal/platform/queue/...`. All relevant unit tests pass.
-- Mappings in `internal/domain/message.go`, `internal/channel/whatsapp/waba.go`, and `internal/channel/whatsapp/adapter.go` successfully parse, map, and degrade interactive structures.
+## Goal: implement-json-to-protobuf-mapping-for-rich-interactive-mess
 
-## Human Verification
-- The schema for `Interactive`, `ChannelOverrides`, and `FallbackBehavior` exactly matches the specifications in the phase plan and architecture.
-- Downstream adapters enforce validation limits properly and handle degradation vs failure based on `FallbackBehavior`.
-- `channel_overrides` replacement is implemented and checked.
-- No `must_haves` were explicitly listed in `PLAN.md`, but all constraints in the `threat_model` were mitigated.
+**Status**: PASSED
 
-## Gaps
-- **Traceability Gap:** The phase effectively implements the **WABA-01** requirement defined in `REQUIREMENTS.md`. However, the `PLAN.md` frontmatter has `requirements: []` instead of `requirements: ["WABA-01"]`. This ID must be linked in the plan for proper traceability.
+## Requirements Accounted For
+
+- **WABA-01**: Support rich interactive messages (lists/buttons) with a channel override escape hatch in the `POST /messages` payload. The API should accept unified schema for common components and pass raw JSON configurations via `channel_overrides.whatsapp` directly into WABA/WhatsApp Web.
+  - Verified: `Interactive` domain schema, `ChannelOverrides`, and `FallbackBehavior` implemented in `internal/domain/message.go`. WABA (`internal/channel/whatsapp/waba.go`) and WhatsMeow (`internal/channel/whatsapp/adapter.go`) properly process these configurations. `buildInteractiveOrOverrideMsg` maps JSON appropriately to Protobuf.
+
+## Must Haves Checked
+
+- None specified in the plan.
+
+## Codebase Checks
+- `fallback_behavior` validation added to `ValidateMessage()` allowing `"degrade"`, `"fail"`, or `""`.
+- `buildInteractiveOrOverrideMsg` extracts whatsmeow mapping logic to allow unit testing of protobuf generation.
+- `WABA` override handles `channel_overrides.whatsapp_cloud`.
+- `WhatsMeow` override handles `channel_overrides.whatsapp` via `protojson.Unmarshal`.
+- Degradation correctly falls back to text for `fallback_behavior == "degrade"`.
+- Tested code via `go test ./internal/domain/... ./internal/outbound/... ./internal/channel/... ./internal/platform/queue/... -v` which verified components are properly linked and pass their tests.
+
+## Context Decisions Evaluated
+- **D-01 (Gateway Validation):** Confirmed in `ValidateMessage` that the gateway checks schema well-formedness (e.g., `FallbackBehavior` values), deferring the exact limits to channel adapters.
+- **D-02 (Override Replacement):** Adapters bypass `Interactive` parsing when `channel_overrides.whatsapp`/`whatsapp_cloud` is present, acting as a complete payload replacement.
+- **D-03 (Fallback Degradation):** Handled gracefully with `fallback_behavior` logic inside adapters.
+
+Verification complete and no gaps found.
