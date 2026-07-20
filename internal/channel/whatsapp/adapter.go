@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protojson"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
@@ -97,7 +98,14 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 
 	var msg waE2E.Message
 
-	if m.Media != nil {
+	interMsg, err := buildInteractiveOrOverrideMsg(m)
+	if err != nil {
+		return "", err
+	}
+	
+	if interMsg != nil {
+		msg = *interMsg
+	} else if m.Media != nil {
 		if a.s3Client == nil {
 			return "", channel.NewTerminalError(fmt.Errorf("whatsapp: media storage client not configured"))
 		}
@@ -251,4 +259,111 @@ func isTerminalWhatsAppError(err error) bool {
 	return strings.Contains(msg, "403") ||
 		strings.Contains(msg, "logged out") ||
 		strings.Contains(msg, "unpaired")
+}
+
+func buildInteractiveOrOverrideMsg(m *channel.MessagePayload) (*waE2E.Message, error) {
+	var msg waE2E.Message
+	if override, ok := m.ChannelOverrides["whatsapp"]; ok {
+		if err := protojson.Unmarshal(override, &msg); err != nil {
+			return nil, channel.NewTerminalError(fmt.Errorf("whatsapp: failed to unmarshal channel override: %w", err))
+		}
+		return &msg, nil
+	} else if m.Interactive != nil {
+		if m.Interactive.Type == "button" {
+			if len(m.Interactive.Action.Buttons) > 3 {
+				if m.FallbackBehavior == "fail" {
+					return nil, channel.NewTerminalError(fmt.Errorf("whatsapp: interactive message exceeds native limits (max 3 buttons) and fallback_behavior is fail"))
+				}
+				// Degrade to text
+				body := m.Interactive.Body.Text
+				for i, b := range m.Interactive.Action.Buttons {
+					body += fmt.Sprintf("\n%d. %s", i+1, b.Reply.Title)
+				}
+				msg.Conversation = &body
+			} else {
+				var footerText *string
+				if m.Interactive.Footer != nil {
+					footerText = &m.Interactive.Footer.Text
+				}
+
+				var btns []*waE2E.ButtonsMessage_Button
+				for _, b := range m.Interactive.Action.Buttons {
+					id := b.Reply.ID
+					title := b.Reply.Title
+					btnType := waE2E.ButtonsMessage_Button_RESPONSE
+					btns = append(btns, &waE2E.ButtonsMessage_Button{
+						ButtonID:   &id,
+						ButtonText: &waE2E.ButtonsMessage_Button_ButtonText{DisplayText: &title},
+						Type:       &btnType,
+					})
+				}
+				msg.ButtonsMessage = &waE2E.ButtonsMessage{
+					ContentText: &m.Interactive.Body.Text,
+					HeaderType:  waE2E.ButtonsMessage_TEXT.Enum(),
+					FooterText:  footerText,
+					Buttons:     btns,
+				}
+				if m.Interactive.Header != nil {
+					msg.ButtonsMessage.Header = &waE2E.ButtonsMessage_Text{Text: m.Interactive.Header.Text}
+				}
+			}
+			return &msg, nil
+		} else if m.Interactive.Type == "list" {
+			if len(m.Interactive.Action.Sections) > 10 {
+				if m.FallbackBehavior == "fail" {
+					return nil, channel.NewTerminalError(fmt.Errorf("whatsapp: interactive list exceeds native limits and fallback_behavior is fail"))
+				}
+				body := m.Interactive.Body.Text
+				for i, s := range m.Interactive.Action.Sections {
+					body += fmt.Sprintf("\n%d. %s", i+1, s.Title)
+				}
+				msg.Conversation = &body
+			} else {
+				var title, description *string
+				if m.Interactive.Header != nil {
+					title = &m.Interactive.Header.Text
+				}
+				if m.Interactive.Footer != nil {
+					description = &m.Interactive.Footer.Text
+				}
+				buttonText := m.Interactive.Action.Button
+				if buttonText == "" {
+					buttonText = "Options"
+				}
+				listType := waE2E.ListMessage_SINGLE_SELECT
+
+				var sections []*waE2E.ListMessage_Section
+				for _, s := range m.Interactive.Action.Sections {
+					secTitle := s.Title
+					sec := &waE2E.ListMessage_Section{
+						Title: &secTitle,
+					}
+					for _, r := range s.Rows {
+						rID := r.ID
+						rTitle := r.Title
+						var rDesc *string
+						if r.Description != "" {
+							rDesc = &r.Description
+						}
+						sec.Rows = append(sec.Rows, &waE2E.ListMessage_Row{
+							RowID:       &rID,
+							Title:       &rTitle,
+							Description: rDesc,
+						})
+					}
+					sections = append(sections, sec)
+				}
+				msg.ListMessage = &waE2E.ListMessage{
+					Title:       title,
+					Description: &m.Interactive.Body.Text,
+					ButtonText:  &buttonText,
+					ListType:    &listType,
+					Sections:    sections,
+					FooterText:  description,
+				}
+			}
+			return &msg, nil
+		}
+	}
+	return nil, nil
 }

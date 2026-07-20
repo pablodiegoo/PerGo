@@ -1,9 +1,14 @@
 package whatsapp
 
 import (
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/domain"
 )
 
 func TestPhoneToJID(t *testing.T) {
@@ -62,5 +67,98 @@ func TestNewWhatsAppAdapter(t *testing.T) {
 func TestIsTerminalWhatsAppErrorNil(t *testing.T) {
 	if isTerminalWhatsAppError(nil) {
 		t.Error("nil error should not be terminal")
+	}
+}
+
+func TestBuildInteractiveOrOverrideMsg_Override(t *testing.T) {
+	payload := &channel.MessagePayload{
+		ChannelOverrides: map[string]json.RawMessage{
+			"whatsapp": json.RawMessage(`{"conversation": "override text"}`),
+		},
+	}
+	msg, err := buildInteractiveOrOverrideMsg(payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if msg == nil || msg.Conversation == nil || *msg.Conversation != "override text" {
+		t.Errorf("expected conversation 'override text', got %+v", msg)
+	}
+}
+
+func TestBuildInteractiveOrOverrideMsg_InteractiveButton(t *testing.T) {
+	payload := &channel.MessagePayload{
+		Interactive: &domain.Interactive{
+			Type: "button",
+			Body: domain.TextContent{Text: "body text"},
+			Action: domain.Action{
+				Buttons: []domain.Button{
+					{Type: "reply", Reply: domain.Reply{ID: "1", Title: "Yes"}},
+					{Type: "reply", Reply: domain.Reply{ID: "2", Title: "No"}},
+				},
+			},
+		},
+	}
+	msg, err := buildInteractiveOrOverrideMsg(payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if msg == nil || msg.ButtonsMessage == nil {
+		t.Fatalf("expected ButtonsMessage")
+	}
+	if len(msg.ButtonsMessage.Buttons) != 2 {
+		t.Errorf("expected 2 buttons, got %d", len(msg.ButtonsMessage.Buttons))
+	}
+}
+
+func TestBuildInteractiveOrOverrideMsg_Degrade(t *testing.T) {
+	payload := &channel.MessagePayload{
+		FallbackBehavior: "degrade",
+		Interactive: &domain.Interactive{
+			Type: "button",
+			Body: domain.TextContent{Text: "body text"},
+			Action: domain.Action{
+				Buttons: []domain.Button{
+					{Type: "reply", Reply: domain.Reply{ID: "1", Title: "Yes"}},
+					{Type: "reply", Reply: domain.Reply{ID: "2", Title: "No"}},
+					{Type: "reply", Reply: domain.Reply{ID: "3", Title: "Maybe"}},
+					{Type: "reply", Reply: domain.Reply{ID: "4", Title: "Too many"}},
+				},
+			},
+		},
+	}
+	msg, err := buildInteractiveOrOverrideMsg(payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if msg == nil || msg.Conversation == nil {
+		t.Fatalf("expected degraded text conversation")
+	}
+	if !strings.Contains(*msg.Conversation, "Too many") {
+		t.Errorf("expected degraded text to contain button titles: %s", *msg.Conversation)
+	}
+}
+
+func TestBuildInteractiveOrOverrideMsg_Fail(t *testing.T) {
+	payload := &channel.MessagePayload{
+		FallbackBehavior: "fail",
+		Interactive: &domain.Interactive{
+			Type: "button",
+			Body: domain.TextContent{Text: "body text"},
+			Action: domain.Action{
+				Buttons: []domain.Button{
+					{Type: "reply", Reply: domain.Reply{ID: "1", Title: "Yes"}},
+					{Type: "reply", Reply: domain.Reply{ID: "2", Title: "No"}},
+					{Type: "reply", Reply: domain.Reply{ID: "3", Title: "Maybe"}},
+					{Type: "reply", Reply: domain.Reply{ID: "4", Title: "Too many"}},
+				},
+			},
+		},
+	}
+	_, err := buildInteractiveOrOverrideMsg(payload)
+	if err == nil {
+		t.Fatalf("expected error on fallback fail")
+	}
+	if _, ok := err.(*channel.TerminalError); !ok {
+		t.Errorf("expected TerminalError, got %T: %v", err, err)
 	}
 }
