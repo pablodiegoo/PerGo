@@ -9,7 +9,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 - ✅ **v1.0 MVP** — Phases 1-11 (shipped 2026-07-14)
 - ✅ **v1.1 Campaign Engine** — Phases 12-16 (shipped 2026-07-16)
 - ✅ **v1.2 PRD Gaps Integration** — Phases 17-20 (shipped 2026-07-17)
-- 🏃 **v1.3 Chatwoot & Typebot Integrations** — Phases 21-24
+- ✅ **v1.3 Chatwoot & Typebot Integrations** — Phases 21-24.2.1 (shipped 2026-07-20)
 
 ## Phases
 
@@ -52,6 +52,9 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 
 </details>
 
+<details>
+<summary>✅ v1.3 Chatwoot & Typebot Integrations (Phases 21-24.2.1) — SHIPPED 2026-07-20</summary>
+
 - [x] Phase 21: Chatwoot Integration (2/2 plans) — completed 2026-07-17
 - [x] Phase 22: Typebot Integration (2/2 plans) — completed 2026-07-17
 - [x] Phase 23: Stateful Handoff Routing (2/2 plans) — completed 2026-07-17
@@ -59,6 +62,8 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 - [x] Phase 24.2: Close gap: TYPE-04 — populate ConnectionID, SenderIdentity, and TraceID in TypebotForwarder queue message (1/1 plan) — completed 2026-07-19
 - [x] Phase 24.2.1: Fix Typebot message construction gap (completed 2026-07-19)
 - [x] Phase 24.1: Close gap: wire Typebot forwarder and reconcile form schema (1/1 plan) — completed 2026-07-19
+
+</details>
 
 ## Progress
 

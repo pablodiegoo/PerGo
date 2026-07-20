@@ -17,7 +17,7 @@ A single API request delivers a message through any configured channel with auto
 
 ## Current State
 
-- **Shipped Version**: v1.3 (2026-07-18)
+- **Shipped Version**: v1.3 (2026-07-20)
 - **Status**: Stable. Fully functional multi-tenant routing gateway with active contact profiles, multi-webhook subscriptions, sequential JSON Response Verbs engine, Meta WABA read receipt indicators, and built-in Chatwoot and Typebot integrations with stateful human/bot handoff control.
 
 ## Requirements
@@ -120,6 +120,8 @@ A single API request delivers a message through any configured channel with auto
 | Static VerbHandler routing map (D-02) | Map action strings to respective VerbHandler interface instances within the NewVerbsEngine constructor | Validated (Phase 24) |
 | Raw JSON parameter delegation (D-03) | Let individual VerbHandlers unmarshal and validate their own parameter schemas from json.RawMessage | Validated (Phase 24) |
 | Shared VerbContext passing (D-04) | Resolve contact profile once at execution start and pass down trace/identity context to prevent redundant DB queries | Validated (Phase 24) |
+| Populate ConnectionID, SenderIdentity, and TraceID in TypebotForwarder (D-01 to D-03) | Enriched outbound queue messages with metadata to maintain traceability boundaries and support downstream dispatching | Validated (Phase 24.2) |
+| Deterministic Typebot message mapping (D-01 to D-09) | Map media messages to [Media Attachment] placeholders and contact identities to custom session formats to act as a proper channel-to-Typebot bridge | Validated (Phase 24.2.1) |
 
 ## Evolution
 
@@ -139,4 +141,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-18 after Phase 24 completion*
+*Last updated: 2026-07-20 after v1.3 milestone completion*
