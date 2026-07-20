@@ -1,0 +1,15 @@
+{
+  "phase_number": "24.2.1",
+  "areas_completed": ["Payload Structure", "Media & Attachments"],
+  "decisions": [
+    "Nest PerGo's metadata under a `pergo_metadata` or `custom_data` object to avoid collisions",
+    "Forward raw text exactly as received to preserve user intent",
+    "Map PerGo's `SenderIdentity` (or combined) to Typebot's `sessionId` root field",
+    "Combine ConnectionID and SenderIdentity (e.g., `<ConnectionID>:<SenderIdentity>`) for the Typebot `sessionId` to ensure uniqueness per channel",
+    "Pass the public URL of the media (if available/uploaded by PerGo) for media attachments",
+    "Send the media URL as a separate metadata field inside `pergo_metadata.media_url` and use a placeholder for `message`",
+    "Use `[Media Attachment]` as the placeholder text in the `message` field",
+    "Include the media type (e.g., `image`, `video`, `audio`) explicitly in the `pergo_metadata` payload",
+    "For unsupported message types (e.g., location, contact), send a placeholder text (e.g., `[Unsupported message: location]`) in the `message` field to hand off control to Typebot's native fallback/timeout mechanisms"
+  ]
+}
