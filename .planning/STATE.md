@@ -167,8 +167,8 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-07-20T16:10:00.000Z
-Stopped at: Phase 27, Plan 01 executed
+Last session: 2026-07-20T21:04:44-03:00
+Stopped at: Session resumed, proceeding to start a new milestone
 Resume file: .planning/phases/27-implement-instagram-stories-handling-and-quick-replies-mappi/27-01-SUMMARY.md
 
 ## Operator Next Steps
