@@ -45,7 +45,7 @@ func APIKeyRow(workspaceID uuid.UUID, key repository.APIKey) templ.Component {
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(key.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/apikeys.templ`, Line: 14, Col: 62}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/apikeys.templ`, Line: 14, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -58,7 +58,7 @@ func APIKeyRow(workspaceID uuid.UUID, key repository.APIKey) templ.Component {
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(key.KeyPrefix)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/apikeys.templ`, Line: 15, Col: 77}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/apikeys.templ`, Line: 15, Col: 77}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
@@ -86,7 +86,7 @@ func APIKeyRow(workspaceID uuid.UUID, key repository.APIKey) templ.Component {
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(key.CreatedAt.Format("02/01/2006 15:04"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/apikeys.templ`, Line: 23, Col: 98}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/apikeys.templ`, Line: 23, Col: 98}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
@@ -104,7 +104,7 @@ func APIKeyRow(workspaceID uuid.UUID, key repository.APIKey) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/keys/%s/confirm-revoke", workspaceID, key.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/apikeys.templ`, Line: 28, Col: 93}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/apikeys.templ`, Line: 28, Col: 93}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 			if templ_7745c5c3_Err != nil {
@@ -198,7 +198,7 @@ func APIKeyGenerateForm(workspaceID uuid.UUID) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/keys", workspaceID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/apikeys.templ`, Line: 71, Col: 66}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/apikeys.templ`, Line: 71, Col: 66}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
@@ -241,7 +241,7 @@ func APIKeyRevealed(keyPlaintext string, prefix string, name string) templ.Compo
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/apikeys.templ`, Line: 99, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/apikeys.templ`, Line: 99, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -254,7 +254,7 @@ func APIKeyRevealed(keyPlaintext string, prefix string, name string) templ.Compo
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(keyPlaintext)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/apikeys.templ`, Line: 102, Col: 109}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/apikeys.templ`, Line: 102, Col: 109}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {
@@ -267,7 +267,7 @@ func APIKeyRevealed(keyPlaintext string, prefix string, name string) templ.Compo
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(prefix)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/apikeys.templ`, Line: 110, Col: 105}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/apikeys.templ`, Line: 110, Col: 105}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 		if templ_7745c5c3_Err != nil {

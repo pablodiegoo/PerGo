@@ -94,7 +94,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(successMsg)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 44, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 44, Col: 65}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -113,7 +113,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(errorMsg)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 54, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 54, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -131,7 +131,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 		var templ_7745c5c3_Var5 templ.SafeURL
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/workspaces/" + workspaceID.String() + "/integrations/typebot"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 61, Col: 97}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 61, Col: 97}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
@@ -144,7 +144,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.APIURL)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 68, Col: 74}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 68, Col: 74}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 		if templ_7745c5c3_Err != nil {
@@ -162,7 +162,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.Bots[0].BotID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 81, Col: 82}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 81, Col: 82}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 			if templ_7745c5c3_Err != nil {
@@ -190,7 +190,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.Bots[0].PublicToken)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 92, Col: 108}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 92, Col: 108}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 			if templ_7745c5c3_Err != nil {
@@ -224,7 +224,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 					var templ_7745c5c3_Var9 string
 					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.ID)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 107, Col: 38}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 107, Col: 38}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 					if templ_7745c5c3_Err != nil {
@@ -237,7 +237,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 					var templ_7745c5c3_Var10 string
 					templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 107, Col: 61}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 107, Col: 61}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 					if templ_7745c5c3_Err != nil {
@@ -250,7 +250,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 					var templ_7745c5c3_Var11 string
 					templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Channel)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 107, Col: 79}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 107, Col: 79}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 					if templ_7745c5c3_Err != nil {
@@ -268,7 +268,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 					var templ_7745c5c3_Var12 string
 					templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.ID)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 109, Col: 38}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 109, Col: 38}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 					if templ_7745c5c3_Err != nil {
@@ -281,7 +281,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 					var templ_7745c5c3_Var13 string
 					templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 109, Col: 52}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 109, Col: 52}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 					if templ_7745c5c3_Err != nil {
@@ -294,7 +294,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 					var templ_7745c5c3_Var14 string
 					templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Channel)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 109, Col: 70}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 109, Col: 70}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 					if templ_7745c5c3_Err != nil {
@@ -319,7 +319,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 				var templ_7745c5c3_Var15 string
 				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.Bots[0].ConnectionID)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 115, Col: 104}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 115, Col: 104}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 				if templ_7745c5c3_Err != nil {
@@ -352,7 +352,7 @@ func TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connection
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(cfg.Bots[0].TriggerKeywords)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/typebot_settings.templ`, Line: 128, Col: 112}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/typebot_settings.templ`, Line: 128, Col: 112}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 			if templ_7745c5c3_Err != nil {

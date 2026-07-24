@@ -62,7 +62,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			var templ_7745c5c3_Var2 string
 			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(fromContact)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 29, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 29, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 			if templ_7745c5c3_Err != nil {
@@ -75,7 +75,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(to)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 32, Col: 62}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 32, Col: 62}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
@@ -88,7 +88,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(fromContact)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 36, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 36, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 			if templ_7745c5c3_Err != nil {
@@ -106,7 +106,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 44, Col: 30}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 44, Col: 30}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 				if templ_7745c5c3_Err != nil {
@@ -119,7 +119,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s (%s)", t.Name, t.Language))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 44, Col: 77}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 44, Col: 77}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -137,7 +137,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs("{{1}}")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 53, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 53, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -150,7 +150,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs("{{2}}")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 57, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 57, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -163,7 +163,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs("{{3}}")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 61, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 61, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -181,7 +181,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%t", channel == "whatsapp_cloud"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 67, Col: 99}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 67, Col: 99}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 			if templ_7745c5c3_Err != nil {
@@ -194,7 +194,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(to)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 70, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 70, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 			if templ_7745c5c3_Err != nil {
@@ -246,7 +246,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var12).String())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 1, Col: 0}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 1, Col: 0}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 			if templ_7745c5c3_Err != nil {
@@ -268,7 +268,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var14).String())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 1, Col: 0}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 1, Col: 0}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 			if templ_7745c5c3_Err != nil {
@@ -286,7 +286,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 				var templ_7745c5c3_Var16 string
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 92, Col: 31}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 92, Col: 31}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 				if templ_7745c5c3_Err != nil {
@@ -299,7 +299,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 				var templ_7745c5c3_Var17 string
 				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s (%s)", t.Name, t.Language))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 92, Col: 78}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 92, Col: 78}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 				if templ_7745c5c3_Err != nil {
@@ -317,7 +317,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs("{{1}}")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 99, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 99, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
@@ -330,7 +330,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			var templ_7745c5c3_Var19 string
 			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs("{{2}}")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 103, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/components/new_chat_modal.templ`, Line: 103, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 			if templ_7745c5c3_Err != nil {

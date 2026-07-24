@@ -73,7 +73,7 @@ func CampaignsContent(workspaceID uuid.UUID, campaigns []domain.Campaign, templa
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/new", workspaceID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 24, Col: 75}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 24, Col: 75}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 		if templ_7745c5c3_Err != nil {
@@ -86,7 +86,7 @@ func CampaignsContent(workspaceID uuid.UUID, campaigns []domain.Campaign, templa
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/new", workspaceID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 34, Col: 114}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 34, Col: 114}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 		if templ_7745c5c3_Err != nil {
@@ -144,7 +144,7 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("campaign-row-%s", c.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 69, Col: 46}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 69, Col: 46}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 		if templ_7745c5c3_Err != nil {
@@ -157,7 +157,7 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 70, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 70, Col: 60}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -175,7 +175,7 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 			var templ_7745c5c3_Var8 string
 			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(*c.Channel)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 73, Col: 121}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 73, Col: 121}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 			if templ_7745c5c3_Err != nil {
@@ -199,7 +199,7 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(*c.TemplateName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 80, Col: 21}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 80, Col: 21}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -218,7 +218,7 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(c.Recipients)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 85, Col: 94}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 85, Col: 94}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -261,7 +261,7 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(c.CreatedAt.Format("02/01/2006 15:04"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 99, Col: 96}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 99, Col: 96}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {
@@ -279,7 +279,7 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/start", workspaceID, c.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 105, Col: 89}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 105, Col: 89}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 			if templ_7745c5c3_Err != nil {
@@ -292,7 +292,7 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("#campaign-row-%s", c.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 106, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 106, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 			if templ_7745c5c3_Err != nil {
@@ -311,7 +311,7 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/cancel", workspaceID, c.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 115, Col: 90}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 115, Col: 90}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 			if templ_7745c5c3_Err != nil {
@@ -324,7 +324,7 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("#campaign-row-%s", c.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 116, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 116, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 			if templ_7745c5c3_Err != nil {
@@ -343,7 +343,7 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 			var templ_7745c5c3_Var16 templ.SafeURL
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/skipped/download", workspaceID, c.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 124, Col: 112}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 124, Col: 112}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 			if templ_7745c5c3_Err != nil {
@@ -361,7 +361,7 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 		var templ_7745c5c3_Var17 string
 		templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s", workspaceID, c.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 134, Col: 84}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 134, Col: 84}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 		if templ_7745c5c3_Err != nil {
@@ -374,7 +374,7 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 		var templ_7745c5c3_Var18 string
 		templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("#campaign-row-%s", c.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 135, Col: 54}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 135, Col: 54}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 		if templ_7745c5c3_Err != nil {
@@ -416,7 +416,7 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 		var templ_7745c5c3_Var20 string
 		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns", workspaceID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 156, Col: 71}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 156, Col: 71}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 		if templ_7745c5c3_Err != nil {
@@ -435,7 +435,7 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 				var templ_7745c5c3_Var21 string
 				templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.ID.String())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 173, Col: 40}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 173, Col: 40}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
 				if templ_7745c5c3_Err != nil {
@@ -448,7 +448,7 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 				var templ_7745c5c3_Var22 string
 				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.Channel)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 173, Col: 70}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 173, Col: 70}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 				if templ_7745c5c3_Err != nil {
@@ -461,7 +461,7 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 				var templ_7745c5c3_Var23 string
 				templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s [%s]", conn.Name, conn.Channel))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 173, Col: 122}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 173, Col: 122}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 				if templ_7745c5c3_Err != nil {
@@ -480,7 +480,7 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 		var templ_7745c5c3_Var24 string
 		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/upload", workspaceID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 191, Col: 81}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 191, Col: 81}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 		if templ_7745c5c3_Err != nil {
@@ -498,7 +498,7 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 203, Col: 29}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 203, Col: 29}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 			if templ_7745c5c3_Err != nil {
@@ -511,7 +511,7 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.ConnectionID.String())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 203, Col: 73}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 203, Col: 73}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 			if templ_7745c5c3_Err != nil {
@@ -524,7 +524,7 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 			var templ_7745c5c3_Var27 string
 			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(t.Components))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 203, Col: 114}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 203, Col: 114}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var27)
 			if templ_7745c5c3_Err != nil {
@@ -537,7 +537,7 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 			var templ_7745c5c3_Var28 string
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(t.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 203, Col: 125}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 203, Col: 125}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
@@ -550,7 +550,7 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(t.Language)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 203, Col: 141}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 203, Col: 141}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
@@ -567,7 +567,7 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 		}
 		templ_7745c5c3_Var30, templ_7745c5c3_Err := templruntime.ScriptContentInsideStringLiteral(1)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 350, Col: 117}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 350, Col: 117}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var30)
 		if templ_7745c5c3_Err != nil {
@@ -579,7 +579,7 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 		}
 		templ_7745c5c3_Var31, templ_7745c5c3_Err := templruntime.ScriptContentInsideStringLiteral(" + param + ")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 362, Col: 119}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 362, Col: 119}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 		if templ_7745c5c3_Err != nil {
@@ -591,7 +591,7 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 		}
 		templ_7745c5c3_Var32, templ_7745c5c3_Err := templruntime.ScriptContentInsideStringLiteral(" + h.toLowerCase() + ")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 398, Col: 46}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 398, Col: 46}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 		if templ_7745c5c3_Err != nil {
@@ -633,7 +633,7 @@ func CSVPreviewSegment(summary map[string]int, headers []string, sampleRows [][]
 		var templ_7745c5c3_Var34 string
 		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", summary["total"]))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 447, Col: 96}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 447, Col: 96}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {
@@ -646,7 +646,7 @@ func CSVPreviewSegment(summary map[string]int, headers []string, sampleRows [][]
 		var templ_7745c5c3_Var35 string
 		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", summary["valid"]))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 451, Col: 99}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 451, Col: 99}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 		if templ_7745c5c3_Err != nil {
@@ -659,7 +659,7 @@ func CSVPreviewSegment(summary map[string]int, headers []string, sampleRows [][]
 		var templ_7745c5c3_Var36 string
 		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", summary["duplicate"]))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 455, Col: 101}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 455, Col: 101}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 		if templ_7745c5c3_Err != nil {
@@ -672,7 +672,7 @@ func CSVPreviewSegment(summary map[string]int, headers []string, sampleRows [][]
 		var templ_7745c5c3_Var37 string
 		templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", summary["invalid"]))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 459, Col: 98}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 459, Col: 98}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 		if templ_7745c5c3_Err != nil {
@@ -695,7 +695,7 @@ func CSVPreviewSegment(summary map[string]int, headers []string, sampleRows [][]
 				var templ_7745c5c3_Var38 string
 				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(h)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 469, Col: 51}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 469, Col: 51}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 				if templ_7745c5c3_Err != nil {
@@ -723,7 +723,7 @@ func CSVPreviewSegment(summary map[string]int, headers []string, sampleRows [][]
 					var templ_7745c5c3_Var39 string
 					templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(cell)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 477, Col: 49}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 477, Col: 49}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 					if templ_7745c5c3_Err != nil {
@@ -746,7 +746,7 @@ func CSVPreviewSegment(summary map[string]int, headers []string, sampleRows [][]
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(sampleRows)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 484, Col: 103}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 484, Col: 103}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
@@ -764,7 +764,7 @@ func CSVPreviewSegment(summary map[string]int, headers []string, sampleRows [][]
 		var templ_7745c5c3_Var41 string
 		templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%d", summary["valid"]))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 487, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `context/inspiration/PerGo/templates/pages/campaigns.templ`, Line: 487, Col: 90}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 		if templ_7745c5c3_Err != nil {
