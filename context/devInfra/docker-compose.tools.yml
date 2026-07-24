@@ -1,0 +1,31 @@
+version: '3.8'
+
+networks:
+  shared-infra-net:
+    external: true
+
+volumes:
+  redisinsight_data:
+
+services:
+  # 🖥️ 1. Adminer (Visualizador e Editor do PostgreSQL - Estilo phpMyAdmin)
+  adminer:
+    image: adminer:latest
+    container_name: shared_adminer
+    restart: unless-stopped
+    ports:
+      - "8090:8080" # Acesse no navegador em http://localhost:8090
+    networks:
+      - shared-infra-net
+
+  # 🖥️ 2. RedisInsight (Visualizador e Gerenciador do Redis)
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: shared_redisinsight
+    restart: unless-stopped
+    ports:
+      - "5540:5540" # Acesse no navegador em http://localhost:5540
+    volumes:
+      - redisinsight_data:/data
+    networks:
+      - shared-infra-net

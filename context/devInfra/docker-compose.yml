@@ -1,0 +1,95 @@
+version: '3.8'
+
+networks:
+  shared-infra-net:
+    name: shared-infra-net
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  mailpit_data:
+
+services:
+  # 1. PostgreSQL com Suporte a pgvector (Compartilhado)
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: shared_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=admin
+      - POSTGRES_DB=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-dbs.sql:/docker-entrypoint-initdb.d/init-dbs.sql
+    networks:
+      - shared-infra-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Redis (Cache, Sessões e Asynq Queue)
+  redis:
+    image: redis:7-alpine
+    container_name: shared_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - shared-infra-net
+
+  # 3. MinIO (S3 Object Storage)
+  minio:
+    image: minio/minio:latest
+    container_name: shared_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=adminminio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - shared-infra-net
+
+  # 4. NATS (Barramento de Mensageria Pub/Sub)
+  nats:
+    image: nats:latest
+    container_name: shared_nats
+    restart: unless-stopped
+    command: "-js"
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    networks:
+      - shared-infra-net
+
+  # 5. Mailpit (Servidor SMTP de Teste e Inbox de E-mails)
+  mailpit:
+    image: axllent/mailpit
+    container_name: shared_mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    environment:
+      - MP_MAX_MESSAGES=5000
+      - MP_DATA_FILE=/data/mailpit.db
+      - MP_SMTP_AUTH_ACCEPT_ANY=1
+      - MP_SMTP_AUTH_ALLOW_INSECURE=1
+    volumes:
+      - mailpit_data:/data
+    networks:
+      - shared-infra-net

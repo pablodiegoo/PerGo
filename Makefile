@@ -20,8 +20,12 @@ ifneq (,$(wildcard .env))
   export
 endif
 
-BINARY     := ./bin/pergo
-BUILD_FLAGS := -ldflags="-s -w"
+# Garante que ~/go/bin esteja no PATH para encontrar air e templ
+export PATH := $(HOME)/go/bin:$(PATH)
+
+DEV_INFRA_DIR ?= $(shell test -d ../devInfra && echo "../devInfra" || (test -d ../devinfra && echo "../devinfra" || echo "../devInfra"))
+BINARY        := ./bin/pergo
+BUILD_FLAGS   := -ldflags="-s -w"
 
 # ─── Dev ─────────────────────────────────────────────────────
 
@@ -29,6 +33,9 @@ BUILD_FLAGS := -ldflags="-s -w"
 dev: _check-air _check-templ
 	@echo "→ Iniciando em modo dev com hot-reload..."
 	@air
+
+## watch: alias para make dev
+watch: dev
 
 # ─── Produção ────────────────────────────────────────────────
 
@@ -46,17 +53,18 @@ prod-logs:
 prod-down:
 	@docker compose --env-file .env down
 
-# ─── Infra local (dev sem container do app) ──────────────────
+# ─── Infra local (infraestrutura compartilhada devInfra) ──────
 
-## infra: sobe apenas postgres e nats para desenvolvimento local
+## infra: sobe a infra compartilhada (postgres, nats, mailpit, minio, redis)
 infra:
-	@echo "→ Subindo infra (postgres + nats)..."
-	@docker compose --env-file .env up postgres nats -d
-	@echo "✓ Postgres em localhost:5432 | NATS em localhost:4222"
+	@echo "→ Subindo infraestrutura compartilhada em $(DEV_INFRA_DIR)..."
+	@docker compose -f $(DEV_INFRA_DIR)/docker-compose.yml up -d
+	@echo "✓ Postgres (5432) | NATS (4222) | Mailpit (1025/8025) | MinIO (9000/9001) | Redis (6379)"
 
-## infra-down: derruba a infra
+## infra-down: derruba a infra compartilhada
 infra-down:
-	@docker compose --env-file .env down postgres nats
+	@echo "→ Derrubando infraestrutura compartilhada em $(DEV_INFRA_DIR)..."
+	@docker compose -f $(DEV_INFRA_DIR)/docker-compose.yml down
 
 # ─── Build ───────────────────────────────────────────────────
 
