@@ -155,3 +155,14 @@ func (r *MessageDispatchRepository) GetByProviderMessageID(ctx context.Context, 
 	return &d, nil
 }
 
+// UpdateStatusByProviderMessageID updates status of a message dispatch matched by its provider_message_id or id.
+func (r *MessageDispatchRepository) UpdateStatusByProviderMessageID(ctx context.Context, providerMsgID string, status string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE message_dispatches
+		 SET status = $1, updated_at = now()
+		 WHERE provider_message_id = $2 OR id::text = $2`,
+		status, providerMsgID,
+	)
+	return err
+}
+

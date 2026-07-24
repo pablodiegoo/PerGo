@@ -11,6 +11,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 - ✅ **v1.2 PRD Gaps Integration** — Phases 17-20 (shipped 2026-07-17)
 - ✅ **v1.3 Chatwoot & Typebot Integrations** — Phases 21-24.2.1 (shipped 2026-07-20)
 - ✅ **v1.4 Omnichannel Integrations** — Phases 25-27 (shipped 2026-07-20)
+- 🔄 **v1.5 Email Channels & Tracking Engine** — Phase 28 (in progress 2026-07-24)
 
 ## Phases
 
@@ -75,6 +76,13 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 
 </details>
 
+<details open>
+<summary>✅ v1.5 Email Channels & Tracking Engine (Phase 28) — SHIPPED 2026-07-24</summary>
+
+- [x] Phase 28: Email Channels & Tracking Engine (SMTP, Amazon SES, Mautic, Open/Click Tracking) — completed 2026-07-24
+
+</details>
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -98,6 +106,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 25. Implement JSON-to-Protobuf mapping for rich interactive messages | v1.4 | 1/1 | Complete    | 2026-07-20 |
 | 26. Implement Telegram Inline Keyboards and Forum Threads mapping | v1.4 | 1/1 | Complete    | 2026-07-20 |
 | 27. Implement Instagram Stories handling and Quick Replies mapping | v1.4 | 1/1 | Complete    | 2026-07-20 |
+| 28. Email Channels & Tracking Engine | v1.5 | 2/2 | Complete | 2026-07-24 |
 
 ---
 *Roadmap created: 2026-07-14*

@@ -25,9 +25,10 @@ import (
 	"github.com/pablojhp.pergo/internal/api/mcp"
 	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/channel/email"
+	"github.com/pablojhp.pergo/internal/channel/instagram"
 	"github.com/pablojhp.pergo/internal/channel/telegram"
 	"github.com/pablojhp.pergo/internal/channel/whatsapp"
-	"github.com/pablojhp.pergo/internal/channel/instagram"
 	"github.com/pablojhp.pergo/internal/config"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/outbound"
@@ -194,6 +195,13 @@ func main() {
 	telegramAdapter := telegram.NewTelegramAdapter(connectionRepo, nil, s3Client)
 	whatsAppAdapter := whatsapp.NewWhatsAppAdapter(nil, s3Client)
 	instagramAdapter := instagram.NewAdapter(connectionRepo, nil, cfg.ExternalURL)
+	emailProvider := email.NewSMTPProvider(email.SMTPConfig{
+		Host:        "localhost",
+		Port:        1025,
+		FromAddress: "noreply@pergo.dev",
+		FromName:    "PerGo Platform",
+	})
+	emailAdapter := email.NewEmailAdapter(emailProvider)
 
 	// --- Worker (reads from JetStream, dispatches with retry/TTL/dedup) ---
 	sessionRegistry := session.NewActiveSession()
@@ -204,6 +212,8 @@ func main() {
 	dispatcherRegistry.Register("telegram", telegramAdapter)
 	dispatcherRegistry.Register("whatsapp", whatsAppAdapter)
 	dispatcherRegistry.Register("instagram", instagramAdapter)
+	dispatcherRegistry.Register("email", emailAdapter)
+	dispatcherRegistry.Register("email_smtp", emailAdapter)
 
 	// --- Audit writer ---
 	auditWriter := audit.NewWriter(pool, 5000, 2)
