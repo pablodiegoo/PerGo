@@ -9,3 +9,13 @@
 ### REQ-WABA-STATUS: Delivery Status Webhook Translation
 - **Description**: Incoming Meta delivery status webhooks (`sent`, `delivered`, `read`, `failed`) must be correlated to the internal dispatch ID and forwarded to the workspace webhook URL.
 - **Behavior**: Meta numerical error codes (e.g., 131047, 131026) must be translated into standardized, human-readable error reasons (`session_window_expired`, `phone_not_on_whatsapp`, `payment_required`) in the payload.
+
+## WABA Meta Flows Requirements
+
+### REQ-WABA-FLOW-SEND: Simplified Meta Flow Dispatch
+- **Description**: The API must allow dispatching Meta Flows via a clean `type: "flow"` payload with `flow_id`, `flow_cta`, `flow_screen`, and `flow_data`.
+- **Behavior**: The WABA channel transformer constructs the Meta Graph API v25.0 payload using `flow_message_version: "3"` and auto-generates a UUID `flow_token` if omitted.
+
+### REQ-WABA-FLOW-DECODE: Automatic Flow Response Webhook Decoding
+- **Description**: Incoming `nfm_reply` webhooks from completed Meta Flows must be parsed and decoded automatically.
+- **Behavior**: The escaped JSON string in `response_json` is unmarshaled into a clean `data` map and emitted as a `type: "flow_response"` event to the client webhook.
