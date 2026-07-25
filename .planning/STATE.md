@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Email Channels & Tracking Engine
-current_phase: 5
-current_phase_name: Phase 28
-status: Milestone v1.5 complete
-stopped_at: Phase 29 context gathered
-last_updated: "2026-07-25T17:02:48.247Z"
+current_phase: 29
+current_phase_name: connection-slugs-and-api-channel-routing
+status: complete
+stopped_at: Phase 29 execution complete
+last_updated: "2026-07-25T17:48:10.000Z"
 last_activity: 2026-07-25
-last_activity_desc: Phase 28 complete (Email Channels & Tracking Engine)
+last_activity_desc: Phase 29 complete (all 4 plans executed and verified)
 progress:
   total_phases: 5
-  completed_phases: 4
-  total_plans: 5
-  completed_plans: 5
-  percent: 80
+  completed_phases: 5
+  total_plans: 9
+  completed_plans: 9
+  percent: 100
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-06-25)
 
 **Core value:** A single API request delivers a message through any configured channel with automatic fallback — without per-message markup, without vendor lock-in, and with full custody of transaction data on infrastructure you control.
-**Current focus:** Phase 25 — implement-json-to-protobuf-mapping-for-rich-interactive-mess
+**Current focus:** Phase 29 — connection-slugs-and-api-channel-routing (COMPLETED)
 
 ## Current Position
 
-Phase: Milestone v1.5 complete (Phase 28)
-Plan: —
-Status: Milestone v1.5 complete
-Last activity: 2026-07-25 — Phase 28 complete (Email Channels & Tracking Engine)
+Phase: 29 (connection-slugs-and-api-channel-routing) — COMPLETE
+Plan: 4 of 4
+Status: Phase 29 execution complete
+Last activity: 2026-07-25 — Phase 29 completed
 
 ## Performance Metrics
 
