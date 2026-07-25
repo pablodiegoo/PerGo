@@ -372,6 +372,155 @@ type InteractiveWebhookResponse struct {
 	} `json:"nfm_reply,omitempty"`
 }
 
+// ToMetaJSONChunks converts the payload into one or more Meta Cloud API message payloads.
+// If buttons exceed 3 or list rows exceed 10, it automatically chunks the payload into multiple messages
+// instead of failing validation, ensuring smooth delivery without rejecting developer requests.
+func (p *InteractivePayload) ToMetaJSONChunks(toPhone string) ([]*MetaInteractiveMessage, error) {
+	normalizedType := strings.ToLower(p.Type)
+
+	// Strategy 1: Auto-convert 4..10 buttons to a List message (single message UX)
+	if normalizedType == "button" && len(p.Buttons) > 3 && len(p.Buttons) <= 10 {
+		converted := &InteractivePayload{
+			Type:       "list",
+			Header:     p.Header,
+			Body:       p.Body,
+			Footer:     p.Footer,
+			ButtonText: "Ver Opções",
+		}
+		rows := make([]InteractiveRow, len(p.Buttons))
+		for i, btn := range p.Buttons {
+			rows[i] = InteractiveRow{
+				ID:    btn.ID,
+				Title: btn.Title,
+			}
+		}
+		converted.Sections = []InteractiveSection{
+			{Title: "Opções disponíveis", Rows: rows},
+		}
+		meta, err := converted.ToMetaJSON(toPhone)
+		if err != nil {
+			return nil, err
+		}
+		return []*MetaInteractiveMessage{meta}, nil
+	}
+
+	// Strategy 2: Auto-chunking for >3 buttons (>10 buttons case)
+	if normalizedType == "button" && len(p.Buttons) > 3 {
+		var chunks []*MetaInteractiveMessage
+		total := len(p.Buttons)
+		for start := 0; start < total; start += 3 {
+			end := start + 3
+			if end > total {
+				end = total
+			}
+
+			subButtons := p.Buttons[start:end]
+			bodyText := p.Body
+			if start > 0 {
+				bodyText = fmt.Sprintf("%s\n\n*(Continuação - parte %d)*", p.Body, (start/3)+1)
+			}
+
+			subPayload := &InteractivePayload{
+				Type:    "button",
+				Body:    bodyText,
+				Footer:  p.Footer,
+				Buttons: subButtons,
+			}
+			if start == 0 {
+				subPayload.Header = p.Header
+			}
+
+			meta, err := subPayload.ToMetaJSON(toPhone)
+			if err != nil {
+				return nil, err
+			}
+			chunks = append(chunks, meta)
+		}
+		return chunks, nil
+	}
+
+	// Strategy 3: Auto-chunking for >10 list rows
+	if normalizedType == "list" {
+		totalRows := 0
+		for _, sec := range p.Sections {
+			totalRows += len(sec.Rows)
+		}
+
+		if totalRows > 10 {
+			var chunks []*MetaInteractiveMessage
+			var currentRows []InteractiveRow
+			chunkIdx := 1
+
+			// Flatten and chunk rows by 10
+			for _, sec := range p.Sections {
+				for _, row := range sec.Rows {
+					currentRows = append(currentRows, row)
+					if len(currentRows) == 10 {
+						bodyText := p.Body
+						if chunkIdx > 1 {
+							bodyText = fmt.Sprintf("%s\n\n*(Continuação - parte %d)*", p.Body, chunkIdx)
+						}
+
+						subPayload := &InteractivePayload{
+							Type:       "list",
+							Body:       bodyText,
+							Footer:     p.Footer,
+							ButtonText: p.ButtonText,
+							Sections: []InteractiveSection{
+								{Title: fmt.Sprintf("Opções (%d-%d)", (chunkIdx-1)*10+1, chunkIdx*10), Rows: currentRows},
+							},
+						}
+						if chunkIdx == 1 {
+							subPayload.Header = p.Header
+						}
+
+						meta, err := subPayload.ToMetaJSON(toPhone)
+						if err != nil {
+							return nil, err
+						}
+						chunks = append(chunks, meta)
+						currentRows = nil
+						chunkIdx++
+					}
+				}
+			}
+
+			if len(currentRows) > 0 {
+				bodyText := p.Body
+				if chunkIdx > 1 {
+					bodyText = fmt.Sprintf("%s\n\n*(Continuação - parte %d)*", p.Body, chunkIdx)
+				}
+				subPayload := &InteractivePayload{
+					Type:       "list",
+					Body:       bodyText,
+					Footer:     p.Footer,
+					ButtonText: p.ButtonText,
+					Sections: []InteractiveSection{
+						{Title: "Outras Opções", Rows: currentRows},
+					},
+				}
+				if chunkIdx == 1 {
+					subPayload.Header = p.Header
+				}
+				meta, err := subPayload.ToMetaJSON(toPhone)
+				if err != nil {
+					return nil, err
+				}
+				chunks = append(chunks, meta)
+			}
+
+			return chunks, nil
+		}
+	}
+
+	// Standard single message case
+	meta, err := p.ToMetaJSON(toPhone)
+	if err != nil {
+		return nil, err
+	}
+	return []*MetaInteractiveMessage{meta}, nil
+}
+
 // ParseInteractiveWebhook unpacks incoming customer interactive responses.
 func ParseInteractiveWebhook(rawJSON []byte) (*InteractiveWebhookResponse, error) {
 	var resp InteractiveWebhookResponse

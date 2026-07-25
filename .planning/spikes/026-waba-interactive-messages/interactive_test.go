@@ -210,3 +210,68 @@ func TestParseInteractiveWebhook(t *testing.T) {
 		t.Errorf("button_reply.id = %v, want btn_sales", resp.ButtonReply)
 	}
 }
+
+func TestInteractiveAutoConvertButtonsToList(t *testing.T) {
+	// 5 buttons -> Auto-convert to a single List message (UX optimization)
+	payload := &InteractivePayload{
+		Type: "button",
+		Body: "Selecione a sua região:",
+		Buttons: []InteractiveButton{
+			{ID: "r1", Title: "Norte"},
+			{ID: "r2", Title: "Nordeste"},
+			{ID: "r3", Title: "Centro-Oeste"},
+			{ID: "r4", Title: "Sudeste"},
+			{ID: "r5", Title: "Sul"},
+		},
+	}
+
+	chunks, err := payload.ToMetaJSONChunks("+5511999999999")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(chunks) != 1 {
+		t.Fatalf("expected 1 converted list chunk, got %d", len(chunks))
+	}
+
+	if chunks[0].Interactive.Type != "list" {
+		t.Errorf("interactive.type = %q, want list (auto-converted)", chunks[0].Interactive.Type)
+	}
+	if len(chunks[0].Interactive.Action.Sections[0].Rows) != 5 {
+		t.Errorf("expected 5 rows in list section, got %d", len(chunks[0].Interactive.Action.Sections[0].Rows))
+	}
+}
+
+func TestInteractiveAutoChunkingListRows(t *testing.T) {
+	// 15 list rows -> Auto-chunk into 2 list messages (10 rows + 5 rows)
+	rows := make([]InteractiveRow, 15)
+	for i := 0; i < 15; i++ {
+		rows[i] = InteractiveRow{
+			ID:    "item_" + string(rune('a'+i)),
+			Title: "Opção " + string(rune('A'+i)),
+		}
+	}
+
+	payload := &InteractivePayload{
+		Type:       "list",
+		ButtonText: "Ver Cardápio",
+		Body:       "Escolha seus pratos:",
+		Sections:   []InteractiveSection{{Title: "Pratos", Rows: rows}},
+	}
+
+	chunks, err := payload.ToMetaJSONChunks("+5511999999999")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(chunks) != 2 {
+		t.Fatalf("expected 2 list message chunks, got %d", len(chunks))
+	}
+
+	if len(chunks[0].Interactive.Action.Sections[0].Rows) != 10 {
+		t.Errorf("chunk 0 rows = %d, want 10", len(chunks[0].Interactive.Action.Sections[0].Rows))
+	}
+	if len(chunks[1].Interactive.Action.Sections[0].Rows) != 5 {
+		t.Errorf("chunk 1 rows = %d, want 5", len(chunks[1].Interactive.Action.Sections[0].Rows))
+	}
+}
