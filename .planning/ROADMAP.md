@@ -76,10 +76,17 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 
 </details>
 
-<details open>
-<summary>✅ v1.5 Email Channels & Tracking Engine (Phase 28) — SHIPPED 2026-07-24</summary>
+<details>
+<summary>✅ v1.5 Email Channels & Tracking Engine (Phase 28) — SHIPPED 2026-07-25</summary>
 
-- [x] Phase 28: Email Channels & Tracking Engine (SMTP, Amazon SES, Mautic, Open/Click Tracking) — completed 2026-07-24
+- [x] Phase 28: Email Channels & Tracking Engine (SMTP, Amazon SES, Mautic, Open/Click Tracking) — completed 2026-07-25
+
+</details>
+
+<details open>
+<summary>🔄 v1.6 Connection Slugs & API Channel Routing (Phase 29) — IN PROGRESS</summary>
+
+- [ ] Phase 29: Connection Slugs & Human-Friendly Channel Identifiers for API Routing
 
 </details>
 
@@ -106,7 +113,8 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 25. Implement JSON-to-Protobuf mapping for rich interactive messages | v1.4 | 1/1 | Complete    | 2026-07-20 |
 | 26. Implement Telegram Inline Keyboards and Forum Threads mapping | v1.4 | 1/1 | Complete    | 2026-07-20 |
 | 27. Implement Instagram Stories handling and Quick Replies mapping | v1.4 | 1/1 | Complete    | 2026-07-20 |
-| 28. Email Channels & Tracking Engine | v1.5 | 2/2 | Complete | 2026-07-24 |
+| 28. Email Channels & Tracking Engine | v1.5 | 2/2 | Complete | 2026-07-25 |
+| 29. Connection Slugs & API Channel Routing | v1.6 | 0/1 | In Progress | - |
 
 ---
 *Roadmap created: 2026-07-14*
