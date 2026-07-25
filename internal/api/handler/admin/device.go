@@ -20,6 +20,7 @@ import (
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/pkg/slug"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
@@ -303,11 +304,24 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 		`, validationErr.Error()))
 	}
 
+	baseSlug := slug.Generate(name)
+	candidateSlug := baseSlug
+	counter := 1
+	for {
+		existing, err := h.Connections.GetBySlug(ctx, workspaceID, candidateSlug)
+		if errors.Is(err, repository.ErrConnectionNotFound) || existing == nil {
+			break
+		}
+		counter++
+		candidateSlug = fmt.Sprintf("%s-%d", baseSlug, counter)
+	}
+
 	now := time.Now().UTC()
 	conn := &repository.Connection{
 		ID:             connID,
 		WorkspaceID:    workspaceID,
 		Name:           name,
+		Slug:           candidateSlug,
 		Channel:        channel,
 		SenderIdentity: senderIdentity,
 		Status:         "connected",
@@ -340,6 +354,51 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 	if strings.Contains(currentURL, "/campaigns") {
 		c.Response().Header().Set("HX-Trigger", "connection-created")
 		return c.NoContent(200)
+	}
+
+	connections, err := h.Connections.ListByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to reload connections")
+	}
+
+	return mw.Render(c, http.StatusOK, pages.ConnectionTable(connections))
+}
+
+// UpdateSlug updates a connection's slug.
+// POST /admin/devices/:id/slug
+func (h *DeviceHandler) UpdateSlug(c *echo.Context) error {
+	ctx := c.Request().Context()
+	workspaceID := resolveWorkspaceID(c)
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	connIDStr := c.Param("id")
+	connID, err := uuid.Parse(connIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid connection id")
+	}
+
+	rawSlug := c.FormValue("slug")
+	sanitizedSlug := slug.Generate(rawSlug)
+	if sanitizedSlug == "" {
+		return c.String(http.StatusBadRequest, "invalid slug")
+	}
+
+	conn, err := h.Connections.GetByID(ctx, connID)
+	if err != nil || conn.WorkspaceID != workspaceID {
+		return c.String(http.StatusNotFound, "connection not found")
+	}
+
+	if conn.Slug != sanitizedSlug {
+		existing, err := h.Connections.GetBySlug(ctx, workspaceID, sanitizedSlug)
+		if err == nil && existing != nil && existing.ID != connID {
+			return c.String(http.StatusConflict, "slug already in use")
+		}
+
+		if err := h.Connections.UpdateSlug(ctx, connID, sanitizedSlug); err != nil {
+			return c.String(http.StatusInternalServerError, "failed to update slug: "+err.Error())
+		}
 	}
 
 	connections, err := h.Connections.ListByWorkspace(ctx, workspaceID)

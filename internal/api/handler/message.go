@@ -26,6 +26,7 @@ type Publisher interface {
 
 // ConnectionFinder abstracts querying connection details for routing.
 type ConnectionFinder interface {
+	GetBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error)
 	GetBySenderIdentity(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error)
 	GetDefaultChannelConnection(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error)
 }

@@ -42,6 +42,7 @@ templ ConnectionTable(connections []*repository.Connection) {
 			<thead class="bg-zinc-50 text-zinc-500 text-xs font-semibold uppercase tracking-wider text-left border-b border-zinc-200">
 				<tr>
 					<th class="px-6 py-3">Nome</th>
+					<th class="px-6 py-3">Slug (API)</th>
 					<th class="px-6 py-3">Canal</th>
 					<th class="px-6 py-3">Status</th>
 					<th class="px-6 py-3">Identidade</th>
@@ -55,7 +56,7 @@ templ ConnectionTable(connections []*repository.Connection) {
 				}
 				if len(connections) == 0 {
 					<tr>
-						<td colspan="6" class="px-6 py-12 text-center text-zinc-400">Nenhuma conexão cadastrada. Clique em "Nova Conexão" para começar.</td>
+						<td colspan="7" class="px-6 py-12 text-center text-zinc-400">Nenhuma conexão cadastrada. Clique em "Nova Conexão" para começar.</td>
 					</tr>
 				}
 			</tbody>
@@ -67,6 +68,23 @@ templ ConnectionTable(connections []*repository.Connection) {
 templ ConnectionRow(conn *repository.Connection) {
 	<tr class="device-row hover:bg-zinc-50/50 transition-colors" id={ "connection-row-" + conn.ID.String() }>
 		<td class="px-6 py-4 font-semibold text-zinc-900">{ conn.Name }</td>
+		<td class="px-6 py-4 font-mono text-xs">
+			<form
+				hx-post={ "/admin/devices/" + conn.ID.String() + "/slug" }
+				hx-target="#connections-table-container"
+				hx-swap="innerHTML"
+				class="inline-flex items-center gap-1"
+			>
+				<input
+					type="text"
+					name="slug"
+					value={ conn.Slug }
+					required
+					class="form-input text-xs font-mono px-2 py-0.5 border border-zinc-200 rounded bg-zinc-50 focus:bg-white focus:border-zinc-400 focus:outline-none w-36 font-semibold text-zinc-800"
+					title="Clique para editar e pressione Enter para salvar"
+				/>
+			</form>
+		</td>
 		<td class="px-6 py-4">
 			@ChannelIcon(conn.Channel)
 		</td>

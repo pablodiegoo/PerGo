@@ -301,6 +301,30 @@ func (r *ConnectionRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+// UpdateSlug changes the connection slug and updates the in-memory cache.
+func (r *ConnectionRepository) UpdateSlug(ctx context.Context, id uuid.UUID, newSlug string) error {
+	r.mu.Lock()
+	var oldKey string
+	for k, conn := range r.slugCache {
+		if conn.ID == id {
+			oldKey = k
+			conn.Slug = newSlug
+			break
+		}
+	}
+	if oldKey != "" {
+		delete(r.slugCache, oldKey)
+	}
+	r.mu.Unlock()
+
+	_, err := r.pool.Exec(ctx, `
+		UPDATE connections 
+		SET slug = $2, updated_at = NOW()
+		WHERE id = $1
+	`, id, newSlug)
+	return err
+}
+
 // SaveCredentials encrypts and updates the credentials for a connection.
 func (r *ConnectionRepository) SaveCredentials(ctx context.Context, id uuid.UUID, plaintext []byte) error {
 	if len(plaintext) == 0 {

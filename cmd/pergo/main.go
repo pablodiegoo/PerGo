@@ -579,6 +579,7 @@ func main() {
 	adminGroup.GET("/devices/qr", deviceHandler.GetQR)
 	adminGroup.DELETE("/devices/:id", deviceHandler.Disconnect)
 	adminGroup.POST("/devices/create", deviceHandler.Create)
+	adminGroup.POST("/devices/:id/slug", deviceHandler.UpdateSlug)
 	adminGroup.GET("/devices/test", deviceHandler.TestForm)
 	adminGroup.POST("/devices/test", deviceHandler.RunTest)
 	adminGroup.GET("/devices/test/ws", deviceHandler.WS)

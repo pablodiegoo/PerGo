@@ -58,8 +58,8 @@ func TestTypebotSettingsHandler(t *testing.T) {
 	// Wait, let's see how connRepo saves connection, or let's use SQL directly to avoid any crypto setup issues.
 	// Let's insert via SQL.
 	_, err = pool.Exec(ctx, `
-		INSERT INTO connections (id, workspace_id, name, channel, sender_identity, status, is_default, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+		INSERT INTO connections (id, workspace_id, name, slug, channel, sender_identity, status, is_default, created_at, updated_at)
+		VALUES ($1, $2, $3, 'mock-conn', $4, $5, $6, $7, NOW(), NOW())
 	`, mockConn.ID, mockConn.WorkspaceID, mockConn.Name, mockConn.Channel, mockConn.SenderIdentity, mockConn.Status, mockConn.IsDefault)
 	if err != nil {
 		t.Fatalf("failed to insert mock connection: %v", err)

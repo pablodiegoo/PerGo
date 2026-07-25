@@ -13,13 +13,22 @@ import (
 
 	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
 type mockConnectionRepo struct {
+	GetBySlugFunc                   func(ctx context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error)
 	GetBySenderIdentityFunc         func(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error)
 	GetDefaultChannelConnectionFunc func(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error)
+}
+
+func (m *mockConnectionRepo) GetBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error) {
+	if m.GetBySlugFunc != nil {
+		return m.GetBySlugFunc(ctx, workspaceID, slug)
+	}
+	return nil, repository.ErrConnectionNotFound
 }
 
 func (m *mockConnectionRepo) GetBySenderIdentity(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error) {
@@ -191,13 +200,23 @@ func TestCreateMessageMissingTo(t *testing.T) {
 
 func TestCreateMessageInvalidChannel(t *testing.T) {
 	e := echo.New()
-	h := newTestMessageHandler()
+	mockRepo := &mockConnectionRepo{
+		GetBySlugFunc: func(ctx context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error) {
+			return nil, repository.ErrConnectionNotFound
+		},
+		GetDefaultChannelConnectionFunc: func(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error) {
+			return nil, repository.ErrConnectionNotFound
+		},
+	}
+	h := &MessageHandler{
+		Ingestor: outbound.NewProcessor(nil, nil, mockRepo, nil),
+	}
 	h.RegisterRoutes(e)
 
 	traceID := uuid.New().String()
 	wsID := uuid.New()
 
-	body := `{"to":"+1234567890","channel":"sms","body":"Hello"}`
+	body := `{"to":"+1234567890","channel":"unknown-slug","body":"Hello"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(testContext(traceID, wsID))
@@ -205,24 +224,8 @@ func TestCreateMessageInvalidChannel(t *testing.T) {
 
 	e.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected 400, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var resp domain.ErrorResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal response: %v", err)
-	}
-
-	found := false
-	for _, d := range resp.Details {
-		if d.Field == "channel" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected field error for 'channel', got %+v", resp.Details)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -520,11 +523,6 @@ func TestCreateMessageInvalidFallbackChannels(t *testing.T) {
 		body          string
 		expectedField string
 	}{
-		{
-			name:          "unsupported fallback channel",
-			body:          `{"to":"+1234567890","channel":"whatsapp","body":"Hello","fallback_channels":["sms"]}`,
-			expectedField: "fallback_channels[0]",
-		},
 		{
 			name:          "duplicate fallback channel",
 			body:          `{"to":"+1234567890","channel":"whatsapp","body":"Hello","fallback_channels":["telegram","telegram"]}`,

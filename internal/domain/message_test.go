@@ -76,28 +76,6 @@ func TestValidateMessageMissingChannel(t *testing.T) {
 	}
 }
 
-func TestValidateMessageInvalidChannel(t *testing.T) {
-	req := &CreateMessageRequest{
-		To:      "+1234567890",
-		Channel: "sms",
-		Body:    "Hello",
-	}
-	err := ValidateMessage(req)
-	if err == nil {
-		t.Fatal("expected error for invalid channel, got nil")
-	}
-	found := false
-	for _, d := range err.Details {
-		if d.Field == "channel" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected field error for 'channel', got %+v", err.Details)
-	}
-}
-
 func TestValidateMessageZeroTTL(t *testing.T) {
 	zero := 0
 	req := &CreateMessageRequest{
@@ -329,34 +307,12 @@ func TestValidateMessageTemplateValid(t *testing.T) {
 	}
 }
 
-func TestValidateMessageTemplateInvalidChannel(t *testing.T) {
-	req := &CreateMessageRequest{
-		To:           "+1234567890",
-		Channel:      "whatsapp",
-		TemplateName: "welcome_template",
-		Language:     "en",
-	}
-	err := ValidateMessage(req)
-	if err == nil {
-		t.Fatal("expected error for template on non-whatsapp_cloud channel, got nil")
-	}
-	found := false
-	for _, d := range err.Details {
-		if d.Field == "template_name" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected field error for 'template_name', got %+v", err.Details)
-	}
-}
-
 func TestValidateMessageTemplateMissingLanguage(t *testing.T) {
 	req := &CreateMessageRequest{
 		To:           "+1234567890",
-		Channel:      "whatsapp_cloud",
+		Channel:      "vendas-waba",
 		TemplateName: "welcome_template",
+		Language:     "",
 	}
 	err := ValidateMessage(req)
 	if err == nil {
