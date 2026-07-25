@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pablojhp.pergo/internal/pkg/slug"
 )
 
 // ErrConnectionNotFound is returned when a connection cannot be found.
@@ -21,6 +23,7 @@ type Connection struct {
 	ID             uuid.UUID  `json:"id"`
 	WorkspaceID    uuid.UUID  `json:"workspace_id"`
 	Name           string     `json:"name"`
+	Slug           string     `json:"slug"`
 	Channel        string     `json:"channel"`
 	SenderIdentity string     `json:"sender_identity"`
 	Status         string     `json:"status"`
@@ -38,14 +41,17 @@ type Connection struct {
 // ConnectionRepository manages CRUD operations and credentials crypto for Connection.
 type ConnectionRepository struct {
 	pool      *pgxpool.Pool
-	provider CredentialProvider
+	provider  CredentialProvider
+	slugCache map[string]*Connection
+	mu        sync.RWMutex
 }
 
 // NewConnectionRepository creates a new ConnectionRepository.
 func NewConnectionRepository(pool *pgxpool.Pool, provider CredentialProvider) *ConnectionRepository {
 	return &ConnectionRepository{
-		pool:     pool,
-		provider: provider,
+		pool:      pool,
+		provider:  provider,
+		slugCache: make(map[string]*Connection),
 	}
 }
 
@@ -53,6 +59,10 @@ func NewConnectionRepository(pool *pgxpool.Pool, provider CredentialProvider) *C
 func (r *ConnectionRepository) Create(ctx context.Context, c *Connection) error {
 	if c.ID == uuid.Nil {
 		c.ID = uuid.New()
+	}
+
+	if c.Slug == "" {
+		c.Slug = slug.Generate(c.Name)
 	}
 
 	if c.ConnectedSince == nil && (c.Status == "connected" || c.Status == "active") {
@@ -85,15 +95,21 @@ func (r *ConnectionRepository) Create(ctx context.Context, c *Connection) error 
 
 	_, err := r.pool.Exec(ctx, `
 		INSERT INTO connections (
-			id, workspace_id, name, channel, sender_identity, status, is_default, 
+			id, workspace_id, name, slug, channel, sender_identity, status, is_default, 
 			credentials, key_id, key_version, jid, connected_since, proxy_url, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
 	`,
-		c.ID, c.WorkspaceID, c.Name, c.Channel, c.SenderIdentity, c.Status, c.IsDefault,
+		c.ID, c.WorkspaceID, c.Name, c.Slug, c.Channel, c.SenderIdentity, c.Status, c.IsDefault,
 		ciphertext, keyID, keyVersion, c.JID, c.ConnectedSince, c.ProxyURL,
 	)
 	if err != nil {
 		return err
+	}
+
+	if c.Slug != "" {
+		r.mu.Lock()
+		r.slugCache[c.WorkspaceID.String()+":"+c.Slug] = c
+		r.mu.Unlock()
 	}
 
 	return nil
@@ -102,7 +118,7 @@ func (r *ConnectionRepository) Create(ctx context.Context, c *Connection) error 
 // GetByID retrieves a connection by ID, decrypting credentials if present.
 func (r *ConnectionRepository) GetByID(ctx context.Context, id uuid.UUID) (*Connection, error) {
 	query := `
-		SELECT id, workspace_id, name, channel, sender_identity, status, is_default, 
+		SELECT id, workspace_id, name, slug, channel, sender_identity, status, is_default, 
 		       credentials, key_id, key_version, jid, connected_since, proxy_url, created_at, updated_at
 		FROM connections
 		WHERE id = $1
@@ -111,10 +127,40 @@ func (r *ConnectionRepository) GetByID(ctx context.Context, id uuid.UUID) (*Conn
 	return r.scanAndDecrypt(row)
 }
 
+// GetBySlug retrieves a connection by workspace ID and slug, utilizing an in-memory cache.
+func (r *ConnectionRepository) GetBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (*Connection, error) {
+	cacheKey := workspaceID.String() + ":" + slug
+
+	r.mu.RLock()
+	if conn, ok := r.slugCache[cacheKey]; ok {
+		r.mu.RUnlock()
+		return conn, nil
+	}
+	r.mu.RUnlock()
+
+	query := `
+		SELECT id, workspace_id, name, slug, channel, sender_identity, status, is_default, 
+		       credentials, key_id, key_version, jid, connected_since, proxy_url, created_at, updated_at
+		FROM connections
+		WHERE workspace_id = $1 AND slug = $2
+	`
+	row := r.pool.QueryRow(ctx, query, workspaceID, slug)
+	conn, err := r.scanAndDecrypt(row)
+	if err != nil {
+		return nil, err
+	}
+
+	r.mu.Lock()
+	r.slugCache[cacheKey] = conn
+	r.mu.Unlock()
+
+	return conn, nil
+}
+
 // GetBySenderIdentity retrieves a connection by sender identity, decrypting credentials if present.
 func (r *ConnectionRepository) GetBySenderIdentity(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*Connection, error) {
 	query := `
-		SELECT id, workspace_id, name, channel, sender_identity, status, is_default, 
+		SELECT id, workspace_id, name, slug, channel, sender_identity, status, is_default, 
 		       credentials, key_id, key_version, jid, connected_since, proxy_url, created_at, updated_at
 		FROM connections
 		WHERE workspace_id = $1 AND sender_identity = $2
@@ -126,7 +172,7 @@ func (r *ConnectionRepository) GetBySenderIdentity(ctx context.Context, workspac
 // GetByJID retrieves a connection by its WhatsApp JID.
 func (r *ConnectionRepository) GetByJID(ctx context.Context, jid string) (*Connection, error) {
 	query := `
-		SELECT id, workspace_id, name, channel, sender_identity, status, is_default, 
+		SELECT id, workspace_id, name, slug, channel, sender_identity, status, is_default, 
 		       credentials, key_id, key_version, jid, connected_since, proxy_url, created_at, updated_at
 		FROM connections
 		WHERE jid = $1
@@ -139,7 +185,7 @@ func (r *ConnectionRepository) GetByJID(ctx context.Context, jid string) (*Conne
 // GetDefaultChannelConnection retrieves the default connection for a given workspace and channel.
 func (r *ConnectionRepository) GetDefaultChannelConnection(ctx context.Context, workspaceID uuid.UUID, channel string) (*Connection, error) {
 	query := `
-		SELECT id, workspace_id, name, channel, sender_identity, status, is_default, 
+		SELECT id, workspace_id, name, slug, channel, sender_identity, status, is_default, 
 		       credentials, key_id, key_version, jid, connected_since, proxy_url, created_at, updated_at
 		FROM connections
 		WHERE workspace_id = $1 AND channel = $2 AND is_default = TRUE
@@ -151,7 +197,7 @@ func (r *ConnectionRepository) GetDefaultChannelConnection(ctx context.Context, 
 // ListByWorkspace returns all connections for a workspace.
 func (r *ConnectionRepository) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]*Connection, error) {
 	query := `
-		SELECT id, workspace_id, name, channel, sender_identity, status, is_default, 
+		SELECT id, workspace_id, name, slug, channel, sender_identity, status, is_default, 
 		       credentials, key_id, key_version, jid, connected_since, proxy_url, created_at, updated_at
 		FROM connections
 		WHERE workspace_id = $1
@@ -177,7 +223,7 @@ func (r *ConnectionRepository) ListByWorkspace(ctx context.Context, workspaceID 
 // ListAll returns all connections across all workspaces.
 func (r *ConnectionRepository) ListAll(ctx context.Context) ([]*Connection, error) {
 	query := `
-		SELECT id, workspace_id, name, channel, sender_identity, status, is_default, 
+		SELECT id, workspace_id, name, slug, channel, sender_identity, status, is_default, 
 		       credentials, key_id, key_version, jid, connected_since, proxy_url, created_at, updated_at
 		FROM connections
 		ORDER BY created_at
@@ -206,6 +252,18 @@ func (r *ConnectionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, s
 		connectedSince = time.Now().UTC()
 	}
 
+	r.mu.Lock()
+	for _, conn := range r.slugCache {
+		if conn.ID == id {
+			conn.Status = status
+			if status == "connected" || status == "active" {
+				now := time.Now().UTC()
+				conn.ConnectedSince = &now
+			}
+		}
+	}
+	r.mu.Unlock()
+
 	// Update status. If WhatsApp Web (whatsmeow), handle 'terminal' status locks.
 	// (Note: device.go had logic preventing disconnect from overwriting terminal, let's keep that structure)
 	if status == "disconnected" {
@@ -231,6 +289,14 @@ func (r *ConnectionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, s
 
 // Delete removes a connection from the database.
 func (r *ConnectionRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	r.mu.Lock()
+	for k, conn := range r.slugCache {
+		if conn.ID == id {
+			delete(r.slugCache, k)
+		}
+	}
+	r.mu.Unlock()
+
 	_, err := r.pool.Exec(ctx, "DELETE FROM connections WHERE id = $1", id)
 	return err
 }
@@ -245,6 +311,14 @@ func (r *ConnectionRepository) SaveCredentials(ctx context.Context, id uuid.UUID
 	if err != nil {
 		return fmt.Errorf("failed to encrypt credentials: %w", err)
 	}
+
+	r.mu.Lock()
+	for _, conn := range r.slugCache {
+		if conn.ID == id {
+			conn.Credentials = plaintext
+		}
+	}
+	r.mu.Unlock()
 
 	_, err = r.pool.Exec(ctx, `
 		UPDATE connections 
@@ -288,7 +362,7 @@ func (r *ConnectionRepository) scanAndDecrypt(row pgx.Row) (*Connection, error) 
 	var proxyURL sql.NullString
 
 	err := row.Scan(
-		&c.ID, &c.WorkspaceID, &c.Name, &c.Channel, &c.SenderIdentity, &c.Status, &c.IsDefault,
+		&c.ID, &c.WorkspaceID, &c.Name, &c.Slug, &c.Channel, &c.SenderIdentity, &c.Status, &c.IsDefault,
 		&ciphertext, &keyID, &keyVersion, &jid, &connectedSince, &proxyURL, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
@@ -333,7 +407,7 @@ func (r *ConnectionRepository) scanRowAndDecrypt(rows pgx.Rows) (*Connection, er
 	var proxyURL sql.NullString
 
 	err := rows.Scan(
-		&c.ID, &c.WorkspaceID, &c.Name, &c.Channel, &c.SenderIdentity, &c.Status, &c.IsDefault,
+		&c.ID, &c.WorkspaceID, &c.Name, &c.Slug, &c.Channel, &c.SenderIdentity, &c.Status, &c.IsDefault,
 		&ciphertext, &keyID, &keyVersion, &jid, &connectedSince, &proxyURL, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {

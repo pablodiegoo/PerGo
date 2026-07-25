@@ -132,6 +132,26 @@ func TestConnectionRepository(t *testing.T) {
 		t.Errorf("got connection ID %s, want %s", retrieved2.ID, conn.ID)
 	}
 
+	// 3b. Test GetBySlug & Caching
+	if conn.Slug == "" {
+		t.Errorf("expected auto-generated slug on create, got empty string")
+	}
+	retrievedBySlug, err := repo.GetBySlug(ctx, ws.ID, conn.Slug)
+	if err != nil {
+		t.Fatalf("failed to retrieve connection by slug: %v", err)
+	}
+	if retrievedBySlug.ID != conn.ID {
+		t.Errorf("got connection ID %s by slug, want %s", retrievedBySlug.ID, conn.ID)
+	}
+	// Call again to verify cache hit
+	cachedRetrieved, err := repo.GetBySlug(ctx, ws.ID, conn.Slug)
+	if err != nil {
+		t.Fatalf("failed to retrieve connection by slug from cache: %v", err)
+	}
+	if cachedRetrieved.ID != conn.ID {
+		t.Errorf("got cached connection ID %s, want %s", cachedRetrieved.ID, conn.ID)
+	}
+
 	// 4. Test GetDefaultChannelConnection
 	retrievedDefault, err := repo.GetDefaultChannelConnection(ctx, ws.ID, conn.Channel)
 	if err != nil {
