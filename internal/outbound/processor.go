@@ -26,6 +26,7 @@ type QueueDepthChecker interface {
 
 // RouteResolver defines the port for connection routing resolution.
 type RouteResolver interface {
+	GetBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error)
 	GetBySenderIdentity(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error)
 	GetDefaultChannelConnection(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error)
 }
@@ -127,7 +128,7 @@ func (p *Processor) Ingest(
 				Err:     err,
 			}
 		}
-		if conn.Channel != req.Channel {
+		if conn.Channel != req.Channel && conn.Slug != req.Channel {
 			return nil, &ValidationError{
 				Response: &domain.ErrorResponse{
 					Code:    "route_not_found",
@@ -136,11 +137,21 @@ func (p *Processor) Ingest(
 			}
 		}
 	} else {
-		conn, err = p.resolver.GetDefaultChannelConnection(ctx, workspaceID, req.Channel)
+		conn, err = p.resolver.GetBySlug(ctx, workspaceID, req.Channel)
 		if err != nil {
-			return nil, &RouteError{
-				Message: "no default connection found for channel",
-				Err:     err,
+			if errors.Is(err, repository.ErrConnectionNotFound) {
+				conn, err = p.resolver.GetDefaultChannelConnection(ctx, workspaceID, req.Channel)
+				if err != nil {
+					return nil, &RouteError{
+						Message: "no connection route resolved for channel or slug",
+						Err:     err,
+					}
+				}
+			} else {
+				return nil, &RouteError{
+					Message: "failed to resolve connection route by slug",
+					Err:     err,
+				}
 			}
 		}
 	}
@@ -152,7 +163,7 @@ func (p *Processor) Ingest(
 		SenderIdentity:   conn.SenderIdentity,
 		TraceID:          traceID,
 		To:               req.To,
-		Channel:          req.Channel,
+		Channel:          conn.Channel,
 		Body:             req.Body,
 		Media:            req.Media,
 		Metadata:         req.Metadata,

@@ -180,11 +180,6 @@ func ValidateMessage(req *CreateMessageRequest) *ErrorResponse {
 			Field:   "channel",
 			Message: "is required",
 		})
-	} else if !ValidChannels[req.Channel] {
-		details = append(details, FieldError{
-			Field:   "channel",
-			Message: "must be one of: whatsapp, whatsapp_cloud, telegram, instagram, email, email_ses, email_smtp, email_mautic",
-		})
 	}
 
 	if req.TTLSeconds != nil && *req.TTLSeconds <= 0 {
@@ -195,12 +190,6 @@ func ValidateMessage(req *CreateMessageRequest) *ErrorResponse {
 	}
 
 	if req.TemplateName != "" {
-		if req.Channel != "whatsapp_cloud" {
-			details = append(details, FieldError{
-				Field:   "template_name",
-				Message: "templates are only supported for whatsapp_cloud channel",
-			})
-		}
 		if req.Language == "" {
 			details = append(details, FieldError{
 				Field:   "language",
@@ -215,12 +204,6 @@ func ValidateMessage(req *CreateMessageRequest) *ErrorResponse {
 		seen[req.Channel] = true
 	}
 	for i, fb := range req.FallbackChannels {
-		if !ValidChannels[fb] {
-			details = append(details, FieldError{
-				Field:   fmt.Sprintf("fallback_channels[%d]", i),
-				Message: "unsupported channel: must be one of: whatsapp, whatsapp_cloud, telegram, instagram, email, email_ses, email_smtp, email_mautic",
-			})
-		}
 		if seen[fb] {
 			details = append(details, FieldError{
 				Field:   fmt.Sprintf("fallback_channels[%d]", i),

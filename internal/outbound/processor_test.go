@@ -80,12 +80,20 @@ func (f *fakeQueueDepthTracker) Increment(workspaceID uuid.UUID) {
 	f.increment = workspaceID
 }
 
-
-
 // fakeRouteResolver mocks connection lookups.
 type fakeRouteResolver struct {
 	conn *repository.Connection
 	err  error
+}
+
+func (f *fakeRouteResolver) GetBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.conn != nil && f.conn.Slug != "" && f.conn.Slug == slug {
+		return f.conn, nil
+	}
+	return nil, repository.ErrConnectionNotFound
 }
 
 func (f *fakeRouteResolver) GetBySenderIdentity(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error) {
@@ -154,6 +162,42 @@ func TestProcessor_Ingest(t *testing.T) {
 		}
 		if qMsg.ConnectionID != connID {
 			t.Errorf("got ConnectionID %s, want %s", qMsg.ConnectionID, connID)
+		}
+	})
+
+	t.Run("Ingest message with connection slug succeeds", func(t *testing.T) {
+		slugConn := &repository.Connection{
+			ID:             uuid.New(),
+			WorkspaceID:    wsID,
+			Name:           "Vendas SP",
+			Slug:           "vendas-sp",
+			Channel:        "whatsapp",
+			SenderIdentity: "5511999990001",
+			Status:         "connected",
+		}
+		tracker := &fakeQueueDepthTracker{}
+		me := &fakeMediaEngine{}
+		resolver := &fakeRouteResolver{conn: slugConn}
+		publisher := &fakePublisher{}
+
+		p := outbound.NewProcessor(tracker, me, resolver, publisher)
+
+		req := &domain.CreateMessageRequest{
+			To:      "5511988887777",
+			Channel: "vendas-sp",
+			Body:    "Olá de Vendas SP!",
+		}
+
+		qMsg, err := p.Ingest(context.Background(), wsID, traceID, req)
+		if err != nil {
+			t.Fatalf("Ingest with slug failed: %v", err)
+		}
+
+		if qMsg.Channel != "whatsapp" {
+			t.Errorf("got resolved QueueMessage Channel %q, want underlying channel %q", qMsg.Channel, "whatsapp")
+		}
+		if qMsg.ConnectionID != slugConn.ID {
+			t.Errorf("got ConnectionID %s, want %s", qMsg.ConnectionID, slugConn.ID)
 		}
 		if len(publisher.published) != 1 {
 			t.Errorf("expected 1 published message, got %d", len(publisher.published))
