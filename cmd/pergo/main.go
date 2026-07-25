@@ -404,6 +404,12 @@ func main() {
 	typebotWebhookHandler := handler.NewTypebotWebhookHandler(pool, publisher)
 	e.POST("/api/integrations/typebot", typebotWebhookHandler.Handle)
 
+	// --- Email Tracking & Webhook handler ---
+	emailTrackingHandler := inbound.NewEmailTrackingHandler(string(kek), dispatchRepo)
+	e.GET("/v1/webhooks/email/open", emailTrackingHandler.HandleOpen)
+	e.GET("/v1/webhooks/email/click", emailTrackingHandler.HandleClick)
+	e.POST("/v1/webhooks/email/ses", emailTrackingHandler.HandleSESWebhook)
+
 	// --- Landing Page ---
 	e.GET("/", func(c *echo.Context) error {
 		return middleware.Render(c, http.StatusOK, pages.Landing())
