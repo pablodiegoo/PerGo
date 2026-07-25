@@ -19,3 +19,13 @@
 ### REQ-WABA-FLOW-DECODE: Automatic Flow Response Webhook Decoding
 - **Description**: Incoming `nfm_reply` webhooks from completed Meta Flows must be parsed and decoded automatically.
 - **Behavior**: The escaped JSON string in `response_json` is unmarshaled into a clean `data` map and emitted as a `type: "flow_response"` event to the client webhook.
+
+## WABA Commerce & Catalog Requirements
+
+### REQ-WABA-CATALOG-SEND: Simplified Product & Catalog Dispatch
+- **Description**: The API must allow dispatching single products (`type: "product"`) and multi-product lists (`type: "product_list"`) by specifying product SKUs.
+- **Behavior**: PerGo automatically resolves the `catalog_id` from connection metadata if omitted, and transforms the request into Meta Graph API v25.0 interactive product payloads.
+
+### REQ-WABA-ORDER-WEBHOOK: Normalized Shopping Cart Order Webhooks
+- **Description**: Incoming shopping cart orders placed by customers in WhatsApp must be parsed into normalized `order.created` events.
+- **Behavior**: The PerGo webhook handler parses items, quantities, prices, currency, and customer notes into a structured `order.created` JSON event.
