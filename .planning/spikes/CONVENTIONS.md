@@ -22,3 +22,4 @@ Patterns and stack choices established across spike sessions. New spikes follow 
 - **Throttling**: Staggered dispatching (1-3s random delay) for WhatsApp Web instances.
 - **Credential Migration**: When consolidating credential sources, always migrate handler dependencies from legacy repo to connections repo — never maintain two credential access paths simultaneously.
 - **Gap Auditing**: Cross-reference context/ PRDs against spike MANIFEST → codebase files using parallel subagents for exhaustive coverage.
+- **WABA Interactive Payload Standard**: Standardize `InteractivePayload` on `domain.CreateMessageRequest` supporting 5 core types: `button` (1-3 reply buttons), `list` (sectioned menu, max 10 rows), `cta_url` (CTA link button), `location_request` (GPS request), and `flow` (Meta Flow). Transform to Meta Cloud API v21.0 `type: "interactive"` in WABA provider adapter.

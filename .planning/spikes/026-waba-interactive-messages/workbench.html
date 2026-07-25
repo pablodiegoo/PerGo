@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PerGo — WABA Interactive Messages Test Bench</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    code, pre { font-family: 'JetBrains Mono', monospace; }
+    .wa-bg {
+      background-color: #0b141a;
+      background-image: radial-gradient(#1f2c34 1px, transparent 1px);
+      background-size: 16px 16px;
+    }
+  </style>
+</head>
+<body class="bg-zinc-50 text-zinc-900 min-h-screen">
+  
+  <!-- Header -->
+  <header class="bg-white border-b border-zinc-200 px-6 py-4 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold text-lg">P</div>
+        <div>
+          <h1 class="font-bold text-lg text-zinc-900 leading-tight">PerGo — WABA Interactive Messages Engine</h1>
+          <p class="text-xs text-zinc-500">Spike 026: Meta WhatsApp Cloud API v21.0 Interactive Payload Builder & Live Preview</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="badge badge-emerald gap-1 font-semibold text-xs bg-emerald-50 text-emerald-700 border-emerald-200 py-3 px-3">
+          <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/></svg>
+          WABA Cloud API v21.0 Ready
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Layout -->
+  <div class="max-w-7xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- Column 1: Config Form (5 cols) -->
+    <div class="lg:col-span-5 space-y-6">
+      
+      <!-- Interactive Type Selector -->
+      <div class="bg-white p-5 rounded-xl border border-zinc-200 shadow-sm">
+        <label class="block text-xs font-semibold uppercase text-zinc-500 tracking-wider mb-3">Tipo de Mensagem Interativa</label>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2" id="type-selector">
+          <button onclick="setType('button')" id="btn-type-button" class="btn btn-sm text-xs font-semibold bg-emerald-600 text-white border-emerald-600">
+            Botões (1-3)
+          </button>
+          <button onclick="setType('list')" id="btn-type-list" class="btn btn-sm text-xs font-semibold bg-zinc-100 text-zinc-700 border-zinc-200">
+            Lista / Menu
+          </button>
+          <button onclick="setType('cta_url')" id="btn-type-cta_url" class="btn btn-sm text-xs font-semibold bg-zinc-100 text-zinc-700 border-zinc-200">
+            Botão CTA Link
+          </button>
+          <button onclick="setType('location_request')" id="btn-type-location_request" class="btn btn-sm text-xs font-semibold bg-zinc-100 text-zinc-700 border-zinc-200">
+            Localização
+          </button>
+          <button onclick="setType('flow')" id="btn-type-flow" class="btn btn-sm text-xs font-semibold bg-zinc-100 text-zinc-700 border-zinc-200">
+            Meta Flow
+          </button>
+        </div>
+      </div>
+
+      <!-- Form Inputs Container -->
+      <div class="bg-white p-5 rounded-xl border border-zinc-200 shadow-sm space-y-4">
+        
+        <!-- Header -->
+        <div>
+          <label class="block text-xs font-semibold text-zinc-700 mb-1">Cabeçalho (Header)</label>
+          <input type="text" id="input-header" placeholder="Ex: Promoção Exclusiva" oninput="render()" class="w-full text-xs input input-bordered input-sm bg-zinc-50 focus:bg-white" />
+        </div>
+
+        <!-- Body -->
+        <div>
+          <label class="block text-xs font-semibold text-zinc-700 mb-1">Corpo da Mensagem (Body) <span class="text-rose-500">*</span></label>
+          <textarea id="input-body" rows="3" oninput="render()" class="w-full text-xs textarea textarea-bordered bg-zinc-50 focus:bg-white" placeholder="Digite o texto principal da mensagem...">Olá! Escolha uma das opções abaixo para continuar seu atendimento:</textarea>
+        </div>
+
+        <!-- Footer -->
+        <div>
+          <label class="block text-xs font-semibold text-zinc-700 mb-1">Rodapé (Footer)</label>
+          <input type="text" id="input-footer" placeholder="Ex: PerGo Omnichannel CPaaS" value="Ecoar CPaaS Gateway" oninput="render()" class="w-full text-xs input input-bordered input-sm bg-zinc-50 focus:bg-white" />
+        </div>
+
+        <hr class="border-zinc-200" />
+
+        <!-- Dynamic Inputs per Type -->
+        
+        <!-- BUTTONS CONFIG -->
+        <div id="config-button" class="space-y-3">
+          <label class="block text-xs font-semibold text-zinc-700">Botões de Resposta Rápida (Máx 3)</label>
+          <div class="space-y-2">
+            <input type="text" id="btn-1" placeholder="Botão 1 (Ex: Falar com Vendas)" value="Falar com Vendas" oninput="render()" class="w-full text-xs input input-bordered input-sm" />
+            <input type="text" id="btn-2" placeholder="Botão 2 (Ex: Suporte Técnico)" value="Suporte Técnico" oninput="render()" class="w-full text-xs input input-bordered input-sm" />
+            <input type="text" id="btn-3" placeholder="Botão 3 (Ex: Cancelar)" value="Cancelar" oninput="render()" class="w-full text-xs input input-bordered input-sm" />
+          </div>
+        </div>
+
+        <!-- LIST CONFIG -->
+        <div id="config-list" class="space-y-3 hidden">
+          <div>
+            <label class="block text-xs font-semibold text-zinc-700 mb-1">Texto do Botão do Menu</label>
+            <input type="text" id="list-btn-text" placeholder="Ex: Ver Menu de Planos" value="Ver Menu de Planos" oninput="render()" class="w-full text-xs input input-bordered input-sm" />
+          </div>
+          <div class="space-y-2">
+            <label class="block text-xs font-semibold text-zinc-700">Itens da Lista (Seção 1)</label>
+            <input type="text" id="list-item-1" placeholder="Item 1 (Ex: Plano Basic - R$ 99/mês)" value="Plano Basic (R$ 99/mês)" oninput="render()" class="w-full text-xs input input-bordered input-sm" />
+            <input type="text" id="list-item-2" placeholder="Item 2 (Ex: Plano Pro - R$ 299/mês)" value="Plano Pro (R$ 299/mês)" oninput="render()" class="w-full text-xs input input-bordered input-sm" />
+            <input type="text" id="list-item-3" placeholder="Item 3 (Ex: Enterprise Custom)" value="Plano Enterprise" oninput="render()" class="w-full text-xs input input-bordered input-sm" />
+          </div>
+        </div>
+
+        <!-- CTA CONFIG -->
+        <div id="config-cta_url" class="space-y-3 hidden">
+          <div>
+            <label class="block text-xs font-semibold text-zinc-700 mb-1">Texto do Botão CTA</label>
+            <input type="text" id="cta-text" placeholder="Ex: Baixar Boleto PDF" value="Baixar Boleto PDF" oninput="render()" class="w-full text-xs input input-bordered input-sm" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-zinc-700 mb-1">URL de Destino</label>
+            <input type="url" id="cta-url" placeholder="https://..." value="https://pagamento.ecoar.com.br/boletos/12345" oninput="render()" class="w-full text-xs input input-bordered input-sm font-mono" />
+          </div>
+        </div>
+
+        <!-- LOCATION CONFIG -->
+        <div id="config-location_request" class="space-y-2 hidden">
+          <p class="text-xs text-zinc-500 bg-amber-50 border border-amber-200 text-amber-800 p-2.5 rounded-lg">
+            <strong>Nota:</strong> Mensagens de localização exibem um botão nativo do WhatsApp solicitando que o usuário compartilhe seu GPS.
+          </p>
+        </div>
+
+        <!-- FLOW CONFIG -->
+        <div id="config-flow" class="space-y-3 hidden">
+          <div>
+            <label class="block text-xs font-semibold text-zinc-700 mb-1">ID do Flow Meta</label>
+            <input type="text" id="flow-id" placeholder="Ex: 1234567890" value="1234567890" oninput="render()" class="w-full text-xs input input-bordered input-sm font-mono" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-zinc-700 mb-1">Texto do Botão (CTA)</label>
+            <input type="text" id="flow-cta" placeholder="Ex: Agendar Consulta" value="Agendar Consulta" oninput="render()" class="w-full text-xs input input-bordered input-sm" />
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Column 2: Live WhatsApp Phone Mockup (3 cols) -->
+    <div class="lg:col-span-3 flex flex-col items-center">
+      <div class="w-full max-w-[320px] bg-zinc-900 p-3 rounded-[36px] shadow-2xl border-4 border-zinc-800">
+        <!-- Phone Notch / Camera -->
+        <div class="w-24 h-4 bg-zinc-950 mx-auto rounded-b-xl mb-3 flex items-center justify-center">
+          <div class="w-2.5 h-2.5 rounded-full bg-zinc-800"></div>
+        </div>
+
+        <!-- WhatsApp Header Bar -->
+        <div class="bg-[#1f2c34] text-white p-2.5 rounded-t-2xl flex items-center gap-2.5">
+          <div class="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center text-xs font-bold">P</div>
+          <div class="flex-1 overflow-hidden">
+            <h4 class="text-xs font-bold leading-tight truncate">PerGo Official</h4>
+            <p class="text-[10px] text-emerald-400">Conta comercial oficial</p>
+          </div>
+        </div>
+
+        <!-- WhatsApp Chat Background -->
+        <div class="wa-bg p-3 min-h-[380px] max-h-[460px] overflow-y-auto flex flex-col justify-end">
+          
+          <!-- Message Bubble -->
+          <div class="bg-[#202c33] text-white rounded-lg p-3 max-w-[92%] shadow-md mb-2 text-xs space-y-2 border border-zinc-700/50">
+            <!-- Header -->
+            <div id="preview-header" class="font-bold text-emerald-400 text-xs pb-1 border-b border-zinc-700/50 hidden"></div>
+            
+            <!-- Body -->
+            <div id="preview-body" class="text-zinc-200 leading-relaxed whitespace-pre-wrap"></div>
+            
+            <!-- Footer -->
+            <div id="preview-footer" class="text-[10px] text-zinc-400 pt-1 hidden"></div>
+
+            <!-- Time -->
+            <div class="text-[9px] text-zinc-400 text-right">16:20 ✓✓</div>
+          </div>
+
+          <!-- Interactive Action Elements -->
+          <div id="preview-actions" class="w-[92%] space-y-1"></div>
+
+        </div>
+
+        <!-- Phone Bottom Bar -->
+        <div class="w-32 h-1 bg-zinc-700 mx-auto rounded-full my-2"></div>
+      </div>
+      <p class="text-xs text-zinc-400 mt-2 text-center font-medium">Prévia em tempo real no WhatsApp</p>
+    </div>
+
+    <!-- Column 3: Meta Cloud API JSON Inspector (4 cols) -->
+    <div class="lg:col-span-4 space-y-6">
+      <div class="bg-zinc-900 text-zinc-100 p-5 rounded-xl border border-zinc-800 shadow-md h-full flex flex-col">
+        <div class="flex items-center justify-between mb-3 border-b border-zinc-800 pb-3">
+          <div class="flex items-center gap-2">
+            <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+            <h3 class="font-bold text-xs uppercase tracking-wider text-zinc-300">Payload Inspector Meta Cloud API</h3>
+          </div>
+          <span class="text-[10px] font-mono text-zinc-500">POST /v21.0/messages</span>
+        </div>
+        <pre class="text-[11px] leading-relaxed overflow-x-auto text-emerald-300 flex-1 bg-zinc-950 p-3 rounded-lg border border-zinc-800/80" id="json-output"></pre>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let currentType = 'button';
+
+    function setType(type) {
+      currentType = type;
+      document.querySelectorAll('#type-selector button').forEach(b => {
+        b.className = 'btn btn-sm text-xs font-semibold bg-zinc-100 text-zinc-700 border-zinc-200';
+      });
+      document.getElementById('btn-type-' + type).className = 'btn btn-sm text-xs font-semibold bg-emerald-600 text-white border-emerald-600';
+
+      ['button', 'list', 'cta_url', 'location_request', 'flow'].forEach(t => {
+        document.getElementById('config-' + t).classList.add('hidden');
+      });
+      document.getElementById('config-' + type).classList.remove('hidden');
+
+      render();
+    }
+
+    function render() {
+      const header = document.getElementById('input-header').value.trim();
+      const body = document.getElementById('input-body').value.trim();
+      const footer = document.getElementById('input-footer').value.trim();
+
+      // Render Phone Preview Bubble
+      const prevHeader = document.getElementById('preview-header');
+      if (header) {
+        prevHeader.innerText = header;
+        prevHeader.classList.remove('hidden');
+      } else {
+        prevHeader.classList.add('hidden');
+      }
+
+      document.getElementById('preview-body').innerText = body || 'Exemplo de mensagem...';
+
+      const prevFooter = document.getElementById('preview-footer');
+      if (footer) {
+        prevFooter.innerText = footer;
+        prevFooter.classList.remove('hidden');
+      } else {
+        prevFooter.classList.add('hidden');
+      }
+
+      // Render Interactive Actions Preview
+      const prevActions = document.getElementById('preview-actions');
+      prevActions.innerHTML = '';
+
+      let metaPayload = {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: "+5511999999999",
+        type: "interactive",
+        interactive: {
+          type: currentType === 'location_request' ? 'location_request_message' : currentType,
+          body: { text: body }
+        }
+      };
+
+      if (header) metaPayload.interactive.header = { type: "text", text: header };
+      if (footer) metaPayload.interactive.footer = { text: footer };
+
+      if (currentType === 'button') {
+        const b1 = document.getElementById('btn-1').value.trim();
+        const b2 = document.getElementById('btn-2').value.trim();
+        const b3 = document.getElementById('btn-3').value.trim();
+        const btns = [b1, b2, b3].filter(b => b.length > 0);
+
+        metaPayload.interactive.action = {
+          buttons: btns.map((b, idx) => ({
+            type: "reply",
+            reply: { id: `btn_${idx+1}`, title: b }
+          }))
+        };
+
+        btns.forEach(b => {
+          const btnEl = document.createElement('div');
+          btnEl.className = 'bg-[#111b21] hover:bg-[#1f2c34] text-emerald-400 text-center text-xs py-2 rounded-lg font-semibold border border-zinc-700/60 shadow cursor-pointer transition-colors';
+          btnEl.innerText = b;
+          prevActions.appendChild(btnEl);
+        });
+
+      } else if (currentType === 'list') {
+        const btnText = document.getElementById('list-btn-text').value.trim() || 'Ver Menu';
+        const i1 = document.getElementById('list-item-1').value.trim();
+        const i2 = document.getElementById('list-item-2').value.trim();
+        const i3 = document.getElementById('list-item-3').value.trim();
+
+        metaPayload.interactive.action = {
+          button: btnText,
+          sections: [{
+            title: "Opções",
+            rows: [i1, i2, i3].filter(i => i).map((item, idx) => ({ id: `row_${idx+1}`, title: item }))
+          }]
+        };
+
+        const listEl = document.createElement('div');
+        listEl.className = 'bg-[#111b21] text-emerald-400 text-center text-xs py-2 rounded-lg font-semibold border border-zinc-700/60 shadow flex items-center justify-center gap-1.5 cursor-pointer';
+        listEl.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg> ${btnText}`;
+        prevActions.appendChild(listEl);
+
+      } else if (currentType === 'cta_url') {
+        const ctaText = document.getElementById('cta-text').value.trim() || 'Acessar Link';
+        const ctaUrl = document.getElementById('cta-url').value.trim();
+
+        metaPayload.interactive.action = {
+          name: "cta_url",
+          parameters: { display_text: ctaText, url: ctaUrl }
+        };
+
+        const ctaEl = document.createElement('div');
+        ctaEl.className = 'bg-[#111b21] text-sky-400 text-center text-xs py-2 rounded-lg font-semibold border border-zinc-700/60 shadow flex items-center justify-center gap-1.5 cursor-pointer';
+        ctaEl.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg> ${ctaText}`;
+        prevActions.appendChild(ctaEl);
+
+      } else if (currentType === 'location_request') {
+        metaPayload.interactive.action = { name: "send_location" };
+
+        const locEl = document.createElement('div');
+        locEl.className = 'bg-[#111b21] text-emerald-400 text-center text-xs py-2 rounded-lg font-semibold border border-zinc-700/60 shadow flex items-center justify-center gap-1.5 cursor-pointer';
+        locEl.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg> Compartilhar Localização`;
+        prevActions.appendChild(locEl);
+
+      } else if (currentType === 'flow') {
+        const flowId = document.getElementById('flow-id').value.trim();
+        const flowCta = document.getElementById('flow-cta').value.trim() || 'Abrir Formutário';
+
+        metaPayload.interactive.action = {
+          name: "flow",
+          parameters: {
+            flow_message_version: "3",
+            flow_token: "unused_token",
+            flow_id: flowId,
+            flow_cta: flowCta,
+            flow_action: "navigate"
+          }
+        };
+
+        const flowEl = document.createElement('div');
+        flowEl.className = 'bg-[#111b21] text-purple-400 text-center text-xs py-2 rounded-lg font-semibold border border-zinc-700/60 shadow flex items-center justify-center gap-1.5 cursor-pointer';
+        flowEl.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg> ${flowCta}`;
+        prevActions.appendChild(flowEl);
+      }
+
+      document.getElementById('json-output').innerText = JSON.stringify(metaPayload, null, 2);
+    }
+
+    // Initial render
+    render();
+  </script>
+</body>
+</html>

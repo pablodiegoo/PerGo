@@ -14,6 +14,8 @@ Redesign the PerGo channel credentials and devices architecture to support multi
 - Unread notifications for background conversations via toast — no browser notification API for MVP
 - Campaigns must support CSV mailing list upload, sanitization, WABA template variable mapping (static or dynamic), scheduling, batch throttling (delay and batch size), duration estimation, and exportable logs.
 
+- Interactive messages must support 5 core WABA interactive types: Reply Buttons (1-3), Sectioned Lists (up to 10 rows), CTA URL Buttons, Location Request Messages, and Meta Flow Messages.
+
 ## Spikes
 
 | # | Name | Type | Validates | Verdict | Tags |
@@ -43,4 +45,5 @@ Redesign the PerGo channel credentials and devices architecture to support multi
 | 023 | deprecated-workspace-subviews | standard | Given redundant workspace credentials and sub-telas, when WABA template sync is migrated to connection credentials and duplicate forms are removed, then we can manage active workspace settings cleanly. | VALIDATED | ui, workspace, credentials, refactoring |
 | 024 | prd-implementation-gap-audit | standard | Given the context/ PRD documents, when compared exhaustively against the implemented codebase, then we identify every unimplemented feature and architecture gap. | VALIDATED | audit, gaps, prd, architecture |
 | 025 | waba-read-receipts-status | standard | Given a WABA webhook status update event, when parsed by the WABA inbound adapter and processed by the inbound processor, then the corresponding message dispatch record status is updated in the database. | VALIDATED | waba, status, receipts |
+| 026 | waba-interactive-messages | standard | Given an interactive request payload (button, list, cta_url, location_request, flow), when processed by PerGo, then valid Meta Cloud API interactive JSON payloads are generated and previewed in real-time. | VALIDATED | waba, interactive, api, ui |
 
