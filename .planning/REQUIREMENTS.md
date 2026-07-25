@@ -106,4 +106,28 @@
   - **Email**: Sends a branded test email to the specified email address
 - **Constraint**: Rate-limited to 1 test per connection per minute to prevent abuse.
 
+## WABA Business Profile Management Requirements
 
+### REQ-WABA-PROFILE-MANAGE: Business Profile CRUD via API
+- **Description**: The API must expose endpoints to read and update the WhatsApp Business Profile associated with a WABA connection, enabling integrators to automate profile changes as part of campaign workflows.
+- **Endpoints**:
+  - `GET /api/v1/workspaces/:ws/connections/:conn/profile` — retrieve current business profile
+  - `PUT /api/v1/workspaces/:ws/connections/:conn/profile` — update profile fields
+- **Supported fields**: `about` (description, max 256 chars), `address`, `email`, `websites` (max 2), `vertical` (industry), `profile_picture_url` (upload or URL).
+- **Behavior**: PerGo calls Meta Graph API `GET/POST /v25.0/{phone_number_id}/whatsapp_business_profile` to read/write profile data. Profile picture updates use the Media Upload API to upload the image first, then set the handle. Returns the updated profile on success with field-level validation errors on failure.
+
+## Consolidated Analytics Requirements
+
+### REQ-ANALYTICS-SYNC: Periodic Meta Analytics Synchronization
+- **Description**: PerGo must periodically sync conversation analytics from Meta Graph API into a local `analytics_snapshots` table in PostgreSQL for historical retention and cross-referencing.
+- **Behavior**: A background job runs on a configurable interval (default: every 6 hours) calling `GET /v25.0/{waba_id}/analytics` with granularity `DAILY`. Data is upserted into `analytics_snapshots` keyed by `(connection_id, date, conversation_category)`. Categories: `MARKETING`, `UTILITY`, `AUTHENTICATION`, `SERVICE`. Metrics captured: conversation count, cost, quality rating. Historical data is retained indefinitely (operator-configurable retention policy).
+
+### REQ-ANALYTICS-CONSOLIDATED: Unified Cross-Channel Analytics API
+- **Description**: The API must expose `GET /api/v1/workspaces/:ws/analytics` returning consolidated metrics that merge Meta provider data with PerGo's internal dispatch/delivery data across all channels.
+- **Behavior**: Returns a unified JSON response with:
+  - **Per-channel breakdown**: messages sent, delivered, read, failed — from PerGo's `dispatches` table
+  - **WABA-specific**: conversation counts by category, cost estimates, quality rating — from `analytics_snapshots`
+  - **Cross-channel comparison**: delivery rate, average latency, failure rate per channel type
+  - **Campaign correlation**: if a campaign_id is provided, filter metrics to that campaign's dispatches
+  - **Time range**: supports `start_date`, `end_date`, `granularity` (hourly, daily, weekly, monthly)
+- **Constraint**: Heavy queries are cached for 5 minutes to avoid repeated PostgreSQL aggregation scans.
