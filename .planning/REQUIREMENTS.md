@@ -29,3 +29,13 @@
 ### REQ-WABA-ORDER-WEBHOOK: Normalized Shopping Cart Order Webhooks
 - **Description**: Incoming shopping cart orders placed by customers in WhatsApp must be parsed into normalized `order.created` events.
 - **Behavior**: The PerGo webhook handler parses items, quantities, prices, currency, and customer notes into a structured `order.created` JSON event.
+
+## WABA Template Management & Status Requirements
+
+### REQ-WABA-TEMPLATE-WEBHOOK: Real-time Template Status Webhooks
+- **Description**: The system must process Meta system webhooks (`message_template_status_update`) for template approval, rejection, and policy changes.
+- **Behavior**: Upon receiving a status update webhook, PerGo updates the local `waba_templates` record and emits a normalized `template.status_updated` event to client webhooks.
+
+### REQ-WABA-TEMPLATE-SYNC: On-Demand Template Synchronization
+- **Description**: Operators and client applications must be able to trigger a full template synchronization from Meta Cloud API v25.0 on demand via `POST /admin/devices/:id/templates/sync`.
+- **Behavior**: PerGo queries Meta Graph API `GET /v25.0/{waba_id}/message_templates`, upserts all definitions into `waba_templates`, and returns a summary JSON object.
