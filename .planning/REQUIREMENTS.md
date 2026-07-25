@@ -85,3 +85,25 @@
 - **Description**: The API must expose `GET /api/v1/workspaces/:ws/connections/:conn/catalog/collections` to list product collections from the business catalog.
 - **Behavior**: PerGo queries `GET /v25.0/{catalog_id}/product_sets` and returns collection names, IDs, and product counts. This enables integrators to compose `type: "product_list"` messages by selecting from existing collections.
 
+## Connection Test Requirements
+
+### REQ-CONN-TEST-VERIFY: Credential Verification (Read-Only)
+- **Description**: The API must expose `POST /api/v1/workspaces/:ws/connections/:conn/test/verify` to validate that connection credentials are correct without sending any message.
+- **Behavior**: PerGo calls a read-only provider API appropriate to the channel type and returns `{ "status": "ok", "provider_info": {...} }` on success or `{ "status": "error", "reason": "..." }` on failure. Per-channel strategies:
+  - **WABA**: `GET /v25.0/{phone_number_id}` — returns business profile info
+  - **Telegram**: `getMe` — returns bot identity
+  - **WhatsApp Web**: Check whatsmeow session connected state
+  - **Email (SMTP)**: `EHLO` handshake without sending
+  - **Email (SES)**: `GetSendQuota` API call
+  - **Mautic**: `GET /api/contacts?limit=1` with API key
+
+### REQ-CONN-TEST-SEND: End-to-End Test Message Dispatch
+- **Description**: The API must expose `POST /api/v1/workspaces/:ws/connections/:conn/test/send` to send a real test message through the full pipeline, requiring a `destination` parameter from the operator.
+- **Behavior**: PerGo dispatches a channel-appropriate test message and returns the dispatch result including delivery status. Per-channel strategies:
+  - **WABA**: Sends the pre-approved `hello_world` template to the specified phone number
+  - **Telegram**: Sends a "PerGo test message ✅" text to the specified chat_id
+  - **WhatsApp Web**: Sends a simple text message to the specified phone number
+  - **Email**: Sends a branded test email to the specified email address
+- **Constraint**: Rate-limited to 1 test per connection per minute to prevent abuse.
+
+
