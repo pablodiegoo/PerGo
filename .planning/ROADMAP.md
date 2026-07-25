@@ -11,7 +11,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 - ✅ **v1.2 PRD Gaps Integration** — Phases 17-20 (shipped 2026-07-17)
 - ✅ **v1.3 Chatwoot & Typebot Integrations** — Phases 21-24.2.1 (shipped 2026-07-20)
 - ✅ **v1.4 Omnichannel Integrations** — Phases 25-27 (shipped 2026-07-20)
-- 🔄 **v1.5 Email Channels & Tracking Engine** — Phase 28 (in progress 2026-07-24)
+- ✅ **v1.5 Email Channels & Tracking Engine** — Phase 28 (shipped 2026-07-25)
 
 ## Phases
 
@@ -110,4 +110,4 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 
 ---
 *Roadmap created: 2026-07-14*
-*Last updated: 2026-07-20 after v1.4 completion*
+*Last updated: 2026-07-25 after Phase 28 completion*
