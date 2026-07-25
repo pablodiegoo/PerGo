@@ -90,6 +90,13 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 
 </details>
 
+<details>
+<summary>📋 v1.7 WABA Template Management (Phase 30) — PLANNED</summary>
+
+- [ ] Phase 30: WABA Template CRUD Lifecycle — Create, Edit, Delete templates via REST API with local validation engine, version tracking (active vs pending), and standalone validate endpoint. Implements REQ-WABA-TEMPLATE-CREATE, REQ-WABA-TEMPLATE-EDIT, REQ-WABA-TEMPLATE-DELETE, REQ-WABA-TEMPLATE-VALIDATE.
+
+</details>
+
 ## Progress
 
 | Phase | Milestone | Plans Complete | Status | Completed |
@@ -115,6 +122,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 27. Implement Instagram Stories handling and Quick Replies mapping | v1.4 | 1/1 | Complete    | 2026-07-20 |
 | 28. Email Channels & Tracking Engine | v1.5 | 2/2 | Complete | 2026-07-25 |
 | 29. Connection Slugs & API Channel Routing | v1.6 | 0/1 | In Progress | - |
+| 30. WABA Template CRUD Lifecycle | v1.7 | 0/? | Planned | - |
 
 ---
 *Roadmap created: 2026-07-14*

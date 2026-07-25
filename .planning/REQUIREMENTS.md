@@ -39,3 +39,49 @@
 ### REQ-WABA-TEMPLATE-SYNC: On-Demand Template Synchronization
 - **Description**: Operators and client applications must be able to trigger a full template synchronization from Meta Cloud API v25.0 on demand via `POST /admin/devices/:id/templates/sync`.
 - **Behavior**: PerGo queries Meta Graph API `GET /v25.0/{waba_id}/message_templates`, upserts all definitions into `waba_templates`, and returns a summary JSON object.
+
+## WABA Template CRUD & Lifecycle Requirements
+
+### REQ-WABA-TEMPLATE-CREATE: Template Creation with Local Validation
+- **Description**: The API must allow creating new WABA message templates via `POST /api/v1/workspaces/:ws/connections/:conn/templates` with full local validation before submission to Meta Graph API.
+- **Behavior**: PerGo validates the template payload locally (category correctness, body length ≤1024 chars, variable placeholder format `{{N}}` sequencing, header media sample presence, button URL format, footer length ≤60 chars, language code validity) and returns structured validation errors immediately. Only after local validation passes does PerGo submit to Meta Graph API `POST /v25.0/{waba_id}/message_templates` and persist the template with status `PENDING`.
+- **Categories**: `MARKETING`, `UTILITY`, `AUTHENTICATION` — each with category-specific validation rules.
+
+### REQ-WABA-TEMPLATE-EDIT: Template Editing with Version Tracking
+- **Description**: The API must allow editing existing approved templates via `PUT /api/v1/workspaces/:ws/connections/:conn/templates/:name` with the same local validation as creation.
+- **Behavior**: When an approved template is edited, Meta creates a new pending version while the current version remains active. PerGo must track both versions separately in `waba_templates` (e.g., v1 APPROVED, v2 PENDING). The API returns both the active version and the pending edit. Local validation is applied identically to creation before submission.
+
+### REQ-WABA-TEMPLATE-DELETE: Template Deletion
+- **Description**: The API must allow deleting templates via `DELETE /api/v1/workspaces/:ws/connections/:conn/templates/:name` with optional language-specific deletion.
+- **Behavior**: PerGo calls Meta Graph API `DELETE /v25.0/{waba_id}/message_templates?name={name}` (or with `hsm_id` for specific language variants), soft-deletes the local `waba_templates` record, and emits a `template.deleted` event to client webhooks.
+
+### REQ-WABA-TEMPLATE-VALIDATE: Standalone Template Validation Endpoint
+- **Description**: The API must expose a dry-run validation endpoint `POST /api/v1/workspaces/:ws/connections/:conn/templates/validate` that runs the full local validation suite without submitting to Meta.
+- **Behavior**: Returns a structured response with `valid: true/false` and an array of validation errors with field paths, enabling integrators and UI builders to pre-validate before submission.
+
+## WABA Reactions Requirements
+
+### REQ-WABA-REACTION-SEND: Send Reactions via WABA Cloud API
+- **Description**: The API must allow sending emoji reactions to existing messages via `POST /messages` with `type: "reaction"`, specifying the target `message_id` (WAMID) and `emoji`.
+- **Behavior**: PerGo constructs the Meta Graph API payload `{ "type": "reaction", "reaction": { "message_id": "<WAMID>", "emoji": "👍" } }`. Setting `emoji` to empty string removes a previous reaction. The 24-hour session window validation does NOT apply to reactions (Meta allows reactions outside the window).
+
+### REQ-WABA-REACTION-WEBHOOK: Incoming Reaction Webhook Processing
+- **Description**: Incoming reaction events from contacts must be parsed and forwarded to the workspace webhook URL as normalized `message.reaction` events.
+- **Behavior**: The WABA inbound adapter detects `type: "reaction"` in the webhook payload, extracts `reaction.message_id` and `reaction.emoji` (empty emoji = reaction removed), correlates to the original dispatch, and emits a `type: "reaction"` event with `target_message_id`, `emoji`, and `contact` fields.
+
+## WABA Connection Setup Requirements
+
+### REQ-WABA-WEBHOOK-AUTO: Automatic Webhook URL Registration on Connection Setup
+- **Description**: When a WABA connection is saved with valid credentials (`phone_number_id`, `access_token`, `waba_account_id`), PerGo must automatically register its webhook callback URL with Meta's Graph API, eliminating the manual step in Meta Developer Console.
+- **Behavior**: On connection save, PerGo calls `POST /v25.0/{app_id}/subscriptions` with the instance's webhook URL and verify token. On connection deletion, PerGo tears down the subscription. If auto-registration fails (e.g., insufficient permissions), the connection is still saved but a warning is surfaced to the operator with manual setup instructions.
+
+## WABA Catalog Query Requirements
+
+### REQ-WABA-CATALOG-QUERY: Retrieve Business Catalog Products
+- **Description**: The API must expose `GET /api/v1/workspaces/:ws/connections/:conn/catalog` to list products from the business's WhatsApp Commerce catalog via Meta Graph API.
+- **Behavior**: PerGo queries `GET /v25.0/{catalog_id}/products` (resolving `catalog_id` from connection metadata) and returns a paginated list of products with fields: `retailer_id`, `name`, `description`, `price`, `currency`, `image_url`, `availability`. Supports cursor-based pagination and optional filtering by availability.
+
+### REQ-WABA-CATALOG-COLLECTIONS: Retrieve Catalog Collections
+- **Description**: The API must expose `GET /api/v1/workspaces/:ws/connections/:conn/catalog/collections` to list product collections from the business catalog.
+- **Behavior**: PerGo queries `GET /v25.0/{catalog_id}/product_sets` and returns collection names, IDs, and product counts. This enables integrators to compose `type: "product_list"` messages by selecting from existing collections.
+
