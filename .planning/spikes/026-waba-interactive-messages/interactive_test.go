@@ -211,8 +211,8 @@ func TestParseInteractiveWebhook(t *testing.T) {
 	}
 }
 
-func TestInteractiveAutoConvertButtonsToList(t *testing.T) {
-	// 5 buttons -> Auto-convert to a single List message (UX optimization)
+func TestInteractiveAutoChunkingButtonsWithWarning(t *testing.T) {
+	// 5 buttons -> Chunks into 2 button messages (3 + 2) and returns recommendation warning
 	payload := &InteractivePayload{
 		Type: "button",
 		Body: "Selecione a sua região:",
@@ -225,20 +225,21 @@ func TestInteractiveAutoConvertButtonsToList(t *testing.T) {
 		},
 	}
 
-	chunks, err := payload.ToMetaJSONChunks("+5511999999999")
+	chunks, warning, err := payload.ToMetaJSONChunks("+5511999999999")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(chunks) != 1 {
-		t.Fatalf("expected 1 converted list chunk, got %d", len(chunks))
+	if len(chunks) != 2 {
+		t.Fatalf("expected 2 button message chunks, got %d", len(chunks))
 	}
 
-	if chunks[0].Interactive.Type != "list" {
-		t.Errorf("interactive.type = %q, want list (auto-converted)", chunks[0].Interactive.Type)
+	if chunks[0].Interactive.Type != "button" || chunks[1].Interactive.Type != "button" {
+		t.Errorf("expected button types, got %s and %s", chunks[0].Interactive.Type, chunks[1].Interactive.Type)
 	}
-	if len(chunks[0].Interactive.Action.Sections[0].Rows) != 5 {
-		t.Errorf("expected 5 rows in list section, got %d", len(chunks[0].Interactive.Action.Sections[0].Rows))
+
+	if warning == "" || !strings.Contains(warning, "Recommendation") {
+		t.Errorf("expected warning recommendation, got %q", warning)
 	}
 }
 
@@ -259,13 +260,17 @@ func TestInteractiveAutoChunkingListRows(t *testing.T) {
 		Sections:   []InteractiveSection{{Title: "Pratos", Rows: rows}},
 	}
 
-	chunks, err := payload.ToMetaJSONChunks("+5511999999999")
+	chunks, warning, err := payload.ToMetaJSONChunks("+5511999999999")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if len(chunks) != 2 {
 		t.Fatalf("expected 2 list message chunks, got %d", len(chunks))
+	}
+
+	if warning == "" || !strings.Contains(warning, "Notice") {
+		t.Errorf("expected warning notice for list chunking, got %q", warning)
 	}
 
 	if len(chunks[0].Interactive.Action.Sections[0].Rows) != 10 {

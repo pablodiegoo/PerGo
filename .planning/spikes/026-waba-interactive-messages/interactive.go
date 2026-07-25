@@ -373,39 +373,17 @@ type InteractiveWebhookResponse struct {
 }
 
 // ToMetaJSONChunks converts the payload into one or more Meta Cloud API message payloads.
-// If buttons exceed 3 or list rows exceed 10, it automatically chunks the payload into multiple messages
-// instead of failing validation, ensuring smooth delivery without rejecting developer requests.
-func (p *InteractivePayload) ToMetaJSONChunks(toPhone string) ([]*MetaInteractiveMessage, error) {
+// If buttons exceed 3, it automatically chunks the payload into multiple 3-button messages and returns a warning
+// recommending the developer consider type: 'list' for a single-message menu UX.
+// If list rows exceed 10, it automatically chunks into multiple list messages of up to 10 rows each.
+func (p *InteractivePayload) ToMetaJSONChunks(toPhone string) ([]*MetaInteractiveMessage, string, error) {
 	normalizedType := strings.ToLower(p.Type)
+	var warning string
 
-	// Strategy 1: Auto-convert 4..10 buttons to a List message (single message UX)
-	if normalizedType == "button" && len(p.Buttons) > 3 && len(p.Buttons) <= 10 {
-		converted := &InteractivePayload{
-			Type:       "list",
-			Header:     p.Header,
-			Body:       p.Body,
-			Footer:     p.Footer,
-			ButtonText: "Ver Opções",
-		}
-		rows := make([]InteractiveRow, len(p.Buttons))
-		for i, btn := range p.Buttons {
-			rows[i] = InteractiveRow{
-				ID:    btn.ID,
-				Title: btn.Title,
-			}
-		}
-		converted.Sections = []InteractiveSection{
-			{Title: "Opções disponíveis", Rows: rows},
-		}
-		meta, err := converted.ToMetaJSON(toPhone)
-		if err != nil {
-			return nil, err
-		}
-		return []*MetaInteractiveMessage{meta}, nil
-	}
-
-	// Strategy 2: Auto-chunking for >3 buttons (>10 buttons case)
+	// Strategy: Auto-chunking for >3 buttons
 	if normalizedType == "button" && len(p.Buttons) > 3 {
+		warning = fmt.Sprintf("Recommendation: Message contained %d buttons (>3 limit). Delivered as %d sequential button messages. Consider using type: 'list' for a single-message menu UX.", len(p.Buttons), (len(p.Buttons)+2)/3)
+
 		var chunks []*MetaInteractiveMessage
 		total := len(p.Buttons)
 		for start := 0; start < total; start += 3 {
@@ -432,14 +410,14 @@ func (p *InteractivePayload) ToMetaJSONChunks(toPhone string) ([]*MetaInteractiv
 
 			meta, err := subPayload.ToMetaJSON(toPhone)
 			if err != nil {
-				return nil, err
+				return nil, "", err
 			}
 			chunks = append(chunks, meta)
 		}
-		return chunks, nil
+		return chunks, warning, nil
 	}
 
-	// Strategy 3: Auto-chunking for >10 list rows
+	// Strategy: Auto-chunking for >10 list rows
 	if normalizedType == "list" {
 		totalRows := 0
 		for _, sec := range p.Sections {
@@ -447,11 +425,12 @@ func (p *InteractivePayload) ToMetaJSONChunks(toPhone string) ([]*MetaInteractiv
 		}
 
 		if totalRows > 10 {
+			warning = fmt.Sprintf("Notice: List message contained %d rows (>10 limit). Delivered as %d sequential list messages.", totalRows, (totalRows+9)/10)
+
 			var chunks []*MetaInteractiveMessage
 			var currentRows []InteractiveRow
 			chunkIdx := 1
 
-			// Flatten and chunk rows by 10
 			for _, sec := range p.Sections {
 				for _, row := range sec.Rows {
 					currentRows = append(currentRows, row)
@@ -476,7 +455,7 @@ func (p *InteractivePayload) ToMetaJSONChunks(toPhone string) ([]*MetaInteractiv
 
 						meta, err := subPayload.ToMetaJSON(toPhone)
 						if err != nil {
-							return nil, err
+							return nil, "", err
 						}
 						chunks = append(chunks, meta)
 						currentRows = nil
@@ -504,21 +483,21 @@ func (p *InteractivePayload) ToMetaJSONChunks(toPhone string) ([]*MetaInteractiv
 				}
 				meta, err := subPayload.ToMetaJSON(toPhone)
 				if err != nil {
-					return nil, err
+					return nil, "", err
 				}
 				chunks = append(chunks, meta)
 			}
 
-			return chunks, nil
+			return chunks, warning, nil
 		}
 	}
 
 	// Standard single message case
 	meta, err := p.ToMetaJSON(toPhone)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	return []*MetaInteractiveMessage{meta}, nil
+	return []*MetaInteractiveMessage{meta}, "", nil
 }
 
 // ParseInteractiveWebhook unpacks incoming customer interactive responses.
