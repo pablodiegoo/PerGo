@@ -14,7 +14,7 @@ tags: [waba, interactive, api, ui, meta]
 
 - **Given** an interactive request payload (`button`, `list`, `cta_url`, `location_request`, `flow`),
 - **When** transformed by PerGo's WABA Cloud API adapter,
-- **Then** valid Meta WhatsApp Cloud API v21.0 `type: "interactive"` JSON payloads are produced matching all Meta structural constraints (e.g. 1-3 buttons, max 10 list rows, mandatory body text).
+- **Then** valid Meta WhatsApp Cloud API v25.0 `type: "interactive"` JSON payloads are produced matching all Meta structural constraints (e.g. 1-3 buttons, max 10 list rows, mandatory body text).
 
 ---
 

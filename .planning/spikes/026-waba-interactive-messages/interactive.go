@@ -62,7 +62,7 @@ type InteractivePayload struct {
 	Flow       *InteractiveFlow     `json:"flow,omitempty"`        // Flow parameters
 }
 
-// MetaInteractiveMessage represents Meta WhatsApp Cloud API v21.0 outbound request payload structure.
+// MetaInteractiveMessage represents Meta WhatsApp Cloud API v25.0 outbound request payload structure.
 type MetaInteractiveMessage struct {
 	MessagingProduct string          `json:"messaging_product"`
 	RecipientType    string          `json:"recipient_type"`
