@@ -102,7 +102,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
     4. `session.expiring_soon` event fires at 23h mark for workspace webhook subscribers
     5. Click-to-WhatsApp ad conversations use 72h window instead of 24h
 
-- [ ] Phase 31: Template CRUD, Meta Graph API Sync & Local Cache — `waba_templates` PostgreSQL schema, Meta Graph API client (`waba_template_client.go`), in-memory template cache with RWMutex, webhook handler for `message_template_status_update`, rejection reason storage, quality score tracking, on-demand sync endpoint (rate-limited), REST API endpoints (POST/GET/PUT/DELETE `/api/v1/waba/templates`), admin UI template management (listing, creation form, status badges, deletion, sync trigger), multi-locale variant storage, visual template previewer. Implements TMPL-01, TMPL-02, TMPL-03, TMPL-04, TMPL-05, TMPL-06, TMPL-07, TMPL-08, TMPL-09.
+- [x] Phase 31: Template CRUD, Meta Graph API Sync & Local Cache (4/4 plans) — completed 2026-07-26
   - **Success criteria:**
     1. Operator can create/edit/delete templates via REST API and admin UI with components synced to Meta
     2. Templates are cached locally in PostgreSQL with in-memory lookup for dispatch
@@ -154,7 +154,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 28. Email Channels & Tracking Engine | v1.5 | 2/2 | Complete | 2026-07-25 |
 | 29. Connection Slugs & API Channel Routing | v1.6 | 4/4 | Complete    | 2026-07-26 |
 | 30. Session Window & Inbound Foundation | v1.7 | 0/? | Planned | - |
-| 31. Template CRUD, Meta Sync & Cache | v1.7 | 0/? | Planned | - |
+| 31. Template CRUD, Meta Sync & Cache | v1.7 | 4/4 | Complete | 2026-07-26 |
 | 32. Template Dispatch, Validation & Meta Flows | v1.7 | 0/? | Planned | - |
 | 33. Commerce Catalogs & Order Processing | v1.7 | 0/? | Planned | - |
 
