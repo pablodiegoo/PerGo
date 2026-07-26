@@ -92,9 +92,39 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 </details>
 
 <details>
-<summary>📋 v1.7 WABA Template Management (Phase 30) — PLANNED</summary>
+<summary>📋 v1.7 WABA Deep Integration (Phases 30-33) — ACTIVE</summary>
 
-- [ ] Phase 30: WABA Template CRUD Lifecycle — Create, Edit, Delete templates via REST API with local validation engine, version tracking (active vs pending), and standalone validate endpoint. Implements REQ-WABA-TEMPLATE-CREATE, REQ-WABA-TEMPLATE-EDIT, REQ-WABA-TEMPLATE-DELETE, REQ-WABA-TEMPLATE-VALIDATE.
+- [ ] Phase 30: Session Window & Inbound Foundation — `contact_sessions` schema migration, inbound `last_inbound_at` tracking on every WABA webhook message, `IsWindowOpen` pre-flight check in WABA dispatcher with 5-minute safety buffer, HTTP 422 rejection at ingestion for expired sessions, 72h free entry point window tracking, `session.expiring_soon` webhook emission at 23h mark. Implements SESS-01, SESS-02, SESS-03, SESS-04, SESS-05.
+  - **Success criteria:**
+    1. Inbound WABA messages upsert `contact_sessions.last_inbound_at` timestamp
+    2. Non-template messages to contacts with expired 24h window receive HTTP 422 `session_window_expired`
+    3. WABA worker re-validates window at dispatch time — messages queued near boundary are caught
+    4. `session.expiring_soon` event fires at 23h mark for workspace webhook subscribers
+    5. Click-to-WhatsApp ad conversations use 72h window instead of 24h
+
+- [ ] Phase 31: Template CRUD, Meta Graph API Sync & Local Cache — `waba_templates` PostgreSQL schema, Meta Graph API client (`waba_template_client.go`), in-memory template cache with RWMutex, webhook handler for `message_template_status_update`, rejection reason storage, quality score tracking, on-demand sync endpoint (rate-limited), REST API endpoints (POST/GET/PUT/DELETE `/api/v1/waba/templates`), admin UI template management (listing, creation form, status badges, deletion, sync trigger), multi-locale variant storage, visual template previewer. Implements TMPL-01, TMPL-02, TMPL-03, TMPL-04, TMPL-05, TMPL-06, TMPL-07, TMPL-08, TMPL-09.
+  - **Success criteria:**
+    1. Operator can create/edit/delete templates via REST API and admin UI with components synced to Meta
+    2. Templates are cached locally in PostgreSQL with in-memory lookup for dispatch
+    3. `message_template_status_update` webhooks update local status and invalidate cache
+    4. Quality score changes (GREEN→YELLOW→RED) are tracked and alert operators
+    5. Admin UI shows visual WhatsApp-style template preview with parameter interpolation
+
+- [ ] Phase 32: Template Dispatch, Validation Engine & Meta Flows — `POST /messages` support for `type: "template"` with automatic parameter binding by name + language, local validation engine (parameter counts, character limits, button config, category), dispatch block for non-APPROVED templates, smart session-window fallback (auto-upgrade freeform to default template), `type: "flow"` dispatch transformer, HMAC-signed `flow_token` generation, `nfm_reply` two-stage JSON decoding, Data Exchange endpoint middleware with RSA/AES encryption. Implements DISP-01, DISP-02, DISP-03, DISP-04, FLOW-01, FLOW-02, FLOW-03, FLOW-04.
+  - **Success criteria:**
+    1. `POST /messages` with `type: "template"` resolves template by name+language and sends with parameter binding
+    2. Invalid template parameters (wrong count, exceeded limits, bad category) are rejected before Meta API call
+    3. Non-APPROVED template dispatch returns HTTP 422 with clear status explanation
+    4. Freeform messages outside 24h window auto-upgrade to configured default template
+    5. Meta Flows dispatch works with signed flow_token and nfm_reply responses are decoded into structured events
+
+- [ ] Phase 33: Commerce Catalogs & Order Processing — `type: "product"` single-product dispatch transformer, `type: "product_list"` multi-product list transformer with titled sections, `default_catalog_id` connection config, `catalog_id` binding and SKU pre-flight validation, inbound order webhook parsing into `order.created` events with idempotent wamid deduplication. Implements COMM-01, COMM-02, COMM-03, COMM-04, COMM-05.
+  - **Success criteria:**
+    1. `POST /messages` with `type: "product"` sends single-product interactive message via WABA
+    2. `POST /messages` with `type: "product_list"` sends multi-product list with sections
+    3. `default_catalog_id` is configurable per WABA connection and auto-injected
+    4. Inbound order webhooks are parsed into `order.created` events with idempotent processing
+    5. Invalid `catalog_id` or missing SKU returns pre-flight validation error
 
 </details>
 
@@ -123,8 +153,11 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 27. Implement Instagram Stories handling and Quick Replies mapping | v1.4 | 1/1 | Complete    | 2026-07-20 |
 | 28. Email Channels & Tracking Engine | v1.5 | 2/2 | Complete | 2026-07-25 |
 | 29. Connection Slugs & API Channel Routing | v1.6 | 4/4 | Complete    | 2026-07-26 |
-| 30. WABA Template CRUD Lifecycle | v1.7 | 0/? | Planned | - |
+| 30. Session Window & Inbound Foundation | v1.7 | 0/? | Planned | - |
+| 31. Template CRUD, Meta Sync & Cache | v1.7 | 0/? | Planned | - |
+| 32. Template Dispatch, Validation & Meta Flows | v1.7 | 0/? | Planned | - |
+| 33. Commerce Catalogs & Order Processing | v1.7 | 0/? | Planned | - |
 
 ---
 *Roadmap created: 2026-07-14*
-*Last updated: 2026-07-26 after v1.6 milestone completion*
+*Last updated: 2026-07-26 after v1.7 milestone start*

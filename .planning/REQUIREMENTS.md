@@ -85,38 +85,38 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TMPL-01 | — | Pending |
-| TMPL-02 | — | Pending |
-| TMPL-03 | — | Pending |
-| TMPL-04 | — | Pending |
-| TMPL-05 | — | Pending |
-| TMPL-06 | — | Pending |
-| TMPL-07 | — | Pending |
-| TMPL-08 | — | Pending |
-| TMPL-09 | — | Pending |
-| DISP-01 | — | Pending |
-| DISP-02 | — | Pending |
-| DISP-03 | — | Pending |
-| DISP-04 | — | Pending |
-| SESS-01 | — | Pending |
-| SESS-02 | — | Pending |
-| SESS-03 | — | Pending |
-| SESS-04 | — | Pending |
-| SESS-05 | — | Pending |
-| COMM-01 | — | Pending |
-| COMM-02 | — | Pending |
-| COMM-03 | — | Pending |
-| COMM-04 | — | Pending |
-| COMM-05 | — | Pending |
-| FLOW-01 | — | Pending |
-| FLOW-02 | — | Pending |
-| FLOW-03 | — | Pending |
-| FLOW-04 | — | Pending |
+| SESS-01 | Phase 30 | Pending |
+| SESS-02 | Phase 30 | Pending |
+| SESS-03 | Phase 30 | Pending |
+| SESS-04 | Phase 30 | Pending |
+| SESS-05 | Phase 30 | Pending |
+| TMPL-01 | Phase 31 | Pending |
+| TMPL-02 | Phase 31 | Pending |
+| TMPL-03 | Phase 31 | Pending |
+| TMPL-04 | Phase 31 | Pending |
+| TMPL-05 | Phase 31 | Pending |
+| TMPL-06 | Phase 31 | Pending |
+| TMPL-07 | Phase 31 | Pending |
+| TMPL-08 | Phase 31 | Pending |
+| TMPL-09 | Phase 31 | Pending |
+| DISP-01 | Phase 32 | Pending |
+| DISP-02 | Phase 32 | Pending |
+| DISP-03 | Phase 32 | Pending |
+| DISP-04 | Phase 32 | Pending |
+| FLOW-01 | Phase 32 | Pending |
+| FLOW-02 | Phase 32 | Pending |
+| FLOW-03 | Phase 32 | Pending |
+| FLOW-04 | Phase 32 | Pending |
+| COMM-01 | Phase 33 | Pending |
+| COMM-02 | Phase 33 | Pending |
+| COMM-03 | Phase 33 | Pending |
+| COMM-04 | Phase 33 | Pending |
+| COMM-05 | Phase 33 | Pending |
 
 **Coverage:**
 - v1.7 requirements: 27 total
-- Mapped to phases: 0
-- Unmapped: 27 ⚠️
+- Mapped to phases: 27
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-07-26*
