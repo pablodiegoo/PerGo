@@ -1,37 +1,37 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.5
-milestone_name: Email Channels & Tracking Engine
-current_phase: 6
-status: Awaiting next milestone
-stopped_at: Phase 29 context gathered
-last_updated: "2026-07-26T01:13:11.444Z"
+milestone: v1.6
+milestone_name: Connection Slugs & API Channel Routing
+current_phase: 30
+status: milestone_complete
+stopped_at: v1.6 milestone shipped
+last_updated: "2026-07-26T01:15:00.000Z"
 last_activity: 2026-07-26
-last_activity_desc: Milestone v1.6 completed and archived
+last_activity_desc: v1.6 milestone complete — tag pushed
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 9
-  completed_plans: 9
-  percent: 100
-current_phase_name: connection-slugs-and-api-channel-routing
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
+current_phase_name: pending-new-milestone
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-06-25)
+See: .planning/PROJECT.md (updated 2026-07-26)
 
 **Core value:** A single API request delivers a message through any configured channel with automatic fallback — without per-message markup, without vendor lock-in, and with full custody of transaction data on infrastructure you control.
-**Current focus:** Phase 29 — connection-slugs-and-api-channel-routing (COMPLETED)
+**Current focus:** v1.6 shipped. Next: v1.7 WABA Template Management.
 
 ## Current Position
 
-Phase: Milestone v1.6 complete
+Phase: —
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-07-26 — Milestone v1.6 completed and archived
+Status: v1.6 milestone complete — ready for `/gsd-new-milestone`
+Last activity: 2026-07-26 — v1.6 milestone shipped, tag pushed to remoted and archived
 
 ## Performance Metrics
 
@@ -177,4 +177,5 @@ Resume file: .planning/phases/29-connection-slugs-and-api-channel-routing/29-CON
 
 ## Operator Next Steps
 
-- Start the next milestone with /gsd-new-milestone
+- Start the next milestone with `/gsd-new-milestone`
+- v1.7 WABA Template Management (Phase 30) is planned in ROADMAP.md
