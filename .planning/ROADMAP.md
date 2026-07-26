@@ -110,7 +110,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
     4. Quality score changes (GREEN→YELLOW→RED) are tracked and alert operators
     5. Admin UI shows visual WhatsApp-style template preview with parameter interpolation
 
-- [ ] Phase 32: Template Dispatch, Validation Engine & Meta Flows — `POST /messages` support for `type: "template"` with automatic parameter binding by name + language, local validation engine (parameter counts, character limits, button config, category), dispatch block for non-APPROVED templates, smart session-window fallback (auto-upgrade freeform to default template), `type: "flow"` dispatch transformer, HMAC-signed `flow_token` generation, `nfm_reply` two-stage JSON decoding, Data Exchange endpoint middleware with RSA/AES encryption. Implements DISP-01, DISP-02, DISP-03, DISP-04, FLOW-01, FLOW-02, FLOW-03, FLOW-04.
+- [x] Phase 32: Template Dispatch, Validation Engine & Meta Flows — `POST /messages` support for `type: "template"` with automatic parameter binding by name + language, local validation engine (parameter counts, character limits, button config, category), dispatch block for non-APPROVED templates, smart session-window fallback (auto-upgrade freeform to default template), `type: "flow"` dispatch transformer, HMAC-signed `flow_token` generation, `nfm_reply` two-stage JSON decoding, Data Exchange endpoint middleware with RSA/AES encryption. Implements DISP-01, DISP-02, DISP-03, DISP-04, FLOW-01, FLOW-02, FLOW-03, FLOW-04.
   - **Success criteria:**
     1. `POST /messages` with `type: "template"` resolves template by name+language and sends with parameter binding
     2. Invalid template parameters (wrong count, exceeded limits, bad category) are rejected before Meta API call
@@ -155,7 +155,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 29. Connection Slugs & API Channel Routing | v1.6 | 4/4 | Complete    | 2026-07-26 |
 | 30. Session Window & Inbound Foundation | v1.7 | 0/? | Planned | - |
 | 31. Template CRUD, Meta Sync & Cache | v1.7 | 4/4 | Complete | 2026-07-26 |
-| 32. Template Dispatch, Validation & Meta Flows | v1.7 | 3/5 | Executing | - |
+| 32. Template Dispatch, Validation & Meta Flows | v1.7 | 5/5 | Complete | 2026-07-26 |
 | 33. Commerce Catalogs & Order Processing | v1.7 | 0/? | Planned | - |
 
 ---
