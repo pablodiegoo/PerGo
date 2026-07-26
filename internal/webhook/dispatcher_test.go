@@ -316,6 +316,13 @@ func (m *mockRouteResolver) GetBySenderIdentity(ctx context.Context, workspaceID
 	return nil, errors.New("connection not found")
 }
 
+func (m *mockRouteResolver) GetBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error) {
+	if m.conn != nil && m.conn.Slug == slug {
+		return m.conn, nil
+	}
+	return nil, errors.New("connection not found by slug")
+}
+
 func (m *mockRouteResolver) GetDefaultChannelConnection(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error) {
 	if m.conn != nil {
 		return m.conn, nil
