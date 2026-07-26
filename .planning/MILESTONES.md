@@ -1,5 +1,22 @@
 # Milestones
 
+## v1.6 Connection Slugs & API Channel Routing (Shipped: 2026-07-26)
+
+**Phases completed:** 5 phases, 9 plans, 22 tasks
+
+**Key accomplishments:**
+
+- Unified interactive message mapping and override handling for WABA and Whatsmeow with graceful degradation fallbacks.
+- Telegram inline keyboards and forum threads support via `Interactive` payloads and `thread_id` metadata
+- Instagram channel adapters implemented with full support for Outbound messaging, Story Mentions, and Quick Replies
+- Amazon SES and Mautic API providers with HMAC-secured open pixel injection, link rewriting, and HTTP webhook event handlers
+- URL-friendly slug generation utility package and PostgreSQL database migration adding unique workspace-scoped connection slugs
+- Added Slug field to Connection struct, updated database queries, and implemented in-memory slug caching for fast route resolution
+- Relaxed API payload validation to accept connection slugs in `channel` field and updated `OutboundProcessor` for slug-first route resolution
+- Automatic connection slug generation on creation with collision suffixing and admin UI display with inline editing
+
+---
+
 ## v1.4 Omnichannel Integrations (Shipped: 2026-07-20)
 
 **Phases completed:** 3 phases, 3 plans, 11 tasks

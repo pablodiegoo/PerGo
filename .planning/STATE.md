@@ -2,12 +2,12 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Email Channels & Tracking Engine
-current_phase: 29
-status: completed
+current_phase: 6
+status: Awaiting next milestone
 stopped_at: Phase 29 context gathered
-last_updated: "2026-07-26T01:10:14.076Z"
+last_updated: "2026-07-26T01:13:11.444Z"
 last_activity: 2026-07-26
-last_activity_desc: Phase 29 complete
+last_activity_desc: Milestone v1.6 completed and archived
 progress:
   total_phases: 5
   completed_phases: 5
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (updated 2026-06-25)
 
 ## Current Position
 
-Phase: 29
-Plan: Not started
-Status: Phase 29 execution complete
-Last activity: 2026-07-26 — Phase 29 complete
+Phase: Milestone v1.6 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-26 — Milestone v1.6 completed and archived
 
 ## Performance Metrics
 
@@ -134,7 +134,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| todo | waba-24h-session-window-enforcement | pending (v1.7+) | 2026-07-26 |
+| todo | waba-commerce-catalog-support | pending (v1.7+) | 2026-07-26 |
+| todo | waba-meta-flows-support | pending (v1.7+) | 2026-07-26 |
+| todo | waba-template-status-webhook-and-sync-support | pending (v1.7+) | 2026-07-26 |
 
 ## Quick Tasks Completed
 

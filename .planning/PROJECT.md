@@ -2,7 +2,7 @@
 
 ## What This Is
 
-PerGo is a self-hosted, open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go. It exposes a single unified REST API (`POST /messages`) that abstracts away the fragmentation of managing multiple messaging providers — WhatsApp Web (unofficial via whatsmeow), WhatsApp Cloud (WABA), and Telegram — under one standardized JSON payload. It is built for backend developers integrating omnichannel flows into CRMs/ERPs and for system operators managing channel connections and compliance.
+PerGo is a self-hosted, open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go. It exposes a single unified REST API (`POST /messages`) that abstracts away the fragmentation of managing multiple messaging providers — WhatsApp Web (unofficial via whatsmeow), WhatsApp Cloud (WABA), Telegram, Instagram, and Email (SMTP/SES/Mautic) — under one standardized JSON payload with human-friendly connection slug routing. It is built for backend developers integrating omnichannel flows into CRMs/ERPs and for system operators managing channel connections and compliance.
 
 ## Core Value
 
@@ -17,14 +17,14 @@ A single API request delivers a message through any configured channel with auto
 
 ## Current State
 
-- **Shipped Version**: v1.4 (2026-07-20)
-- **Status**: Stable. Fully functional multi-tenant routing gateway with interactive message schema mapping, Telegram threads and inline keyboards, Instagram Stories, active contact profiles, multi-webhook subscriptions, sequential JSON Response Verbs engine, Meta WABA read receipt indicators, and built-in Chatwoot and Typebot integrations with stateful human/bot handoff control.
+- **Shipped Version**: v1.6 (2026-07-26)
+- **Status**: Stable. Fully functional multi-tenant omnichannel routing gateway with 6 channel types (WhatsApp Web, WABA, Telegram, Instagram, Email SMTP/SES, Mautic), human-friendly connection slug routing, interactive message schema mapping, open/click email tracking, Chatwoot and Typebot integrations with stateful human/bot handoff control, and a server-rendered admin console.
 
 <details>
-<summary>Archived State (v1.3)</summary>
+<summary>Archived State (v1.4)</summary>
 
-- **Shipped Version**: v1.3 (2026-07-20)
-- **Status**: Stable. Fully functional multi-tenant routing gateway with active contact profiles, multi-webhook subscriptions, sequential JSON Response Verbs engine, Meta WABA read receipt indicators, and built-in Chatwoot and Typebot integrations with stateful human/bot handoff control.
+- **Shipped Version**: v1.4 (2026-07-20)
+- **Status**: Stable. Fully functional multi-tenant routing gateway with interactive message schema mapping, Telegram threads and inline keyboards, Instagram Stories, active contact profiles, multi-webhook subscriptions, sequential JSON Response Verbs engine, Meta WABA read receipt indicators, and built-in Chatwoot and Typebot integrations with stateful human/bot handoff control.
 
 </details>
 
@@ -35,6 +35,8 @@ A single API request delivers a message through any configured channel with auto
 - ✓ Omnichannel Interactive Schema & Routing: unified Interactive schema, JSON-to-Protobuf mapping, and `channel_overrides` fallback for vendor-specific payload structures (WABA-01) — Phase 25
 - ✓ Telegram Integration: mapped Telegram inline keyboards and threaded message routing (TELE-01) — Phase 26
 - ✓ Instagram Integration: handled inbound IG Stories and mapped generic Quick Replies (INSTA-01) — Phase 27
+- ✓ Email Channels & Tracking Engine: SMTP, Amazon SES, and Mautic email providers with HMAC-secured open pixel injection, link rewriting, and webhook event handlers — Phase 28
+- ✓ Connection Slugs & API Channel Routing: URL-friendly slug generation, workspace-scoped unique slugs, slug-first route resolution in OutboundProcessor, admin UI auto-slug generation — Phase 29
 - ✓ Chatwoot Integration: connection settings panel, built-in query-parameter authenticated webhook receiver, and bidirectional client/syncer sync engine (CHAT-01 to CHAT-04) — Phase 21
 - ✓ Typebot Integration: settings panel, asynchronous forwarder, session mapping repository, and outbound webhook receiver (TYPE-01 to TYPE-04) — Phase 22
 - ✓ Stateful Handoff Routing: contact bot_active/bot_paused_at database schema, automatic agent response interceptors, manual chat panel HTMX toggle badge, pause_bot messaging verb, and 12-hour inactivity cooldown reset (HAND-01 to HAND-06) — Phase 23
@@ -136,6 +138,10 @@ A single API request delivers a message through any configured channel with auto
 | Shared unified Interactive schema | Extends `POST /messages` to support buttons and lists without leaking channel specifics | Validated (Phase 25) |
 | Channel-specific overrides | Introduced `channel_overrides` payload field to bypass schema strictness for raw WABA/Whatsmeow payloads | Validated (Phase 25) |
 | Telegram threading mapped | Mapped Telegram's `message_thread_id` to standard payload metadata | Validated (Phase 26) |
+| Email channel as provider plugin | SMTP, SES, and Mautic each implement ChannelAdapter interface with provider-specific transports | Validated (Phase 28) |
+| HMAC-secured tracking pixels | Open/click tracking via pixel injection with signed URLs to prevent forgery | Validated (Phase 28) |
+| Slug-first connection resolution | OutboundProcessor resolves connection by slug before falling back to channel type default | Validated (Phase 29) |
+| In-memory RWMutex slug cache | O(1) slug-to-connection lookup with write-through invalidation on mutations | Validated (Phase 29) |
 
 ## Evolution
 
@@ -155,4 +161,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-20 after v1.4 milestone completion*
+*Last updated: 2026-07-26 after v1.6 milestone completion*
