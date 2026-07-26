@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/channel"
@@ -15,9 +16,12 @@ import (
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
+// ErrSessionWindowExpired is returned when a customer service window has expired.
+var ErrSessionWindowExpired = errors.New("customer service window expired")
+
 // WindowChecker defines the interface for checking if a customer service window is open.
 type WindowChecker interface {
-	IsWindowOpen(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (bool, error)
+	IsWindowOpenBool(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string, safetyBuffer time.Duration) (bool, error)
 }
 
 // WABAAdapter implements channel.Dispatcher for WhatsApp Cloud (WABA) REST API.
@@ -190,12 +194,12 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 
 	if templateName == "" {
 		if a.windowChecker != nil {
-			open, err := a.windowChecker.IsWindowOpen(ctx, workspaceID, m.To, "whatsapp_cloud", conn.SenderIdentity)
+			open, err := a.windowChecker.IsWindowOpenBool(ctx, workspaceID, m.To, "whatsapp_cloud", conn.SenderIdentity, 5*time.Minute)
 			if err != nil {
 				return "", err
 			}
 			if !open {
-				return "", channel.NewTerminalError(errors.New("customer service window expired"))
+				return "", channel.NewTerminalError(ErrSessionWindowExpired)
 			}
 		}
 	}
