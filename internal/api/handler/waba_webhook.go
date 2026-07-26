@@ -1,17 +1,23 @@
 package handler
 
 import (
+	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/channel/whatsapp"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/media"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -208,8 +214,113 @@ func (h *WABAWebhookHandler) HandlePost(c *echo.Context) error {
 		return c.NoContent(http.StatusForbidden)
 	}
 
+	type wabaRawPayload struct {
+		Entry []struct {
+			Changes []struct {
+				Value struct {
+					Messages []struct {
+						ID          string `json:"id"`
+						Interactive *struct {
+							Type     string `json:"type"`
+							NFMReply *struct {
+								ResponseJSON string `json:"response_json"`
+							} `json:"nfm_reply"`
+						} `json:"interactive"`
+					} `json:"messages"`
+				} `json:"value"`
+			} `json:"changes"`
+		} `json:"entry"`
+	}
+
+	type flowResponseData struct {
+		FlowToken         string                 `json:"flow_token"`
+		EncryptedFlowData string                 `json:"encrypted_flow_data"`
+		EncryptedAesKey   string                 `json:"encrypted_aes_key"`
+		InitialVector     string                 `json:"initial_vector"`
+		Screen            string                 `json:"screen"`
+		Data              map[string]interface{} `json:"data"`
+	}
+
+	var rawPayload wabaRawPayload
+	_ = json.Unmarshal(body, &rawPayload)
+	nfmMap := make(map[string]flowResponseData)
+	for _, entry := range rawPayload.Entry {
+		for _, change := range entry.Changes {
+			for _, msg := range change.Value.Messages {
+				if msg.Interactive != nil && msg.Interactive.Type == "nfm_reply" && msg.Interactive.NFMReply != nil {
+					var flowData flowResponseData
+					if err := json.Unmarshal([]byte(msg.Interactive.NFMReply.ResponseJSON), &flowData); err == nil {
+						nfmMap[msg.ID] = flowData
+					}
+				}
+			}
+		}
+	}
+
+	var privKey *rsa.PrivateKey
+	if len(nfmMap) > 0 {
+		privKey, _ = crypto.LoadRSAPrivateKey(matchingConn.Credentials, nil)
+	}
+
 	ctx := c.Request().Context()
 	for _, event := range events {
+		if flowData, ok := nfmMap[event.MessageID]; ok {
+			var screen string
+			var formData map[string]interface{}
+
+			if flowData.EncryptedFlowData != "" && privKey != nil {
+				aesKeyCipher, _ := base64.StdEncoding.DecodeString(flowData.EncryptedAesKey)
+				aesKey, err := crypto.DecryptRSA(privKey, aesKeyCipher)
+				if err == nil {
+					flowCipher, _ := base64.StdEncoding.DecodeString(flowData.EncryptedFlowData)
+					iv, _ := base64.StdEncoding.DecodeString(flowData.InitialVector)
+					tagSize := 16
+					if len(flowCipher) > tagSize {
+						ciphertext := flowCipher[:len(flowCipher)-tagSize]
+						tag := flowCipher[len(flowCipher)-tagSize:]
+						plaintext, err := crypto.DecryptAES128GCM(aesKey, iv, ciphertext, tag)
+						if err == nil {
+							var dec map[string]interface{}
+							if json.Unmarshal(plaintext, &dec) == nil {
+								if s, ok := dec["screen"].(string); ok {
+									screen = s
+								}
+								if d, ok := dec["data"].(map[string]interface{}); ok {
+									formData = d
+								}
+							}
+						}
+					}
+				}
+			} else {
+				screen = flowData.Screen
+				formData = flowData.Data
+			}
+
+			var summaryBuilder strings.Builder
+			summaryBuilder.WriteString("📄 *Form Submitted*\n")
+			if screen != "" {
+				summaryBuilder.WriteString(fmt.Sprintf("Screen: %s\n", screen))
+			}
+			if formData != nil {
+				for k, v := range formData {
+					summaryBuilder.WriteString(fmt.Sprintf("- %s: %v\n", k, v))
+				}
+			}
+			event.Body = strings.TrimSpace(summaryBuilder.String())
+
+			if h.inboundProcessor != nil {
+				flowEv := &domain.FlowCompletedEvent{
+					Screen:    screen,
+					Data:      formData,
+					FlowToken: flowData.FlowToken,
+					ContactID: event.From,
+					Wamid:     event.MessageID,
+				}
+				_ = h.inboundProcessor.PublishFlowCompleted(ctx, event.WorkspaceID, flowEv)
+			}
+		}
+
 		if h.inboundProcessor != nil {
 			err := h.inboundProcessor.Process(ctx, event)
 			if err != nil {

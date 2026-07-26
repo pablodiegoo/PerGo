@@ -355,3 +355,27 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 
 	return nil
 }
+
+// PublishFlowCompleted emits a flow.completed event to the webhook system.
+func (p *InboundProcessor) PublishFlowCompleted(ctx context.Context, workspaceID uuid.UUID, ev *domain.FlowCompletedEvent) error {
+	if p.publisher == nil {
+		return nil
+	}
+
+	payload := struct {
+		Event       string `json:"event"`
+		WorkspaceID string `json:"workspace_id"`
+		*domain.FlowCompletedEvent
+	}{
+		Event:              string(domain.EventTypeFlowCompleted),
+		WorkspaceID:        workspaceID.String(),
+		FlowCompletedEvent: ev,
+	}
+
+	eventData, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	subject := fmt.Sprintf("inbound.events.%s", workspaceID.String())
+	return p.publisher.Publish(ctx, subject, eventData, uuid.New().String())
+}
