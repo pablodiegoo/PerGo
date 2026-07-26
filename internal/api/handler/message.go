@@ -161,6 +161,33 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 			})
 		}
 
+		if errors.Is(err, outbound.ErrTemplateNotFound) {
+			return c.JSON(http.StatusUnprocessableEntity, domain.ErrorResponse{
+				Code:    "template_not_found",
+				Message: "The requested template was not found in the connection cache",
+			})
+		}
+
+		var tmplNotAppErr *outbound.ErrTemplateNotApproved
+		if errors.As(err, &tmplNotAppErr) {
+			reason := "Template is not approved"
+			if tmplNotAppErr.RejectionReason != nil {
+				reason = *tmplNotAppErr.RejectionReason
+			}
+			return c.JSON(http.StatusUnprocessableEntity, domain.ErrorResponse{
+				Code:    "template_not_approved",
+				Message: reason,
+			})
+		}
+
+		var invalidParamErr *outbound.ErrInvalidTemplateParameters
+		if errors.As(err, &invalidParamErr) {
+			return c.JSON(http.StatusUnprocessableEntity, domain.ErrorResponse{
+				Code:    "invalid_template_parameters",
+				Message: invalidParamErr.Message,
+			})
+		}
+
 		var routeErr *outbound.RouteError
 		if errors.As(err, &routeErr) {
 			if routeErr.Message == "route resolver is not configured" {
