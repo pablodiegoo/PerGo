@@ -22,6 +22,8 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
+	apipkg "github.com/pablojhp.pergo/internal/api/handler/api"
+	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/api/mcp"
 	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/channel"
@@ -403,8 +405,14 @@ func main() {
 
 	// --- WABA Inbound Webhook handler ---
 	wabaWebhookHandler := handler.NewWABAWebhookHandler(connectionRepo, inboundProcessor, mediaEngine)
+	wabaWebhookHandler.SetTemplatesRepo(wabaTemplateRepo)
 	e.GET("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandleGet)
 	e.POST("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandlePost)
+
+	// --- WABA Template REST API handler ---
+	wabaMetaClient := client.NewWABAMetaClient(nil, "")
+	wabaTemplateAPIHandler := apipkg.NewWABATemplateAPIHandler(wabaTemplateRepo, connectionRepo, wabaMetaClient)
+	wabaTemplateAPIHandler.RegisterRoutes(e)
 
 	// --- Chatwoot Inbound Webhook handler ---
 	chatwootWebhookHandler := handler.NewChatwootWebhookHandler(pool, chatwootMappingRepo, contactRepo, publisher)

@@ -18,6 +18,7 @@ import (
 // WABAWebhookHandler handles verification and inbound payloads for Meta's WhatsApp Cloud API (WABA).
 type WABAWebhookHandler struct {
 	connectionsRepo  *repository.ConnectionRepository
+	templatesRepo    *repository.WABATemplateRepository
 	inboundProcessor *inbound.InboundProcessor
 	adapter          channel.InboundAdapter
 }
@@ -32,6 +33,11 @@ func NewWABAWebhookHandler(
 		inboundProcessor: inboundProcessor,
 		adapter:          whatsapp.NewWABAInboundAdapter(mediaEngine),
 	}
+}
+
+// SetTemplatesRepo injects the WABATemplateRepository for template status updates.
+func (h *WABAWebhookHandler) SetTemplatesRepo(repo *repository.WABATemplateRepository) {
+	h.templatesRepo = repo
 }
 
 // SetBaseURL overrides the base Meta Graph API URL (useful for testing).
@@ -89,7 +95,25 @@ func (h *WABAWebhookHandler) HandleGet(c *echo.Context) error {
 	return c.String(http.StatusOK, challenge)
 }
 
-// HandlePost ingests inbound messages from Meta
+type wabaTemplateChangePayload struct {
+	Entry []struct {
+		ID      string `json:"id"`
+		Changes []struct {
+			Field string `json:"field"`
+			Value struct {
+				Event                   string `json:"event"`
+				MessageTemplateID       string `json:"message_template_id"`
+				MessageTemplateName     string `json:"message_template_name"`
+				MessageTemplateLanguage string `json:"message_template_language"`
+				Reason                  string `json:"reason"`
+				NewCategory             string `json:"new_category"`
+				NewQualityScore         string `json:"new_quality_score"`
+			} `json:"value"`
+		} `json:"changes"`
+	} `json:"entry"`
+}
+
+// HandlePost ingests inbound messages and template status updates from Meta
 func (h *WABAWebhookHandler) HandlePost(c *echo.Context) error {
 	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
 	if err != nil || workspaceIDStr == "" {
@@ -123,6 +147,59 @@ func (h *WABAWebhookHandler) HandlePost(c *echo.Context) error {
 	body, err := io.ReadAll(c.Request().Body)
 	if err != nil {
 		return c.NoContent(http.StatusBadRequest)
+	}
+
+	// Check for template status/quality update events
+	if h.templatesRepo != nil {
+		var tPayload wabaTemplateChangePayload
+		if err := json.Unmarshal(body, &tPayload); err == nil {
+			for _, entry := range tPayload.Entry {
+				for _, change := range entry.Changes {
+					if change.Field == "message_template_status_update" || change.Field == "message_template_quality_update" {
+						val := change.Value
+						if val.MessageTemplateName != "" && val.MessageTemplateLanguage != "" {
+							tmpl, err := h.templatesRepo.GetByNameAndLanguage(c.Request().Context(), matchingConn.ID, val.MessageTemplateName, val.MessageTemplateLanguage)
+							if err == nil && tmpl != nil {
+								newStatus := tmpl.Status
+								if val.Event != "" {
+									newStatus = val.Event
+								}
+								reasonPtr := tmpl.RejectionReason
+								if val.Reason != "" {
+									rStr := val.Reason
+									reasonPtr = &rStr
+								}
+								qualityPtr := tmpl.QualityScore
+								if val.NewQualityScore != "" {
+									oldQual := ""
+									if tmpl.QualityScore != nil {
+										oldQual = *tmpl.QualityScore
+									}
+									newQual := val.NewQualityScore
+									if (oldQual == "GREEN" && (newQual == "YELLOW" || newQual == "RED")) || (oldQual == "YELLOW" && newQual == "RED") {
+										slog.Warn("WABA template quality score drop detected",
+											"template_id", tmpl.ID,
+											"template_name", tmpl.Name,
+											"old_quality", oldQual,
+											"new_quality", newQual,
+											"workspace_id", workspaceID,
+										)
+									}
+									qualityPtr = &newQual
+								}
+
+								err := h.templatesRepo.UpdateStatus(c.Request().Context(), tmpl.ID, newStatus, reasonPtr, qualityPtr)
+								if err != nil {
+									slog.Error("failed to update template status from webhook", "error", err, "template_id", tmpl.ID)
+								} else {
+									slog.Info("updated template status from webhook", "template_name", tmpl.Name, "status", newStatus)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
 	}
 
 	events, err := h.adapter.Parse(c.Request().Context(), body, nil, matchingConn)
