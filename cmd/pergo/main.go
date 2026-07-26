@@ -265,6 +265,11 @@ func main() {
 	}
 	webhookWorker.SetWorkspaceRepository(wsRepo)
 
+	// --- Session Expiration Ticker ---
+	sessionTicker := session.NewSessionTicker(recipientSessionRepo, publisher)
+	go sessionTicker.Run(ctx)
+	slog.Info("session expiration ticker started", "interval", "5m")
+
 	slog.Info("rate limiter configured", "rps", 10, "burst", 10)
 	slog.Info("queue depth limit", "max", 1000)
 	if cfg.AdminPassword == "pergo-dev-2026" {
