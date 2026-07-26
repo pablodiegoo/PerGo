@@ -98,9 +98,20 @@ type wabaInteractiveText struct {
 }
 
 type wabaInteractiveAction struct {
-	Button   string                       `json:"button,omitempty"`
-	Buttons  []wabaInteractiveReplyButton `json:"buttons,omitempty"`
-	Sections []wabaInteractiveSection     `json:"sections,omitempty"`
+	Button     string                       `json:"button,omitempty"`
+	Buttons    []wabaInteractiveReplyButton `json:"buttons,omitempty"`
+	Sections   []wabaInteractiveSection     `json:"sections,omitempty"`
+	Name       string                       `json:"name,omitempty"`
+	Parameters *wabaFlowParameters          `json:"parameters,omitempty"`
+}
+
+type wabaFlowParameters struct {
+	FlowMessageVersion string                 `json:"flow_message_version"`
+	FlowToken          string                 `json:"flow_token"`
+	FlowID             string                 `json:"flow_id,omitempty"`
+	FlowCTA            string                 `json:"flow_cta"`
+	FlowAction         string                 `json:"flow_action"`
+	FlowActionPayload  map[string]interface{} `json:"flow_action_payload,omitempty"`
 }
 
 type wabaInteractiveReplyButton struct {
@@ -299,26 +310,38 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 			Button: m.Interactive.Action.Button,
 		}
 
-		for _, b := range m.Interactive.Action.Buttons {
-			action.Buttons = append(action.Buttons, wabaInteractiveReplyButton{
-				Type: "reply",
-				Reply: wabaInteractiveButtonReply{
-					ID:    b.Reply.ID,
-					Title: b.Reply.Title,
-				},
-			})
-		}
-
-		for _, s := range m.Interactive.Action.Sections {
-			section := wabaInteractiveSection{Title: s.Title}
-			for _, r := range s.Rows {
-				section.Rows = append(section.Rows, wabaInteractiveSectionRow{
-					ID:          r.ID,
-					Title:       r.Title,
-					Description: r.Description,
+		if m.Interactive.Type == "flow" {
+			action.Name = "flow"
+			action.Parameters = &wabaFlowParameters{
+				FlowMessageVersion: "3",
+				FlowToken:          m.Interactive.Action.FlowToken,
+				FlowID:             m.Interactive.Action.FlowID,
+				FlowCTA:            m.Interactive.Action.FlowCTA,
+				FlowAction:         m.Interactive.Action.FlowAction,
+				FlowActionPayload:  m.Interactive.Action.FlowActionPayload,
+			}
+		} else {
+			for _, b := range m.Interactive.Action.Buttons {
+				action.Buttons = append(action.Buttons, wabaInteractiveReplyButton{
+					Type: "reply",
+					Reply: wabaInteractiveButtonReply{
+						ID:    b.Reply.ID,
+						Title: b.Reply.Title,
+					},
 				})
 			}
-			action.Sections = append(action.Sections, section)
+
+			for _, s := range m.Interactive.Action.Sections {
+				section := wabaInteractiveSection{Title: s.Title}
+				for _, r := range s.Rows {
+					section.Rows = append(section.Rows, wabaInteractiveSectionRow{
+						ID:          r.ID,
+						Title:       r.Title,
+						Description: r.Description,
+					})
+				}
+				action.Sections = append(action.Sections, section)
+			}
 		}
 
 		reqPayload.Interactive = &wabaInteractive{
