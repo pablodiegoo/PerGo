@@ -171,6 +171,45 @@ func (p *Processor) Ingest(
 		}
 	}
 
+	// 4.4 Smart Session Window Fallback (WABA freeform messages only)
+	if req.TemplateName == "" && conn.Channel == "whatsapp_cloud" && p.windowChecker != nil {
+		status, err := p.windowChecker.IsWindowOpen(ctx, workspaceID, req.To, "whatsapp_cloud", conn.SenderIdentity, 0)
+		if err != nil {
+			slog.Warn("outbound processor: window checker error", "error", err, "trace_id", traceID)
+		} else if status != nil && !status.Open {
+			var config struct {
+				DefaultTemplateName     string `json:"default_template_name"`
+				DefaultTemplateLanguage string `json:"default_template_language"`
+			}
+			_ = json.Unmarshal(conn.Credentials, &config)
+
+			if config.DefaultTemplateName != "" {
+				req.TemplateName = config.DefaultTemplateName
+				req.Language = config.DefaultTemplateLanguage
+				if req.Language == "" {
+					req.Language = "en_US"
+				}
+				req.Components = []domain.TemplateComponent{
+					{
+						Type: "body",
+						Parameters: []domain.TemplateParameter{
+							{
+								Type: "text",
+								Text: req.Body,
+							},
+						},
+					},
+				}
+				req.Body = ""
+			} else {
+				return nil, &session.SessionWindowError{
+					Status: status,
+					Source: "ingestion",
+				}
+			}
+		}
+	}
+
 	// 4.5. Template Validation & Parameter Normalization
 	if req.TemplateName != "" {
 		if p.templateRepo != nil {
@@ -212,17 +251,6 @@ func (p *Processor) Ingest(
 						}
 					}
 				}
-			}
-		}
-	} else if conn.Channel == "whatsapp_cloud" && p.windowChecker != nil {
-		// Pre-flight Session Window check (WABA freeform messages only)
-		status, err := p.windowChecker.IsWindowOpen(ctx, workspaceID, req.To, "whatsapp_cloud", conn.SenderIdentity, 0)
-		if err != nil {
-			slog.Warn("outbound processor: window checker error", "error", err, "trace_id", traceID)
-		} else if status != nil && !status.Open {
-			return nil, &session.SessionWindowError{
-				Status: status,
-				Source: "ingestion",
 			}
 		}
 	}

@@ -2,14 +2,17 @@ package outbound_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/session"
 )
 
 type fakeMediaEngine struct {
@@ -332,4 +335,82 @@ func TestProcessor_Ingest(t *testing.T) {
 			t.Errorf("got error %v, want RouteError", err)
 		}
 	})
+}
+
+type fakeSessionReader struct {
+	sess *repository.RecipientSession
+	err  error
+}
+
+func (f *fakeSessionReader) Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
+	return f.sess, f.err
+}
+
+func TestProcessor_SessionFallback(t *testing.T) {
+	wsID := uuid.New()
+	connID := uuid.New()
+	traceID := "test-trace-456"
+
+	creds := map[string]string{
+		"default_template_name":     "hello_world",
+		"default_template_language": "en_US",
+	}
+	credsJSON, _ := json.Marshal(creds)
+
+	wabaConn := &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    wsID,
+		Name:           "WABA Test",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "123456789",
+		Status:         "connected",
+		Credentials:    credsJSON,
+	}
+
+	tracker := &fakeQueueDepthTracker{}
+	me := &fakeMediaEngine{}
+	resolver := &fakeRouteResolver{conn: wabaConn}
+	publisher := &fakePublisher{}
+
+	p := outbound.NewProcessor(tracker, me, resolver, publisher)
+
+	// Session is closed (older than 24h)
+	oldSession := &repository.RecipientSession{
+		WorkspaceID:       wsID,
+		RecipientPhone:    "5511999999999",
+		Channel:           "whatsapp_cloud",
+		RecipientIdentity: "123456789",
+		LastInboundAt:     time.Now().Add(-48 * time.Hour),
+		EntryPointType:    "standard",
+	}
+	sessionReader := &fakeSessionReader{sess: oldSession}
+	windowChecker := session.NewWindowChecker(sessionReader)
+	p.SetWindowChecker(windowChecker)
+
+	req := &domain.CreateMessageRequest{
+		To:      "5511999999999",
+		Channel: "whatsapp_cloud",
+		Body:    "Hello freeform!",
+	}
+
+	qMsg, err := p.Ingest(context.Background(), wsID, traceID, req)
+	if err != nil {
+		t.Fatalf("Ingest failed: %v", err)
+	}
+
+	if qMsg.TemplateName != "hello_world" {
+		t.Errorf("got TemplateName %q, want 'hello_world'", qMsg.TemplateName)
+	}
+	if qMsg.Language != "en_US" {
+		t.Errorf("got Language %q, want 'en_US'", qMsg.Language)
+	}
+	if qMsg.Body != "" {
+		t.Errorf("expected Body to be empty, got %q", qMsg.Body)
+	}
+	if len(qMsg.Components) != 1 {
+		t.Fatalf("expected 1 component, got %d", len(qMsg.Components))
+	}
+	if qMsg.Components[0].Type != "body" {
+		t.Errorf("expected component type 'body', got %q", qMsg.Components[0].Type)
+	}
 }
