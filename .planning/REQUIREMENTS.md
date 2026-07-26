@@ -141,3 +141,66 @@
 ### REQ-WABA-MSG-REVOKE-WEBHOOK: Inbound Message Revoke/Delete Event Processing
 - **Description**: When a contact deletes/unsends a message in their WhatsApp app, Meta delivers a `revoke` webhook event. PerGo must process this event, mark the message as revoked, and forward a normalized `message.revoked` event to the workspace webhook URL.
 - **Behavior**: The inbound adapter detects the `revoke` event type, locates the original message by `message_id` (WAMID), marks it as `revoked` in the conversations table (soft-delete — original content preserved for compliance but hidden from UI), updates the Chat UI to show "This message was deleted", and emits `{ "type": "message.revoked", "message_id": "<WAMID>", "revoked_at": "..." }` to client webhooks.
+
+---
+
+## WABA Webhook Security & Reliability Requirements
+
+### REQ-WABA-HMAC-INBOUND: Inbound Meta Webhook Signature Verification
+- **Description**: The WABA webhook handler must verify the authenticity and integrity of incoming Meta webhook payloads by validating the `X-Hub-Signature-256` header using HMAC-SHA256.
+- **Behavior**: On every incoming `POST /webhooks/waba/:workspace_id` request, PerGo computes `HMAC-SHA256(raw_body, app_secret)` and compares it against the value in `X-Hub-Signature-256` (format: `sha256=<hex_digest>`). The `app_secret` is the Meta App Secret stored in WABA connection credentials (encrypted at rest via AES-256-GCM). If the header is missing or the signature does not match, the request is rejected with HTTP 401 Unauthorized. This is distinct from spike 014 (outbound webhook signing) — this requirement covers *inbound* verification of Meta-originated webhooks.
+- **Note**: This is a security baseline for any production CPaaS. Twilio and Stripe both verify inbound webhook signatures server-side.
+
+### REQ-WABA-WEBHOOK-DEDUP: Inbound Webhook Message Deduplication
+- **Description**: The WABA webhook handler must deduplicate incoming message webhooks to prevent processing the same message multiple times when Meta retries delivery.
+- **Behavior**: On receiving an inbound message webhook, PerGo checks if the `wamid` (WhatsApp Message ID) has been processed recently using a deduplication mechanism. If the `wamid` is found in the dedup store, the webhook is acknowledged (HTTP 200) but not processed again. The dedup window is configurable (default: 5 minutes). Implementation options (decided at implementation time): PostgreSQL `INSERT ... ON CONFLICT DO NOTHING` on `wamid`, or in-memory TTL cache (acceptable for single-instance deployments). Status webhooks (`sent`, `delivered`, `read`) are NOT deduplicated — they are idempotent by nature (updating to the same status is a no-op).
+
+## WABA Message Types Expansion Requirements
+
+### REQ-WABA-QUOTED-MSG: Quoted/Reply-To Message Support
+- **Description**: The API must allow sending messages as replies to specific previous messages via a `reply_to` field in the `POST /messages` payload.
+- **Behavior**: When `reply_to` is present (containing a WAMID string), PerGo adds `context: { "message_id": "<WAMID>" }` to the Meta Graph API payload. This causes the message to render as a quoted reply in the WhatsApp UI. The `reply_to` field is optional and works with all message types (text, media, template, interactive). Inbound messages that are replies include the `context.id` field in the parsed webhook event as `reply_to`.
+
+### REQ-WABA-CTA-BUTTONS: Call-to-Action Button Messages
+- **Description**: The API must support sending CTA (Call-to-Action) button messages via `POST /messages` with `type: "button"` and CTA-specific button subtypes.
+- **Behavior**: In addition to the existing `reply` button subtype, PerGo must support:
+  - `cta_url`: Opens a URL in the user's browser. Payload: `{ "type": "cta_url", "title": "Track Order", "url": "https://..." }`
+  - `cta_call`: Initiates a phone call. Payload: `{ "type": "cta_call", "title": "Call Support", "phone_number": "+5511..." }`
+  - `cta_copy`: Copies text to clipboard. Payload: `{ "type": "cta_copy", "title": "Copy Code", "copy_code": "DISCOUNT20" }`
+  PerGo constructs the appropriate Meta Graph API `interactive` payload with `type: "cta_url"` (or native flow for copy/call). A single message can contain one CTA button alongside reply buttons (per Meta limitations).
+
+### REQ-WABA-CAROUSEL: Carousel Message Support
+- **Description**: The API must allow sending carousel messages via `POST /messages` with `type: "carousel"`, presenting multiple swipeable cards each with media, text, and buttons.
+- **Behavior**: The payload accepts an array of `cards`, each containing: `header` (image or video URL), `body` (text), and `buttons` (array of reply or CTA buttons). PerGo constructs the Meta Graph API `interactive` payload with `type: "carousel"` and validates: minimum 2 cards, maximum 10 cards, each card must have a media header. If the Meta Cloud API does not support native carousel (pending research question), PerGo falls back to sending cards as sequential interactive messages with a visual grouping indicator.
+- **Constraint**: Requires resolution of research question `questions-waba-carousel-cloud-api.md` before implementation.
+
+## WABA Template Enhancements
+
+### REQ-WABA-TEMPLATE-TTL: Template Time-to-Live Configuration
+- **Description**: Template creation and editing endpoints must support an optional `time_to_live` field specifying the number of seconds before a delivered template message expires and is no longer readable by the recipient.
+- **Behavior**: When `time_to_live` is provided in the `POST .../templates` or `PUT .../templates/:name` payload, PerGo includes `"message_send_ttl_seconds": <value>` in the Meta Graph API request. Valid range: 60 to 600 seconds (per Meta documentation). If omitted, Meta's default TTL applies. This is primarily used for AUTHENTICATION category templates containing OTPs.
+
+## WABA Operational Intelligence Requirements
+
+### REQ-WABA-HEALTH: WABA Connection Health Monitoring
+- **Description**: The API must expose `GET /api/v1/workspaces/:ws/connections/:conn/health` returning real-time health metrics from Meta Graph API for WABA connections.
+- **Behavior**: PerGo queries `GET /v25.0/{phone_number_id}?fields=quality_rating,messaging_limit,code_verification_status,throughput,platform_type,status` and returns a normalized health response:
+  ```json
+  {
+    "quality_rating": "GREEN",
+    "messaging_limit_tier": "TIER_10K",
+    "code_verification_status": "VERIFIED",
+    "throughput": { "level": "STANDARD" },
+    "platform_type": "CLOUD_API",
+    "status": "CONNECTED"
+  }
+  ```
+  The admin UI displays a health badge on each WABA connection card. Quality rating changes trigger an operator notification (if notification system exists). Health data is cached for 5 minutes to avoid excessive Meta API calls.
+
+### REQ-WABA-SMB-ECHOES: SMB Message Echo Synchronization
+- **Description**: PerGo must process `smb_message_echoes` webhooks from Meta to synchronize outbound messages sent via the official WhatsApp Business mobile/desktop app into PerGo's conversation history.
+- **Behavior**: When a business operator sends a message using the WhatsApp Business app (not via PerGo API), Meta delivers an echo webhook with `field: "smb_message_echoes"`. PerGo ingests the message as an outgoing message in the conversation timeline with `source: "whatsapp_business_app"` and `status: "delivered"`. This ensures the conversation history in PerGo's inbox and API is complete even when operators use multiple tools. The `smb_message_echoes` field must be included in the WABA webhook subscription setup (REQ-WABA-WEBHOOK-AUTO).
+
+### REQ-WABA-PHONE-OVERRIDE: Per-Phone Webhook Callback Override
+- **Description**: When multiple phone numbers under the same WABA account are configured as separate PerGo connections (potentially across different workspaces), PerGo must register per-phone callback URL overrides so each phone routes webhooks to the correct PerGo connection endpoint.
+- **Behavior**: On connection save, if the WABA account already has a global webhook URL registered, PerGo calls `POST /v25.0/{phone_number_id}` with `{ "override_callback_uri": "https://<pergo_host>/webhooks/waba/<workspace_id>" }` to route that specific phone number's events to the correct workspace. On connection deletion, the override is removed. This enables multi-tenant architectures where one WABA account serves multiple business units or workspaces.
