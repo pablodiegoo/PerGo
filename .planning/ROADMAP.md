@@ -94,7 +94,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 <details>
 <summary>📋 v1.7 WABA Deep Integration (Phases 30-33) — ACTIVE</summary>
 
-- [ ] Phase 30: Session Window & Inbound Foundation — `contact_sessions` schema migration, inbound `last_inbound_at` tracking on every WABA webhook message, `IsWindowOpen` pre-flight check in WABA dispatcher with 5-minute safety buffer, HTTP 422 rejection at ingestion for expired sessions, 72h free entry point window tracking, `session.expiring_soon` webhook emission at 23h mark. Implements SESS-01, SESS-02, SESS-03, SESS-04, SESS-05.
+- [x] Phase 30: Session Window & Inbound Foundation (6/6 plans) — completed 2026-07-26
   - **Success criteria:**
     1. Inbound WABA messages upsert `contact_sessions.last_inbound_at` timestamp
     2. Non-template messages to contacts with expired 24h window receive HTTP 422 `session_window_expired`
