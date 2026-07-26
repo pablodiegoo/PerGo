@@ -1,20 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.6
-milestone_name: Connection Slugs & API Channel Routing
-current_phase: 30
-status: milestone_complete
-stopped_at: v1.6 milestone shipped
-last_updated: "2026-07-26T01:15:00.000Z"
+milestone: v1.7
+milestone_name: WABA Deep Integration
+status: planning
+last_updated: "2026-07-26T02:00:56.638Z"
 last_activity: 2026-07-26
-last_activity_desc: v1.6 milestone complete — tag pushed
 progress:
   total_phases: 0
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
   percent: 0
-current_phase_name: pending-new-milestone
 ---
 
 # Project State
@@ -28,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-26)
 
 ## Current Position
 
-Phase: —
+Phase: Not started (defining requirements)
 Plan: —
-Status: v1.6 milestone complete — ready for `/gsd-new-milestone`
-Last activity: 2026-07-26 — v1.6 milestone shipped, tag pushed to remoted and archived
+Status: Defining requirements
+Last activity: 2026-07-26 — Milestone v1.7 started
 
 ## Performance Metrics
 

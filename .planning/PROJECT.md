@@ -20,6 +20,18 @@ A single API request delivers a message through any configured channel with auto
 - **Shipped Version**: v1.6 (2026-07-26)
 - **Status**: Stable. Fully functional multi-tenant omnichannel routing gateway with 6 channel types (WhatsApp Web, WABA, Telegram, Instagram, Email SMTP/SES, Mautic), human-friendly connection slug routing, interactive message schema mapping, open/click email tracking, Chatwoot and Typebot integrations with stateful human/bot handoff control, and a server-rendered admin console.
 
+## Current Milestone: v1.7 WABA Deep Integration
+
+**Goal:** Make the WhatsApp Cloud (WABA) channel production-grade with full template lifecycle management, session window compliance, commerce catalog messaging, and Meta Flows interactive form support.
+
+**Target features:**
+- Template CRUD lifecycle — Create, edit, delete templates via REST API + admin UI with local PostgreSQL cache, on-demand Meta Graph API sync, and local validation engine enforcing Meta's formatting rules
+- Template sending via unified API — `POST /messages` with `type: "template"`, automatic parameter binding by template name and language
+- Template status webhooks — Process `message_template_status_update` callbacks and emit events to workspace webhook subscribers
+- 24h session window enforcement — Pre-flight validation rejecting non-template WABA messages outside the 24h window with HTTP 422
+- Commerce catalog messages — `type: "product"` and `type: "product_list"` dispatches with automatic `catalog_id` resolution + incoming cart order webhook parsing
+- Meta Flows dispatch & response — `type: "flow"` dispatch transformer + `nfm_reply` response JSON decoding into structured webhook events
+
 <details>
 <summary>Archived State (v1.4)</summary>
 
@@ -64,7 +76,12 @@ A single API request delivers a message through any configured channel with auto
 
 ### Active
 
-*(All current milestone requirements have been validated. Run `/gsd-new-milestone` to start the next requirements definition.)*
+- [ ] Template CRUD lifecycle with local PostgreSQL cache, Meta Graph API sync, and validation engine (REST API + admin UI)
+- [ ] Template sending via unified `POST /messages` API with `type: "template"` and automatic parameter binding
+- [ ] Template status webhook processing (`message_template_status_update`) and event emission
+- [ ] WABA 24h session window pre-flight enforcement with HTTP 422 rejection
+- [ ] Commerce catalog message dispatches (`product`, `product_list`) and incoming order webhook parsing
+- [ ] Meta Flows dispatch (`type: "flow"`) and `nfm_reply` response decoding
 
 ### Out of Scope
 
@@ -161,4 +178,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-26 after v1.6 milestone completion*
+*Last updated: 2026-07-26 after v1.7 milestone start*
