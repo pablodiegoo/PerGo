@@ -88,6 +88,7 @@ type ValueData struct {
 				Phone string `json:"phone"`
 			} `json:"phones"`
 		} `json:"contacts,omitempty"`
+		Referral *wabaReferralObj `json:"referral,omitempty"`
 	} `json:"messages,omitempty"`
 	Statuses []struct {
 		ID           string `json:"id"`
@@ -103,6 +104,14 @@ type wabaMediaObj struct {
 	Sha256   string `json:"sha256"`
 	Caption  string `json:"caption,omitempty"`
 	Filename string `json:"filename,omitempty"`
+}
+
+type wabaReferralObj struct {
+	SourceURL  string `json:"source_url,omitempty"`
+	SourceID   string `json:"source_id,omitempty"`
+	SourceType string `json:"source_type,omitempty"` // "ad" or "post"
+	Headline   string `json:"headline,omitempty"`
+	Body       string `json:"body,omitempty"`
 }
 
 // Parse decodes the WABA payload, validates credentials, downloads media, and returns unified events.
@@ -213,6 +222,13 @@ func (a *WABAInboundAdapter) Parse(
 					body = msg.Text.Body
 				}
 
+				entryPointType := "standard"
+				if msg.Referral != nil {
+					if msg.Referral.SourceType == "ad" || msg.Referral.SourceID != "" || msg.Referral.SourceURL != "" {
+						entryPointType = "ctwa"
+					}
+				}
+
 				events = append(events, &inbound.InboundEvent{
 					WorkspaceID:  conn.WorkspaceID,
 					ConnectionID: conn.ID,
@@ -224,6 +240,7 @@ func (a *WABAInboundAdapter) Parse(
 					Media:        inboundMedia,
 					Location:     inboundLocation,
 					Contacts:     inboundContacts,
+					Metadata:     map[string]string{"entry_point_type": entryPointType},
 				})
 			}
 		}
