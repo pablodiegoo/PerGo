@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,7 +15,15 @@ type RecipientSessionReader interface {
 	Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error)
 }
 
-// WindowChecker checks if the 24-hour customer service window is open.
+// WindowStatus represents the detailed status of a recipient's customer service window.
+type WindowStatus struct {
+	Open           bool          `json:"open"`
+	ExpiresAt      time.Time     `json:"expires_at"`
+	EntryPointType string        `json:"entry_point_type"`
+	WindowDuration time.Duration `json:"window_duration"`
+}
+
+// WindowChecker checks if the customer service window (24h standard, 72h CTWA) is open.
 type WindowChecker struct {
 	repo RecipientSessionReader
 }
@@ -25,15 +34,34 @@ func NewWindowChecker(repo RecipientSessionReader) *WindowChecker {
 }
 
 // IsWindowOpen checks if a message can be sent to the recipient on the given channel
-// under the 24-hour customer service window rule.
-func (w *WindowChecker) IsWindowOpen(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (bool, error) {
+// under customer service window rules, applying an optional safetyBuffer.
+func (w *WindowChecker) IsWindowOpen(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string, safetyBuffer time.Duration) (*WindowStatus, error) {
 	sess, err := w.repo.Get(ctx, workspaceID, recipientPhone, channel, recipientIdentity)
 	if err != nil {
-		if err == repository.ErrSessionNotFound {
-			return false, nil
+		if errors.Is(err, repository.ErrSessionNotFound) {
+			return &WindowStatus{Open: false}, nil
 		}
-		return false, err
+		return nil, err
 	}
 
-	return time.Since(sess.LastInboundAt) <= 24*time.Hour, nil
+	entryPoint := sess.EntryPointType
+	if entryPoint == "" {
+		entryPoint = "standard"
+	}
+
+	duration := 24 * time.Hour
+	if entryPoint == "ctwa" {
+		duration = 72 * time.Hour
+	}
+
+	expiresAt := sess.LastInboundAt.Add(duration)
+	cutoff := expiresAt.Add(-safetyBuffer)
+	open := time.Now().UTC().Before(cutoff)
+
+	return &WindowStatus{
+		Open:           open,
+		ExpiresAt:      expiresAt,
+		EntryPointType: entryPoint,
+		WindowDuration: duration,
+	}, nil
 }
