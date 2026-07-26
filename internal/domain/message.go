@@ -58,9 +58,14 @@ type TextContent struct {
 
 // Action represents the interactive elements.
 type Action struct {
-	Button   string    `json:"button,omitempty"` // For list messages
-	Buttons  []Button  `json:"buttons,omitempty"`
-	Sections []Section `json:"sections,omitempty"`
+	Button            string                 `json:"button,omitempty"` // For list messages
+	Buttons           []Button               `json:"buttons,omitempty"`
+	Sections          []Section              `json:"sections,omitempty"`
+	FlowToken         string                 `json:"flow_token,omitempty"`
+	FlowID            string                 `json:"flow_id,omitempty"`
+	FlowCTA           string                 `json:"flow_cta,omitempty"`
+	FlowAction        string                 `json:"flow_action,omitempty"`
+	FlowActionPayload map[string]interface{} `json:"flow_action_payload,omitempty"`
 }
 
 // Button represents a reply button.
@@ -133,7 +138,7 @@ type QueueMessage struct {
 // TemplateComponent represents a template component payload.
 type TemplateComponent struct {
 	Type       string              `json:"type"` // "header", "body", "buttons", etc.
-	Parameters []TemplateParameter `json:"parameters"`
+	Parameters interface{} `json:"parameters"`
 }
 
 // TemplateParameter represents a template parameter payload.
