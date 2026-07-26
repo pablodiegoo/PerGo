@@ -4,6 +4,10 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 )
 
@@ -129,4 +133,81 @@ func (e *Encryptor) Decrypt(ciphertext []byte) (plaintext []byte, err error) {
 	encrypted := rest[nonceSize:]
 
 	return plainGCM.Open(nil, plainNonce, encrypted, nil)
+}
+
+// DecryptRSA decrypts ciphertext using RSA-OAEP with SHA-256.
+func DecryptRSA(privateKey *rsa.PrivateKey, ciphertext []byte) ([]byte, error) {
+	return rsa.DecryptOAEP(sha256.New(), rand.Reader, privateKey, ciphertext, nil)
+}
+
+// DecryptRSAPem decrypts ciphertext using RSA-OAEP with SHA-256 from a PEM-encoded key.
+func DecryptRSAPem(privateKeyPem []byte, ciphertext []byte) ([]byte, error) {
+	block, _ := pem.Decode(privateKeyPem)
+	if block == nil {
+		return nil, errors.New("failed to parse PEM block containing the key")
+	}
+
+	var priv *rsa.PrivateKey
+	var err error
+
+	if block.Type == "RSA PRIVATE KEY" {
+		priv, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+	} else if block.Type == "PRIVATE KEY" {
+		key, parseErr := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if parseErr == nil {
+			var ok bool
+			priv, ok = key.(*rsa.PrivateKey)
+			if !ok {
+				err = errors.New("not an RSA private key")
+			}
+		} else {
+			err = parseErr
+		}
+	} else {
+		return nil, errors.New("unsupported PEM block type: " + block.Type)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return DecryptRSA(priv, ciphertext)
+}
+
+// DecryptAES128GCM decrypts ciphertext using AES-GCM.
+func DecryptAES128GCM(key, iv, ciphertext, tag []byte) ([]byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	ciphertextWithTag := append(ciphertext, tag...)
+	return gcm.Open(nil, iv, ciphertextWithTag, nil)
+}
+
+// EncryptAES128GCM encrypts plaintext using AES-GCM.
+func EncryptAES128GCM(key, iv, plaintext []byte) ([]byte, []byte, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, nil, err
+	}
+	sealed := gcm.Seal(nil, iv, plaintext, nil)
+	tagSize := gcm.Overhead()
+	return sealed[:len(sealed)-tagSize], sealed[len(sealed)-tagSize:], nil
+}
+
+// InvertIV performs a bitwise XOR of every byte with 0xFF.
+func InvertIV(iv []byte) []byte {
+	inverted := make([]byte, len(iv))
+	for i, b := range iv {
+		inverted[i] = b ^ 0xFF
+	}
+	return inverted
 }
