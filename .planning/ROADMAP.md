@@ -86,7 +86,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 <details open>
 <summary>🔄 v1.6 Connection Slugs & API Channel Routing (Phase 29) — IN PROGRESS</summary>
 
-- [ ] Phase 29: Connection Slugs & Human-Friendly Channel Identifiers for API Routing
+- [x] Phase 29: Connection Slugs & Human-Friendly Channel Identifiers for API Routing (completed 2026-07-26)
 
 </details>
 
@@ -121,7 +121,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 26. Implement Telegram Inline Keyboards and Forum Threads mapping | v1.4 | 1/1 | Complete    | 2026-07-20 |
 | 27. Implement Instagram Stories handling and Quick Replies mapping | v1.4 | 1/1 | Complete    | 2026-07-20 |
 | 28. Email Channels & Tracking Engine | v1.5 | 2/2 | Complete | 2026-07-25 |
-| 29. Connection Slugs & API Channel Routing | v1.6 | 0/1 | In Progress | - |
+| 29. Connection Slugs & API Channel Routing | v1.6 | 4/4 | Complete    | 2026-07-26 |
 | 30. WABA Template CRUD Lifecycle | v1.7 | 0/? | Planned | - |
 
 ---
