@@ -347,6 +347,11 @@ func main() {
 	// --- Repositories ---
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
 	wabaTemplateRepo := repository.NewWABATemplateRepository(pool)
+	if err := wabaTemplateRepo.LoadCache(ctx); err != nil {
+		slog.Warn("failed to warm up WABA template cache", "error", err)
+	} else {
+		slog.Info("WABA template cache warmed up successfully")
+	}
 
 	wabaTemplateHandler := admin.NewWABATemplateHandler(wabaTemplateRepo, connectionRepo)
 	userLogsHandler := admin.NewUserLogsHandler(userActionLogRepo)

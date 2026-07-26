@@ -277,7 +277,7 @@ func (h *WABATemplateHandler) Sync(c *echo.Context) error {
 	}
 
 	// Update locally
-	err = h.Repo.UpdateStatus(c.Request().Context(), templateID, metaResp.Status)
+	err = h.Repo.UpdateStatus(c.Request().Context(), templateID, metaResp.Status, nil, nil)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to update template status locally")
 	}

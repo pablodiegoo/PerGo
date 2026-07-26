@@ -102,7 +102,7 @@ func TestWABATemplateRepository(t *testing.T) {
 	}
 
 	// 7. Test UpdateStatus
-	err = repo.UpdateStatus(ctx, created.ID, "APPROVED")
+	err = repo.UpdateStatus(ctx, created.ID, "APPROVED", nil, nil)
 	if err != nil {
 		t.Fatalf("failed to update status: %v", err)
 	}
