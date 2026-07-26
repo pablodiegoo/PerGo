@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -16,6 +17,7 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/storage"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/session"
 )
 
 // Publisher defines the interface for publishing messages to a queue.
@@ -38,6 +40,7 @@ type MessageHandler struct {
 	QueueDepth     *middleware.QueueDepthTracker
 	S3Client       *storage.S3Client
 	ConnectionRepo ConnectionFinder
+	WindowChecker  *session.WindowChecker
 }
 
 // RegisterRoutes wires the message endpoints onto the Echo router.
@@ -79,7 +82,11 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 		if h.QueueDepth != nil {
 			tracker = h.QueueDepth
 		}
-		ingestor = outbound.NewProcessor(tracker, mediaEngine, h.ConnectionRepo, h.Publisher)
+		proc := outbound.NewProcessor(tracker, mediaEngine, h.ConnectionRepo, h.Publisher)
+		if h.WindowChecker != nil {
+			proc.SetWindowChecker(h.WindowChecker)
+		}
+		ingestor = proc
 	}
 
 	// Ingest using OutboundProcessor
@@ -91,6 +98,35 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 				Code:     "queue_full",
 				Message:  "per-session message queue limit exceeded",
 				MoreInfo: "https://docs.pergo.dev/errors/queue_full",
+			})
+		}
+
+		var sessionErr *session.SessionWindowError
+		if errors.As(err, &sessionErr) {
+			expiredAtStr := ""
+			windowDurStr := "24h"
+			sourceStr := "ingestion"
+			if sessionErr.Status != nil {
+				if !sessionErr.Status.ExpiresAt.IsZero() {
+					expiredAtStr = sessionErr.Status.ExpiresAt.Format(time.RFC3339)
+				}
+				if sessionErr.Status.WindowDuration > 0 {
+					windowDurStr = sessionErr.Status.WindowDuration.String()
+				}
+			}
+			if sessionErr.Source != "" {
+				sourceStr = sessionErr.Source
+			}
+
+			return c.JSON(http.StatusUnprocessableEntity, map[string]any{
+				"code":    "SESSION_WINDOW_EXPIRED",
+				"message": "Customer service window expired for recipient",
+				"details": map[string]string{
+					"window_expired_at": expiredAtStr,
+					"window_duration":   windowDurStr,
+					"hint":              "Use type: template to reach this contact",
+					"source":            sourceStr,
+				},
 			})
 		}
 

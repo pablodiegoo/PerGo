@@ -23,6 +23,16 @@ type WindowStatus struct {
 	WindowDuration time.Duration `json:"window_duration"`
 }
 
+// SessionWindowError represents a failed customer service window check.
+type SessionWindowError struct {
+	Status *WindowStatus
+	Source string // "ingestion" or "dispatch"
+}
+
+func (e *SessionWindowError) Error() string {
+	return "customer service window expired for recipient"
+}
+
 // WindowChecker checks if the customer service window (24h standard, 72h CTWA) is open.
 type WindowChecker struct {
 	repo RecipientSessionReader

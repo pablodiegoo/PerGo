@@ -11,6 +11,7 @@ import (
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/session"
 )
 
 // OutboundProcessor defines the port for outbound message ingestion.
@@ -38,10 +39,11 @@ type Publisher interface {
 
 // Processor is the concrete implementation of outbound message ingestion.
 type Processor struct {
-	tracker     QueueDepthChecker
-	resolver    RouteResolver
-	publisher   Publisher
-	mediaEngine media.Engine
+	tracker       QueueDepthChecker
+	resolver      RouteResolver
+	publisher     Publisher
+	mediaEngine   media.Engine
+	windowChecker *session.WindowChecker
 }
 
 // NewProcessor creates a new OutboundProcessor implementation.
@@ -57,6 +59,12 @@ func NewProcessor(
 		resolver:    resolver,
 		publisher:   publisher,
 	}
+}
+
+// SetWindowChecker attaches a WindowChecker for session window verification.
+func (p *Processor) SetWindowChecker(w *session.WindowChecker) *Processor {
+	p.windowChecker = w
+	return p
 }
 
 // Ingest runs the outbound message ingestion pipeline: backpressure, validation, S3 caching, routing, NATS publishing.
@@ -152,6 +160,19 @@ func (p *Processor) Ingest(
 					Message: "failed to resolve connection route by slug",
 					Err:     err,
 				}
+			}
+		}
+	}
+
+	// 4.5. Pre-flight Session Window check (WABA freeform messages only)
+	if conn.Channel == "whatsapp_cloud" && req.TemplateName == "" && p.windowChecker != nil {
+		status, err := p.windowChecker.IsWindowOpen(ctx, workspaceID, req.To, "whatsapp_cloud", conn.SenderIdentity, 0)
+		if err != nil {
+			slog.Warn("outbound processor: window checker error", "error", err, "trace_id", traceID)
+		} else if status != nil && !status.Open {
+			return nil, &session.SessionWindowError{
+				Status: status,
+				Source: "ingestion",
 			}
 		}
 	}
