@@ -229,27 +229,22 @@ func (p *Processor) Ingest(
 				}
 			}
 
-			// Validate and normalize parameters against cached components
-			var tmplComponents []domain.TemplateComponent
-			if err := json.Unmarshal(tmpl.Components, &tmplComponents); err != nil {
-				slog.Error("outbound processor: failed to parse cached template components", "error", err, "trace_id", traceID)
-			} else {
-				for i := range req.Components {
-					// Normalize params
-					normalized, err := NormalizeTemplateParams(req.Components[i].Parameters)
-					if err != nil {
-						return nil, &ErrInvalidTemplateParameters{Message: err.Error()}
-					}
-					req.Components[i].Parameters = normalized
+			// Normalize parameters
+			for i := range req.Components {
+				normalized, err := NormalizeTemplateParams(req.Components[i].Parameters)
+				if err != nil {
+					return nil, &ErrInvalidTemplateParameters{Message: err.Error()}
+				}
+				req.Components[i].Parameters = normalized
+			}
 
-					// Match against cached components to validate count if applicable
-					for _, c := range tmplComponents {
-						if c.Type == req.Components[i].Type {
-							// If we could extract the expected variable count, we would check it here.
-							// For now, we simply trust the normalized parameters.
-							_ = c
-						}
-					}
+			// Validate variable counts
+			expected, err := CountTemplateVariables(tmpl.Components)
+			if err != nil {
+				slog.Warn("outbound processor: failed to extract expected variable counts", "error", err, "trace_id", traceID)
+			} else if len(expected) > 0 {
+				if err := ValidateParameterCounts(req.Components, expected); err != nil {
+					return nil, &ErrInvalidTemplateParameters{Message: err.Error()}
 				}
 			}
 		}
