@@ -1,0 +1,131 @@
+package waba_template
+
+import (
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/layout"
+)
+
+// Page renders the full WABA templates list page with base layout.
+templ Page(workspaceID uuid.UUID, templates []repository.WABATemplate) {
+	@layout.Base("WABA Templates", List(workspaceID, templates))
+}
+
+// List renders the template list content.
+templ List(workspaceID uuid.UUID, templates []repository.WABATemplate) {
+	<div class="page-header flex justify-between items-center mb-6">
+		<div>
+			<h1 class="text-2xl font-bold">WABA Templates</h1>
+			<p class="text-xs text-slate-500">Manage and synchronize WhatsApp Cloud message templates.</p>
+		</div>
+		<div class="header-actions flex gap-2">
+			<button
+				class="btn btn-secondary text-sm flex items-center gap-1"
+				hx-post={ fmt.Sprintf("/admin/workspaces/%s/templates/sync-all", workspaceID) }
+				hx-target="#sync-status-container"
+				hx-swap="innerHTML"
+			>
+				🔄 Sync Templates
+			</button>
+			<button
+				class="btn btn-primary text-sm flex items-center gap-1"
+				hx-get={ fmt.Sprintf("/admin/workspaces/%s/templates/new", workspaceID) }
+				hx-target="#template-form-area"
+				hx-swap="innerHTML"
+			>
+				+ New Template
+			</button>
+		</div>
+	</div>
+
+	<div id="sync-status-container"></div>
+	<div id="template-form-area" class="mb-6"></div>
+
+	<div class="section bg-card rounded-lg shadow border overflow-hidden">
+		<table class="table w-full">
+			<thead class="bg-slate-50 text-slate-600 text-left text-xs uppercase tracking-wider">
+				<tr>
+					<th class="p-3">Name</th>
+					<th class="p-3">Language</th>
+					<th class="p-3">Category</th>
+					<th class="p-3">Quality Score</th>
+					<th class="p-3">Status</th>
+					<th class="p-3 text-right">Actions</th>
+				</tr>
+			</thead>
+			<tbody id="template-list-body" class="divide-y divide-slate-100 text-sm">
+				for _, tmpl := range templates {
+					@Row(workspaceID, tmpl)
+				}
+				if len(templates) == 0 {
+					<tr>
+						<td colspan="6" class="p-8 text-center text-slate-400">
+							No templates found. Register one to send template messages.
+						</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+}
+
+// Row renders a single WABA template row.
+templ Row(workspaceID uuid.UUID, tmpl repository.WABATemplate) {
+	<tr id={ fmt.Sprintf("template-row-%s", tmpl.ID) } class="hover:bg-slate-50">
+		<td class="p-3 font-semibold text-slate-800">
+			{ tmpl.Name }
+			if tmpl.Status == "REJECTED" && tmpl.RejectionReason != nil && *tmpl.RejectionReason != "" {
+				<div class="text-xs text-red-600 font-normal mt-1 bg-red-50 p-1.5 rounded border border-red-100">
+					<strong>Rejection Reason:</strong> { *tmpl.RejectionReason }
+				</div>
+			}
+		</td>
+		<td class="p-3"><span class="badge badge-info text-xs">{ tmpl.Language }</span></td>
+		<td class="p-3 text-slate-600">{ tmpl.Category }</td>
+		<td class="p-3">
+			if tmpl.QualityScore != nil && *tmpl.QualityScore == "GREEN" {
+				<span class="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">🟢 GREEN</span>
+			} else if tmpl.QualityScore != nil && *tmpl.QualityScore == "YELLOW" {
+				<span class="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">🟡 YELLOW</span>
+			} else if tmpl.QualityScore != nil && *tmpl.QualityScore == "RED" {
+				<span class="inline-flex items-center gap-1 text-xs font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">🔴 RED</span>
+			} else {
+				<span class="text-xs text-slate-400">--</span>
+			}
+		</td>
+		<td class="p-3">
+			if tmpl.Status == "APPROVED" {
+				<span class="badge badge-success">{ tmpl.Status }</span>
+			} else if tmpl.Status == "REJECTED" {
+				<span class="badge badge-danger">{ tmpl.Status }</span>
+			} else if tmpl.Status == "PENDING" {
+				<span class="badge badge-warning">{ tmpl.Status }</span>
+			} else {
+				<span class="badge badge-secondary">{ tmpl.Status }</span>
+			}
+		</td>
+		<td class="p-3 text-right">
+			<div class="btn-group inline-flex gap-1">
+				<button
+					class="btn btn-secondary btn-sm text-xs"
+					hx-post={ fmt.Sprintf("/admin/workspaces/%s/templates/%s/sync", workspaceID, tmpl.ID) }
+					hx-target={ fmt.Sprintf("#template-row-%s", tmpl.ID) }
+					hx-swap="outerHTML"
+				>
+					Sync
+				</button>
+				<button
+					class="btn btn-danger btn-sm text-xs"
+					hx-delete={ fmt.Sprintf("/admin/workspaces/%s/templates/%s", workspaceID, tmpl.ID) }
+					hx-target={ fmt.Sprintf("#template-row-%s", tmpl.ID) }
+					hx-swap="delete"
+					hx-confirm="Are you sure you want to delete this template?"
+				>
+					Delete
+				</button>
+			</div>
+		</td>
+	</tr>
+}

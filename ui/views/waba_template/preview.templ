@@ -1,0 +1,53 @@
+package waba_template
+
+import (
+	"strings"
+)
+
+// RenderPreviewText replaces placeholders like {{1}}, {{2}}, {{3}} with sample data.
+func RenderPreviewText(body string, p1, p2, p3 string) string {
+	if p1 == "" {
+		p1 = "John"
+	}
+	if p2 == "" {
+		p2 = "Order #1234"
+	}
+	if p3 == "" {
+		p3 = "24 hours"
+	}
+	res := strings.ReplaceAll(body, "{{1}}", p1)
+	res = strings.ReplaceAll(res, "{{2}}", p2)
+	res = strings.ReplaceAll(res, "{{3}}", p3)
+	return res
+}
+
+templ Preview(headerType string, headerText string, body string, footer string, p1 string, p2 string, p3 string) {
+	<div class="whatsapp-preview-card p-4 rounded-xl shadow-lg border border-slate-200 bg-[#E5DDD5] max-w-sm font-sans">
+		<div class="bg-white rounded-lg p-3 shadow-sm text-slate-800 text-sm relative border-l-4 border-[#25D366]">
+			if headerType == "TEXT" && headerText != "" {
+				<div class="font-bold text-slate-900 mb-1 text-base">{ headerText }</div>
+			} else if headerType == "IMAGE" {
+				<div class="bg-slate-200 h-32 rounded mb-2 flex items-center justify-center text-slate-500 text-xs font-medium">📷 [Header Image]</div>
+			} else if headerType == "DOCUMENT" {
+				<div class="bg-slate-100 p-2 rounded mb-2 flex items-center gap-2 border text-xs text-slate-600">📄 [Header Document]</div>
+			}
+			
+			<div class="whitespace-pre-wrap leading-relaxed text-slate-700">
+				if body != "" {
+					{ RenderPreviewText(body, p1, p2, p3) }
+				} else {
+					<span class="text-slate-400 italic">Your message body will appear here...</span>
+				}
+			</div>
+
+			if footer != "" {
+				<div class="text-[11px] text-slate-400 mt-2 border-t pt-1 font-normal">{ footer }</div>
+			}
+
+			<div class="text-[10px] text-slate-400 text-right mt-1 flex items-center justify-end gap-1">
+				<span>12:00 PM</span>
+				<span class="text-[#53bdeb]">✓✓</span>
+			</div>
+		</div>
+	</div>
+}

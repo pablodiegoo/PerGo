@@ -1,0 +1,90 @@
+package waba_template
+
+import (
+	"fmt"
+	"github.com/google/uuid"
+)
+
+templ Form(workspaceID uuid.UUID, slug string) {
+	<div class="section shadow-lg p-6 rounded-lg bg-card border">
+		<h2 class="text-xl font-bold mb-4">New WABA Template</h2>
+		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+			<!-- Form Column -->
+			<div class="lg:col-span-2">
+				<form
+					id="template-form"
+					hx-post={ fmt.Sprintf("/admin/workspaces/%s/templates", workspaceID) }
+				>
+					<div class="form-group mb-4">
+						<label for={ "name" } class="form-label block font-semibold mb-1">Template Name</label>
+						<input type="text" id="name" name="name" required placeholder="e.g. welcome_notification" class="form-input w-full p-2 border rounded"/>
+						<p class="text-xs text-slate-500 mt-1">Must contain only lowercase alphanumeric characters and underscores.</p>
+					</div>
+					
+					<div class="grid grid-cols-2 gap-4 mb-4">
+						<div class="form-group">
+							<label for={ "language" } class="form-label block font-semibold mb-1">Language Code</label>
+							<input type="text" id="language" name="language" required placeholder="e.g. en_US, pt_BR" class="form-input w-full p-2 border rounded"/>
+						</div>
+						<div class="form-group">
+							<label for={ "category" } class="form-label block font-semibold mb-1">Category</label>
+							<select id="category" name="category" required class="form-select w-full p-2 border rounded">
+								<option value="UTILITY">Utility</option>
+								<option value="MARKETING">Marketing</option>
+								<option value="AUTHENTICATION">Authentication</option>
+							</select>
+						</div>
+					</div>
+
+					<!-- Header Section -->
+					<div class="form-group mb-4">
+						<label for={ "header_type" } class="form-label block font-semibold mb-1">Header (Optional)</label>
+						<div class="grid grid-cols-2 gap-4">
+							<select id="header_type" name="header_type" class="form-select p-2 border rounded"
+								hx-post="/admin/templates/preview" hx-target="#preview-container" hx-trigger="change" hx-include="#template-form">
+								<option value="NONE">None</option>
+								<option value="TEXT">Text</option>
+								<option value="IMAGE">Image</option>
+								<option value="DOCUMENT">Document</option>
+							</select>
+							<input type="text" id="header_text" name="header_text" placeholder="Header text..." class="form-input p-2 border rounded"
+								hx-post="/admin/templates/preview" hx-target="#preview-container" hx-trigger="keyup changed delay:200ms" hx-include="#template-form"/>
+						</div>
+					</div>
+
+					<!-- Body Section -->
+					<div class="form-group mb-4">
+						<label for={ "body" } class="form-label block font-semibold mb-1">Body Text</label>
+						<textarea id="body" name="body" rows="4" required class="form-input w-full p-2 border rounded font-mono text-sm"
+							placeholder="Hello {{1}}, your order {{2}} is confirmed!"
+							hx-post="/admin/templates/preview" hx-target="#preview-container" hx-trigger="keyup changed delay:200ms" hx-include="#template-form"></textarea>
+						<p class="text-xs text-slate-500 mt-1">Use { "{{" }1{ "}}" }, { "{{" }2{ "}}" }, { "{{" }3{ "}}" } { "for" } dynamic parameters.</p>
+					</div>
+
+					<!-- Footer Section -->
+					<div class="form-group mb-4">
+						<label for={ "footer" } class="form-label block font-semibold mb-1">Footer Text (Optional)</label>
+						<input type="text" id="footer" name="footer" placeholder="e.g. Reply STOP to unsubscribe" class="form-input w-full p-2 border rounded text-sm"
+							hx-post="/admin/templates/preview" hx-target="#preview-container" hx-trigger="keyup changed delay:200ms" hx-include="#template-form"/>
+					</div>
+
+					<!-- Hidden raw components for Meta submission -->
+					<input type="hidden" id="components" name="components" value="[]"/>
+
+					<div class="form-actions flex justify-end gap-2 mt-6">
+						<button type="button" class="btn btn-secondary" onclick="this.closest('.section').remove()">Cancel</button>
+						<button type="submit" class="btn btn-primary">Submit to Meta & Save</button>
+					</div>
+				</form>
+			</div>
+
+			<!-- Live Preview Column -->
+			<div class="lg:col-span-1 border-l pl-6 flex flex-col items-center">
+				<h3 class="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">Live Preview</h3>
+				<div id="preview-container">
+					@Preview("NONE", "", "Hello {{1}}, your order {{2}} is confirmed!", "Reply STOP to unsubscribe", "John", "Order #1234", "")
+				</div>
+			</div>
+		</div>
+	</div>
+}

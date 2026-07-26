@@ -13,6 +13,7 @@ import (
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
+	"github.com/pablojhp.pergo/ui/views/waba_template"
 )
 
 // WABATemplateHandler handles WABA template management.
@@ -340,4 +341,17 @@ func (h *WABATemplateHandler) NewForm(c *echo.Context) error {
 	}
 
 	return mw.Render(c, http.StatusOK, pages.WABATemplateCreateForm(workspaceID))
+}
+
+// Preview renders the live WhatsApp chat bubble preview partial for HTMX requests.
+func (h *WABATemplateHandler) Preview(c *echo.Context) error {
+	headerType := c.FormValue("header_type")
+	headerText := c.FormValue("header_text")
+	body := c.FormValue("body")
+	footer := c.FormValue("footer")
+	p1 := c.FormValue("param_1")
+	p2 := c.FormValue("param_2")
+	p3 := c.FormValue("param_3")
+
+	return mw.Render(c, http.StatusOK, waba_template.Preview(headerType, headerText, body, footer, p1, p2, p3))
 }
