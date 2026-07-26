@@ -160,6 +160,14 @@ exports.STATE_COMMAND_ALIASES = [
         "mutation": true
     },
     {
+        "canonical": "state.rebuild",
+        "aliases": [
+            "state rebuild"
+        ],
+        "subcommand": "rebuild",
+        "mutation": true
+    },
+    {
         "canonical": "state.milestone-switch",
         "aliases": [
             "state milestone-switch"
@@ -273,6 +281,14 @@ exports.INIT_COMMAND_ALIASES = [
             "init new-milestone"
         ],
         "subcommand": "new-milestone",
+        "mutation": false
+    },
+    {
+        "canonical": "init.onboard",
+        "aliases": [
+            "init onboard"
+        ],
+        "subcommand": "onboard",
         "mutation": false
     },
     {
@@ -709,6 +725,20 @@ exports.NON_FAMILY_COMMAND_ALIASES = [
         "canonical": "requirements.mark-complete",
         "aliases": [
             "requirements mark-complete"
+        ],
+        "mutation": true
+    },
+    {
+        "canonical": "requirements.ready-ids",
+        "aliases": [
+            "requirements ready-ids"
+        ],
+        "mutation": false
+    },
+    {
+        "canonical": "requirements.revert-phase",
+        "aliases": [
+            "requirements revert-phase"
         ],
         "mutation": true
     },

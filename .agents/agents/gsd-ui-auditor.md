@@ -44,6 +44,8 @@ Before auditing, discover project context:
 **Project instructions:** Read `./GEMINI.md` if it exists in the working directory. Follow all project-specific guidelines.
 
 **Project skills:** Check `.agents/skills/` or `.agents/skills/` directory if either exists:
+
+**agent_skills:** self-load per @.agents/gsd-core/references/agent-skills-bootstrap.md
 1. List available skills (subdirectories)
 2. Read `SKILL.md` for each skill
 3. 

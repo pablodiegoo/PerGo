@@ -120,5 +120,13 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "allow": [
+      "read_file(~/Coding/Ecoar/PerGo/.agents/gsd-core/*)",
+      "read_file(~/Coding/Ecoar/PerGo/.agents/agents/gsd-*)",
+      "read_file(~/Coding/Ecoar/PerGo/.agents/skills/gsd-*)",
+      "command(node ~/Coding/Ecoar/PerGo/.agents/hooks/*)"
+    ]
   }
 }

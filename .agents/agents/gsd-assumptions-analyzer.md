@@ -21,6 +21,8 @@ Spawned by `discuss-phase-assumptions` via `Task()`. You do NOT present output d
 
 @.agents/gsd-core/references/untrusted-input-boundary.md
 
+**agent_skills:** self-load per @.agents/gsd-core/references/agent-skills-bootstrap.md
+
 <input>
 Agent receives via prompt:
 

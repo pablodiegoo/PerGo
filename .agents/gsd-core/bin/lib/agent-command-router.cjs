@@ -10,6 +10,20 @@
 const io = require("./io.cjs");
 const { output, error, ERROR_REASON } = io;
 // ─── Constants ────────────────────────────────────────────────────────────────
+/**
+ * #2296 — The runtime enum of failure classes `classifyAgentFailure` can emit.
+ *
+ * `AgentFailureResult`'s class strings are TypeScript types, which erase at
+ * runtime. Any second surface that needs to validate a class (the
+ * `resolve-execution --failure-class` flag) would otherwise have to re-declare
+ * the literals, giving two lists that can silently diverge. This frozen enum is
+ * the single runtime source both surfaces consume.
+ */
+const AGENT_FAILURE_CLASSES = Object.freeze({
+    QUOTA_EXCEEDED: 'quota-exceeded',
+    CLASSIFY_HANDOFF_BUG: 'classify-handoff-bug',
+    UNKNOWN_FAILURE: 'unknown-failure',
+});
 const QUOTA_SENTINELS = [
     '429',
     'usage_limit_reached',
@@ -36,23 +50,23 @@ function classifyAgentFailure(body) {
     // eslint-disable-next-line @typescript-eslint/no-base-to-string
     const normalized = String(body ?? '').toLowerCase();
     if (normalized.trim() === '') {
-        return { class: 'unknown-failure' };
+        return { class: AGENT_FAILURE_CLASSES.UNKNOWN_FAILURE };
     }
     for (const sentinel of QUOTA_SENTINELS) {
         if (normalized.includes(sentinel)) {
             const retryAfterSeconds = parseRetryAfter(body);
             return retryAfterSeconds === undefined
-                ? { class: 'quota-exceeded', sentinel }
-                : { class: 'quota-exceeded', sentinel, retryAfterSeconds };
+                ? { class: AGENT_FAILURE_CLASSES.QUOTA_EXCEEDED, sentinel }
+                : { class: AGENT_FAILURE_CLASSES.QUOTA_EXCEEDED, sentinel, retryAfterSeconds };
         }
     }
     if (normalized.includes(CLASSIFY_HANDOFF_SENTINEL)) {
         return {
-            class: 'classify-handoff-bug',
+            class: AGENT_FAILURE_CLASSES.CLASSIFY_HANDOFF_BUG,
             sentinel: CLASSIFY_HANDOFF_SENTINEL,
         };
     }
-    return { class: 'unknown-failure' };
+    return { class: AGENT_FAILURE_CLASSES.UNKNOWN_FAILURE };
 }
 function routeAgentCommand({ args, raw }) {
     const subcommand = args[1];
@@ -63,6 +77,7 @@ function routeAgentCommand({ args, raw }) {
     output(classifyAgentFailure(bodyArgs.join(' ')), raw, undefined);
 }
 module.exports = {
+    AGENT_FAILURE_CLASSES,
     classifyAgentFailure,
     routeAgentCommand,
 };

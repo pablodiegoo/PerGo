@@ -18,7 +18,7 @@
  *   - ./planning-workspace.cjs (planningDir, planningRoot)
  *   - ./shell-command-projection.cjs (execGit, platformWriteSync, platformReadSync)
  *   - ./core-utils.cjs       (detectSubRepos)
- *   - ./model-catalog.cjs    (KNOWN_RUNTIMES, KNOWN_PROVIDERS)
+ *   - ./model-catalog.cjs    (KNOWN_RUNTIMES, KNOWN_PROVIDERS, ADAPTIVE_TIER_VALUES)
  */
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -104,6 +104,7 @@ const CONFIG_DEFAULTS = {
     verifier: _getNestedConfigDefault('workflow', 'verifier'),
     nyquist_validation: _getNestedConfigDefault('workflow', 'nyquist_validation'),
     ai_integration_phase: _getNestedConfigDefault('workflow', 'ai_integration_phase'),
+    api_coverage_gate: _getNestedConfigDefault('workflow', 'api_coverage_gate'),
     parallelization: _getConfigDefault('parallelization'),
     brave_search: _getConfigDefault('brave_search'),
     firecrawl: _getConfigDefault('firecrawl'),
@@ -157,17 +158,25 @@ const _warnedUnknownConfigKeys = new Set();
 // ─── Git utilities ────────────────────────────────────────────────────────────
 const _gitIgnoredCache = new Map();
 function isGitIgnored(cwd, targetPath) {
-    const key = cwd + '::' + targetPath;
+    // #2206: strip trailing slashes — `git check-ignore` has a quirk where a
+    // CRLF .gitignore with blank lines falsely reports a trailing-slash path
+    // (e.g. `.planning/`) as ignored. Normalizing here protects every call site.
+    const normalized = targetPath.replace(/\/+$/, '');
+    const key = cwd + '::' + normalized;
     if (_gitIgnoredCache.has(key))
         return _gitIgnoredCache.get(key);
     // --no-index checks .gitignore rules regardless of whether the file is tracked.
-    const result = (0, shell_command_projection_cjs_1.execGit)(['check-ignore', '-q', '--no-index', '--', targetPath], { cwd });
+    const result = (0, shell_command_projection_cjs_1.execGit)(['check-ignore', '-q', '--no-index', '--', normalized], { cwd });
     const ignored = result.exitCode === 0;
     _gitIgnoredCache.set(key, ignored);
     return ignored;
 }
 // ─── Model alias resolution ───────────────────────────────────────────────────
-const RUNTIME_OVERRIDE_TIERS = new Set(['opus', 'sonnet', 'haiku']);
+// Catalog-derived (model-catalog.cts) so this vocabulary can never drift from
+// VALID_TIERS in verify.cts — see #2070 "Generative Fix Divergence". Excludes
+// 'inherit' (unlike VALID_TIERS): runtime overrides always resolve to a
+// concrete tier, never the adaptive sentinel.
+const RUNTIME_OVERRIDE_TIERS = model_catalog_cjs_1.ADAPTIVE_TIER_VALUES;
 const _warnedConfigKeys = new Set();
 function _warnUnknownProfileOverrides(parsed, configLabel) {
     if (!parsed || typeof parsed !== 'object')
@@ -682,6 +691,14 @@ function loadConfigResolved(cwd, options = {}) {
                 fast_mode: (globalDefaults['fast_mode']) || null,
                 agent_skills: (globalDefaults['agent_skills']) || {},
                 response_language: (globalDefaults['response_language']) || null,
+                // #2069: forward model_policy / model_profile_overrides / runtime so the global-defaults
+                // path is at parity with the project-config path (which forwards these three from
+                // parsed['…'] at the top of this function). Without these entries, ~/.gsd/defaults.json
+                // silently drops them — model_policy/provider/budget etc. are honored when set in a
+                // project but ignored when set globally.
+                runtime: (globalDefaults['runtime']) || null,
+                model_profile_overrides: (globalDefaults['model_profile_overrides']) || null,
+                model_policy: (globalDefaults['model_policy']) || null,
             };
             // Branch D: global-defaults
             try {

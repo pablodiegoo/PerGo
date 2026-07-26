@@ -15,6 +15,17 @@
  * inside a fenced code block) is ignored — this is the exact failure mode that
  * issue #586 / PR #650 identified. The shared extractFrontmatter parser anchors
  * its regex at byte 0 of the document, which provides this guarantee.
+ *
+ * #2348 staleness signal: whether a *-VERIFICATION.md is stale (a summary newer
+ * than it) is decided from git commit time when a file is committed AND clean,
+ * and from filesystem mtime otherwise. mtimes are assigned at checkout time and
+ * are not preserved by `git clone` / `cp -R`, and any unrelated `touch` /
+ * reformat / editor-save re-stales a valid report — so a committed phase could
+ * read `passed` on one machine and `stale` on a fresh clone purely from checkout
+ * order. Git commit time is content-tied and clone-stable; mtime is retained
+ * only for uncommitted or working-tree-dirty files, where it is the true
+ * last-changed signal. Both are real wall-clock change times, so the comparison
+ * is sound even when one file uses each.
  */
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -29,6 +40,7 @@ const phaseId = require("./phase-id.cjs");
 const frontmatterMod = require("./frontmatter.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- plan-scan.cjs is an export= CommonJS module
 const scanPhasePlans = require("./plan-scan.cjs");
+const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 const { output, error } = io;
 const { extractPhaseToken } = phaseId;
 const { extractFrontmatter } = frontmatterMod;
@@ -87,6 +99,79 @@ const VERIFICATION_ROUTING_TABLE = {
         next_command: '/gsd-execute-phase',
     },
 };
+/** Normalize separators to posix (git emits `/`; callers may pass `\` on Windows). */
+function toPosix(p) {
+    return p.replace(/\\/g, '/');
+}
+/**
+ * Match a git-emitted (repo-root-relative) path back to the caller's
+ * phaseDir-relative request by exact match or `/`-bounded suffix — precise
+ * enough that a root file and a nested `plans/` file can never collide (a plain
+ * basename match could). Returns the original caller-form file string, or null.
+ */
+function matchRequestedFile(gitPath, requested, requestedPosix) {
+    const g = toPosix(gitPath);
+    for (let i = 0; i < requested.length; i++) {
+        const want = requestedPosix[i];
+        if (g === want || g.endsWith('/' + want))
+            return requested[i];
+    }
+    return null;
+}
+/**
+ * Parse `git log --format=%ct --name-only` output into file → most-recent commit
+ * time (ms). Output is reverse-chronological, so a file's FIRST appearance
+ * top-down is its latest commit. `%ct` headers are pure digits; path lines
+ * contain a `.` (the `.md` extension) — so the two are unambiguous.
+ */
+function parseCommitTimes(stdout, requested, requestedPosix) {
+    const out = new Map();
+    let currentCt = null;
+    for (const line of stdout.split('\n')) {
+        if (line.length === 0)
+            continue;
+        if (/^\d+$/.test(line)) {
+            currentCt = Number.parseInt(line, 10);
+            continue;
+        }
+        if (currentCt === null)
+            continue;
+        const rel = matchRequestedFile(line, requested, requestedPosix);
+        if (rel !== null && !out.has(rel))
+            out.set(rel, currentCt * 1000);
+    }
+    return out;
+}
+function defaultPhaseCleanCommitTimesMs(phaseDir, files, execGitFn = shell_command_projection_cjs_1.execGit) {
+    if (files.length === 0)
+        return new Map();
+    const requestedPosix = files.map(toPosix);
+    const logRes = execGitFn(['log', '--first-parent', '--format=%ct', '--name-only', '--', ...files], {
+        cwd: phaseDir,
+    });
+    if (logRes.error || logRes.exitCode !== 0 || logRes.stdout.length === 0)
+        return new Map();
+    const commitTimes = parseCommitTimes(logRes.stdout, files, requestedPosix);
+    if (commitTimes.size === 0)
+        return commitTimes;
+    // Drop dirty files (working tree ≠ HEAD) so their mtime is used instead. If the
+    // dirty-check itself is INCONCLUSIVE (git diff errored / non-zero — as opposed
+    // to "ran and reported no dirty files"), we cannot prove any file is clean, so
+    // fail SAFE: discard the commit times and let every file fall back to mtime,
+    // the same direction as a git-log failure. Trusting possibly-stale commit times
+    // here would silently mask a real edit (false "not stale"). (#2348)
+    const diffRes = execGitFn(['diff', '--name-only', 'HEAD', '--', ...files], { cwd: phaseDir });
+    if (diffRes.error || diffRes.exitCode !== 0)
+        return new Map();
+    for (const line of diffRes.stdout.split('\n')) {
+        if (line.length === 0)
+            continue;
+        const rel = matchRequestedFile(line, files, requestedPosix);
+        if (rel !== null)
+            commitTimes.delete(rel);
+    }
+    return commitTimes;
+}
 /**
  * Build a 'missing' result from the routing table.
  * Used for two early-return paths: no *-VERIFICATION.md file found, and
@@ -100,7 +185,7 @@ function missingResult() {
         next_command: route.next_command,
     };
 }
-function findStaleVerificationSummary(phaseDir, fsImpl = node_fs_1.default) {
+function findStaleVerificationSummary(phaseDir, fsImpl = node_fs_1.default, phaseCleanCommitTimesMs = defaultPhaseCleanCommitTimesMs) {
     // FS errors (TOCTOU: a SUMMARY listed by scanPhasePlans then removed before statSync;
     // unreadable dir; broken symlink; file->dir swap) must degrade to "not stale" rather
     // than throw uncaught into callers that are NOT under the planning lock
@@ -112,23 +197,31 @@ function findStaleVerificationSummary(phaseDir, fsImpl = node_fs_1.default) {
         const verificationFile = phaseFiles.filter((f) => f.endsWith('-VERIFICATION.md')).sort()[0];
         if (!verificationFile)
             return null;
-        const verificationMtimeMs = fsImpl.statSync(node_path_1.default.join(phaseDir, verificationFile)).mtimeMs;
-        let newestStaleSummary = null;
-        const summaryFiles = scanPhasePlans(phaseDir).summaryFiles;
-        for (const summaryFile of summaryFiles.sort()) {
-            const summaryMtimeMs = fsImpl.statSync(node_path_1.default.join(phaseDir, summaryFile)).mtimeMs;
-            if (summaryMtimeMs <= verificationMtimeMs)
-                continue;
-            if (!newestStaleSummary || summaryMtimeMs > newestStaleSummary.mtimeMs) {
-                newestStaleSummary = { summaryFile, mtimeMs: summaryMtimeMs };
+        const summaryFiles = scanPhasePlans(phaseDir).summaryFiles
+            .slice()
+            .sort();
+        // No summary can be newer than the verification → never stale. Return before
+        // touching git so a phase with no summaries costs zero subprocesses. (#2348)
+        if (summaryFiles.length === 0)
+            return null;
+        // Each file's effective "last changed" time = its commit time when committed
+        // AND clean (content-tied and clone-stable), else its filesystem mtime (the
+        // uncommitted working-tree edit). Both are real wall-clock change times, so
+        // comparing a clean file's commit time against a dirty file's mtime is sound.
+        // One resolver call = two git subprocesses for the whole phase. (#2348)
+        const cleanCommitMs = phaseCleanCommitTimesMs(phaseDir, [verificationFile, ...summaryFiles]);
+        const effectiveTimeMs = (file) => cleanCommitMs.has(file)
+            ? cleanCommitMs.get(file)
+            : fsImpl.statSync(node_path_1.default.join(phaseDir, file)).mtimeMs;
+        const verificationTimeMs = effectiveTimeMs(verificationFile);
+        for (const summaryFile of summaryFiles) {
+            // The caller only needs whether the phase is stale, not which summary —
+            // the first stale summary (in sorted order) is enough. Short-circuit.
+            if (effectiveTimeMs(summaryFile) > verificationTimeMs) {
+                return { verificationFile, summaryFile };
             }
         }
-        if (!newestStaleSummary)
-            return null;
-        return {
-            verificationFile,
-            summaryFile: newestStaleSummary.summaryFile,
-        };
+        return null;
     }
     catch {
         return null;
@@ -151,6 +244,7 @@ function findStaleVerificationSummary(phaseDir, fsImpl = node_fs_1.default) {
  */
 function readVerificationStatus(phaseDir, opts = {}) {
     const fsImpl = opts.fs ?? node_fs_1.default;
+    const phaseCleanCommitTimesMs = opts.phaseCleanCommitTimesMs ?? defaultPhaseCleanCommitTimesMs;
     // Phase token for the gaps_found command
     const baseName = node_path_1.default.basename(phaseDir);
     const phaseToken = extractPhaseToken(baseName);
@@ -200,7 +294,7 @@ function readVerificationStatus(phaseDir, opts = {}) {
             next_command: `/gsd-plan-phase ${phaseNumber} --gaps`,
         };
     }
-    const staleVerification = findStaleVerificationSummary(phaseDir, fsImpl);
+    const staleVerification = findStaleVerificationSummary(phaseDir, fsImpl, phaseCleanCommitTimesMs);
     if (staleVerification) {
         const entry = VERIFICATION_ROUTING_TABLE['stale'];
         return {
@@ -251,6 +345,7 @@ function cmdVerificationStatus(cwd, phaseDirArg, raw) {
 module.exports = {
     VERIFIER_STATUSES,
     VERIFICATION_ROUTING_TABLE,
+    defaultPhaseCleanCommitTimesMs,
     findStaleVerificationSummary,
     readVerificationStatus,
     cmdVerificationStatus,

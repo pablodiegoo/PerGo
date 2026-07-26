@@ -27,10 +27,16 @@ const { comparePhaseNum } = phaseIdModule;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const planningWorkspace = require("./planning-workspace.cjs");
 const { findContextMdIn } = planningWorkspace;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const shellCommandProjection = require("./shell-command-projection.cjs");
 // ─── Path helpers ────────────────────────────────────────────────────────────
-/** Normalize a relative path to always use forward slashes (cross-platform). */
+/**
+ * Normalize a relative path to always use forward slashes (cross-platform).
+ * Delegates to the single separator seam in shell-command-projection so there is
+ * exactly one implementation of native→POSIX conversion across the codebase.
+ */
 function toPosixPath(p) {
-    return p.split(node_path_1.default.sep).join('/');
+    return shellCommandProjection.toPosixPath(p);
 }
 /**
  * Scan immediate child directories for separate git repos.
@@ -176,12 +182,60 @@ function timeAgo(date) {
 function extractCanonicalPlanId(filename) {
     const base = filename.replace(/-PLAN\.md$/i, '').replace(/-SUMMARY\.md$/i, '').replace(/\.md$/i, '');
     const parts = base.split('-').filter(Boolean);
-    const tokenRe = /^\d+[A-Z]?(?:\.\d+)*$/i;
+    // #2043: a phase/plan token component is either a zero-padded number (≥2 digits)
+    // or a single-digit-plus-letter id ("3A"); a *bare* single digit is a slug word,
+    // so "46-6-rs-…" is not paired into a "46-6" id while "3A-01" stays intact.
+    const tokenRe = /^(?:\d{2,}[A-Z]?|\d[A-Z])(?:\.\d+)*$/i;
+    // #2232: the PAIRED plan component is a zero-padded continuation segment
+    // (exactly 2 digits), so a ≥3-digit slug word (a year) is not paired into a
+    // bogus "14-2026" id. The leading phase component keeps tokenRe's unbounded
+    // \d{2,} — phase numbers ≥100 are legitimate; only continuations are capped.
+    const planTokenRe = new RegExp(`^(?:${phaseIdModule.PHASE_CONTINUATION_SEGMENT_SOURCE}[A-Z]?|\\d[A-Z])(?:\\.\\d+)*$`, 'i');
     const phaseIdx = parts.findIndex(p => tokenRe.test(p));
-    if (phaseIdx >= 0 && phaseIdx + 1 < parts.length && tokenRe.test(parts[phaseIdx + 1])) {
+    if (phaseIdx >= 0 && phaseIdx + 1 < parts.length && planTokenRe.test(parts[phaseIdx + 1])) {
         return `${parts[phaseIdx]}-${parts[phaseIdx + 1]}`;
     }
     return base;
+}
+/**
+ * Count summaries that correspond to a real plan (#1988).
+ *
+ * A summary counts toward phase completion iff it pairs with an existing plan
+ * file. This excludes stray non-plan summaries — e.g. `30-FIX-CR02-SUMMARY.md`,
+ * `30-GAPCLOSURE-SUMMARY.md` — that inflate the raw `*-SUMMARY.md` count and
+ * silently flip a phase to Complete when plans are actually missing summaries.
+ *
+ * Pairing is layout-agnostic. For each plan, up to three candidate summary
+ * filenames are generated and any match suffices:
+ *   1. marker swap `PLAN`→`SUMMARY` on the basename — root padded
+ *      (`30-01-PLAN.md`↔`30-01-SUMMARY.md`), nested (`PLAN-01.md`↔
+ *      `SUMMARY-01.md`, incl. a `plans/` prefix), and bare (`PLAN.md`↔
+ *      `SUMMARY.md`);
+ *   2. `<stem>-SUMMARY.md` — bare (`PLAN.md`↔`PLAN-SUMMARY.md`) and legacy
+ *      (`14-PLAN-01.md`↔`14-PLAN-01-SUMMARY.md`);
+ *   3. extended `<n>-PLAN-<m>…`→`<n>-<m>-SUMMARY.md`
+ *      (`3-PLAN-01-setup.md`↔`3-01-SUMMARY.md`).
+ * The swap is applied to the basename only so a lowercase `plans/` dir prefix
+ * isn't corrupted to `SUMMARYs/…`.
+ */
+function countMatchedSummaries(planFiles, summaryFiles) {
+    const summarySet = new Set(summaryFiles);
+    let matched = 0;
+    for (const plan of planFiles) {
+        const slashIdx = plan.lastIndexOf('/');
+        const dir = slashIdx >= 0 ? plan.slice(0, slashIdx + 1) : '';
+        const base = (dir ? plan.slice(dir.length) : plan).replace(/\.md$/i, '');
+        const candidates = [
+            dir + base.replace(/PLAN/i, 'SUMMARY') + '.md',
+            dir + base + '-SUMMARY.md',
+        ];
+        const extended = base.match(/^(\d+)-PLAN-(\d+)/i);
+        if (extended)
+            candidates.push(dir + extended[1] + '-' + extended[2] + '-SUMMARY.md');
+        if (candidates.some((c) => summarySet.has(c)))
+            matched++;
+    }
+    return matched;
 }
 module.exports = {
     toPosixPath,
@@ -195,4 +249,5 @@ module.exports = {
     readSubdirectories,
     timeAgo,
     extractCanonicalPlanId,
+    countMatchedSummaries,
 };

@@ -42,6 +42,37 @@ function sha256File(filePath) {
 function sha256Text(value) {
     return node_crypto_1.default.createHash('sha256').update(value).digest('hex');
 }
+/**
+ * Copy a managed path for the rollback snapshot or the user-facing backup,
+ * WITHOUT dereferencing a symlink.
+ *
+ * `fs.copyFileSync` follows symlinks, so a managed path that has been replaced
+ * by a link (tampering, or an unexpected user layout) would have had the
+ * LINK TARGET's bytes copied into `gsd-migration-journal/…-backups/` — e.g. a
+ * `gsd.cjs` symlinked at `~/.ssh/id_rsa` would land that key's contents in the
+ * backup tree. Nothing GSD installs is ever a symlink, so the faithful snapshot
+ * of a symlinked managed path is the link itself: recreating it preserves
+ * rollback fidelity (restore re-creates the same link) while never reading the
+ * referent. Deletion was already safe — `fs.rmSync` unlinks the link, never the
+ * target.
+ *
+ * Windows note: `fs.symlinkSync` can throw EPERM for unprivileged users. That
+ * surfaces as an apply failure and triggers the normal rollback path, which is
+ * the correct outcome — refusing to proceed beats silently copying referent
+ * bytes.
+ */
+function copyPreservingSymlink(srcPath, destPath) {
+    if (node_fs_1.default.lstatSync(srcPath).isSymbolicLink()) {
+        // symlinkSync fails with EEXIST on an occupied path, so clear it first.
+        // Scoped to this branch on purpose: the regular-file path below keeps
+        // copyFileSync's overwrite-in-place, so a mid-restore failure cannot leave
+        // the destination destroyed.
+        node_fs_1.default.rmSync(destPath, { force: true });
+        node_fs_1.default.symlinkSync(node_fs_1.default.readlinkSync(srcPath), destPath);
+        return;
+    }
+    node_fs_1.default.copyFileSync(srcPath, destPath);
+}
 function readJsonIfPresent(filePath, fallback) {
     if (!node_fs_1.default.existsSync(filePath))
         return fallback;
@@ -88,7 +119,7 @@ function atomicWriteInstallState(configDir, content) {
     const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
     try {
         node_fs_1.default.writeFileSync(tmpPath, content, 'utf8');
-        node_fs_1.default.renameSync(tmpPath, filePath);
+        (0, shell_command_projection_cjs_1.retryRenameSync)(tmpPath, filePath);
     }
     catch (error) {
         try {
@@ -118,7 +149,7 @@ function normalizeRelPath(relPath) {
     if (typeof relPath !== 'string' || relPath.trim() === '') {
         throw new Error('migration action relPath must be a non-empty string');
     }
-    const normalized = relPath.replace(/\\/g, '/');
+    const normalized = (0, shell_command_projection_cjs_1.posixNormalize)(relPath);
     if (node_path_1.default.isAbsolute(normalized) || node_path_1.default.win32.isAbsolute(normalized)) {
         throw new Error(`migration action relPath must stay inside configDir: ${relPath}`);
     }
@@ -518,9 +549,12 @@ function rollbackAppliedMigrationResult({ configDir, journal, journalPath, rollb
         const rollbackPath = node_path_1.default.join(configDir, action.rollbackRelPath);
         const dest = node_path_1.default.join(configDir, action.relPath);
         try {
-            if (node_fs_1.default.existsSync(rollbackPath)) {
+            // lstat-based existence check: a snapshot of a symlinked managed path is
+            // itself a link, and existsSync() follows it — a link whose target is
+            // gone would read as "missing" and silently skip the restore.
+            if (node_fs_1.default.lstatSync(rollbackPath, { throwIfNoEntry: false })) {
                 node_fs_1.default.mkdirSync(node_path_1.default.dirname(dest), { recursive: true });
-                node_fs_1.default.copyFileSync(rollbackPath, dest);
+                copyPreservingSymlink(rollbackPath, dest);
             }
         }
         catch (error) {
@@ -623,7 +657,7 @@ function applyInstallerMigrationPlan({ configDir, plan, now = () => new Date().t
             }
             const rollbackPath = node_path_1.default.join(rollbackRoot, normalized);
             node_fs_1.default.mkdirSync(node_path_1.default.dirname(rollbackPath), { recursive: true });
-            node_fs_1.default.copyFileSync(fullPath, rollbackPath);
+            copyPreservingSymlink(fullPath, rollbackPath);
             rollback.push({ relPath: normalized, rollbackPath });
             if (action.type === 'rewrite-json') {
                 if (action.deleteIfEmpty && isStructurallyEmpty(action.value)) {
@@ -644,7 +678,7 @@ function applyInstallerMigrationPlan({ configDir, plan, now = () => new Date().t
                 const backupRelPath = action.backupRelPath || node_path_1.default.posix.join(backupRootRelPath, normalized);
                 const backupPath = node_path_1.default.join(configDir, backupRelPath);
                 node_fs_1.default.mkdirSync(node_path_1.default.dirname(backupPath), { recursive: true });
-                node_fs_1.default.copyFileSync(fullPath, backupPath);
+                copyPreservingSymlink(fullPath, backupPath);
                 journal.actions.push(journalAction(action, 'removed', {
                     backupRelPath,
                     rollbackRelPath: node_path_1.default.posix.join(rollbackRootRelPath, normalized),
@@ -695,7 +729,12 @@ function applyInstallerMigrationPlan({ configDir, plan, now = () => new Date().t
             const dest = node_path_1.default.join(configDir, entry.relPath);
             try {
                 node_fs_1.default.mkdirSync(node_path_1.default.dirname(dest), { recursive: true });
-                node_fs_1.default.copyFileSync(entry.rollbackPath, dest);
+                // Symlink-preserving, same as the forward path: `entry.rollbackPath` is
+                // itself a link whenever the managed path was one, so a raw copy here
+                // would dereference it and write the referent's bytes back to the LIVE
+                // install path — a worse leak than the journal-tree one, since it is
+                // user-visible and at a predictable location.
+                copyPreservingSymlink(entry.rollbackPath, dest);
             }
             catch (rollbackError) {
                 rollbackFailures.push({

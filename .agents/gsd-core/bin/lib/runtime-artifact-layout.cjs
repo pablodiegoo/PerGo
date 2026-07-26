@@ -23,6 +23,7 @@ const { stageSkillsForProfile, stageAgentsForProfile, stageAgentsForRuntimeWithC
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const runtimeArtifactConversion = require("./runtime-artifact-conversion.cjs");
 const conversionExports = runtimeArtifactConversion;
+const shell_command_projection_cjs_1 = require("./shell-command-projection.cjs");
 // In .cts (CommonJS output) files, `require` is available as a global.
 const _require = require;
 // ---------------------------------------------------------------------------
@@ -130,19 +131,27 @@ function agentsKind(destSubpath, prefix, configDir) {
  * Agent filenames are preserved verbatim (the prefix is already embedded in the
  * agent stem — e.g. `gsd-planner.md`).
  *
- * #1173 SCOPE — plumbing only (declarations deferred): this provides the
- * converter dispatch + `isGlobal` scope threading for the descriptor's `agents`
- * kind, but NO runtime currently declares a converted `agents` kind in its
- * `capability.json`. The descriptor declarations for the 8 non-the agent runtimes
- * (copilot/antigravity/cursor/windsurf/augment/trae/codebuddy/cline) are
- * DEFERRED to a follow-up that first ships the ADR-1235 §0 byte-for-byte parity
- * harness, because the second `layout.kinds` consumer — `applySurface` /
- * `/gsd-surface` / `--materialize` (`src/surface.cts`) — does not yet mirror the
- * legacy agent pipeline (Copilot's `.agent.md` filename rename, the cross-cutting
- * path-prefix rewrite + attribution, stale-file cleanup, config-reading steps),
- * so declaring the kind now would regress the surface path. Until then the legacy
- * `bin/install.js` agent loop remains authoritative for the real install, and
- * this `convertedAgentsKind` is exercised only by synthetic-descriptor seam tests.
+ * #1173 SCOPE — plumbing only (real install still elsewhere): this provides
+ * the converter dispatch + `isGlobal` scope threading for the descriptor's
+ * `agents` kind. As of #2092, 8 non-the agent runtimes DO declare a converted
+ * `agents` kind in their `capability.json` — qwen (`convertClaudeAgentToQwenAgent`)
+ * plus the 7 that already declared one before it (antigravity, augment,
+ * codebuddy, copilot, cursor, trae, windsurf) — so the descriptor-level
+ * declaration is no longer deferred. What IS still deferred is wiring
+ * `resolveRuntimeArtifactLayout`'s `agents` kind into the REAL install:
+ * `bin/install.js`'s agent-staging loop does not consume this module's
+ * `convertedAgentsKind` resolution at all — it dispatches the very same
+ * converter functions directly via `_hostBehaviors(runtime)` checks
+ * (`frontmatterDialect`, `brandingRewrites`, `isCopilot`/`isAntigravity`/…),
+ * duplicating the mapping declared here. That duplication is deliberate until
+ * the second `layout.kinds` consumer — `applySurface` / `/gsd-surface` /
+ * `--materialize` (`src/surface.cts`) — mirrors the legacy agent pipeline
+ * (Copilot's `.agent.md` filename rename, the cross-cutting path-prefix
+ * rewrite + attribution, stale-file cleanup, config-reading steps); declaring
+ * `bin/install.js` itself against this resolver before then would risk
+ * regressing the surface path. Until that follow-up lands, `bin/install.js`
+ * remains authoritative for the real install, and this `convertedAgentsKind`
+ * is exercised only by `/gsd-surface` and synthetic-descriptor seam tests.
  *
  * Mirrors the `convertedCommandsKind` pattern (#785).
  *
@@ -156,13 +165,16 @@ function convertedAgentsKind(destSubpath, prefix, converterName, configDir, scop
         kind: 'agents',
         destSubpath,
         prefix,
-        stage: (resolved) => {
+        stage: (resolved, agentCtx) => {
             // isGlobal is threaded so scope-aware agent converters (copilot, antigravity)
             // choose global-home vs workspace-relative paths; converters that only take
             // (content) ignore the extra positional arg. Mirrors skillsKind's scope
             // threading (#1173).
             const converter = conversionExports[converterName];
-            return stageAgentsForRuntimeWithConverter(findAgentsSourceRoot(configDir), resolved, converter, scope === 'global');
+            // ADR-1235 §1: when agentCtx is provided (by createRuntimeArtifactInstallPlan
+            // for descriptor-driven runtimes), thread it through so stageAgentsForRuntimeWithConverter
+            // can apply the full pre-converter + post-converter sequence in the correct order.
+            return stageAgentsForRuntimeWithConverter(findAgentsSourceRoot(configDir), resolved, converter, scope === 'global', agentCtx);
         },
     };
 }
@@ -181,7 +193,7 @@ function kimiAgentsKind(destSubpath, prefix, configDir) {
                         continue;
                     const agentPath = node_path_1.default.join(stagedAgents, entry.name);
                     subagents.push({
-                        path: node_path_1.default.join('agents', entry.name).replace(/\\/g, '/'),
+                        path: (0, shell_command_projection_cjs_1.posixNormalize)(node_path_1.default.join('agents', entry.name)),
                         content: node_fs_1.default.readFileSync(agentPath, 'utf8'),
                     });
                 }
@@ -215,12 +227,17 @@ function kimiAgentsKind(destSubpath, prefix, configDir) {
  *                       arg so scope-aware converters (antigravity, copilot) can choose
  *                       between global home paths and workspace-relative paths without
  *                       colliding with the `runtime` string at position 3.
+ * @param capabilityRegistry #2322: optional capability registry — captured in the
+ *                       stage() closure so third-party capability skills are bound to
+ *                       their declaring capId at staging time. Absent -> stage() stages
+ *                       nothing third-party (fail closed).
  */
-function skillsKind(destSubpath, prefix, converterName, runtime, configDir, nested = false, scope = 'global') {
+function skillsKind(destSubpath, prefix, converterName, runtime, configDir, nested = false, scope = 'global', capabilityRegistry) {
     return {
         kind: 'skills',
         destSubpath,
         prefix,
+        converter: converterName,
         stage: (resolved) => {
             const realConverter = conversionExports[converterName];
             // Compute cmdNames once per stage call for performance (#3583).
@@ -234,7 +251,7 @@ function skillsKind(destSubpath, prefix, converterName, runtime, configDir, nest
                 : [];
             const isGlobal = scope === 'global';
             const wrappedConverter = (content, skillName) => realConverter(content, skillName, runtime, cmdNames, isGlobal);
-            return stageSkillsForRuntimeAsSkills(findInstallSourceRoot(configDir), resolved, wrappedConverter, prefix, nested);
+            return stageSkillsForRuntimeAsSkills(findInstallSourceRoot(configDir), resolved, wrappedConverter, prefix, nested, capabilityRegistry);
         },
     };
 }
@@ -272,41 +289,58 @@ function getRegistry() {
  * Map a single ArtifactKindDescriptor entry to an ArtifactKind using the
  * matching builder function. Mirrors the hand-built calls in the old switch.
  */
-function dispatchKindEntry(entry, runtime, configDir, scope) {
+function dispatchKindEntry(entry, runtime, configDir, scope, capabilityRegistry) {
     const { kind, destSubpath, prefix, nesting, converter } = entry;
     const nested = nesting === 'nested';
+    let result;
     switch (kind) {
         case 'commands':
-            if (converter == null) {
-                return commandsKind(destSubpath, prefix, configDir);
-            }
-            return convertedCommandsKind(destSubpath, prefix, converter, configDir);
+            result = converter == null
+                ? commandsKind(destSubpath, prefix, configDir)
+                : convertedCommandsKind(destSubpath, prefix, converter, configDir);
+            break;
         case 'agents':
-            if (converter == null) {
-                return agentsKind(destSubpath, prefix, configDir);
-            }
-            return convertedAgentsKind(destSubpath, prefix, converter, configDir, scope);
+            result = converter == null
+                ? agentsKind(destSubpath, prefix, configDir)
+                : convertedAgentsKind(destSubpath, prefix, converter, configDir, scope);
+            break;
         case 'skills':
             if (converter == null) {
                 throw new TypeError(`resolveRuntimeArtifactLayout: skills entry for '${runtime}' has converter=null (converter is required for skills)`);
             }
-            return skillsKind(destSubpath, prefix, converter, runtime, configDir, nested, scope);
+            result = skillsKind(destSubpath, prefix, converter, runtime, configDir, nested, scope, capabilityRegistry);
+            break;
         case 'kimi-agents':
-            return kimiAgentsKind(destSubpath, prefix, configDir);
+            result = kimiAgentsKind(destSubpath, prefix, configDir);
+            break;
         default:
             throw new TypeError(`resolveRuntimeArtifactLayout: unknown kind '${kind}' in descriptor for runtime '${runtime}'`);
     }
+    if (typeof entry.home === 'string' && entry.home !== '') {
+        result.home = node_path_1.default.join(node_os_1.default.homedir(), entry.home);
+    }
+    return result;
 }
 /**
  * Resolve the artifact layout for a given runtime and config directory.
  *
  * ADR-857 phase 5d: driven by the capability-registry artifactLayout descriptor
  * instead of a hardcoded switch statement.
+ *
+ * @param capabilityRegistry #2322: optional — when the caller has a composed
+ *   capability registry in scope (e.g. capability-writer.cts's `capability set`
+ *   path, or a fresh install's registry-aware profile resolution), pass it here
+ *   so the skills kind's stage() closure can materialize installed third-party
+ *   capability skills bound to their declaring capId. Both call paths (surface
+ *   apply AND the installer) must pass their registry here — resolveProfile's
+ *   own `'*'` (full profile) short-circuit never carries a registry, so if it
+ *   is not threaded in at layout-build time a `full`-profile install stages no
+ *   third-party capability skills regardless of registration (#2322 blocker 2).
  */
-function resolveRuntimeArtifactLayout(runtime, configDir, scope = 'global') {
-    return resolveRuntimeArtifactLayoutFromRegistry(getRegistry(), runtime, configDir, scope);
+function resolveRuntimeArtifactLayout(runtime, configDir, scope = 'global', capabilityRegistry) {
+    return resolveRuntimeArtifactLayoutFromRegistry(getRegistry(), runtime, configDir, scope, capabilityRegistry);
 }
-function resolveRuntimeArtifactLayoutFromRegistry(registry, runtime, configDir, scope = 'global') {
+function resolveRuntimeArtifactLayoutFromRegistry(registry, runtime, configDir, scope = 'global', capabilityRegistry) {
     if (typeof configDir !== 'string' || configDir === '') {
         throw new TypeError('configDir must be a non-empty string');
     }
@@ -318,7 +352,7 @@ function resolveRuntimeArtifactLayoutFromRegistry(registry, runtime, configDir, 
         throw new TypeError(`Unknown runtime: '${runtime}' — add to runtime-artifact-layout.cjs table`);
     }
     const entries = desc[scope] ?? [];
-    const kinds = entries.map((entry) => dispatchKindEntry(entry, runtime, configDir, scope));
+    const kinds = entries.map((entry) => dispatchKindEntry(entry, runtime, configDir, scope, capabilityRegistry));
     return { runtime, configDir, scope, kinds };
 }
 module.exports = { resolveRuntimeArtifactLayout, resolveRuntimeArtifactLayoutFromRegistry, findInstallSourceRoot };

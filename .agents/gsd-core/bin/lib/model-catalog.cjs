@@ -10,7 +10,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RUNTIMES_WITH_FAST_MODE = exports.EFFORT_RENDERING = exports.KNOWN_PROVIDERS = exports.PROVIDER_PRESETS = exports.RUNTIMES_WITH_REASONING_EFFORT = exports.KNOWN_RUNTIMES = exports.RUNTIME_PROFILE_MAP = exports.MODEL_ALIAS_MAP = exports.AGENT_DEFAULT_TIERS = exports.AGENT_TO_PHASE_TYPE = exports.MODEL_PROFILES = exports.VALID_AGENT_TIERS = exports.VALID_PHASE_TYPES = exports.VALID_PROFILES = exports.catalog = void 0;
+exports.RUNTIMES_WITH_FAST_MODE = exports.EFFORT_RENDERING = exports.KNOWN_PROVIDERS = exports.PROVIDER_PRESETS = exports.RUNTIMES_WITH_REASONING_EFFORT = exports.KNOWN_RUNTIMES = exports.RUNTIME_PROFILE_MAP = exports.MODEL_ALIAS_MAP = exports.AGENT_DEFAULT_TIERS = exports.AGENT_TO_PHASE_TYPE = exports.MODEL_PROFILES = exports.ADAPTIVE_TIER_VALUES = exports.VALID_TIERS = exports.VALID_AGENT_TIERS = exports.VALID_PHASE_TYPES = exports.VALID_PROFILES = exports.catalog = void 0;
 exports.nextTier = nextTier;
 exports.formatAgentToModelMapAsTable = formatAgentToModelMapAsTable;
 exports.getAgentToModelMapForProfile = getAgentToModelMapForProfile;
@@ -23,11 +23,19 @@ const _require = require;
 // works in every layout:
 //
 //   1. Co-located install path — gsd-core/bin/shared/model-catalog.json
-//   2. Source-repo dev path — sdk/shared/model-catalog.json
-//   3. GSD_MODEL_CATALOG env override
+//   2. GSD_MODEL_CATALOG env override
+//
+// A third candidate — `sdk/shared/model-catalog.json`, three levels up — used to
+// sit between them. It was the legacy source-repo path kept as a fallback by the
+// #3288 fix, whose contract was "check the co-located path FIRST, before the
+// legacy source-repo path". ADR-0174 then retired the `@opengsd/gsd-sdk` package
+// boundary and deleted the `sdk/` tree outright, so that candidate can no longer
+// resolve in any layout: in a source repo there is no `sdk/`, and in an install
+// layout it points at `.agents/sdk/shared/`, which the installer never writes
+// (the original #3288 bug). It is removed rather than left as dead weight that
+// implies a package boundary this repo no longer has.
 const _catalogCandidates = [
     node_path_1.default.resolve(__dirname, '..', 'shared', 'model-catalog.json'),
-    node_path_1.default.resolve(__dirname, '..', '..', '..', 'sdk', 'shared', 'model-catalog.json'),
     ...(process.env['GSD_MODEL_CATALOG'] ? [node_path_1.default.resolve(process.env['GSD_MODEL_CATALOG'])] : []),
 ];
 let catalog = null;
@@ -54,6 +62,13 @@ exports.catalog = _catalog;
 exports.VALID_PROFILES = [..._catalog.profiles];
 exports.VALID_PHASE_TYPES = new Set(_catalog.phaseTypes);
 exports.VALID_AGENT_TIERS = new Set(Object.keys(_catalog.adaptiveTierMap));
+// Catalog-derived so this can never drift from the resolver's tier gate:
+// Object.values(adaptiveTierMap) === ['opus', 'sonnet', 'haiku'] today, plus 'inherit'.
+exports.VALID_TIERS = new Set([...Object.values(_catalog.adaptiveTierMap), 'inherit']);
+// Same catalog-derived tier values as VALID_TIERS but WITHOUT 'inherit' — used
+// by config-loader's runtime-override validation (model_profile_overrides /
+// model_policy.runtime_tiers), which does not accept 'inherit' as a tier.
+exports.ADAPTIVE_TIER_VALUES = new Set(Object.values(_catalog.adaptiveTierMap));
 exports.MODEL_PROFILES = Object.fromEntries(Object.entries(_catalog.agents).map(([agent, meta]) => [agent, {
         quality: meta.golden,
         balanced: meta.balanced,

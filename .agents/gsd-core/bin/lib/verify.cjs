@@ -13,6 +13,7 @@ const node_fs_1 = __importDefault(require("node:fs"));
 const node_path_1 = __importDefault(require("node:path"));
 const node_os_1 = __importDefault(require("node:os"));
 const validate_cjs_1 = require("./validate.cjs");
+const clock_cjs_1 = require("./clock.cjs");
 const validate_cjs_2 = require("./validate.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- planning-workspace.cjs is an export= CommonJS module
 const planningWorkspace = require("./planning-workspace.cjs");
@@ -29,6 +30,8 @@ const package_identity_cjs_1 = require("./package-identity.cjs");
 const runtime_slash_cjs_1 = require("./runtime-slash.cjs");
 const schema_detect_cjs_1 = require("./schema-detect.cjs");
 const artifacts_cjs_1 = require("./artifacts.cjs");
+const markdown_sectionizer_cjs_1 = require("./markdown-sectionizer.cjs");
+const model_catalog_cjs_1 = require("./model-catalog.cjs");
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- agent-install-check.cjs is an export= CommonJS module
 const agentInstallCheck = require("./agent-install-check.cjs");
 const { checkAgentsInstalled } = agentInstallCheck;
@@ -40,7 +43,7 @@ const configLoaderMod = require("./config-loader.cjs");
 const { loadConfig, CONFIG_DEFAULTS } = configLoaderMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseIdMod = require("./phase-id.cjs");
-const { normalizePhaseName, phaseTokenMatches, escapeRegex, getMilestoneFromPhaseId } = phaseIdMod;
+const { normalizePhaseName, phaseTokenMatches, escapeRegex, getMilestoneFromPhaseId, OPTIONAL_PHASE_TAG_SOURCE, PHASE_NUMBER_TOKEN_SOURCE, extractPhaseToken, comparePhaseNum } = phaseIdMod;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const phaseLocatorMod = require("./phase-locator.cjs");
 const { findPhaseInternal } = phaseLocatorMod;
@@ -50,6 +53,9 @@ const { getMilestoneInfo, stripShippedMilestones, extractCurrentMilestone } = ro
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const worktreeSafetyMod = require("./worktree-safety.cjs");
 const { inspectWorktreeHealth } = worktreeSafetyMod;
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- commands.cjs is an export= CommonJS module
+const commandsMod = require("./commands.cjs");
+const { determinePhaseStatus } = commandsMod;
 const { planningDir, planningRoot } = planningWorkspace;
 const { extractFrontmatter, parseMustHavesBlock } = frontmatterMod;
 const { writeStateMd } = stateMod;
@@ -183,8 +189,13 @@ function scanNegativeGrepCommentEcho(content) {
     //    command, not the whole line) so a pasted verify command does not self-flag
     //    while a prose echo on the same line is still caught.
     const cmdSpanRe = /grep(?:\s+-{1,2}[A-Za-z][A-Za-z-]*)+\s+(?:'[^']*'|"[^"]*"|[^\s'"|>&;]+)[^\n]*?(?:==|-eq|=)\s*0\b/g;
+    // Security scan: must see the FULL text up to the first </action> — including a
+    // malformed inner <action> — so a grep-echo-0 trick cannot hide behind a
+    // deliberately-unclosed tag. Use a bounded to-first-close scan (ReDoS-safe via
+    // the {0,20000} cap, #2128), NOT the stop-at-next-open extractTaggedBlocks seam
+    // (which would drop the span before an unterminated inner <action>).
     const actionZones = [];
-    const actionRe = /<action>([\s\S]*?)<\/action>/g;
+    const actionRe = /<action>([\s\S]{0,20000}?)<\/action>/g;
     let acm;
     while ((acm = actionRe.exec(text)) !== null)
         actionZones.push(acm[1]);
@@ -329,34 +340,23 @@ function scanFileWideNegativeGateConflict(content) {
             return true;
         return false;
     };
-    const taskRe = /<task[^>]*>([\s\S]*?)<\/task>/g;
     const tasks = [];
-    let tm;
-    while ((tm = taskRe.exec(text)) !== null) {
-        const tc = tm[1];
+    for (const tc of (0, markdown_sectionizer_cjs_1.extractTaggedBlocks)(text, 'task', true)) {
         // Extract task name.
-        const namem = tc.match(/<name>([\s\S]*?)<\/name>/);
-        const name = namem ? namem[1].trim() : 'unnamed';
+        const namem = (0, markdown_sectionizer_cjs_1.extractTaggedBlocks)(tc, 'name');
+        const name = namem.length ? namem[0].trim() : 'unnamed';
         // Extract <files> entries.
-        const filesm = tc.match(/<files>([\s\S]*?)<\/files>/);
-        const filesText = filesm ? filesm[1] : '';
+        const filesArr = (0, markdown_sectionizer_cjs_1.extractTaggedBlocks)(tc, 'files');
+        const filesText = filesArr.length ? filesArr[0] : '';
         const files = filesText.split(/[,\s]+/).map(s => s.trim()).filter(Boolean);
         // Gate text: <verify>/<automated>/<acceptance_criteria>.
         const gateFragments = [];
-        for (const tag of ['verify', 'automated', 'acceptance_criteria']) {
-            const re = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'g');
-            let mm;
-            while ((mm = re.exec(tc)) !== null)
-                gateFragments.push(mm[1]);
-        }
+        for (const tag of ['verify', 'automated', 'acceptance_criteria'])
+            gateFragments.push(...(0, markdown_sectionizer_cjs_1.extractTaggedBlocks)(tc, tag));
         // Requirement text: <action>/<acceptance_criteria>.
         const reqFragments = [];
-        for (const tag of ['action', 'acceptance_criteria']) {
-            const re = new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'g');
-            let mm;
-            while ((mm = re.exec(tc)) !== null)
-                reqFragments.push(mm[1]);
-        }
+        for (const tag of ['action', 'acceptance_criteria'])
+            reqFragments.push(...(0, markdown_sectionizer_cjs_1.extractTaggedBlocks)(tc, tag));
         // Strip XML tags from gate text so segments containing embedded
         // XML closing tags (e.g. <automated>cmd</automated> nested inside <verify>)
         // don't bleed into the file-path token extraction.
@@ -520,6 +520,131 @@ function scanFileWideNegativeGateConflict(content) {
     // This detector is warn-only: it never sets valid=false.
     return { warnings, valid: true };
 }
+/**
+ * Single pass over `<task ...>…</task>` blocks. The body pattern is
+ * ReDoS-safe stop-at-next-open (mirrors `taggedBlockPattern` in
+ * markdown-sectionizer.cts): bounded attributes (`[^>]{0,1000}`) and a body
+ * boundary that terminates at the NEXT `<task[\s>]` opening, so a document
+ * full of unclosed `<task>` openings scans linearly. Captures both the
+ * attribute string (group 1, so the `type=` selector is not lost the way it is
+ * with `extractTaggedBlocks`) and the body (group 2).
+ */
+const PLAN_TASK_BLOCK_RE = /<task(\s[^>]{0,1000})?>((?:(?!<task[\s>])[\s\S])*?)<\/task>/g;
+/**
+ * Extract one `PlanTaskInfo` per `<task …>…</task>` block in `content`.
+ *
+ * Why a dedicated regex instead of `extractTaggedBlocks('task', true)`:
+ * `extractTaggedBlocks` discards the opening tag, so the task's `type=`
+ * attribute (which selects the validation branch) is lost. This helper
+ * captures both the attribute string and the body in one pass, then reuses
+ * `extractTaggedBlocks` on the body for sub-element extraction.
+ */
+function extractPlanTaskInfos(content) {
+    const infos = [];
+    if (typeof content !== 'string' || content.length === 0)
+        return infos;
+    PLAN_TASK_BLOCK_RE.lastIndex = 0;
+    let match;
+    while ((match = PLAN_TASK_BLOCK_RE.exec(content)) !== null) {
+        const attrs = match[1] ?? '';
+        const body = match[2] ?? '';
+        const typeMatch = attrs.match(/\btype\s*=\s*["']?([\w:-]+)/i);
+        const type = typeMatch ? typeMatch[1].toLowerCase() : '';
+        const nameArr = (0, markdown_sectionizer_cjs_1.extractTaggedBlocks)(body, 'name');
+        const hasName = nameArr.length > 0;
+        const name = hasName ? nameArr[0].trim() : '';
+        infos.push({
+            name,
+            type,
+            hasName,
+            hasFiles: /<files>/.test(body),
+            hasAction: /<action>/.test(body),
+            hasVerify: /<verify>/.test(body),
+            hasDone: /<done>/.test(body),
+            hasWhatBuilt: /<what-built>/.test(body),
+            hasHowToVerify: /<how-to-verify>/.test(body),
+            hasDecision: /<decision>/.test(body),
+            hasOptions: /<options>/.test(body),
+            hasInstructions: /<instructions>/.test(body),
+            hasVerification: /<verification>/.test(body),
+            hasResumeSignal: /<resume-signal>/.test(body),
+        });
+        // Guard against zero-length matches looping forever.
+        if (match.index === PLAN_TASK_BLOCK_RE.lastIndex) {
+            PLAN_TASK_BLOCK_RE.lastIndex++;
+        }
+    }
+    return infos;
+}
+function isCheckpointType(type) {
+    return type.startsWith('checkpoint:');
+}
+/**
+ * Validate one plan task's structure against its type-specific canonical field
+ * set (per `gsd-core/references/checkpoints.md`):
+ *   - `checkpoint:human-verify` requires `<what-built>` / `<how-to-verify>` /
+ *      `<resume-signal>` (the "checkpoint triple").
+ *   - `checkpoint:decision` requires `<decision>` / `<options>` /
+ *      `<resume-signal>`.
+ *   - `checkpoint:human-action` requires `<action>` / `<instructions>` /
+ *      `<verification>` / `<resume-signal>`.
+ *   - Unknown `checkpoint:*` subtypes require only the universal
+ *      `<resume-signal>` (forward-compat — newer checkpoint types registered
+ *      in the reference don't need a verifier change to pass structure
+ *      validation).
+ *   - All other types (`auto`, `tracer`, `manual`, bare `<task>`, …) keep the
+ *      historical `<action>` / `<verify>` / `<done>` / `<files>` requirements.
+ */
+function validatePlanTaskStructure(task) {
+    const errors = [];
+    const warnings = [];
+    const taskName = task.hasName ? task.name : 'unnamed';
+    if (!task.hasName) {
+        errors.push('Task missing <name> element');
+    }
+    if (isCheckpointType(task.type)) {
+        if (!task.hasResumeSignal) {
+            errors.push(`Task '${taskName}' missing <resume-signal>`);
+        }
+        switch (task.type) {
+            case 'checkpoint:human-verify':
+                if (!task.hasWhatBuilt)
+                    errors.push(`Task '${taskName}' missing <what-built>`);
+                if (!task.hasHowToVerify)
+                    errors.push(`Task '${taskName}' missing <how-to-verify>`);
+                break;
+            case 'checkpoint:decision':
+                if (!task.hasDecision)
+                    errors.push(`Task '${taskName}' missing <decision>`);
+                if (!task.hasOptions)
+                    errors.push(`Task '${taskName}' missing <options>`);
+                break;
+            case 'checkpoint:human-action':
+                if (!task.hasAction)
+                    errors.push(`Task '${taskName}' missing <action>`);
+                if (!task.hasInstructions)
+                    errors.push(`Task '${taskName}' missing <instructions>`);
+                if (!task.hasVerification)
+                    errors.push(`Task '${taskName}' missing <verification>`);
+                break;
+            default:
+                // Unknown checkpoint:* subtype: <resume-signal> is the only universal
+                // requirement (forward-compat).
+                break;
+        }
+    }
+    else {
+        if (!task.hasAction)
+            errors.push(`Task '${taskName}' missing <action>`);
+        if (!task.hasVerify)
+            warnings.push(`Task '${taskName}' missing <verify>`);
+        if (!task.hasDone)
+            warnings.push(`Task '${taskName}' missing <done>`);
+        if (!task.hasFiles)
+            warnings.push(`Task '${taskName}' missing <files>`);
+    }
+    return { errors, warnings };
+}
 function cmdVerifyPlanStructure(cwd, filePath, raw) {
     if (!filePath) {
         error('file path required');
@@ -538,28 +663,20 @@ function cmdVerifyPlanStructure(cwd, filePath, raw) {
         if (fm[field] === undefined)
             errors.push(`Missing required frontmatter field: ${field}`);
     }
-    const taskPattern = /<task[^>]*>([\s\S]*?)<\/task>/g;
+    const extractedTasks = extractPlanTaskInfos(content);
     const tasks = [];
-    let taskMatch;
-    while ((taskMatch = taskPattern.exec(content)) !== null) {
-        const taskContent = taskMatch[1];
-        const nameMatch = taskContent.match(/<name>([\s\S]*?)<\/name>/);
-        const taskName = nameMatch ? nameMatch[1].trim() : 'unnamed';
-        const hasFiles = /<files>/.test(taskContent);
-        const hasAction = /<action>/.test(taskContent);
-        const hasVerify = /<verify>/.test(taskContent);
-        const hasDone = /<done>/.test(taskContent);
-        if (!nameMatch)
-            errors.push('Task missing <name> element');
-        if (!hasAction)
-            errors.push(`Task '${taskName}' missing <action>`);
-        if (!hasVerify)
-            warnings.push(`Task '${taskName}' missing <verify>`);
-        if (!hasDone)
-            warnings.push(`Task '${taskName}' missing <done>`);
-        if (!hasFiles)
-            warnings.push(`Task '${taskName}' missing <files>`);
-        tasks.push({ name: taskName, hasFiles, hasAction, hasVerify, hasDone });
+    for (const task of extractedTasks) {
+        const verdict = validatePlanTaskStructure(task);
+        errors.push(...verdict.errors);
+        warnings.push(...verdict.warnings);
+        tasks.push({
+            name: task.hasName ? task.name : 'unnamed',
+            type: task.type,
+            hasFiles: task.hasFiles,
+            hasAction: task.hasAction,
+            hasVerify: task.hasVerify,
+            hasDone: task.hasDone,
+        });
     }
     if (tasks.length === 0)
         warnings.push('No <task> elements found');
@@ -573,6 +690,24 @@ function cmdVerifyPlanStructure(cwd, filePath, raw) {
     // eslint-disable-next-line @typescript-eslint/no-base-to-string -- FrontmatterValue comparison
     if (hasCheckpoints && fm['autonomous'] !== 'false' && String(fm['autonomous']) !== 'false') {
         errors.push('Has checkpoint tasks but autonomous is not false');
+    }
+    // #1951: a decision rated one-way is supposed to be confirmed before it is
+    // walked through. Warn (never error — <reversibility> stays additive) when a
+    // one-way rating has no checkpoint:decision anywhere ahead of it in the plan,
+    // which is the planner emitting the rating but skipping the gate.
+    const decisionCheckpointOffsets = [];
+    for (const m of content.matchAll(/<task\s+type=["']?checkpoint:decision/g)) {
+        if (m.index !== undefined)
+            decisionCheckpointOffsets.push(m.index);
+    }
+    for (const m of content.matchAll(/<reversibility\s[^>]*rating=["']?one-way/g)) {
+        const at = m.index;
+        if (at === undefined)
+            continue;
+        if (!decisionCheckpointOffsets.some((offset) => offset < at)) {
+            warnings.push('Task rated <reversibility rating="one-way"> has no preceding checkpoint:decision — '
+                + 'a one-way door must be confirmed before the agent walks through it');
+        }
     }
     const echoScan = scanNegativeGrepCommentEcho(content);
     errors.push(...echoScan.errors);
@@ -983,7 +1118,7 @@ function collectDiskPhases(planBase) {
 function checkMilestonePrefixMismatches(roadmapContent, { getMilestoneFromPhaseId }) {
     const mismatches = [];
     const sections = [];
-    const sectionRx = /^#{1,3}\s+(?:\[[^\]]+\]\s*)?.*v(\d+\.\d+)/gim;
+    const sectionRx = /^#{1,3}\s+(?:\[[^\]]{1,200}\]\s*)?.*v(\d+\.\d+)/gim;
     let m;
     while ((m = sectionRx.exec(roadmapContent)) !== null) {
         if (sections.length > 0)
@@ -992,7 +1127,8 @@ function checkMilestonePrefixMismatches(roadmapContent, { getMilestoneFromPhaseI
     }
     for (const section of sections) {
         const content = roadmapContent.slice(section.start, section.end);
-        const phaseRx = /#{2,4}\s*(?:\[[^\]]+\]\s*)?Phase\s+([\w][\w.-]*)\s*:/gi;
+        // #1729: `(?:\s*\([^)\n]{0,200}\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+        const phaseRx = /#{2,4}\s*(?:\[[^\]]{1,200}\]\s*)?Phase\s+([\w][\w.-]*)(?:\s*\([^)\n]{0,200}\))?\s*:/gi;
         let pm;
         while ((pm = phaseRx.exec(content)) !== null) {
             const phaseId = pm[1];
@@ -1056,7 +1192,7 @@ function cmdValidateConsistency(cwd, raw) {
                 .sort();
             for (const dir of dirs) {
                 const phasePath = node_path_1.default.join(phaseRoot, dir);
-                const phaseLabel = node_path_1.default.relative(planBase, phasePath).replace(/\\/g, '/');
+                const phaseLabel = (0, shell_command_projection_cjs_1.posixNormalize)(node_path_1.default.relative(planBase, phasePath));
                 const phaseFiles = node_fs_1.default.readdirSync(phasePath);
                 const plans = phaseFiles.filter((f) => f.endsWith('-PLAN.md')).sort();
                 const planNums = plans
@@ -1165,12 +1301,16 @@ function cmdValidateHealth(cwd, options, raw) {
     }
     else {
         const stateContent = node_fs_1.default.readFileSync(statePath, 'utf-8');
-        const phaseRefs = [...stateContent.matchAll(/[Pp]hase\s+(\d+[A-Z]?(?:\.\d+)*)/g)].map((m) => m[1]);
+        const phaseRefs = [
+            ...stateContent.matchAll(new RegExp(`[Pp]hase\\s+(${PHASE_NUMBER_TOKEN_SOURCE})`, 'g')),
+        ].map((m) => m[1]);
         const validPhases = collectDiskPhases(planBase);
         try {
             if (node_fs_1.default.existsSync(roadmapPath)) {
                 const roadmapRaw = node_fs_1.default.readFileSync(roadmapPath, 'utf-8');
-                const all = [...roadmapRaw.matchAll(/#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)/gi)];
+                const all = [
+                    ...roadmapRaw.matchAll(new RegExp(`#{2,4}\\s*Phase\\s+(${PHASE_NUMBER_TOKEN_SOURCE})`, 'gi')),
+                ];
                 for (const m of all)
                     validPhases.add(m[1]);
             }
@@ -1209,9 +1349,22 @@ function cmdValidateHealth(cwd, options, raw) {
         try {
             const rawCfg = node_fs_1.default.readFileSync(configPath, 'utf-8');
             const parsed = JSON.parse(rawCfg);
-            const validProfiles = ['quality', 'balanced', 'budget', 'inherit'];
-            if (parsed['model_profile'] && !validProfiles.includes(parsed['model_profile'])) {
-                addIssue('warning', 'W004', `config.json: invalid model_profile "${parsed['model_profile']}"`, `Valid values: ${validProfiles.join(', ')}`);
+            if (parsed['model_profile'] && !model_catalog_cjs_1.VALID_PROFILES.includes(parsed['model_profile'])) {
+                addIssue('warning', 'W004', `config.json: invalid model_profile "${parsed['model_profile']}"`, `Valid values: ${model_catalog_cjs_1.VALID_PROFILES.join(', ')}`);
+            }
+            const configModels = parsed['models'];
+            if (configModels && typeof configModels === 'object' && !Array.isArray(configModels)) {
+                for (const [phaseType, tierValue] of Object.entries(configModels)) {
+                    if (!model_catalog_cjs_1.VALID_PHASE_TYPES.has(phaseType)) {
+                        addIssue('warning', 'W022', `config.json: models has an unknown phase type "${phaseType}" which will be ignored`, `Valid phase types: ${[...model_catalog_cjs_1.VALID_PHASE_TYPES].join(', ')}`);
+                    }
+                    else if (typeof tierValue !== 'string' || !model_catalog_cjs_1.VALID_TIERS.has(tierValue)) {
+                        addIssue('warning', 'W022', `config.json: models.${phaseType} has an invalid tier value ${JSON.stringify(tierValue)} which will be ignored`, `Valid tiers: ${[...model_catalog_cjs_1.VALID_TIERS].join(', ')}`);
+                    }
+                }
+            }
+            else if (configModels !== undefined && configModels !== null) {
+                addIssue('warning', 'W022', `config.json: models is set to ${JSON.stringify(configModels)}, but must be an object mapping phase types to tiers — this value will be ignored`, `Set models to an object like {"planning": "sonnet"}, or remove the key to use profile defaults`);
             }
         }
         catch (err) {
@@ -1260,6 +1413,49 @@ function cmdValidateHealth(cwd, options, raw) {
     for (const e of phaseDirEntries) {
         if (!e.name.match(validate_cjs_2.phaseDirNameRe)) {
             addIssue('warning', 'W005', `Phase directory "${e.name}" doesn't follow NN-name format`, 'Rename to match pattern (e.g., 01-setup)');
+        }
+    }
+    // W023 (#2408): detect two or more real on-disk phase directories that
+    // normalize to the same phase key (e.g. `05-real/` + `05-real-stray/`).
+    // The collision silently breaks /gsd-stats status accuracy (now folded by
+    // precedence — see commands.cts foldPhaseStatus) and forces an operator
+    // decision. Wording is neutral — never guesses which directory is "real".
+    {
+        const groups = new Map();
+        for (const e of phaseDirEntries) {
+            // extractPhaseToken never returns empty — for unparseable dir names it
+            // falls back to the dir name itself. Two distinct unparseable names
+            // therefore normalize to distinct keys and cannot false-positive here;
+            // only dirs whose tokens collapse to the same key (e.g. `05-real` and
+            // `05-real-stray` → token `05`) produce a collision group.
+            const token = extractPhaseToken(e.name);
+            const key = normalizePhaseName(token);
+            const list = groups.get(key);
+            if (list)
+                list.push(e.name);
+            else
+                groups.set(key, [e.name]);
+        }
+        for (const [key, dirs] of groups) {
+            if (dirs.length < 2)
+                continue;
+            // Compute each dir's status independently so the warning is informative.
+            // Sort by phase id for stable output regardless of readdir order; tie-
+            // break on the dir name itself so two dirs sharing the same phase token
+            // (the collision case itself) still sort deterministically (V8's stable
+            // sort would otherwise fall back to non-portable fs.readdirSync order).
+            const described = dirs
+                .slice()
+                .sort((a, b) => comparePhaseNum(a, b) || String(a).localeCompare(String(b)))
+                .map((d) => {
+                const files = phaseDirFiles.get(d) || [];
+                const plans = files.filter(f => f.endsWith('-PLAN.md') || f === 'PLAN.md').length;
+                const summaries = files.filter(f => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md').length;
+                const status = determinePhaseStatus(plans, summaries, node_path_1.default.join(phasesDir, d), 'Not Started');
+                return `${d} (${status})`;
+            })
+                .join(', ');
+            addIssue('warning', 'W023', `Phase directories collide on normalized key "${key}": ${described}`, 'Inspect each directory; rename or remove the duplicate so only one directory maps to this phase key');
         }
     }
     for (const e of phaseDirEntries) {
@@ -1351,7 +1547,7 @@ function cmdValidateHealth(cwd, options, raw) {
                 stateContent.match(/Current Phase:\s*(\S+)/i);
             if (currentPhaseMatch) {
                 const statePhase = currentPhaseMatch[1].replace(/^0+/, '');
-                const phaseCheckboxRe = new RegExp(`-\\s*\\[x\\].*Phase\\s+0*${escapeRegex(statePhase)}[:\\s]`, 'i');
+                const phaseCheckboxRe = new RegExp(`-\\s*\\[x\\].*Phase\\s+0*${escapeRegex(statePhase)}${OPTIONAL_PHASE_TAG_SOURCE}[:\\s]`, 'i');
                 if (phaseCheckboxRe.test(roadmapContentFull)) {
                     const stateStatus = stateContent.match(/\*\*Status:\*\*\s*(.+)/i);
                     const statusVal = stateStatus ? stateStatus[1].trim().toLowerCase() : '';
@@ -1509,7 +1705,8 @@ function cmdValidateHealth(cwd, options, raw) {
             if (isMarkedComplete) {
                 const roadmapRaw = node_fs_1.default.readFileSync(roadmapPath, 'utf-8');
                 const scopedContent = extractCurrentMilestone(roadmapRaw, cwd);
-                const phasePattern = /#{2,4}\s*Phase\s+(\d+[A-Z]?(?:\.\d+)*)\s*:\s*([^\n]+)/gi;
+                // #1729: `(?:\s*\([^)\n]{0,200}\))?` tolerates a pre-colon ( ) tag (literal mirror of OPTIONAL_PHASE_TAG_SOURCE).
+                const phasePattern = new RegExp(`#{2,4}\\s*Phase\\s+(${PHASE_NUMBER_TOKEN_SOURCE})(?:\\s*\\([^)\\n]{0,200}\\))?\\s*:\\s*([^\\n]+)`, 'gi');
                 const unstarted = [];
                 let pm;
                 // Non-hoisted: load-order matters (circular dep guard)
@@ -1593,7 +1790,7 @@ function cmdValidateHealth(cwd, options, raw) {
                         stateContent += `**Current phase:** (determining...)\n`;
                         stateContent += `**Status:** Resuming\n\n`;
                         stateContent += `## Session Log\n\n`;
-                        stateContent += `- ${new Date().toISOString().split('T')[0]}: STATE.md regenerated by ${slash('health')} --repair\n`;
+                        stateContent += `- ${clock_cjs_1.realClock.localToday()}: STATE.md regenerated by ${slash('health')} --repair\n`;
                         writeStateMd(statePath, stateContent, cwd);
                         repairActions.push({ action: repair, success: true, path: 'STATE.md' });
                         break;
@@ -1649,7 +1846,7 @@ function cmdValidateHealth(cwd, options, raw) {
                     case 'backfillMilestones': {
                         if (!options['backfill'] && !options['repair'])
                             break;
-                        const today = new Date().toISOString().split('T')[0];
+                        const today = clock_cjs_1.realClock.localToday();
                         let backfilled = 0;
                         for (const ver of missingFromRegistry) {
                             try {
@@ -1774,7 +1971,7 @@ function cmdVerifySchemaDrift(cwd, phaseArg, skipFlag, raw) {
     const planFiles = node_fs_1.default.readdirSync(phaseDir).filter((f) => f.endsWith('-PLAN.md'));
     for (const pf of planFiles) {
         const content = node_fs_1.default.readFileSync(node_path_1.default.join(phaseDir, pf), 'utf-8');
-        const fmMatch = content.match(/files_modified:\s*\[([^\]]*)\]/);
+        const fmMatch = content.match(/files_modified:\s*\[([^\]]{0,8000})\]/);
         if (fmMatch) {
             const files = fmMatch[1].split(',').map((f) => f.trim()).filter(Boolean);
             allFiles.push(...files);
