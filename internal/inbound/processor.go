@@ -245,7 +245,13 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 
 	// 1. Recipient Session Tracking
 	if p.recipientSessionRepo != nil {
-		err := p.recipientSessionRepo.Upsert(ctx, ev.WorkspaceID, ev.From, ev.Channel, ev.To, time.Now().UTC())
+		entryPointType := "standard"
+		if ev.Metadata != nil {
+			if ept, ok := ev.Metadata["entry_point_type"]; ok && ept != "" {
+				entryPointType = ept
+			}
+		}
+		err := p.recipientSessionRepo.Upsert(ctx, ev.WorkspaceID, ev.From, ev.Channel, ev.To, time.Now().UTC(), entryPointType)
 		if err != nil {
 			slog.Error("inbound processor: failed to upsert recipient session", "error", err, "from", ev.From)
 		}

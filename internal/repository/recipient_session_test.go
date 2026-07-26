@@ -38,7 +38,7 @@ func TestRecipientSessionRepository(t *testing.T) {
 	}
 
 	// Upsert session
-	err = repo.Upsert(ctx, ws.ID, recipient, channelName, recipientIdentity, now)
+	err = repo.Upsert(ctx, ws.ID, recipient, channelName, recipientIdentity, now, "ctwa")
 	if err != nil {
 		t.Fatalf("failed to upsert session: %v", err)
 	}
@@ -64,10 +64,13 @@ func TestRecipientSessionRepository(t *testing.T) {
 	if !sess.LastInboundAt.Equal(now) {
 		t.Errorf("got LastInboundAt %v, want %v", sess.LastInboundAt, now)
 	}
+	if sess.EntryPointType != "ctwa" {
+		t.Errorf("got EntryPointType %s, want ctwa", sess.EntryPointType)
+	}
 
-	// Upsert again to update timestamp
+	// Upsert again to update timestamp and reset entry_point_type
 	newTime := now.Add(1 * time.Hour)
-	err = repo.Upsert(ctx, ws.ID, recipient, channelName, recipientIdentity, newTime)
+	err = repo.Upsert(ctx, ws.ID, recipient, channelName, recipientIdentity, newTime, "standard")
 	if err != nil {
 		t.Fatalf("failed to update/upsert session: %v", err)
 	}
@@ -78,5 +81,32 @@ func TestRecipientSessionRepository(t *testing.T) {
 	}
 	if !sess2.LastInboundAt.Equal(newTime) {
 		t.Errorf("got updated LastInboundAt %v, want %v", sess2.LastInboundAt, newTime)
+	}
+	if sess2.EntryPointType != "standard" {
+		t.Errorf("got updated EntryPointType %s, want standard", sess2.EntryPointType)
+	}
+
+	// Test GetExpiringSessions and MarkNotifiedExpiring
+	expiring, err := repo.GetExpiringSessions(ctx, newTime.Add(-2*time.Hour), newTime.Add(2*time.Hour))
+	if err != nil {
+		t.Fatalf("failed to get expiring sessions: %v", err)
+	}
+	if len(expiring) == 0 {
+		t.Errorf("expected at least 1 expiring session, got 0")
+	}
+
+	err = repo.MarkNotifiedExpiring(ctx, ws.ID, recipient, channelName, recipientIdentity, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("failed to mark notified expiring: %v", err)
+	}
+
+	expiringAfter, err := repo.GetExpiringSessions(ctx, newTime.Add(-2*time.Hour), newTime.Add(2*time.Hour))
+	if err != nil {
+		t.Fatalf("failed to get expiring sessions after mark: %v", err)
+	}
+	for _, s := range expiringAfter {
+		if s.RecipientPhone == recipient && s.WorkspaceID == ws.ID {
+			t.Errorf("expected session to be excluded from expiring sessions after marking")
+		}
 	}
 }

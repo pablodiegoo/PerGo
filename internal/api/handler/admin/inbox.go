@@ -519,7 +519,7 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 
 	// Upsert session to make sure it exists and registers sending
 	if h.Sessions != nil {
-		_ = h.Sessions.Upsert(ctx, workspaceID, to, channel, senderIdentity, time.Now().UTC())
+		_ = h.Sessions.Upsert(ctx, workspaceID, to, channel, senderIdentity, time.Now().UTC(), "standard")
 		_ = h.Sessions.UpdateLastReadAt(ctx, workspaceID, to, channel, senderIdentity, time.Now().UTC())
 	}
 
