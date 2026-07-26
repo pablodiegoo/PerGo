@@ -75,3 +75,16 @@ func (w *WindowChecker) IsWindowOpen(ctx context.Context, workspaceID uuid.UUID,
 		WindowDuration: duration,
 	}, nil
 }
+
+// IsWindowOpenBool is a convenience wrapper around IsWindowOpen returning only bool and error,
+// allowing channel adapters (like WABA) to check window status without importing the session package.
+func (w *WindowChecker) IsWindowOpenBool(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string, safetyBuffer time.Duration) (bool, error) {
+	status, err := w.IsWindowOpen(ctx, workspaceID, recipientPhone, channel, recipientIdentity, safetyBuffer)
+	if err != nil {
+		return false, err
+	}
+	if status == nil {
+		return false, nil
+	}
+	return status.Open, nil
+}
