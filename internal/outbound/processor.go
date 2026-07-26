@@ -44,6 +44,7 @@ type Processor struct {
 	publisher     Publisher
 	mediaEngine   media.Engine
 	windowChecker *session.WindowChecker
+	templateRepo  *repository.WABATemplateRepository
 }
 
 // NewProcessor creates a new OutboundProcessor implementation.
@@ -64,6 +65,12 @@ func NewProcessor(
 // SetWindowChecker attaches a WindowChecker for session window verification.
 func (p *Processor) SetWindowChecker(w *session.WindowChecker) *Processor {
 	p.windowChecker = w
+	return p
+}
+
+// SetTemplateRepository attaches a WABATemplateRepository for template validation.
+func (p *Processor) SetTemplateRepository(r *repository.WABATemplateRepository) *Processor {
+	p.templateRepo = r
 	return p
 }
 
@@ -164,8 +171,51 @@ func (p *Processor) Ingest(
 		}
 	}
 
-	// 4.5. Pre-flight Session Window check (WABA freeform messages only)
-	if conn.Channel == "whatsapp_cloud" && req.TemplateName == "" && p.windowChecker != nil {
+	// 4.5. Template Validation & Parameter Normalization
+	if req.TemplateName != "" {
+		if p.templateRepo != nil {
+			tmpl, err := p.templateRepo.GetByNameAndLanguage(ctx, conn.ID, req.TemplateName, req.Language)
+			if err != nil {
+				if errors.Is(err, repository.ErrTemplateNotFound) || err.Error() == "no rows in result set" {
+					return nil, ErrTemplateNotFound
+				}
+				slog.Error("outbound processor: template repo lookup error", "error", err, "trace_id", traceID)
+				return nil, err
+			}
+
+			if tmpl.Status != "APPROVED" {
+				return nil, &ErrTemplateNotApproved{
+					Status:          tmpl.Status,
+					RejectionReason: tmpl.RejectionReason,
+				}
+			}
+
+			// Validate and normalize parameters against cached components
+			var tmplComponents []domain.TemplateComponent
+			if err := json.Unmarshal(tmpl.Components, &tmplComponents); err != nil {
+				slog.Error("outbound processor: failed to parse cached template components", "error", err, "trace_id", traceID)
+			} else {
+				for i := range req.Components {
+					// Normalize params
+					normalized, err := NormalizeTemplateParams(req.Components[i].Parameters)
+					if err != nil {
+						return nil, &ErrInvalidTemplateParameters{Message: err.Error()}
+					}
+					req.Components[i].Parameters = normalized
+
+					// Match against cached components to validate count if applicable
+					for _, c := range tmplComponents {
+						if c.Type == req.Components[i].Type {
+							// If we could extract the expected variable count, we would check it here.
+							// For now, we simply trust the normalized parameters.
+							_ = c
+						}
+					}
+				}
+			}
+		}
+	} else if conn.Channel == "whatsapp_cloud" && p.windowChecker != nil {
+		// Pre-flight Session Window check (WABA freeform messages only)
 		status, err := p.windowChecker.IsWindowOpen(ctx, workspaceID, req.To, "whatsapp_cloud", conn.SenderIdentity, 0)
 		if err != nil {
 			slog.Warn("outbound processor: window checker error", "error", err, "trace_id", traceID)

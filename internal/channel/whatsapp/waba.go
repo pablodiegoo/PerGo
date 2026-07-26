@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -42,9 +43,9 @@ type WABAConfig struct {
 }
 
 type wabaMessageRequest struct {
-	MessagingProduct string        `json:"messaging_product"`
-	RecipientType    string        `json:"recipient_type"`
-	To               string        `json:"to"`
+	MessagingProduct string           `json:"messaging_product"`
+	RecipientType    string           `json:"recipient_type"`
+	To               string           `json:"to"`
 	Type             string           `json:"type"`
 	Text             *wabaText        `json:"text,omitempty"`
 	Template         *wabaTemplate    `json:"template,omitempty"`
@@ -113,7 +114,7 @@ type wabaInteractiveButtonReply struct {
 }
 
 type wabaInteractiveSection struct {
-	Title string                     `json:"title,omitempty"`
+	Title string                      `json:"title,omitempty"`
 	Rows  []wabaInteractiveSectionRow `json:"rows"`
 }
 
@@ -225,9 +226,9 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 				tmpl.Components[i] = wabaComponent{
 					Type: comp.Type,
 				}
-				if len(comp.Parameters) > 0 {
-					tmpl.Components[i].Parameters = make([]wabaParameter, len(comp.Parameters))
-					for j, param := range comp.Parameters {
+				if params, ok := comp.Parameters.([]domain.TemplateParameter); ok && len(params) > 0 {
+					tmpl.Components[i].Parameters = make([]wabaParameter, len(params))
+					for j, param := range params {
 						var img, video, doc *wabaParameterMedia
 						textVal := param.Text
 						switch param.Type {
@@ -280,7 +281,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 		reqPayload.Template = &tmpl
 	} else if m.Interactive != nil {
 		reqPayload.Type = "interactive"
-		
+
 		var header, footer *wabaInteractiveText
 		if m.Interactive.Header != nil {
 			header = &wabaInteractiveText{
@@ -297,7 +298,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 		action := wabaInteractiveAction{
 			Button: m.Interactive.Action.Button,
 		}
-		
+
 		for _, b := range m.Interactive.Action.Buttons {
 			action.Buttons = append(action.Buttons, wabaInteractiveReplyButton{
 				Type: "reply",

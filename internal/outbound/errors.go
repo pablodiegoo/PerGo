@@ -42,3 +42,22 @@ type RouteError struct {
 func (e *RouteError) Error() string {
 	return e.Message
 }
+
+var ErrTemplateNotFound = errors.New("template_not_found")
+
+type ErrTemplateNotApproved struct {
+	Status          string
+	RejectionReason *string
+}
+
+func (e *ErrTemplateNotApproved) Error() string {
+	return "template_not_approved"
+}
+
+type ErrInvalidTemplateParameters struct {
+	Message string
+}
+
+func (e *ErrInvalidTemplateParameters) Error() string {
+	return e.Message
+}
