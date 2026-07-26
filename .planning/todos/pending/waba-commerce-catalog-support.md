@@ -3,6 +3,7 @@ title: Implement WABA Commerce Catalog Messages and Order Webhook Parsing
 date: 2026-07-25
 priority: high
 tags: [waba, commerce, catalog, order]
+resolves_phase: 33
 ---
 
 # Implement WABA Commerce Catalog Messages and Order Webhook Parsing

@@ -3,6 +3,7 @@ title: Implement WABA Template Status Webhook Handler and On-Demand Sync API
 date: 2026-07-25
 priority: high
 tags: [waba, templates, webhook, sync]
+resolves_phase: 31
 ---
 
 # Implement WABA Template Status Webhook Handler and On-Demand Sync API

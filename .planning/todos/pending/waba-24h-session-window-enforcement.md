@@ -3,6 +3,7 @@ title: Implement WABA 24-Hour Session Window Pre-flight Enforcement
 date: 2026-07-25
 priority: high
 tags: [waba, validation, session-window]
+resolves_phase: 30
 ---
 
 # Implement WABA 24-Hour Session Window Pre-flight Enforcement

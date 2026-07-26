@@ -3,6 +3,7 @@ title: Implement WABA Meta Flows Dispatch and Webhook Response Decoding
 date: 2026-07-25
 priority: high
 tags: [waba, interactive, meta-flows, nfm]
+resolves_phase: 32
 ---
 
 # Implement WABA Meta Flows Dispatch and Webhook Response Decoding
