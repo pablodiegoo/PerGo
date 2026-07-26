@@ -131,3 +131,13 @@
   - **Campaign correlation**: if a campaign_id is provided, filter metrics to that campaign's dispatches
   - **Time range**: supports `start_date`, `end_date`, `granularity` (hourly, daily, weekly, monthly)
 - **Constraint**: Heavy queries are cached for 5 minutes to avoid repeated PostgreSQL aggregation scans.
+
+## WABA Message Lifecycle Webhook Requirements
+
+### REQ-WABA-MSG-EDIT-WEBHOOK: Inbound Message Edit Event Processing
+- **Description**: When a contact edits a previously sent message in their WhatsApp app, Meta delivers an `edit` webhook event. PerGo must process this event, update the stored message content in the conversations table, and forward a normalized `message.edited` event to the workspace webhook URL.
+- **Behavior**: The inbound adapter detects the `edit` event type, locates the original message by `message_id` (WAMID), stores the new text alongside the original (preserving edit history), updates the Chat UI if the conversation is open, and emits `{ "type": "message.edited", "message_id": "<WAMID>", "old_text": "...", "new_text": "...", "edited_at": "..." }` to client webhooks.
+
+### REQ-WABA-MSG-REVOKE-WEBHOOK: Inbound Message Revoke/Delete Event Processing
+- **Description**: When a contact deletes/unsends a message in their WhatsApp app, Meta delivers a `revoke` webhook event. PerGo must process this event, mark the message as revoked, and forward a normalized `message.revoked` event to the workspace webhook URL.
+- **Behavior**: The inbound adapter detects the `revoke` event type, locates the original message by `message_id` (WAMID), marks it as `revoked` in the conversations table (soft-delete — original content preserved for compliance but hidden from UI), updates the Chat UI to show "This message was deleted", and emits `{ "type": "message.revoked", "message_id": "<WAMID>", "revoked_at": "..." }` to client webhooks.
