@@ -2,51 +2,125 @@ package inbound
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/pablojhp.pergo/internal/domain"
 )
 
-// DefaultInboundRouter implements the InboundRouter interface.
+// IntegrationHandler defines the seam for external integration adapters (e.g. Chatwoot, Typebot, N8N).
+type IntegrationHandler interface {
+	Name() string
+	HandleInbound(ctx context.Context, contact *domain.Contact, ev *InboundEvent) error
+}
+
+// chatwootAdapter wraps ChatwootSyncer to satisfy IntegrationHandler.
+type chatwootAdapter struct {
+	syncer ChatwootSyncer
+}
+
+func (a *chatwootAdapter) Name() string { return "chatwoot" }
+func (a *chatwootAdapter) HandleInbound(ctx context.Context, contact *domain.Contact, ev *InboundEvent) error {
+	if a.syncer == nil {
+		return nil
+	}
+	return a.syncer.SyncInboundMessage(ctx, contact, ev)
+}
+
+// NewChatwootAdapter creates an IntegrationHandler from a ChatwootSyncer.
+func NewChatwootAdapter(cs ChatwootSyncer) IntegrationHandler {
+	if cs == nil {
+		return nil
+	}
+	return &chatwootAdapter{syncer: cs}
+}
+
+// typebotAdapter wraps TypebotForwarder to satisfy IntegrationHandler.
+type typebotAdapter struct {
+	forwarder TypebotForwarder
+}
+
+func (a *typebotAdapter) Name() string { return "typebot" }
+func (a *typebotAdapter) HandleInbound(ctx context.Context, contact *domain.Contact, ev *InboundEvent) error {
+	if a.forwarder == nil {
+		return nil
+	}
+	return a.forwarder.SyncInboundMessage(ctx, contact, ev)
+}
+
+// NewTypebotAdapter creates an IntegrationHandler from a TypebotForwarder.
+func NewTypebotAdapter(tf TypebotForwarder) IntegrationHandler {
+	if tf == nil {
+		return nil
+	}
+	return &typebotAdapter{forwarder: tf}
+}
+
+// DefaultInboundRouter implements the InboundRouter interface as a deep integration fanout registry.
 type DefaultInboundRouter struct {
-	chatwootSyncer   ChatwootSyncer
-	typebotForwarder TypebotForwarder
+	handlers []IntegrationHandler
+	timeout  time.Duration
 }
 
 // NewDefaultRouter creates a new DefaultInboundRouter instance.
-func NewDefaultRouter(cs ChatwootSyncer, tf TypebotForwarder) *DefaultInboundRouter {
-	return &DefaultInboundRouter{
-		chatwootSyncer:   cs,
-		typebotForwarder: tf,
+// Accepts any combination of IntegrationHandler, ChatwootSyncer, or TypebotForwarder instances.
+func NewDefaultRouter(items ...any) *DefaultInboundRouter {
+	r := &DefaultInboundRouter{
+		handlers: make([]IntegrationHandler, 0, len(items)),
+		timeout:  10 * time.Second,
+	}
+	for _, item := range items {
+		r.RegisterAny(item)
+	}
+	return r
+}
+
+// Register attaches an IntegrationHandler to the router.
+func (r *DefaultInboundRouter) Register(h IntegrationHandler) {
+	if h != nil {
+		r.handlers = append(r.handlers, h)
 	}
 }
 
-// Route routes the inbound event to the configured external syncers in background goroutines.
+// RegisterAny registers an IntegrationHandler, ChatwootSyncer, or TypebotForwarder.
+func (r *DefaultInboundRouter) RegisterAny(item any) {
+	if item == nil {
+		return
+	}
+	switch v := item.(type) {
+	case IntegrationHandler:
+		r.Register(v)
+	case ChatwootSyncer:
+		r.Register(NewChatwootAdapter(v))
+	case TypebotForwarder:
+		r.Register(NewTypebotAdapter(v))
+	default:
+		slog.Error("inbound router: unknown handler type", "type", fmt.Sprintf("%T", item))
+	}
+}
+
+// Route routes the inbound event to registered external integration handlers concurrently in background goroutines.
 func (r *DefaultInboundRouter) Route(ctx context.Context, contact *domain.Contact, ev *InboundEvent) error {
-	if contact == nil {
+	if contact == nil || len(r.handlers) == 0 {
 		return nil
 	}
 
-	if r.chatwootSyncer != nil {
-		go func(c *domain.Contact, e *InboundEvent) {
-			ctxBg, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	for _, h := range r.handlers {
+		go func(handler IntegrationHandler) {
+			ctxBg, cancel := context.WithTimeout(context.WithoutCancel(ctx), r.timeout)
 			defer cancel()
-			if err := r.chatwootSyncer.SyncInboundMessage(ctxBg, c, e); err != nil {
-				slog.Error("inbound router: failed to sync message to chatwoot", "error", err, "contact_id", c.ID, "workspace_id", e.WorkspaceID)
+			if err := handler.HandleInbound(ctxBg, contact, ev); err != nil {
+				slog.Error("inbound router: handler error",
+					"handler", handler.Name(),
+					"error", err,
+					"contact_id", contact.ID,
+					"workspace_id", ev.WorkspaceID,
+				)
 			}
-		}(contact, ev)
-	}
-
-	if r.typebotForwarder != nil {
-		go func(c *domain.Contact, e *InboundEvent) {
-			ctxBg, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := r.typebotForwarder.SyncInboundMessage(ctxBg, c, e); err != nil {
-				slog.Error("inbound router: failed to sync message to typebot", "error", err, "contact_id", c.ID, "workspace_id", e.WorkspaceID)
-			}
-		}(contact, ev)
+		}(h)
 	}
 
 	return nil
 }
+

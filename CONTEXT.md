@@ -44,5 +44,10 @@ _Avoid_: S3 helper, HTTP downloader, storage client
 The consolidated module that orchestrates routing of unified inbound events to external integration syncers asynchronously.
 _Avoid_: Event routing manager, syncer coordinator
 
+**Inbound Integration Handler**:
+An adapter satisfying the `IntegrationHandler` seam that syncs or forwards unified inbound events to a specific external system (e.g. Chatwoot, Typebot, N8N).
+_Avoid_: Syncer adapter, integration forwarder plugin
+
+
 
 
