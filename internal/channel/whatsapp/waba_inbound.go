@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -70,6 +73,16 @@ type ValueData struct {
 		Text      *struct {
 			Body string `json:"body"`
 		} `json:"text,omitempty"`
+		Order *struct {
+			CatalogID    string `json:"catalog_id"`
+			Text         string `json:"text,omitempty"`
+			ProductItems []struct {
+				ProductRetailerID string `json:"product_retailer_id"`
+				Quantity          string `json:"quantity"`
+				ItemPrice         string `json:"item_price"`
+				Currency          string `json:"currency"`
+			} `json:"product_items"`
+		} `json:"order,omitempty"`
 		Image    *wabaMediaObj `json:"image,omitempty"`
 		Document *wabaMediaObj `json:"document,omitempty"`
 		Audio    *wabaMediaObj `json:"audio,omitempty"`
@@ -229,6 +242,56 @@ func (a *WABAInboundAdapter) Parse(
 					}
 				}
 
+				metadata := map[string]string{"entry_point_type": entryPointType}
+
+				if msg.Type == "order" && msg.Order != nil {
+					var orderItems []domain.OrderProductItem
+					var totalPrice float64
+					currency := ""
+
+					for _, item := range msg.Order.ProductItems {
+						qty := parseQuantity(item.Quantity)
+						price := parsePrice(item.ItemPrice)
+						if currency == "" && item.Currency != "" {
+							currency = item.Currency
+						}
+						orderItems = append(orderItems, domain.OrderProductItem{
+							ProductRetailerID: item.ProductRetailerID,
+							Quantity:          qty,
+							ItemPrice:         price,
+							Currency:          item.Currency,
+						})
+						totalPrice += float64(qty) * price
+					}
+
+					orderEv := domain.OrderCreatedEvent{
+						OrderID:    msg.ID,
+						CatalogID:  msg.Order.CatalogID,
+						Items:      orderItems,
+						TotalPrice: totalPrice,
+						Currency:   currency,
+						Wamid:      msg.ID,
+						ContactID:  msg.From,
+					}
+
+					if orderJSONBytes, err := json.Marshal(orderEv); err == nil {
+						metadata["type"] = "order"
+						metadata["order_json"] = string(orderJSONBytes)
+					}
+
+					var summaryBuilder strings.Builder
+					summaryBuilder.WriteString(fmt.Sprintf("🛒 Order Received (Catalog: %s)\n", msg.Order.CatalogID))
+					if msg.Order.Text != "" {
+						summaryBuilder.WriteString(fmt.Sprintf("Note: %s\n", msg.Order.Text))
+					}
+					summaryBuilder.WriteString("Items:\n")
+					for _, item := range orderItems {
+						summaryBuilder.WriteString(fmt.Sprintf("- %s: %d x %.2f %s\n", item.ProductRetailerID, item.Quantity, item.ItemPrice, item.Currency))
+					}
+					summaryBuilder.WriteString(fmt.Sprintf("Total: %.2f %s", totalPrice, currency))
+					body = strings.TrimSpace(summaryBuilder.String())
+				}
+
 				events = append(events, &inbound.InboundEvent{
 					WorkspaceID:  conn.WorkspaceID,
 					ConnectionID: conn.ID,
@@ -240,7 +303,7 @@ func (a *WABAInboundAdapter) Parse(
 					Media:        inboundMedia,
 					Location:     inboundLocation,
 					Contacts:     inboundContacts,
-					Metadata:     map[string]string{"entry_point_type": entryPointType},
+					Metadata:     metadata,
 				})
 			}
 		}
@@ -291,4 +354,23 @@ func (a *WABAInboundAdapter) downloadWABAFile(ctx context.Context, downloadURL, 
 	}
 
 	return res.Bytes, nil
+}
+
+func parseQuantity(s string) int {
+	s = strings.TrimSpace(s)
+	if q, err := strconv.Atoi(s); err == nil {
+		return q
+	}
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		return int(f)
+	}
+	return 0
+}
+
+func parsePrice(s string) float64 {
+	s = strings.TrimSpace(s)
+	if p, err := strconv.ParseFloat(s, 64); err == nil {
+		return p
+	}
+	return 0.0
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -1025,5 +1026,125 @@ func TestWABAAdapter_ProductPayloads(t *testing.T) {
 			t.Errorf("unexpected header for product list: %+v", receivedReq.Interactive.Header)
 		}
 	})
+}
+
+func TestWABAInboundAdapter_OrderParsing(t *testing.T) {
+	ctx := context.Background()
+	adapter := NewWABAInboundAdapter(nil)
+
+	creds := wabaVerifyCreds{
+		VerifyToken: "my_verify_token",
+		Token:       "my_token",
+	}
+	credsJSON, _ := json.Marshal(creds)
+	wsID := uuid.New()
+	conn := &repository.Connection{
+		WorkspaceID: wsID,
+		Credentials: credsJSON,
+	}
+
+	payload := []byte(`{
+		"object": "whatsapp_business_account",
+		"entry": [
+			{
+				"id": "entry_123",
+				"changes": [
+					{
+						"field": "messages",
+						"value": {
+							"messaging_product": "whatsapp",
+							"metadata": {
+								"display_phone_number": "15550001111",
+								"phone_number_id": "phone_123"
+							},
+							"contacts": [{"profile": {"name": "Test Customer"}, "wa_id": "5511999999999"}],
+							"messages": [
+								{
+									"from": "5511999999999",
+									"id": "wamid.order_test_001",
+									"timestamp": "1700000000",
+									"type": "order",
+									"order": {
+										"catalog_id": "cat_999",
+										"text": "Please deliver quickly",
+										"product_items": [
+											{
+												"product_retailer_id": "SKU-001",
+												"quantity": "2",
+												"item_price": "15.50",
+												"currency": "BRL"
+											},
+											{
+												"product_retailer_id": "SKU-002",
+												"quantity": "1",
+												"item_price": "30.00",
+												"currency": "BRL"
+											}
+										]
+									}
+								}
+							]
+						}
+					}
+				]
+			}
+		]
+	}`)
+
+	events, err := adapter.Parse(ctx, payload, nil, conn)
+	if err != nil {
+		t.Fatalf("failed to parse order webhook: %v", err)
+	}
+
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+
+	ev := events[0]
+	if ev.MessageID != "wamid.order_test_001" {
+		t.Errorf("expected MessageID 'wamid.order_test_001', got %q", ev.MessageID)
+	}
+	if ev.From != "5511999999999" {
+		t.Errorf("expected From '5511999999999', got %q", ev.From)
+	}
+	if ev.Metadata == nil {
+		t.Fatalf("expected non-nil Metadata")
+	}
+	if ev.Metadata["type"] != "order" {
+		t.Errorf("expected Metadata['type'] = 'order', got %q", ev.Metadata["type"])
+	}
+
+	orderJSON, ok := ev.Metadata["order_json"]
+	if !ok || orderJSON == "" {
+		t.Fatalf("expected non-empty Metadata['order_json']")
+	}
+
+	var orderEv domain.OrderCreatedEvent
+	if err := json.Unmarshal([]byte(orderJSON), &orderEv); err != nil {
+		t.Fatalf("failed to unmarshal order_json: %v", err)
+	}
+
+	if orderEv.CatalogID != "cat_999" {
+		t.Errorf("expected CatalogID 'cat_999', got %q", orderEv.CatalogID)
+	}
+	if orderEv.TotalPrice != 61.00 {
+		t.Errorf("expected TotalPrice 61.00, got %f", orderEv.TotalPrice)
+	}
+	if orderEv.Currency != "BRL" {
+		t.Errorf("expected Currency 'BRL', got %q", orderEv.Currency)
+	}
+	if len(orderEv.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(orderEv.Items))
+	}
+	if orderEv.Items[0].ProductRetailerID != "SKU-001" || orderEv.Items[0].Quantity != 2 || orderEv.Items[0].ItemPrice != 15.50 {
+		t.Errorf("unexpected item 0: %+v", orderEv.Items[0])
+	}
+
+	if !strings.Contains(ev.Body, "🛒 Order Received (Catalog: cat_999)") {
+		t.Errorf("expected Body to contain catalog summary header, got: %s", ev.Body)
+	}
+	if !strings.Contains(ev.Body, "Note: Please deliver quickly") {
+		t.Errorf("expected Body to contain note, got: %s", ev.Body)
+	}
 }
 
