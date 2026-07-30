@@ -91,8 +91,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 
 </details>
 
-<details>
-<summary>📋 v1.7 WABA Deep Integration (Phases 30-33) — ACTIVE</summary>
+### v1.7 WABA Deep Integration (Phases 30-33)
 
 - [x] Phase 30: Session Window & Inbound Foundation (6/6 plans) — completed 2026-07-26
   - **Success criteria:**
@@ -119,7 +118,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
     5. Meta Flows dispatch works with signed flow_token and nfm_reply responses are decoded into structured events
 
 - [ ] Phase 032.1: Close gap: DISP-02 strict variable count validation
-- [ ] Phase 33: Commerce Catalogs & Order Processing — `type: "product"` single-product dispatch transformer, `type: "product_list"` multi-product list transformer with titled sections, `default_catalog_id` connection config, `catalog_id` binding and SKU pre-flight validation, inbound order webhook parsing into `order.created` events with idempotent wamid deduplication. Implements COMM-01, COMM-02, COMM-03, COMM-04, COMM-05.
+- [ ] **Phase 33: Commerce Catalogs & Order Processing** — `type: "product"` single-product dispatch transformer, `type: "product_list"` multi-product list transformer with titled sections, `default_catalog_id` connection config, `catalog_id` binding and SKU pre-flight validation, inbound order webhook parsing into `order.created` events with idempotent wamid deduplication. Implements COMM-01, COMM-02, COMM-03, COMM-04, COMM-05.
   - **Success criteria:**
     1. `POST /messages` with `type: "product"` sends single-product interactive message via WABA
     2. `POST /messages` with `type: "product_list"` sends multi-product list with sections
@@ -127,7 +126,6 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
     4. Inbound order webhooks are parsed into `order.created` events with idempotent processing
     5. Invalid `catalog_id` or missing SKU returns pre-flight validation error
 
-</details>
 
 ## Progress
 
