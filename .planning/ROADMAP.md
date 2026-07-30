@@ -118,14 +118,13 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
     5. Meta Flows dispatch works with signed flow_token and nfm_reply responses are decoded into structured events
 
 - [ ] Phase 032.1: Close gap: DISP-02 strict variable count validation
-- [ ] **Phase 33: Commerce Catalogs & Order Processing** — `type: "product"` single-product dispatch transformer, `type: "product_list"` multi-product list transformer with titled sections, `default_catalog_id` connection config, `catalog_id` binding and SKU pre-flight validation, inbound order webhook parsing into `order.created` events with idempotent wamid deduplication. Implements COMM-01, COMM-02, COMM-03, COMM-04, COMM-05.
+- [x] **Phase 33: Commerce Catalogs & Order Processing** (5/5 plans) — completed 2026-07-30
   - **Success criteria:**
     1. `POST /messages` with `type: "product"` sends single-product interactive message via WABA
     2. `POST /messages` with `type: "product_list"` sends multi-product list with sections
     3. `default_catalog_id` is configurable per WABA connection and auto-injected
     4. Inbound order webhooks are parsed into `order.created` events with idempotent processing
     5. Invalid `catalog_id` or missing SKU returns pre-flight validation error
-
 
 ## Progress
 
@@ -152,10 +151,10 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 27. Implement Instagram Stories handling and Quick Replies mapping | v1.4 | 1/1 | Complete    | 2026-07-20 |
 | 28. Email Channels & Tracking Engine | v1.5 | 2/2 | Complete | 2026-07-25 |
 | 29. Connection Slugs & API Channel Routing | v1.6 | 4/4 | Complete    | 2026-07-26 |
-| 30. Session Window & Inbound Foundation | v1.7 | 0/? | Planned | - |
+| 30. Session Window & Inbound Foundation | v1.7 | 6/6 | Complete | 2026-07-26 |
 | 31. Template CRUD, Meta Sync & Cache | v1.7 | 4/4 | Complete | 2026-07-26 |
 | 32. Template Dispatch, Validation & Meta Flows | v1.7 | 5/5 | Complete | 2026-07-26 |
-| 33. Commerce Catalogs & Order Processing | v1.7 | 0/? | Planned | - |
+| 33. Commerce Catalogs & Order Processing | v1.7 | 5/5 | In Progress|  |
 
 ---
 *Roadmap created: 2026-07-14*

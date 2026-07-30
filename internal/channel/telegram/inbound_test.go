@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,12 +15,15 @@ import (
 
 func TestTelegramInboundAdapter_Parse(t *testing.T) {
 	// Setup mock server to capture answerCallbackQuery
+	var mu sync.Mutex
 	var lastCallbackAck string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/botTEST_TOKEN/answerCallbackQuery" {
 			var body map[string]string
 			if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+				mu.Lock()
 				lastCallbackAck = body["callback_query_id"]
+				mu.Unlock()
 			}
 		}
 		w.WriteHeader(http.StatusOK)
@@ -68,7 +72,9 @@ func TestTelegramInboundAdapter_Parse(t *testing.T) {
 	})
 
 	t.Run("Callback Query", func(t *testing.T) {
+		mu.Lock()
 		lastCallbackAck = "" // reset
+		mu.Unlock()
 		payload := []byte(`{
 			"update_id": 2,
 			"callback_query": {
@@ -106,8 +112,11 @@ func TestTelegramInboundAdapter_Parse(t *testing.T) {
 
 		// wait a tiny bit for the async ack to complete
 		time.Sleep(50 * time.Millisecond)
-		if lastCallbackAck != "cb_123" {
-			t.Errorf("expected answerCallbackQuery to be called with cb_123, got %s", lastCallbackAck)
+		mu.Lock()
+		ack := lastCallbackAck
+		mu.Unlock()
+		if ack != "cb_123" {
+			t.Errorf("expected answerCallbackQuery to be called with cb_123, got %s", ack)
 		}
 	})
 }
