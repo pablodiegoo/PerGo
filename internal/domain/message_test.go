@@ -484,3 +484,53 @@ func TestValidateMessageInteractiveStructure(t *testing.T) {
 		})
 	}
 }
+
+func TestProductPayload_Structs(t *testing.T) {
+	if MessageTypeProduct != "product" {
+		t.Errorf("expected MessageTypeProduct to be 'product', got %q", MessageTypeProduct)
+	}
+	if MessageTypeProductList != "product_list" {
+		t.Errorf("expected MessageTypeProductList to be 'product_list', got %q", MessageTypeProductList)
+	}
+
+	payload := ProductPayload{
+		CatalogID:         "cat_123",
+		ProductRetailerID: "sku_99",
+		Header:            "Product Header",
+		Body:              "Product Body",
+		Footer:            "Product Footer",
+		Sections: []ProductSection{
+			{
+				Title: "Section 1",
+				ProductItems: []ProductItem{
+					{
+						ProductRetailerID: "sku_01",
+						ItemPrice:         19.99,
+						Currency:          "BRL",
+						Quantity:          2,
+					},
+				},
+			},
+		},
+	}
+
+	req := CreateMessageRequest{
+		To:      "+5511999999999",
+		Channel: "whatsapp_cloud",
+		Type:    MessageTypeProductList,
+		Product: &payload,
+	}
+
+	if req.Type != "product_list" || req.Product == nil || req.Product.CatalogID != "cat_123" {
+		t.Errorf("unexpected CreateMessageRequest struct layout: %+v", req)
+	}
+
+	qMsg := QueueMessage{
+		Type:    MessageTypeProduct,
+		Product: &payload,
+	}
+	if qMsg.Type != "product" || qMsg.Product == nil {
+		t.Errorf("unexpected QueueMessage struct layout: %+v", qMsg)
+	}
+}
+

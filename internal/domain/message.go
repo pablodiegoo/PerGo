@@ -87,52 +87,85 @@ type Section struct {
 }
 
 // Row represents an item in a list message section.
+const (
+	MessageTypeProduct     = "product"
+	MessageTypeProductList = "product_list"
+)
+
 type Row struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description,omitempty"`
 }
 
+// ProductItem represents a single product item in a section or catalog.
+type ProductItem struct {
+	ProductRetailerID string  `json:"product_retailer_id"`
+	ItemPrice         float64 `json:"item_price,omitempty"`
+	Currency          string  `json:"currency,omitempty"`
+	Quantity          int     `json:"quantity,omitempty"`
+}
+
+// ProductSection represents a collection of product items within a multi-product message.
+type ProductSection struct {
+	Title        string        `json:"title,omitempty"`
+	ProductItems []ProductItem `json:"product_items,omitempty"`
+}
+
+// ProductPayload represents the single product or product list payload for WhatsApp catalog messages.
+type ProductPayload struct {
+	CatalogID         string           `json:"catalog_id,omitempty"`
+	ProductRetailerID string           `json:"product_retailer_id,omitempty"`
+	Header            string           `json:"header,omitempty"`
+	Body              string           `json:"body,omitempty"`
+	Footer            string           `json:"footer,omitempty"`
+	Sections          []ProductSection `json:"sections,omitempty"`
+}
+
 // CreateMessageRequest is the JSON payload for POST /messages.
 type CreateMessageRequest struct {
-	To               string              `json:"to"`
-	From             string              `json:"from,omitempty"`
-	Channel          string              `json:"channel"`
-	Body             string              `json:"body"`
-	Media            *Media              `json:"media,omitempty"`
-	Metadata         map[string]string   `json:"metadata,omitempty"`
-	TTLSeconds       *int                `json:"ttl_seconds,omitempty"`
-	TemplateName     string              `json:"template_name,omitempty"`
-	Language         string              `json:"language,omitempty"`
+	To               string                     `json:"to"`
+	From             string                     `json:"from,omitempty"`
+	Channel          string                     `json:"channel"`
+	Body             string                     `json:"body"`
+	Media            *Media                     `json:"media,omitempty"`
+	Metadata         map[string]string          `json:"metadata,omitempty"`
+	TTLSeconds       *int                       `json:"ttl_seconds,omitempty"`
+	TemplateName     string                     `json:"template_name,omitempty"`
+	Language         string                     `json:"language,omitempty"`
 	Components       []TemplateComponent        `json:"components,omitempty"`
 	FallbackChannels []string                   `json:"fallback_channels,omitempty"`
 	Interactive      *Interactive               `json:"interactive,omitempty"`
 	ChannelOverrides map[string]json.RawMessage `json:"channel_overrides,omitempty"`
 	FallbackBehavior string                     `json:"fallback_behavior,omitempty"`
+	Type             string                     `json:"type,omitempty"`
+	Product          *ProductPayload            `json:"product,omitempty"`
 }
 
 // QueueMessage wraps the published payload for JetStream queues.
 type QueueMessage struct {
-	WorkspaceID      uuid.UUID           `json:"workspace_id"`
-	ConnectionID     uuid.UUID           `json:"connection_id"`
-	SenderIdentity   string              `json:"sender_identity"`
-	TraceID          string              `json:"trace_id"`
-	To               string              `json:"to"`
-	Channel          string              `json:"channel"`
-	Body             string              `json:"body"`
-	Media            *Media              `json:"media,omitempty"`
-	Metadata         map[string]string   `json:"metadata,omitempty"`
-	TTLSeconds       *int                `json:"ttl_seconds,omitempty"`
-	QueuedAt         time.Time           `json:"queued_at"`
-	FallbackChannels []string            `json:"fallback_channels,omitempty"`
-	TemplateName     string              `json:"template_name,omitempty"`
-	Language         string              `json:"language,omitempty"`
-	Components       []TemplateComponent `json:"components,omitempty"`
+	WorkspaceID      uuid.UUID                  `json:"workspace_id"`
+	ConnectionID     uuid.UUID                  `json:"connection_id"`
+	SenderIdentity   string                     `json:"sender_identity"`
+	TraceID          string                     `json:"trace_id"`
+	To               string                     `json:"to"`
+	Channel          string                     `json:"channel"`
+	Body             string                     `json:"body"`
+	Media            *Media                     `json:"media,omitempty"`
+	Metadata         map[string]string          `json:"metadata,omitempty"`
+	TTLSeconds       *int                       `json:"ttl_seconds,omitempty"`
+	QueuedAt         time.Time                  `json:"queued_at"`
+	FallbackChannels []string                   `json:"fallback_channels,omitempty"`
+	TemplateName     string                     `json:"template_name,omitempty"`
+	Language         string                     `json:"language,omitempty"`
+	Components       []TemplateComponent        `json:"components,omitempty"`
 	CampaignID       *uuid.UUID                 `json:"campaign_id,omitempty"`
 	VariablesJSON    map[string]string          `json:"variables_json,omitempty"`
 	Interactive      *Interactive               `json:"interactive,omitempty"`
 	ChannelOverrides map[string]json.RawMessage `json:"channel_overrides,omitempty"`
 	FallbackBehavior string                     `json:"fallback_behavior,omitempty"`
+	Type             string                     `json:"type,omitempty"`
+	Product          *ProductPayload            `json:"product,omitempty"`
 }
 
 // TemplateComponent represents a template component payload.
