@@ -117,7 +117,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
     4. Freeform messages outside 24h window auto-upgrade to configured default template
     5. Meta Flows dispatch works with signed flow_token and nfm_reply responses are decoded into structured events
 
-- [ ] Phase 032.1: Close gap: DISP-02 strict variable count validation
+- [x] Phase 032.1: Close gap: DISP-02 strict variable count validation (1/1 plan) — completed 2026-07-30
 - [x] **Phase 33: Commerce Catalogs & Order Processing** (5/5 plans) — completed 2026-07-30
   - **Success criteria:**
     1. `POST /messages` with `type: "product"` sends single-product interactive message via WABA
@@ -154,6 +154,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 30. Session Window & Inbound Foundation | v1.7 | 6/6 | Complete | 2026-07-26 |
 | 31. Template CRUD, Meta Sync & Cache | v1.7 | 4/4 | Complete | 2026-07-26 |
 | 32. Template Dispatch, Validation & Meta Flows | v1.7 | 5/5 | Complete | 2026-07-26 |
+| 32.1. Close gap: DISP-02 strict variable count validation | v1.7 | 1/1 | Complete | 2026-07-30 |
 | 33. Commerce Catalogs & Order Processing | v1.7 | 5/5 | Complete | 2026-07-30 |
 
 ---
