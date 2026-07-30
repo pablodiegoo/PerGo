@@ -386,6 +386,9 @@ func main() {
 
 	// --- Message handler (POST /messages) ---
 	outboundProcessor := outbound.NewProcessor(queueDepth, mediaEngine, connectionRepo, publisher)
+	outboundProcessor.SetWindowChecker(windowChecker)
+	outboundProcessor.SetTemplateRepository(wabaTemplateRepo)
+
 	messageHandler := &handler.MessageHandler{
 		Ingestor: outboundProcessor,
 	}
@@ -413,6 +416,10 @@ func main() {
 	wabaMetaClient := client.NewWABAMetaClient(nil, "")
 	wabaTemplateAPIHandler := apipkg.NewWABATemplateAPIHandler(wabaTemplateRepo, connectionRepo, wabaMetaClient)
 	wabaTemplateAPIHandler.RegisterRoutes(e)
+
+	// --- WABA Meta Flows Data Exchange endpoint ---
+	flowDataExchangeHandler := handler.NewFlowDataExchangeHandler(connectionRepo)
+	e.POST("/api/v1/waba/flows/data-exchange", flowDataExchangeHandler.HandleFlowDataExchange)
 
 	// --- Chatwoot Inbound Webhook handler ---
 	chatwootWebhookHandler := handler.NewChatwootWebhookHandler(pool, chatwootMappingRepo, contactRepo, publisher)
