@@ -681,3 +681,105 @@ func TestCreateMessageChannelMismatch(t *testing.T) {
 		t.Errorf("expected code 'route_not_found', got %q", resp.Code)
 	}
 }
+
+func TestMessageHandler_ProductValidation(t *testing.T) {
+	t.Run("Missing catalog_id returns HTTP 422 missing_catalog_id", func(t *testing.T) {
+		e := echo.New()
+		h := newTestMessageHandler()
+		h.RegisterRoutes(e)
+
+		traceID := uuid.New().String()
+		wsID := uuid.New()
+
+		body := `{"to":"+1234567890","channel":"whatsapp","type":"product","product":{"product_retailer_id":"sku_123"}}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(testContext(traceID, wsID))
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("expected 422, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var resp domain.ErrorResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal response: %v", err)
+		}
+
+		if resp.Code != "missing_catalog_id" {
+			t.Errorf("expected code 'missing_catalog_id', got %q", resp.Code)
+		}
+	})
+
+	t.Run("Valid product message with default_catalog_id returns HTTP 202", func(t *testing.T) {
+		e := echo.New()
+		creds, _ := json.Marshal(map[string]string{
+			"default_catalog_id": "cat_default_789",
+		})
+		repo := &mockConnectionRepo{
+			GetDefaultChannelConnectionFunc: func(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error) {
+				return &repository.Connection{
+					ID:             uuid.New(),
+					WorkspaceID:    workspaceID,
+					Channel:        channel,
+					SenderIdentity: "+1234567890",
+					Status:         "active",
+					Credentials:    creds,
+				}, nil
+			},
+		}
+		h := &MessageHandler{ConnectionRepo: repo}
+		h.RegisterRoutes(e)
+
+		traceID := uuid.New().String()
+		wsID := uuid.New()
+
+		body := `{"to":"+1234567890","channel":"whatsapp","type":"product","product":{"product_retailer_id":"sku_123"}}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(testContext(traceID, wsID))
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("Invalid product payload returns HTTP 422 invalid_product_payload", func(t *testing.T) {
+		e := echo.New()
+		h := newTestMessageHandler()
+		h.RegisterRoutes(e)
+
+		traceID := uuid.New().String()
+		wsID := uuid.New()
+
+		body := `{"to":"+1234567890","channel":"whatsapp","type":"product_list","product":{"catalog_id":"cat_123","sections":[{"title":"This title is far too long for a product list section title","product_items":[{"product_retailer_id":"sku_1"}]}]}}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(testContext(traceID, wsID))
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("expected 422, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var resp domain.ErrorResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal response: %v", err)
+		}
+
+		if resp.Code != "invalid_product_payload" {
+			t.Errorf("expected code 'invalid_product_payload', got %q", resp.Code)
+		}
+		if len(resp.Details) == 0 {
+			t.Errorf("expected validation details in response")
+		}
+	})
+}
+

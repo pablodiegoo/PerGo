@@ -130,9 +130,26 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 			})
 		}
 
+		if errors.Is(err, outbound.ErrMissingCatalogID) {
+			return c.JSON(http.StatusUnprocessableEntity, domain.ErrorResponse{
+				Code:    "missing_catalog_id",
+				Message: outbound.ErrMissingCatalogID.Error(),
+			})
+		}
+
 		var valErr *outbound.ValidationError
 		if errors.As(err, &valErr) {
+			if valErr.Response != nil && valErr.Response.Code == "invalid_product_payload" {
+				return c.JSON(http.StatusUnprocessableEntity, *valErr.Response)
+			}
 			return c.JSON(http.StatusBadRequest, *valErr.Response)
+		}
+
+		if errors.Is(err, outbound.ErrInvalidProductPayload) {
+			return c.JSON(http.StatusUnprocessableEntity, domain.ErrorResponse{
+				Code:    "invalid_product_payload",
+				Message: outbound.ErrInvalidProductPayload.Error(),
+			})
 		}
 
 		var mediaErr *outbound.MediaError
