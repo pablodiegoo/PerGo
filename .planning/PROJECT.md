@@ -17,26 +17,14 @@ A single API request delivers a message through any configured channel with auto
 
 ## Current State
 
-- **Shipped Version**: v1.6 (2026-07-26)
-- **Status**: Stable. Fully functional multi-tenant omnichannel routing gateway with 6 channel types (WhatsApp Web, WABA, Telegram, Instagram, Email SMTP/SES, Mautic), human-friendly connection slug routing, interactive message schema mapping, open/click email tracking, Chatwoot and Typebot integrations with stateful human/bot handoff control, and a server-rendered admin console.
-
-## Current Milestone: v1.7 WABA Deep Integration
-
-**Goal:** Make the WhatsApp Cloud (WABA) channel production-grade with full template lifecycle management, session window compliance, commerce catalog messaging, and Meta Flows interactive form support.
-
-**Target features:**
-- Template CRUD lifecycle — Create, edit, delete templates via REST API + admin UI with local PostgreSQL cache, on-demand Meta Graph API sync, and local validation engine enforcing Meta's formatting rules
-- Template sending via unified API — `POST /messages` with `type: "template"`, automatic parameter binding by template name and language
-- Template status webhooks — Process `message_template_status_update` callbacks and emit events to workspace webhook subscribers
-- 24h session window enforcement — Pre-flight validation rejecting non-template WABA messages outside the 24h window with HTTP 422
-- Commerce catalog messages — `type: "product"` and `type: "product_list"` dispatches with automatic `catalog_id` resolution + incoming cart order webhook parsing
-- Meta Flows dispatch & response — `type: "flow"` dispatch transformer + `nfm_reply` response JSON decoding into structured webhook events
+- **Shipped Version**: v1.7 (2026-07-30)
+- **Status**: Stable. Fully functional multi-tenant omnichannel routing gateway with 6 channel types (WhatsApp Web, WABA, Telegram, Instagram, Email SMTP/SES, Mautic), deep WABA Cloud integration (24h session window tracking/enforcement, template CRUD lifecycle + local cache + Graph API sync + admin previewer, template dispatches with parameter validation + non-APPROVED blocking + DISP-02 strict variable count validation + auto-upgrade fallback, Meta Flows dispatches + HMAC tokens + nfm_reply decoding + Data Exchange middleware, WhatsApp Commerce catalog dispatches + cart order webhook parsing into order.created events), human-friendly connection slug routing, interactive message schema mapping, open/click email tracking, Chatwoot and Typebot integrations with stateful human/bot handoff control, and a server-rendered admin console.
 
 <details>
-<summary>Archived State (v1.4)</summary>
+<summary>Archived State (v1.6)</summary>
 
-- **Shipped Version**: v1.4 (2026-07-20)
-- **Status**: Stable. Fully functional multi-tenant routing gateway with interactive message schema mapping, Telegram threads and inline keyboards, Instagram Stories, active contact profiles, multi-webhook subscriptions, sequential JSON Response Verbs engine, Meta WABA read receipt indicators, and built-in Chatwoot and Typebot integrations with stateful human/bot handoff control.
+- **Shipped Version**: v1.6 (2026-07-26)
+- **Status**: Stable. Fully functional multi-tenant omnichannel routing gateway with 6 channel types (WhatsApp Web, WABA, Telegram, Instagram, Email SMTP/SES, Mautic), human-friendly connection slug routing, interactive message schema mapping, open/click email tracking, Chatwoot and Typebot integrations with stateful human/bot handoff control, and a server-rendered admin console.
 
 </details>
 
@@ -44,6 +32,10 @@ A single API request delivers a message through any configured channel with auto
 
 ### Validated
 
+- ✓ WABA 24h Session Window Enforcement: tracking `last_inbound_at` in `contact_sessions`, pre-flight HTTP 422 rejection outside window, dispatch time safety checks, and `session.expiring_soon` webhooks (SESS-01 to SESS-05) — Phase 30
+- ✓ WABA Template Management: REST API and admin UI CRUD, local PostgreSQL cache, on-demand Graph API sync (15m rate limit), status update webhooks, quality score alerts, visual previewer (TMPL-01 to TMPL-09) — Phase 31
+- ✓ WABA Template Dispatch & Meta Flows: `POST /messages` `type: "template"` parameter binding, local validation engine, DISP-02 strict variable count validation, non-APPROVED blocking, smart auto-upgrade fallback, Meta Flows dispatches, HMAC `flow_token` generation, `nfm_reply` response decoding, RSA/AES Data Exchange middleware (DISP-01 to DISP-04, FLOW-01 to FLOW-04) — Phase 32, 032.1
+- ✓ WhatsApp Commerce Catalogs: `type: "product"` and `type: "product_list"` dispatches, `default_catalog_id` per connection, catalog pre-flight validation, inbound order webhook parsing into `order.created` events (COMM-01 to COMM-05) — Phase 33
 - ✓ Omnichannel Interactive Schema & Routing: unified Interactive schema, JSON-to-Protobuf mapping, and `channel_overrides` fallback for vendor-specific payload structures (WABA-01) — Phase 25
 - ✓ Telegram Integration: mapped Telegram inline keyboards and threaded message routing (TELE-01) — Phase 26
 - ✓ Instagram Integration: handled inbound IG Stories and mapped generic Quick Replies (INSTA-01) — Phase 27
@@ -76,12 +68,7 @@ A single API request delivers a message through any configured channel with auto
 
 ### Active
 
-- [ ] Template CRUD lifecycle with local PostgreSQL cache, Meta Graph API sync, and validation engine (REST API + admin UI)
-- [ ] Template sending via unified `POST /messages` API with `type: "template"` and automatic parameter binding
-- [ ] Template status webhook processing (`message_template_status_update`) and event emission
-- [ ] WABA 24h session window pre-flight enforcement with HTTP 422 rejection
-- [ ] Commerce catalog message dispatches (`product`, `product_list`) and incoming order webhook parsing
-- [ ] Meta Flows dispatch (`type: "flow"`) and `nfm_reply` response decoding
+(None — ready for v1.8 milestone definition)
 
 ### Out of Scope
 
@@ -126,6 +113,13 @@ A single API request delivers a message through any configured channel with auto
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
+| contact_sessions table for session tracking | Independent tracking per contact/connection to decouple from message history | Validated (Phase 30) |
+| Pre-flight session window enforcement | Early rejection at API ingestion saves Meta API quota and returns clear HTTP 422 | Validated (Phase 30) |
+| PostgreSQL cache for WABA templates | In-memory lookup for fast dispatch with fallback to DB cache and async webhook invalidation | Validated (Phase 31) |
+| DISP-02 strict variable count validation | Inspect component structures to verify target parameter counts match template parameters | Validated (Phase 032.1) |
+| HMAC-signed flow_token generation | Signed token containing workspace, phone, nonce, and TTL prevents token tampering | Validated (Phase 32) |
+| Two-stage nfm_reply response parsing | Escaped JSON string decoded into structured event map for clean webhook delivery | Validated (Phase 32) |
+| Default catalog ID auto-injection | Connection settings fallback eliminates repetitive catalog_id payload specification | Validated (Phase 33) |
 | Echo over net/http+chi for HTTP router | PRD prescribes Echo; handler ergonomics and middleware parity with admin stack — keep handlers thin and std-http.Handler-compatible so router is swappable | Validated (Phase 1, 2) |
 | pgx/v5 over database/sql+sqlx | Binary protocol, prepared-statement cache, native COPY, batch pipeline — right call for the audit batch writer | Validated (Phase 1) |
 | NATS JetStream over Kafka or in-process channels | Work-queue semantics give at-least-once durability with single consumer per message; far less operational weight than Kafka at this scale; in-process channels lose work on crash | Validated (Phase 3) |
@@ -178,4 +172,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-26 after v1.7 milestone start*
+*Last updated: 2026-07-30 after v1.7 milestone completion*

@@ -1,5 +1,19 @@
 # Milestones
 
+## v1.7 WABA Deep Integration (Shipped: 2026-07-30)
+
+**Phases completed:** 5 phases (Phases 30, 31, 32, 032.1, 33), 21 plans
+
+**Key accomplishments:**
+
+- 24-hour WABA session window tracking (`contact_sessions`), pre-flight window enforcement, dispatch time safety checks, and `session.expiring_soon` webhooks.
+- Template CRUD management, local PostgreSQL cache, on-demand Graph API sync, lifecycle status tracking, and admin previewer.
+- Template dispatch via `POST /messages`, local parameter validation engine, non-APPROVED blocking, smart auto-upgrade fallback, and DISP-02 strict variable count validation.
+- Meta Flows dispatch (`type: "flow"`), HMAC-signed `flow_token` generation, `nfm_reply` two-stage response decoding, and RSA/AES Data Exchange middleware.
+- WhatsApp Commerce catalog single-product and multi-product list dispatch, default catalog configuration per connection, catalog pre-flight validation, and inbound order webhook parsing into `order.created` events.
+
+---
+
 ## v1.6 Connection Slugs & API Channel Routing (Shipped: 2026-07-26)
 
 **Phases completed:** 5 phases, 9 plans, 22 tasks

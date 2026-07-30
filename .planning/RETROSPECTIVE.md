@@ -80,6 +80,34 @@
 ### Key Lessons
 - Regular tracking and maintenance of requirements traceability matrix prevents audit surprises at milestone completion.
 
+## Milestone: v1.7 — WABA Deep Integration
+
+**Shipped:** 2026-07-30
+**Phases:** 5 | **Plans:** 21
+
+### What Was Built
+- 24-hour WABA session window tracking (`contact_sessions`), pre-flight HTTP 422 window enforcement, dispatch time safety checks, and `session.expiring_soon` webhooks.
+- Template CRUD management, local PostgreSQL cache, on-demand Graph API sync (15m rate limit), status update webhooks, quality score alerts, and visual WhatsApp-style template previewer.
+- Template dispatch via `POST /messages`, local parameter validation engine, non-APPROVED blocking, smart auto-upgrade fallback, and DISP-02 strict variable count validation.
+- Meta Flows dispatch (`type: "flow"`), HMAC-signed `flow_token` generation, `nfm_reply` two-stage response decoding, and RSA/AES Data Exchange middleware.
+- WhatsApp Commerce catalog single-product and multi-product list dispatch, default catalog configuration per connection, catalog pre-flight validation, and inbound order webhook parsing into `order.created` events.
+
+### What Worked
+- Pre-flight validation rules at API ingestion caught parameter errors and window expirations before making remote Meta API calls, keeping latency low and saving quota.
+- Storing template structures in local PostgreSQL cache enabled instant in-memory lookup during dispatch without Graph API overhead.
+- Strict variable count validation inspecting template component placeholders prevented malformed dispatches.
+
+### What Was Inefficient
+- A gap in DISP-02 variable count validation required a small 032.1 gap closure phase; catching component placeholder counts in Phase 32 initial planning would have avoided the extra cycle.
+
+### Patterns Established
+- Independent `contact_sessions` table for window tracking decoupled from message history queries.
+- Two-stage `nfm_reply` response decoding for Meta Flows to cleanly map escaped JSON string payloads into structured webhook events.
+
+### Key Lessons
+- Always inspect complex template component structures (header, body, buttons) when building parameter validation engines.
+- Pre-flight catalog and window validation provides immediate developer feedback without sacrificing async work-queue performance.
+
 ---
 
 ## Cross-Milestone Trends
@@ -92,6 +120,7 @@
 | v1.2 | 4 | PRD gaps integration: webhook subscriptions, contact merging, verbs engine, read receipts. |
 | v1.3 | 7 | Chatwoot & Typebot integrations, stateful handoff routing, polymorphic VerbHandlers, and gap closures. |
 | v1.4 | 3 | Unified Interactive schemas, Telegram threads/keyboards, Instagram Stories/replies. |
+| v1.7 | 5 | WABA session window tracking, template CRUD/cache/validation, Meta Flows, Commerce catalogs & orders. |
 
 ### Cumulative Quality
 
@@ -101,3 +130,4 @@
 | v1.2 | Passed | mark3labs/mcp-go |
 | v1.3 | Passed | *(none)* |
 | v1.4 | Passed | *(none)* |
+| v1.7 | Passed | *(none)* |
