@@ -154,7 +154,7 @@ PerGo is built as a durable work-queue pipeline: a thin ingestion gateway, NATS 
 | 30. Session Window & Inbound Foundation | v1.7 | 6/6 | Complete | 2026-07-26 |
 | 31. Template CRUD, Meta Sync & Cache | v1.7 | 4/4 | Complete | 2026-07-26 |
 | 32. Template Dispatch, Validation & Meta Flows | v1.7 | 5/5 | Complete | 2026-07-26 |
-| 33. Commerce Catalogs & Order Processing | v1.7 | 5/5 | In Progress|  |
+| 33. Commerce Catalogs & Order Processing | v1.7 | 5/5 | Complete | 2026-07-30 |
 
 ---
 *Roadmap created: 2026-07-14*
