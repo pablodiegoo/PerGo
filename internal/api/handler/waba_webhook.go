@@ -264,6 +264,31 @@ func (h *WABAWebhookHandler) HandlePost(c *echo.Context) error {
 
 	ctx := c.Request().Context()
 	for _, event := range events {
+		if event.Metadata != nil && event.Metadata["type"] == "order" {
+			if h.inboundProcessor != nil && h.inboundProcessor.DedupRepo() != nil {
+				unique, err := h.inboundProcessor.DedupRepo().InsertAndCheck(ctx, event.WorkspaceID, "whatsapp_cloud", event.MessageID)
+				if err != nil {
+					slog.Error("waba webhook: order dedup check failed", "error", err, "message_id", event.MessageID)
+				} else if !unique {
+					slog.Info("waba webhook: duplicate order message ignored", "message_id", event.MessageID)
+					continue
+				} else {
+					event.Metadata["deduplicated"] = "true"
+				}
+			}
+
+			if orderJSON, ok := event.Metadata["order_json"]; ok && orderJSON != "" {
+				var orderEv domain.OrderCreatedEvent
+				if err := json.Unmarshal([]byte(orderJSON), &orderEv); err == nil {
+					if h.inboundProcessor != nil {
+						_ = h.inboundProcessor.PublishOrderCreated(ctx, event.WorkspaceID, &orderEv)
+					}
+				} else {
+					slog.Error("waba webhook: failed to unmarshal order_json", "error", err, "message_id", event.MessageID)
+				}
+			}
+		}
+
 		if flowData, ok := nfmMap[event.MessageID]; ok {
 			var screen string
 			var formData map[string]interface{}

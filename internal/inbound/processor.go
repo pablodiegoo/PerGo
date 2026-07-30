@@ -259,13 +259,15 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 
 	// 2. Deduplication check
 	if p.dedupRepo != nil && ev.MessageID != "" {
-		unique, err := p.dedupRepo.InsertAndCheck(ctx, ev.WorkspaceID, ev.Channel, ev.MessageID)
-		if err != nil {
-			return fmt.Errorf("inbound: deduplication check failed: %w", err)
-		}
-		if !unique {
-			slog.Info("inbound processor: duplicate message ignored", "message_id", ev.MessageID, "channel", ev.Channel)
-			return nil
+		if ev.Metadata == nil || ev.Metadata["deduplicated"] != "true" {
+			unique, err := p.dedupRepo.InsertAndCheck(ctx, ev.WorkspaceID, ev.Channel, ev.MessageID)
+			if err != nil {
+				return fmt.Errorf("inbound: deduplication check failed: %w", err)
+			}
+			if !unique {
+				slog.Info("inbound processor: duplicate message ignored", "message_id", ev.MessageID, "channel", ev.Channel)
+				return nil
+			}
 		}
 	}
 
@@ -378,4 +380,37 @@ func (p *InboundProcessor) PublishFlowCompleted(ctx context.Context, workspaceID
 	}
 	subject := fmt.Sprintf("inbound.events.%s", workspaceID.String())
 	return p.publisher.Publish(ctx, subject, eventData, uuid.New().String())
+}
+
+// DedupRepo returns the InboundDedupRepository associated with the processor.
+func (p *InboundProcessor) DedupRepo() *repository.InboundDedupRepository {
+	return p.dedupRepo
+}
+
+// PublishOrderCreated emits an order.created event to the webhook system.
+func (p *InboundProcessor) PublishOrderCreated(ctx context.Context, workspaceID uuid.UUID, ev *domain.OrderCreatedEvent) error {
+	if p.publisher == nil {
+		return nil
+	}
+
+	payload := struct {
+		Event       string `json:"event"`
+		WorkspaceID string `json:"workspace_id"`
+		*domain.OrderCreatedEvent
+	}{
+		Event:             string(domain.EventTypeOrderCreated),
+		WorkspaceID:       workspaceID.String(),
+		OrderCreatedEvent: ev,
+	}
+
+	eventData, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	subject := fmt.Sprintf("inbound.events.%s", workspaceID.String())
+	traceID := ev.TraceID
+	if traceID == "" {
+		traceID = uuid.New().String()
+	}
+	return p.publisher.Publish(ctx, subject, eventData, traceID)
 }
