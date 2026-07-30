@@ -414,3 +414,129 @@ func TestProcessor_SessionFallback(t *testing.T) {
 		t.Errorf("expected component type 'body', got %q", qMsg.Components[0].Type)
 	}
 }
+
+func TestProcessor_CatalogResolution(t *testing.T) {
+	wsID := uuid.New()
+	connID := uuid.New()
+	traceID := "trace-catalog-123"
+
+	t.Run("Explicit catalog_id is preserved", func(t *testing.T) {
+		conn := &repository.Connection{
+			ID:             connID,
+			WorkspaceID:    wsID,
+			Channel:        "whatsapp_cloud",
+			SenderIdentity: "12345",
+			Status:         "connected",
+		}
+		p := outbound.NewProcessor(nil, nil, &fakeRouteResolver{conn: conn}, &fakePublisher{})
+
+		req := &domain.CreateMessageRequest{
+			To:      "5511999999999",
+			Channel: "whatsapp_cloud",
+			Type:    "product",
+			Product: &domain.ProductPayload{
+				CatalogID:         "cat_explicit_123",
+				ProductRetailerID: "sku_abc",
+			},
+		}
+
+		qMsg, err := p.Ingest(context.Background(), wsID, traceID, req)
+		if err != nil {
+			t.Fatalf("Ingest failed: %v", err)
+		}
+		if qMsg.Product == nil || qMsg.Product.CatalogID != "cat_explicit_123" {
+			t.Errorf("got catalog_id %v, want cat_explicit_123", qMsg.Product)
+		}
+	})
+
+	t.Run("Fallback to default_catalog_id from connection credentials", func(t *testing.T) {
+		creds, _ := json.Marshal(map[string]string{
+			"default_catalog_id": "cat_default_456",
+		})
+		conn := &repository.Connection{
+			ID:             connID,
+			WorkspaceID:    wsID,
+			Channel:        "whatsapp_cloud",
+			SenderIdentity: "12345",
+			Status:         "connected",
+			Credentials:    creds,
+		}
+		p := outbound.NewProcessor(nil, nil, &fakeRouteResolver{conn: conn}, &fakePublisher{})
+
+		req := &domain.CreateMessageRequest{
+			To:      "5511999999999",
+			Channel: "whatsapp_cloud",
+			Type:    "product",
+			Product: &domain.ProductPayload{
+				ProductRetailerID: "sku_abc",
+			},
+		}
+
+		qMsg, err := p.Ingest(context.Background(), wsID, traceID, req)
+		if err != nil {
+			t.Fatalf("Ingest failed: %v", err)
+		}
+		if qMsg.Product == nil || qMsg.Product.CatalogID != "cat_default_456" {
+			t.Errorf("got catalog_id %v, want cat_default_456", qMsg.Product)
+		}
+	})
+
+	t.Run("Missing catalog_id in both request and connection returns ErrMissingCatalogID", func(t *testing.T) {
+		conn := &repository.Connection{
+			ID:             connID,
+			WorkspaceID:    wsID,
+			Channel:        "whatsapp_cloud",
+			SenderIdentity: "12345",
+			Status:         "connected",
+		}
+		p := outbound.NewProcessor(nil, nil, &fakeRouteResolver{conn: conn}, nil)
+
+		req := &domain.CreateMessageRequest{
+			To:      "5511999999999",
+			Channel: "whatsapp_cloud",
+			Type:    "product",
+			Product: &domain.ProductPayload{
+				ProductRetailerID: "sku_abc",
+			},
+		}
+
+		_, err := p.Ingest(context.Background(), wsID, traceID, req)
+		if !errors.Is(err, outbound.ErrMissingCatalogID) {
+			t.Fatalf("got error %v, want ErrMissingCatalogID", err)
+		}
+	})
+
+	t.Run("Bounds violation returns ErrInvalidProductPayload", func(t *testing.T) {
+		conn := &repository.Connection{
+			ID:             connID,
+			WorkspaceID:    wsID,
+			Channel:        "whatsapp_cloud",
+			SenderIdentity: "12345",
+			Status:         "connected",
+		}
+		p := outbound.NewProcessor(nil, nil, &fakeRouteResolver{conn: conn}, nil)
+
+		req := &domain.CreateMessageRequest{
+			To:      "5511999999999",
+			Channel: "whatsapp_cloud",
+			Type:    "product_list",
+			Product: &domain.ProductPayload{
+				CatalogID: "cat_123",
+				Sections: []domain.ProductSection{
+					{
+						Title: "This section title is way too long and exceeds 24 characters limit",
+						ProductItems: []domain.ProductItem{
+							{ProductRetailerID: "sku_1"},
+						},
+					},
+				},
+			},
+		}
+
+		_, err := p.Ingest(context.Background(), wsID, traceID, req)
+		if !errors.Is(err, outbound.ErrInvalidProductPayload) {
+			t.Fatalf("got error %v, want ErrInvalidProductPayload", err)
+		}
+	})
+}
+

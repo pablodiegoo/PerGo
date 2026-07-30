@@ -250,6 +250,53 @@ func (p *Processor) Ingest(
 		}
 	}
 
+	// 4.6 Product Catalog Resolution & Validation
+	if req.Type == domain.MessageTypeProduct || req.Type == domain.MessageTypeProductList || req.Product != nil {
+		catalogID := ""
+		if req.Product != nil {
+			catalogID = req.Product.CatalogID
+		}
+
+		if catalogID == "" && len(conn.Credentials) > 0 {
+			var wabaCfg struct {
+				DefaultCatalogID string `json:"default_catalog_id"`
+			}
+			if err := json.Unmarshal(conn.Credentials, &wabaCfg); err == nil {
+				if wabaCfg.DefaultCatalogID != "" {
+					catalogID = wabaCfg.DefaultCatalogID
+				}
+			}
+		}
+
+		if catalogID == "" {
+			return nil, ErrMissingCatalogID
+		}
+
+		if req.Product == nil {
+			req.Product = &domain.ProductPayload{}
+		}
+		req.Product.CatalogID = catalogID
+
+		if req.Type == "" {
+			if len(req.Product.Sections) > 0 {
+				req.Type = domain.MessageTypeProductList
+			} else {
+				req.Type = domain.MessageTypeProduct
+			}
+		}
+
+		pDetails := domain.ValidateProductPayload(req.Product, req.Type)
+		if len(pDetails) > 0 {
+			return nil, &ValidationError{
+				Response: &domain.ErrorResponse{
+					Code:    "invalid_product_payload",
+					Message: "request body validation failed",
+					Details: pDetails,
+				},
+			}
+		}
+	}
+
 	// 5. Construct and Publish QueueMessage
 	qMsg := &domain.QueueMessage{
 		WorkspaceID:      workspaceID,
@@ -270,6 +317,8 @@ func (p *Processor) Ingest(
 		Interactive:      req.Interactive,
 		ChannelOverrides: req.ChannelOverrides,
 		FallbackBehavior: req.FallbackBehavior,
+		Type:             req.Type,
+		Product:          req.Product,
 	}
 
 	if p.publisher != nil {
