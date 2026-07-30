@@ -284,10 +284,10 @@ func ValidateMessage(req *CreateMessageRequest) *ErrorResponse {
 				Message: "is required when media_type is document",
 			})
 		}
-	} else if req.TemplateName == "" && req.Body == "" && req.Interactive == nil {
+	} else if req.TemplateName == "" && req.Body == "" && req.Interactive == nil && req.Product == nil && req.Type != MessageTypeProduct && req.Type != MessageTypeProductList {
 		details = append(details, FieldError{
 			Field:   "body",
-			Message: "either body, media, or interactive is required",
+			Message: "either body, media, interactive, or product is required",
 		})
 	}
 
@@ -325,13 +325,88 @@ func ValidateMessage(req *CreateMessageRequest) *ErrorResponse {
 		}
 	}
 
+	hasProductError := false
+	if req.Type == MessageTypeProduct || req.Type == MessageTypeProductList || req.Product != nil {
+		pDetails := ValidateProductPayload(req.Product, req.Type)
+		if len(pDetails) > 0 {
+			hasProductError = true
+			details = append(details, pDetails...)
+		}
+	}
+
 	if len(details) > 0 {
+		code := "invalid_payload"
+		if hasProductError {
+			code = "invalid_product_payload"
+		}
 		return &ErrorResponse{
-			Code:    "invalid_payload",
+			Code:    code,
 			Message: "request body validation failed",
 			Details: details,
 		}
 	}
 
 	return nil
+}
+
+// ValidateProductPayload validates product message bounds and constraints according to Meta API rules.
+func ValidateProductPayload(product *ProductPayload, msgType string) []FieldError {
+	var details []FieldError
+
+	if product == nil {
+		return append(details, FieldError{
+			Field:   "product",
+			Message: "is required",
+		})
+	}
+
+	// Single product validation
+	if msgType == MessageTypeProduct || (msgType == "" && len(product.Sections) == 0) {
+		if product.ProductRetailerID == "" {
+			details = append(details, FieldError{
+				Field:   "product.product_retailer_id",
+				Message: "is required",
+			})
+		}
+		return details
+	}
+
+	// Product list validation
+	if msgType == MessageTypeProductList || (msgType == "" && len(product.Sections) > 0) {
+		if len(product.Sections) < 1 || len(product.Sections) > 10 {
+			details = append(details, FieldError{
+				Field:   "product.sections",
+				Message: "must contain between 1 and 10 sections",
+			})
+		}
+
+		totalItems := 0
+		for i, section := range product.Sections {
+			if len([]rune(section.Title)) > 24 {
+				details = append(details, FieldError{
+					Field:   fmt.Sprintf("product.sections[%d].title", i),
+					Message: "cannot exceed 24 characters",
+				})
+			}
+
+			totalItems += len(section.ProductItems)
+			for j, item := range section.ProductItems {
+				if item.ProductRetailerID == "" {
+					details = append(details, FieldError{
+						Field:   fmt.Sprintf("product.sections[%d].product_items[%d].product_retailer_id", i, j),
+						Message: "is required",
+					})
+				}
+			}
+		}
+
+		if totalItems > 30 {
+			details = append(details, FieldError{
+				Field:   "product.sections",
+				Message: "cannot exceed 30 items total across all sections",
+			})
+		}
+	}
+
+	return details
 }

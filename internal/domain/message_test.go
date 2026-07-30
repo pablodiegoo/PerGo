@@ -534,3 +534,247 @@ func TestProductPayload_Structs(t *testing.T) {
 	}
 }
 
+func TestValidateMessage_ProductPayload(t *testing.T) {
+	t.Run("valid single product", func(t *testing.T) {
+		req := &CreateMessageRequest{
+			To:      "+5511999999999",
+			Channel: "whatsapp_cloud",
+			Type:    MessageTypeProduct,
+			Product: &ProductPayload{
+				CatalogID:         "cat_123",
+				ProductRetailerID: "sku_100",
+			},
+		}
+		if err := ValidateMessage(req); err != nil {
+			t.Errorf("expected no error, got %+v", err)
+		}
+	})
+
+	t.Run("single product missing product struct", func(t *testing.T) {
+		req := &CreateMessageRequest{
+			To:      "+5511999999999",
+			Channel: "whatsapp_cloud",
+			Type:    MessageTypeProduct,
+		}
+		err := ValidateMessage(req)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if err.Code != "invalid_product_payload" {
+			t.Errorf("code = %q, want invalid_product_payload", err.Code)
+		}
+		found := false
+		for _, d := range err.Details {
+			if d.Field == "product" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected field error for product, got %+v", err.Details)
+		}
+	})
+
+	t.Run("single product missing SKU", func(t *testing.T) {
+		req := &CreateMessageRequest{
+			To:      "+5511999999999",
+			Channel: "whatsapp_cloud",
+			Type:    MessageTypeProduct,
+			Product: &ProductPayload{
+				CatalogID: "cat_123",
+			},
+		}
+		err := ValidateMessage(req)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if err.Code != "invalid_product_payload" {
+			t.Errorf("code = %q, want invalid_product_payload", err.Code)
+		}
+		found := false
+		for _, d := range err.Details {
+			if d.Field == "product.product_retailer_id" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected field error for product.product_retailer_id, got %+v", err.Details)
+		}
+	})
+
+	t.Run("valid product list", func(t *testing.T) {
+		req := &CreateMessageRequest{
+			To:      "+5511999999999",
+			Channel: "whatsapp_cloud",
+			Type:    MessageTypeProductList,
+			Product: &ProductPayload{
+				CatalogID: "cat_123",
+				Sections: []ProductSection{
+					{
+						Title: "Electronics",
+						ProductItems: []ProductItem{
+							{ProductRetailerID: "sku_1"},
+							{ProductRetailerID: "sku_2"},
+						},
+					},
+					{
+						Title: "Accessories",
+						ProductItems: []ProductItem{
+							{ProductRetailerID: "sku_3"},
+							{ProductRetailerID: "sku_4"},
+							{ProductRetailerID: "sku_5"},
+						},
+					},
+				},
+			},
+		}
+		if err := ValidateMessage(req); err != nil {
+			t.Errorf("expected no error, got %+v", err)
+		}
+	})
+
+	t.Run("product list exceeds 10 sections", func(t *testing.T) {
+		sections := make([]ProductSection, 11)
+		for i := 0; i < 11; i++ {
+			sections[i] = ProductSection{
+				Title: "Sec",
+				ProductItems: []ProductItem{
+					{ProductRetailerID: "sku_1"},
+				},
+			}
+		}
+		req := &CreateMessageRequest{
+			To:      "+5511999999999",
+			Channel: "whatsapp_cloud",
+			Type:    MessageTypeProductList,
+			Product: &ProductPayload{
+				CatalogID: "cat_123",
+				Sections:  sections,
+			},
+		}
+		err := ValidateMessage(req)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if err.Code != "invalid_product_payload" {
+			t.Errorf("code = %q, want invalid_product_payload", err.Code)
+		}
+		found := false
+		for _, d := range err.Details {
+			if d.Field == "product.sections" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected field error for product.sections, got %+v", err.Details)
+		}
+	})
+
+	t.Run("product list title exceeds 24 chars", func(t *testing.T) {
+		req := &CreateMessageRequest{
+			To:      "+5511999999999",
+			Channel: "whatsapp_cloud",
+			Type:    MessageTypeProductList,
+			Product: &ProductPayload{
+				CatalogID: "cat_123",
+				Sections: []ProductSection{
+					{
+						Title: "This section title is way too long for Meta API", // 46 chars
+						ProductItems: []ProductItem{
+							{ProductRetailerID: "sku_1"},
+						},
+					},
+				},
+			},
+		}
+		err := ValidateMessage(req)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if err.Code != "invalid_product_payload" {
+			t.Errorf("code = %q, want invalid_product_payload", err.Code)
+		}
+		found := false
+		for _, d := range err.Details {
+			if d.Field == "product.sections[0].title" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected field error for product.sections[0].title, got %+v", err.Details)
+		}
+	})
+
+	t.Run("product list total items exceed 30", func(t *testing.T) {
+		items := make([]ProductItem, 31)
+		for i := 0; i < 31; i++ {
+			items[i] = ProductItem{ProductRetailerID: "sku_x"}
+		}
+		req := &CreateMessageRequest{
+			To:      "+5511999999999",
+			Channel: "whatsapp_cloud",
+			Type:    MessageTypeProductList,
+			Product: &ProductPayload{
+				CatalogID: "cat_123",
+				Sections: []ProductSection{
+					{
+						Title:        "Large Catalog",
+						ProductItems: items,
+					},
+				},
+			},
+		}
+		err := ValidateMessage(req)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if err.Code != "invalid_product_payload" {
+			t.Errorf("code = %q, want invalid_product_payload", err.Code)
+		}
+		found := false
+		for _, d := range err.Details {
+			if d.Field == "product.sections" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected field error for product.sections, got %+v", err.Details)
+		}
+	})
+
+	t.Run("product list item missing SKU", func(t *testing.T) {
+		req := &CreateMessageRequest{
+			To:      "+5511999999999",
+			Channel: "whatsapp_cloud",
+			Type:    MessageTypeProductList,
+			Product: &ProductPayload{
+				CatalogID: "cat_123",
+				Sections: []ProductSection{
+					{
+						Title: "Electronics",
+						ProductItems: []ProductItem{
+							{ProductRetailerID: ""},
+						},
+					},
+				},
+			},
+		}
+		err := ValidateMessage(req)
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if err.Code != "invalid_product_payload" {
+			t.Errorf("code = %q, want invalid_product_payload", err.Code)
+		}
+		found := false
+		for _, d := range err.Details {
+			if d.Field == "product.sections[0].product_items[0].product_retailer_id" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected field error for product.sections[0].product_items[0].product_retailer_id, got %+v", err.Details)
+		}
+	})
+}
+
+
