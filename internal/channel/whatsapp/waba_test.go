@@ -714,3 +714,316 @@ func TestWABAInboundAdapterStatuses(t *testing.T) {
 	}
 }
 
+func TestWABAAdapter_MetaErrorClassification(t *testing.T) {
+	adapter := NewWABAAdapter(nil, nil, nil, "")
+
+	tests := []struct {
+		name       string
+		statusCode int
+		errorCode  int
+		isTerminal bool
+	}{
+		{
+			name:       "Invalid Catalog ID (131009)",
+			statusCode: 400,
+			errorCode:  131009,
+			isTerminal: true,
+		},
+		{
+			name:       "Invalid Product SKU (131084)",
+			statusCode: 400,
+			errorCode:  131084,
+			isTerminal: true,
+		},
+		{
+			name:       "User Not on WhatsApp (131030)",
+			statusCode: 400,
+			errorCode:  131030,
+			isTerminal: true,
+		},
+		{
+			name:       "Outside 24h Window (131047)",
+			statusCode: 400,
+			errorCode:  131047,
+			isTerminal: true,
+		},
+		{
+			name:       "Rate Limit Exceeded (130429)",
+			statusCode: 429,
+			errorCode:  130429,
+			isTerminal: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errResp := &MetaErrorResponse{}
+			errResp.Error.Code = tt.errorCode
+			errResp.Error.Message = "Test Meta Error"
+
+			err := adapter.classifyError(tt.statusCode, errResp)
+			if err == nil {
+				t.Fatalf("expected non-nil error")
+			}
+			if channel.IsTerminal(err) != tt.isTerminal {
+				t.Errorf("IsTerminal(err) = %v, want %v", channel.IsTerminal(err), tt.isTerminal)
+			}
+		})
+	}
+}
+
+func TestWABAAdapter_ProductPayloads(t *testing.T) {
+	t.Run("Single Product Payload JSON Formatting", func(t *testing.T) {
+		req := wabaMessageRequest{
+			MessagingProduct: "whatsapp",
+			RecipientType:    "individual",
+			To:               "+5511999999999",
+			Type:             "interactive",
+			Interactive: &wabaInteractive{
+				Type:   "product",
+				Body:   &wabaInteractiveText{Text: "Check out this product"},
+				Footer: &wabaInteractiveText{Text: "Store Footer"},
+				Action: wabaProductAction{
+					CatalogID:         "cat_123",
+					ProductRetailerID: "sku_abc",
+				},
+			},
+		}
+
+		data, err := json.Marshal(req)
+		if err != nil {
+			t.Fatalf("failed to marshal single product request: %v", err)
+		}
+
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(data, &parsed); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+
+		if parsed["type"] != "interactive" {
+			t.Errorf("expected type 'interactive', got %v", parsed["type"])
+		}
+
+		interactive, ok := parsed["interactive"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected interactive map")
+		}
+		if interactive["type"] != "product" {
+			t.Errorf("expected interactive type 'product', got %v", interactive["type"])
+		}
+		if interactive["header"] != nil {
+			t.Errorf("expected header to be nil for single product")
+		}
+
+		action, ok := interactive["action"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected action map")
+		}
+		if action["catalog_id"] != "cat_123" {
+			t.Errorf("expected catalog_id 'cat_123', got %v", action["catalog_id"])
+		}
+		if action["product_retailer_id"] != "sku_abc" {
+			t.Errorf("expected product_retailer_id 'sku_abc', got %v", action["product_retailer_id"])
+		}
+	})
+
+	t.Run("Multi-Product List Payload JSON Formatting", func(t *testing.T) {
+		req := wabaMessageRequest{
+			MessagingProduct: "whatsapp",
+			RecipientType:    "individual",
+			To:               "+5511999999999",
+			Type:             "interactive",
+			Interactive: &wabaInteractive{
+				Type:   "product_list",
+				Header: &wabaInteractiveText{Type: "text", Text: "Featured Catalog"},
+				Body:   &wabaInteractiveText{Text: "Browse our items"},
+				Footer: &wabaInteractiveText{Text: "Thank you"},
+				Action: wabaProductAction{
+					CatalogID: "cat_456",
+					Sections: []wabaProductSection{
+						{
+							Title: "Electronics",
+							ProductItems: []wabaProductItem{
+								{ProductRetailerID: "sku_100"},
+								{ProductRetailerID: "sku_101"},
+							},
+						},
+						{
+							Title: "Apparel",
+							ProductItems: []wabaProductItem{
+								{ProductRetailerID: "sku_200"},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		data, err := json.Marshal(req)
+		if err != nil {
+			t.Fatalf("failed to marshal product list request: %v", err)
+		}
+
+		var parsed map[string]interface{}
+		if err := json.Unmarshal(data, &parsed); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+
+		interactive, ok := parsed["interactive"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected interactive map")
+		}
+		if interactive["type"] != "product_list" {
+			t.Errorf("expected interactive type 'product_list', got %v", interactive["type"])
+		}
+
+		header, ok := interactive["header"].(map[string]interface{})
+		if !ok || header["text"] != "Featured Catalog" || header["type"] != "text" {
+			t.Errorf("unexpected header: %v", interactive["header"])
+		}
+
+		action, ok := interactive["action"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected action map")
+		}
+		if action["catalog_id"] != "cat_456" {
+			t.Errorf("expected catalog_id 'cat_456', got %v", action["catalog_id"])
+		}
+
+		sections, ok := action["sections"].([]interface{})
+		if !ok || len(sections) != 2 {
+			t.Fatalf("expected 2 sections, got %v", action["sections"])
+		}
+	})
+
+	t.Run("Dispatch Single Product and Product List via Server", func(t *testing.T) {
+		var receivedReq wabaMessageRequest
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(bodyBytes, &receivedReq)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.prod_123"}]}`))
+		}))
+		defer server.Close()
+
+		dsn := os.Getenv("PERGO_DATABASE_URL")
+		if dsn == "" {
+			dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		pool, err := pgxpool.New(ctx, dsn)
+		if err != nil {
+			t.Skipf("Skipping DB Dispatch integration subtest: %v", err)
+			return
+		}
+		if err := pool.Ping(ctx); err != nil {
+			pool.Close()
+			t.Skipf("Skipping DB Dispatch integration subtest: %v", err)
+			return
+		}
+		defer pool.Close()
+
+		db, err := postgres.NewSQLDB(pool)
+		if err != nil {
+			t.Fatalf("failed sqlDB: %v", err)
+		}
+		defer db.Close()
+		_ = postgres.RunMigrations(db)
+
+		kek := make([]byte, 32)
+		enc, _ := crypto.NewEncryptor(kek)
+		connectionsRepo := repository.NewConnectionRepository(pool, enc)
+		wsRepo := repository.NewWorkspaceRepository(pool)
+
+		ws, err := wsRepo.Create(ctx, "waba_prod_ws_"+uuid.New().String())
+		if err != nil {
+			t.Fatalf("failed workspace create: %v", err)
+		}
+		defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+		wabaConfig := WABAConfig{
+			PhoneNumberID:    "12345_phone_id",
+			Token:            "test_access_token",
+			DefaultCatalogID: "default_cat_999",
+		}
+		configBytes, _ := json.Marshal(wabaConfig)
+		connID := uuid.New()
+		_ = connectionsRepo.Create(ctx, &repository.Connection{
+			ID:             connID,
+			WorkspaceID:    ws.ID,
+			Name:           "WABA",
+			Channel:        "whatsapp_cloud",
+			SenderIdentity: "+12345_phone_id",
+			Status:         "active",
+			Credentials:    configBytes,
+		})
+
+		tenantCtx := tenant.WithWorkspaceID(context.Background(), ws.ID)
+		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter.SetBaseURL(server.URL)
+
+		// 1. Dispatch Single Product
+		payloadSingle := &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
+			To:             "+5511999999999",
+			Type:           domain.MessageTypeProduct,
+			Product: &domain.ProductPayload{
+				CatalogID:         "cat_single_123",
+				ProductRetailerID: "sku_single_99",
+				Body:              "Single product description",
+				Footer:            "Footer text",
+			},
+		}
+
+		resp, err := adapter.Dispatch(tenantCtx, payloadSingle)
+		if err != nil {
+			t.Fatalf("Dispatch single product error: %v", err)
+		}
+		if resp != "wamid.prod_123" {
+			t.Errorf("expected wamid 'wamid.prod_123', got %q", resp)
+		}
+		if receivedReq.Type != "interactive" || receivedReq.Interactive == nil || receivedReq.Interactive.Type != "product" {
+			t.Errorf("unexpected payload sent for single product: %+v", receivedReq)
+		}
+
+		// 2. Dispatch Product List
+		payloadList := &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
+			To:             "+5511999999999",
+			Type:           domain.MessageTypeProductList,
+			Product: &domain.ProductPayload{
+				Header: "Catalog List Header",
+				Body:   "Multi product list body",
+				Footer: "List footer",
+				Sections: []domain.ProductSection{
+					{
+						Title: "Section 1",
+						ProductItems: []domain.ProductItem{
+							{ProductRetailerID: "sku_s1_1"},
+						},
+					},
+				},
+			},
+		}
+
+		respList, err := adapter.Dispatch(tenantCtx, payloadList)
+		if err != nil {
+			t.Fatalf("Dispatch product list error: %v", err)
+		}
+		if respList != "wamid.prod_123" {
+			t.Errorf("expected wamid 'wamid.prod_123', got %q", respList)
+		}
+		if receivedReq.Type != "interactive" || receivedReq.Interactive == nil || receivedReq.Interactive.Type != "product_list" {
+			t.Errorf("unexpected payload sent for product list: %+v", receivedReq)
+		}
+		if receivedReq.Interactive.Header == nil || receivedReq.Interactive.Header.Text != "Catalog List Header" {
+			t.Errorf("unexpected header for product list: %+v", receivedReq.Interactive.Header)
+		}
+	})
+}
+

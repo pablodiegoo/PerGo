@@ -289,6 +289,8 @@ func (o *DispatchOrchestrator) dispatchToChannel(ctx context.Context, channelNam
 		Interactive:      qMsg.Interactive,
 		ChannelOverrides: qMsg.ChannelOverrides,
 		FallbackBehavior: qMsg.FallbackBehavior,
+		Type:             qMsg.Type,
+		Product:          qMsg.Product,
 	})
 }
 

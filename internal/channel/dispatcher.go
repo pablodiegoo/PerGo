@@ -32,6 +32,8 @@ type MessagePayload struct {
 	Interactive      *domain.Interactive
 	ChannelOverrides map[string]json.RawMessage
 	FallbackBehavior string
+	Type             string
+	Product          *domain.ProductPayload
 }
 
 // Dispatcher sends a message through a specific channel adapter.

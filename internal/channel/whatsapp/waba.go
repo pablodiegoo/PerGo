@@ -91,11 +91,26 @@ type wabaParameterMedia struct {
 }
 
 type wabaInteractive struct {
-	Type   string                `json:"type"`
-	Header *wabaInteractiveText  `json:"header,omitempty"`
-	Body   wabaInteractiveText   `json:"body"`
-	Footer *wabaInteractiveText  `json:"footer,omitempty"`
-	Action wabaInteractiveAction `json:"action"`
+	Type   string               `json:"type"`
+	Header *wabaInteractiveText `json:"header,omitempty"`
+	Body   *wabaInteractiveText `json:"body,omitempty"`
+	Footer *wabaInteractiveText `json:"footer,omitempty"`
+	Action interface{}          `json:"action"`
+}
+
+type wabaProductAction struct {
+	CatalogID         string               `json:"catalog_id"`
+	ProductRetailerID string               `json:"product_retailer_id,omitempty"`
+	Sections          []wabaProductSection `json:"sections,omitempty"`
+}
+
+type wabaProductSection struct {
+	Title        string            `json:"title,omitempty"`
+	ProductItems []wabaProductItem `json:"product_items"`
+}
+
+type wabaProductItem struct {
+	ProductRetailerID string `json:"product_retailer_id"`
 }
 
 type wabaInteractiveText struct {
@@ -296,6 +311,96 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 
 		reqPayload.Type = "template"
 		reqPayload.Template = &tmpl
+	} else if m.Product != nil || m.Type == domain.MessageTypeProduct || m.Type == domain.MessageTypeProductList {
+		reqPayload.Type = "interactive"
+
+		catalogID := config.DefaultCatalogID
+		if m.Product != nil && m.Product.CatalogID != "" {
+			catalogID = m.Product.CatalogID
+		}
+
+		msgType := m.Type
+		if msgType == "" && m.Product != nil {
+			if len(m.Product.Sections) > 0 {
+				msgType = domain.MessageTypeProductList
+			} else {
+				msgType = domain.MessageTypeProduct
+			}
+		}
+
+		var header *wabaInteractiveText
+		var body *wabaInteractiveText
+		var footer *wabaInteractiveText
+
+		if m.Product != nil && m.Product.Header != "" {
+			header = &wabaInteractiveText{
+				Type: "text",
+				Text: m.Product.Header,
+			}
+		}
+
+		bodyText := ""
+		if m.Product != nil && m.Product.Body != "" {
+			bodyText = m.Product.Body
+		} else if m.Body != "" {
+			bodyText = m.Body
+		}
+		if bodyText != "" {
+			body = &wabaInteractiveText{
+				Text: bodyText,
+			}
+		}
+
+		if m.Product != nil && m.Product.Footer != "" {
+			footer = &wabaInteractiveText{
+				Text: m.Product.Footer,
+			}
+		}
+
+		var action wabaProductAction
+		if msgType == domain.MessageTypeProductList {
+			var sections []wabaProductSection
+			if m.Product != nil {
+				for _, s := range m.Product.Sections {
+					var items []wabaProductItem
+					for _, item := range s.ProductItems {
+						items = append(items, wabaProductItem{
+							ProductRetailerID: item.ProductRetailerID,
+						})
+					}
+					sections = append(sections, wabaProductSection{
+						Title:        s.Title,
+						ProductItems: items,
+					})
+				}
+			}
+			action = wabaProductAction{
+				CatalogID: catalogID,
+				Sections:  sections,
+			}
+		} else {
+			productRetailerID := ""
+			if m.Product != nil {
+				productRetailerID = m.Product.ProductRetailerID
+			}
+			action = wabaProductAction{
+				CatalogID:         catalogID,
+				ProductRetailerID: productRetailerID,
+			}
+		}
+
+		interactiveType := "product"
+		if msgType == domain.MessageTypeProductList {
+			interactiveType = "product_list"
+		}
+
+		reqPayload.Interactive = &wabaInteractive{
+			Type:   interactiveType,
+			Header: header,
+			Body:   body,
+			Footer: footer,
+			Action: action,
+		}
 	} else if m.Interactive != nil {
 		reqPayload.Type = "interactive"
 
@@ -378,10 +483,14 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 			}
 		}
 
+		var body *wabaInteractiveText
+		if m.Interactive.Body.Text != "" {
+			body = &wabaInteractiveText{Text: m.Interactive.Body.Text}
+		}
 		reqPayload.Interactive = &wabaInteractive{
 			Type:   m.Interactive.Type,
 			Header: header,
-			Body:   wabaInteractiveText{Text: m.Interactive.Body.Text},
+			Body:   body,
 			Footer: footer,
 			Action: action,
 		}
@@ -594,6 +703,8 @@ func (a *WABAAdapter) classifyError(statusCode int, errResp *MetaErrorResponse) 
 		metaErr.Code == 131047 ||
 		metaErr.Code == 132000 ||
 		metaErr.Code == 190 ||
+		metaErr.Code == 131009 ||
+		metaErr.Code == 131084 ||
 		(metaErr.Code == 100 && metaErr.ErrorSubcode == 33) {
 		return channel.NewTerminalError(err)
 	}
