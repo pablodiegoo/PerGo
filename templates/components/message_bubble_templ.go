@@ -8,11 +8,236 @@ package components
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-import "github.com/pablojhp.pergo/internal/repository"
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/repository"
+)
+
+type OrderDetails struct {
+	CatalogID    string
+	Items        []domain.OrderProductItem
+	TotalPrice   float64
+	Currency     string
+	CustomerNote string
+}
+
+func parseOrderDetails(m repository.ThreadMessage) (*OrderDetails, bool) {
+	if m.Direction != "inbound" {
+		return nil, false
+	}
+
+	var details OrderDetails
+
+	// 1. Check metadata["order_json"] or metadata fields
+	if m.Metadata != nil {
+		if orderJSON, ok := m.Metadata["order_json"]; ok && orderJSON != "" {
+			var ev domain.OrderCreatedEvent
+			if err := json.Unmarshal([]byte(orderJSON), &ev); err == nil {
+				details.CatalogID = ev.CatalogID
+				details.Items = ev.Items
+				details.TotalPrice = ev.TotalPrice
+				details.Currency = ev.Currency
+			}
+		}
+		if details.CatalogID == "" {
+			details.CatalogID = m.Metadata["catalog_id"]
+		}
+		if details.Currency == "" {
+			details.Currency = m.Metadata["currency"]
+		}
+		if details.TotalPrice == 0 && m.Metadata["total_price"] != "" {
+			if tp, err := strconv.ParseFloat(m.Metadata["total_price"], 64); err == nil {
+				details.TotalPrice = tp
+			}
+		}
+		if note, ok := m.Metadata["customer_note"]; ok {
+			details.CustomerNote = note
+		} else if note, ok := m.Metadata["note"]; ok {
+			details.CustomerNote = note
+		}
+	}
+
+	// 2. Check if metadata type == "order" or order_json present or body indicates order
+	isOrder := false
+	if m.Metadata != nil && (m.Metadata["type"] == "order" || m.Metadata["order_json"] != "" || m.Metadata["catalog_id"] != "") {
+		isOrder = true
+	} else if strings.Contains(m.Body, "🛒 Order Received") || strings.Contains(m.Body, "🛒 Pedido") || strings.Contains(m.Body, "Order Received") {
+		isOrder = true
+	}
+
+	if !isOrder {
+		return nil, false
+	}
+
+	// 3. Fallback body parsing for CatalogID, Note, and Items if empty
+	if details.CatalogID == "" {
+		if idx := strings.Index(m.Body, "Catalog:"); idx != -1 {
+			sub := m.Body[idx+8:]
+			if endIdx := strings.Index(sub, ")"); endIdx != -1 {
+				details.CatalogID = strings.TrimSpace(sub[:endIdx])
+			}
+		}
+	}
+	if details.CustomerNote == "" {
+		if idx := strings.Index(m.Body, "Note:"); idx != -1 {
+			sub := m.Body[idx+5:]
+			if endIdx := strings.Index(sub, "\n"); endIdx != -1 {
+				details.CustomerNote = strings.TrimSpace(sub[:endIdx])
+			} else {
+				details.CustomerNote = strings.TrimSpace(sub)
+			}
+		}
+	}
+	if len(details.Items) == 0 {
+		lines := strings.Split(m.Body, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "- ") {
+				parts := strings.SplitN(line[2:], ":", 2)
+				if len(parts) == 2 {
+					sku := strings.TrimSpace(parts[0])
+					rest := strings.TrimSpace(parts[1])
+					var qty int
+					var price float64
+					var curr string
+					fmt.Sscanf(rest, "%d x %f %s", &qty, &price, &curr)
+					if sku != "" {
+						details.Items = append(details.Items, domain.OrderProductItem{
+							ProductRetailerID: sku,
+							Quantity:          qty,
+							ItemPrice:         price,
+							Currency:          curr,
+						})
+						if details.Currency == "" && curr != "" {
+							details.Currency = curr
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if details.TotalPrice == 0 {
+		var calcTotal float64
+		for _, item := range details.Items {
+			calcTotal += float64(item.Quantity) * item.ItemPrice
+		}
+		details.TotalPrice = calcTotal
+	}
+
+	return &details, true
+}
+
+type ProductCardDetails struct {
+	Type              string // "product" or "product_list"
+	CatalogID         string
+	ProductRetailerID string
+	Header            string
+	Body              string
+	Footer            string
+	Sections          []domain.ProductSection
+}
+
+func parseProductDetails(m repository.ThreadMessage) (*ProductCardDetails, bool) {
+	if m.Direction != "outbound" {
+		return nil, false
+	}
+
+	var details ProductCardDetails
+	var rawJSON string
+
+	if m.Metadata != nil {
+		details.Type = m.Metadata["type"]
+		if pJSON, ok := m.Metadata["product_json"]; ok && pJSON != "" {
+			rawJSON = pJSON
+		} else if pJSON, ok := m.Metadata["product"]; ok && pJSON != "" {
+			rawJSON = pJSON
+		}
+		details.CatalogID = m.Metadata["catalog_id"]
+		details.ProductRetailerID = m.Metadata["product_retailer_id"]
+		details.Header = m.Metadata["header"]
+		details.Body = m.Metadata["body"]
+		details.Footer = m.Metadata["footer"]
+	}
+
+	if rawJSON == "" && strings.HasPrefix(strings.TrimSpace(m.Body), "{") {
+		rawJSON = m.Body
+	}
+
+	if rawJSON != "" {
+		var payload domain.ProductPayload
+		if err := json.Unmarshal([]byte(rawJSON), &payload); err == nil {
+			if payload.CatalogID != "" {
+				details.CatalogID = payload.CatalogID
+			}
+			if payload.ProductRetailerID != "" {
+				details.ProductRetailerID = payload.ProductRetailerID
+			}
+			if payload.Header != "" {
+				details.Header = payload.Header
+			}
+			if payload.Body != "" {
+				details.Body = payload.Body
+			}
+			if payload.Footer != "" {
+				details.Footer = payload.Footer
+			}
+			if len(payload.Sections) > 0 {
+				details.Sections = payload.Sections
+			}
+		}
+	}
+
+	isProduct := false
+	if details.Type == "product" || details.Type == "product_list" || details.CatalogID != "" || details.ProductRetailerID != "" || len(details.Sections) > 0 {
+		isProduct = true
+	}
+
+	if !isProduct {
+		return nil, false
+	}
+
+	if details.Type == "" {
+		if len(details.Sections) > 0 {
+			details.Type = "product_list"
+		} else {
+			details.Type = "product"
+		}
+	}
+
+	if details.Body == "" && !strings.HasPrefix(strings.TrimSpace(m.Body), "{") {
+		details.Body = m.Body
+	}
+
+	return &details, true
+}
+
+func formatPrice(price float64, currency string) string {
+	if currency == "" {
+		currency = "BRL"
+	}
+	switch currency {
+	case "BRL":
+		return fmt.Sprintf("R$ %.2f", price)
+	case "USD":
+		return fmt.Sprintf("$ %.2f", price)
+	case "EUR":
+		return fmt.Sprintf("€ %.2f", price)
+	default:
+		return fmt.Sprintf("%.2f %s", price, currency)
+	}
+}
 
 // MessageBubble renders a single message bubble.
 //   - Inbound: left-aligned white card with contact initials avatar on the left.
-//   - Outbound: right-aligned blue (#3b82f6) card with delivery checkmarks on the right.
+//     If inbound order: styled order summary card with item list, price totals, and customer notes.
+//   - Outbound: right-aligned blue card with delivery checkmarks on the right.
+//     If outbound product/product_list: formatted catalog card displaying catalog badge, sections, and item SKUs.
 func MessageBubble(m repository.ThreadMessage) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -34,121 +259,598 @@ func MessageBubble(m repository.ThreadMessage) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
+		orderDetails, isOrder := parseOrderDetails(m)
+		productDetails, isProduct := parseProductDetails(m)
 		if m.Direction == "inbound" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"msg-wrap flex items-end gap-2 justify-start\" data-msg-id=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var2 string
-			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(m.ID.String())
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 10, Col: 86}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\"><!-- Contact avatar --><div class=\"flex-shrink-0 h-7 w-7 rounded-full bg-gradient-to-br from-zinc-300 to-zinc-400 flex items-center justify-center text-zinc-700 font-semibold text-xs select-none\">?</div><!-- Bubble --><div class=\"msg-bubble max-w-xs lg:max-w-md bg-white border border-zinc-200 rounded-2xl rounded-bl-none px-3 py-2 shadow-sm\"><p class=\"text-sm text-zinc-800 whitespace-pre-wrap break-words\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(msgBody(m.Body))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 17, Col: 86}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</p><p class=\"text-xs text-zinc-400 text-right mt-1\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var4 string
-			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(m.CreatedAt.Format("15:04"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 18, Col: 82}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</p></div></div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div class=\"msg-wrap flex items-end gap-2 justify-end\" data-msg-id=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var5 string
-			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(m.ID.String())
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 22, Col: 84}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "\"><!-- Bubble --><div class=\"msg-bubble max-w-xs lg:max-w-md rounded-2xl rounded-br-none px-3 py-2 shadow-sm\" style=\"background-color:#3b82f6;\"><p class=\"text-sm text-white whitespace-pre-wrap break-words\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var6 string
-			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(msgBody(m.Body))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 25, Col: 83}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</p><div class=\"flex items-center justify-end gap-1 mt-1\"><p class=\"text-xs text-blue-200\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var7 string
-			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(m.CreatedAt.Format("15:04"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 27, Col: 67}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</p>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if m.Status != nil && *m.Status == "sent" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<!-- Single checkmark --> <svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3 text-blue-200\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2.5\" d=\"M5 13l4 4L19 7\"></path></svg>")
+			if isOrder {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"msg-wrap flex items-end gap-2 justify-start\" data-msg-id=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			} else if m.Status != nil && *m.Status == "delivered" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<!-- Double checkmark text-blue-200 --> <svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3 text-blue-200\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2.5\" d=\"M5 13l4 4L19 7\"></path></svg> <svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3 text-blue-200 -ml-2\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2.5\" d=\"M5 13l4 4L19 7\"></path></svg>")
+				var templ_7745c5c3_Var2 string
+				templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(m.ID.String())
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 238, Col: 87}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			} else if m.Status != nil && *m.Status == "read" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<!-- Double checkmark text-cyan-200 --> <svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3 text-cyan-200\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2.5\" d=\"M5 13l4 4L19 7\"></path></svg> <svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3 text-cyan-200 -ml-2\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2.5\" d=\"M5 13l4 4L19 7\"></path></svg>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\"><!-- Contact avatar --><div class=\"flex-shrink-0 h-7 w-7 rounded-full bg-gradient-to-br from-zinc-300 to-zinc-400 flex items-center justify-center text-zinc-700 font-semibold text-xs select-none\">?</div><!-- Order Summary Card Bubble --><div class=\"msg-bubble max-w-xs lg:max-w-md bg-white border border-zinc-200 rounded-2xl rounded-bl-none p-3 shadow-sm flex flex-col gap-2\"><!-- Top badge --><div class=\"flex items-center justify-between gap-2 border-b border-zinc-100 pb-2\"><span class=\"inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200\">🛒 Pedido do Catálogo</span> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			} else if m.Status != nil && *m.Status == "failed" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<!-- Red warning icon/text --> <span class=\"text-xs text-red-400 font-bold\" title=\"Falha no envio\">⚠️</span>")
+				if orderDetails.CatalogID != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<span class=\"text-[11px] font-mono text-zinc-500\">ID: ")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var3 string
+					templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(orderDetails.CatalogID)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 251, Col: 85}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</span>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div><!-- Customer note callout -->")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if orderDetails.CustomerNote != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<div class=\"bg-amber-50 border-l-2 border-amber-400 px-2.5 py-1.5 rounded-r text-xs text-amber-900\"><span class=\"font-semibold block text-[10px] text-amber-700 uppercase tracking-wider\">Nota do Cliente</span><p class=\"whitespace-pre-wrap\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var4 string
+					templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(orderDetails.CustomerNote)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 259, Col: 65}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</p></div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<!-- Items Table -->")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if len(orderDetails.Items) > 0 {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<div class=\"mt-1\"><div class=\"grid grid-cols-12 gap-1 text-[11px] font-semibold text-zinc-500 uppercase border-b border-zinc-200 pb-1 mb-1\"><div class=\"col-span-6\">Item</div><div class=\"col-span-2 text-center\">Qtd</div><div class=\"col-span-4 text-right\">Preço</div></div><div class=\"flex flex-col gap-1 text-xs text-zinc-800\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					for _, item := range orderDetails.Items {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div class=\"grid grid-cols-12 gap-1 items-center\"><div class=\"col-span-6 font-mono text-[11px] truncate\" title=\"")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var5 string
+						templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(item.ProductRetailerID)
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 274, Col: 95}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var6 string
+						templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(item.ProductRetailerID)
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 275, Col: 35}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</div><div class=\"col-span-2 text-center text-zinc-600 font-medium\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var7 string
+						templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(item.Quantity))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 278, Col: 40}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</div><div class=\"col-span-4 text-right font-medium\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var8 string
+						templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(formatPrice(item.ItemPrice, item.Currency))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 281, Col: 55}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div></div>")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</div></div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<!-- Subtotal & Currency --><div class=\"flex items-center justify-between border-t border-zinc-100 pt-2 mt-1\"><div class=\"flex items-center gap-1.5\"><span class=\"text-xs text-zinc-500 font-medium\">Total:</span> <span class=\"text-sm font-bold text-emerald-700\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var9 string
+				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(formatPrice(orderDetails.TotalPrice, orderDetails.Currency))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 294, Col: 69}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</span> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if orderDetails.Currency != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<span class=\"text-[10px] uppercase font-semibold px-1.5 py-0.5 bg-zinc-100 text-zinc-600 rounded\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var10 string
+					templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(orderDetails.Currency)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 298, Col: 32}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</span>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</div><p class=\"text-[10px] text-zinc-400\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var11 string
+				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(m.CreatedAt.Format("15:04"))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 302, Col: 72}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</p></div></div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<!-- single checkmark/queued/sending --> <svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3 text-blue-300 opacity-60\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2.5\" d=\"M5 13l4 4L19 7\"></path></svg>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<div class=\"msg-wrap flex items-end gap-2 justify-start\" data-msg-id=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var12 string
+				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(m.ID.String())
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 307, Col: 87}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\"><!-- Contact avatar --><div class=\"flex-shrink-0 h-7 w-7 rounded-full bg-gradient-to-br from-zinc-300 to-zinc-400 flex items-center justify-center text-zinc-700 font-semibold text-xs select-none\">?</div><!-- Bubble --><div class=\"msg-bubble max-w-xs lg:max-w-md bg-white border border-zinc-200 rounded-2xl rounded-bl-none px-3 py-2 shadow-sm\"><p class=\"text-sm text-zinc-800 whitespace-pre-wrap break-words\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var13 string
+				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(msgBody(m.Body))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 314, Col: 87}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</p><p class=\"text-xs text-zinc-400 text-right mt-1\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var14 string
+				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(m.CreatedAt.Format("15:04"))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 315, Col: 83}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</p></div></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div></div></div>")
+		} else {
+			if isProduct {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<div class=\"msg-wrap flex items-end gap-2 justify-end\" data-msg-id=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var15 string
+				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(m.ID.String())
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 321, Col: 85}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\"><!-- Catalog Product Card Bubble --><div class=\"msg-bubble max-w-xs lg:max-w-md bg-zinc-900 text-white rounded-2xl rounded-br-none p-3 shadow-md border border-zinc-800 flex flex-col gap-2\"><!-- Header / Catalog Badge --><div class=\"flex items-center justify-between gap-2 border-b border-zinc-800 pb-2\"><span class=\"inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-900/60 text-blue-300 border border-blue-700/50\">📦 Catálogo de Produtos</span> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if productDetails.CatalogID != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<span class=\"text-[11px] font-mono text-zinc-400\">ID: ")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var16 string
+					templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(productDetails.CatalogID)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 330, Col: 87}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</span>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if productDetails.Header != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<div class=\"font-bold text-sm text-blue-200\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var17 string
+					templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(productDetails.Header)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 335, Col: 74}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				if productDetails.Body != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<p class=\"text-xs text-zinc-300 whitespace-pre-wrap\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var18 string
+					templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(productDetails.Body)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 339, Col: 80}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</p>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<!-- Display sections or single product SKU -->")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if len(productDetails.Sections) > 0 {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<div class=\"flex flex-col gap-2 mt-1\"><div class=\"text-[11px] font-semibold text-zinc-400 uppercase tracking-wider\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var19 string
+					templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(len(productDetails.Sections)))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 346, Col: 52}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, " Seção(ões) de Produtos</div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					for _, sec := range productDetails.Sections {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<div class=\"bg-zinc-800/80 rounded-lg p-2 text-xs border border-zinc-700/50\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						if sec.Title != "" {
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<div class=\"font-semibold text-zinc-200 mb-1 text-[11px] flex items-center justify-between\"><span>")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							var templ_7745c5c3_Var20 string
+							templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(sec.Title)
+							if templ_7745c5c3_Err != nil {
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 352, Col: 28}
+							}
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</span> <span class=\"text-[10px] text-zinc-400\">(")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							var templ_7745c5c3_Var21 string
+							templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(len(sec.ProductItems)))
+							if templ_7745c5c3_Err != nil {
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 353, Col: 89}
+							}
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, " itens)</span></div>")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<div class=\"flex flex-wrap gap-1\">")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						for _, item := range sec.ProductItems {
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<span class=\"inline-block px-1.5 py-0.5 bg-zinc-900 text-zinc-300 font-mono text-[10px] rounded border border-zinc-700\">SKU: ")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							var templ_7745c5c3_Var22 string
+							templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(item.ProductRetailerID)
+							if templ_7745c5c3_Err != nil {
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 359, Col: 41}
+							}
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, " ")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							if item.ItemPrice > 0 {
+								templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<span class=\"ml-1 text-emerald-400\">(")
+								if templ_7745c5c3_Err != nil {
+									return templ_7745c5c3_Err
+								}
+								var templ_7745c5c3_Var23 string
+								templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(formatPrice(item.ItemPrice, item.Currency))
+								if templ_7745c5c3_Err != nil {
+									return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 361, Col: 94}
+								}
+								_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
+								if templ_7745c5c3_Err != nil {
+									return templ_7745c5c3_Err
+								}
+								templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, ")</span>")
+								if templ_7745c5c3_Err != nil {
+									return templ_7745c5c3_Err
+								}
+							}
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</span>")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</div></div>")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				} else if productDetails.ProductRetailerID != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<div class=\"bg-zinc-800/80 rounded-lg p-2 text-xs border border-zinc-700/50 flex items-center justify-between\"><span class=\"text-zinc-400 text-[11px]\">Produto SKU:</span> <span class=\"font-mono text-xs text-blue-300 font-bold\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var24 string
+					templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(productDetails.ProductRetailerID)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 372, Col: 97}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</span></div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				if productDetails.Footer != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<div class=\"text-[10px] text-zinc-400 italic border-t border-zinc-800/60 pt-1 mt-1\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var25 string
+					templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(productDetails.Footer)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 377, Col: 113}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<!-- Time and Status --><div class=\"flex items-center justify-end gap-1 mt-1\"><p class=\"text-[10px] text-zinc-400\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var26 string
+				templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(m.CreatedAt.Format("15:04"))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 382, Col: 72}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = statusCheckmarks(m.Status).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</div></div></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<div class=\"msg-wrap flex items-end gap-2 justify-end\" data-msg-id=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var27 string
+				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.ResolveAttributeValue(m.ID.String())
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 388, Col: 85}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var27)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\"><!-- Bubble --><div class=\"msg-bubble max-w-xs lg:max-w-md rounded-2xl rounded-br-none px-3 py-2 shadow-sm\" style=\"background-color:#3b82f6;\"><p class=\"text-sm text-white whitespace-pre-wrap break-words\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var28 string
+				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(msgBody(m.Body))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 391, Col: 84}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</p><div class=\"flex items-center justify-end gap-1 mt-1\"><p class=\"text-xs text-blue-200\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var29 string
+				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(m.CreatedAt.Format("15:04"))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 393, Col: 68}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = statusCheckmarks(m.Status).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</div></div></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+// statusCheckmarks renders the delivery checkmark SVGs based on status.
+func statusCheckmarks(status *string) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var30 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var30 == nil {
+			templ_7745c5c3_Var30 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		if status != nil && *status == "sent" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "<!-- Single checkmark --> <svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3 text-blue-200\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2.5\" d=\"M5 13l4 4L19 7\"></path></svg>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else if status != nil && *status == "delivered" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<!-- Double checkmark text-blue-200 --> <svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3 text-blue-200\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2.5\" d=\"M5 13l4 4L19 7\"></path></svg> <svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3 text-blue-200 -ml-2\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2.5\" d=\"M5 13l4 4L19 7\"></path></svg>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else if status != nil && *status == "read" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<!-- Double checkmark text-cyan-200 --> <svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3 text-cyan-200\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2.5\" d=\"M5 13l4 4L19 7\"></path></svg> <svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3 text-cyan-200 -ml-2\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2.5\" d=\"M5 13l4 4L19 7\"></path></svg>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else if status != nil && *status == "failed" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "<!-- Red warning icon/text --> <span class=\"text-xs text-red-400 font-bold\" title=\"Falha no envio\">⚠️</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "<!-- single checkmark/queued/sending --> <svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3 text-blue-300 opacity-60\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2.5\" d=\"M5 13l4 4L19 7\"></path></svg>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -183,9 +885,9 @@ func MessageBubbleList(messages []repository.ThreadMessage) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var8 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var8 == nil {
-			templ_7745c5c3_Var8 = templ.NopComponent
+		templ_7745c5c3_Var31 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var31 == nil {
+			templ_7745c5c3_Var31 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		for _, m := range messages {
@@ -215,29 +917,29 @@ func PollMessagesResponse(contactID string, afterID string, messages []repositor
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var9 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var9 == nil {
-			templ_7745c5c3_Var9 = templ.NopComponent
+		templ_7745c5c3_Var32 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var32 == nil {
+			templ_7745c5c3_Var32 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = MessageBubbleList(messages).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<div id=\"chat-poll-anchor\" hx-get=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<div id=\"chat-poll-anchor\" hx-get=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var10 string
-		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/inbox/messages?contact_id=" + contactID + "&after_id=" + afterID)
+		var templ_7745c5c3_Var33 string
+		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/inbox/messages?contact_id=" + contactID + "&after_id=" + afterID)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 85, Col: 83}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/message_bubble.templ`, Line: 457, Col: 83}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\" hx-target=\"#chat-messages\" hx-swap=\"beforeend scroll:bottom\" hx-trigger=\"every 3s\" hx-swap-oob=\"true\" class=\"hidden\"></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "\" hx-target=\"#chat-messages\" hx-swap=\"beforeend scroll:bottom\" hx-trigger=\"every 3s\" hx-swap-oob=\"true\" class=\"hidden\"></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

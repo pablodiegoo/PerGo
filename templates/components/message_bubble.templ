@@ -1,63 +1,435 @@
 package components
 
-import "github.com/pablojhp.pergo/internal/repository"
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/repository"
+)
+
+type OrderDetails struct {
+	CatalogID    string
+	Items        []domain.OrderProductItem
+	TotalPrice   float64
+	Currency     string
+	CustomerNote string
+}
+
+func parseOrderDetails(m repository.ThreadMessage) (*OrderDetails, bool) {
+	if m.Direction != "inbound" {
+		return nil, false
+	}
+
+	var details OrderDetails
+
+	// 1. Check metadata["order_json"] or metadata fields
+	if m.Metadata != nil {
+		if orderJSON, ok := m.Metadata["order_json"]; ok && orderJSON != "" {
+			var ev domain.OrderCreatedEvent
+			if err := json.Unmarshal([]byte(orderJSON), &ev); err == nil {
+				details.CatalogID = ev.CatalogID
+				details.Items = ev.Items
+				details.TotalPrice = ev.TotalPrice
+				details.Currency = ev.Currency
+			}
+		}
+		if details.CatalogID == "" {
+			details.CatalogID = m.Metadata["catalog_id"]
+		}
+		if details.Currency == "" {
+			details.Currency = m.Metadata["currency"]
+		}
+		if details.TotalPrice == 0 && m.Metadata["total_price"] != "" {
+			if tp, err := strconv.ParseFloat(m.Metadata["total_price"], 64); err == nil {
+				details.TotalPrice = tp
+			}
+		}
+		if note, ok := m.Metadata["customer_note"]; ok {
+			details.CustomerNote = note
+		} else if note, ok := m.Metadata["note"]; ok {
+			details.CustomerNote = note
+		}
+	}
+
+	// 2. Check if metadata type == "order" or order_json present or body indicates order
+	isOrder := false
+	if m.Metadata != nil && (m.Metadata["type"] == "order" || m.Metadata["order_json"] != "" || m.Metadata["catalog_id"] != "") {
+		isOrder = true
+	} else if strings.Contains(m.Body, "🛒 Order Received") || strings.Contains(m.Body, "🛒 Pedido") || strings.Contains(m.Body, "Order Received") {
+		isOrder = true
+	}
+
+	if !isOrder {
+		return nil, false
+	}
+
+	// 3. Fallback body parsing for CatalogID, Note, and Items if empty
+	if details.CatalogID == "" {
+		if idx := strings.Index(m.Body, "Catalog:"); idx != -1 {
+			sub := m.Body[idx+8:]
+			if endIdx := strings.Index(sub, ")"); endIdx != -1 {
+				details.CatalogID = strings.TrimSpace(sub[:endIdx])
+			}
+		}
+	}
+	if details.CustomerNote == "" {
+		if idx := strings.Index(m.Body, "Note:"); idx != -1 {
+			sub := m.Body[idx+5:]
+			if endIdx := strings.Index(sub, "\n"); endIdx != -1 {
+				details.CustomerNote = strings.TrimSpace(sub[:endIdx])
+			} else {
+				details.CustomerNote = strings.TrimSpace(sub)
+			}
+		}
+	}
+	if len(details.Items) == 0 {
+		lines := strings.Split(m.Body, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "- ") {
+				parts := strings.SplitN(line[2:], ":", 2)
+				if len(parts) == 2 {
+					sku := strings.TrimSpace(parts[0])
+					rest := strings.TrimSpace(parts[1])
+					var qty int
+					var price float64
+					var curr string
+					fmt.Sscanf(rest, "%d x %f %s", &qty, &price, &curr)
+					if sku != "" {
+						details.Items = append(details.Items, domain.OrderProductItem{
+							ProductRetailerID: sku,
+							Quantity:          qty,
+							ItemPrice:         price,
+							Currency:          curr,
+						})
+						if details.Currency == "" && curr != "" {
+							details.Currency = curr
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if details.TotalPrice == 0 {
+		var calcTotal float64
+		for _, item := range details.Items {
+			calcTotal += float64(item.Quantity) * item.ItemPrice
+		}
+		details.TotalPrice = calcTotal
+	}
+
+	return &details, true
+}
+
+type ProductCardDetails struct {
+	Type              string // "product" or "product_list"
+	CatalogID         string
+	ProductRetailerID string
+	Header            string
+	Body              string
+	Footer            string
+	Sections          []domain.ProductSection
+}
+
+func parseProductDetails(m repository.ThreadMessage) (*ProductCardDetails, bool) {
+	if m.Direction != "outbound" {
+		return nil, false
+	}
+
+	var details ProductCardDetails
+	var rawJSON string
+
+	if m.Metadata != nil {
+		details.Type = m.Metadata["type"]
+		if pJSON, ok := m.Metadata["product_json"]; ok && pJSON != "" {
+			rawJSON = pJSON
+		} else if pJSON, ok := m.Metadata["product"]; ok && pJSON != "" {
+			rawJSON = pJSON
+		}
+		details.CatalogID = m.Metadata["catalog_id"]
+		details.ProductRetailerID = m.Metadata["product_retailer_id"]
+		details.Header = m.Metadata["header"]
+		details.Body = m.Metadata["body"]
+		details.Footer = m.Metadata["footer"]
+	}
+
+	if rawJSON == "" && strings.HasPrefix(strings.TrimSpace(m.Body), "{") {
+		rawJSON = m.Body
+	}
+
+	if rawJSON != "" {
+		var payload domain.ProductPayload
+		if err := json.Unmarshal([]byte(rawJSON), &payload); err == nil {
+			if payload.CatalogID != "" {
+				details.CatalogID = payload.CatalogID
+			}
+			if payload.ProductRetailerID != "" {
+				details.ProductRetailerID = payload.ProductRetailerID
+			}
+			if payload.Header != "" {
+				details.Header = payload.Header
+			}
+			if payload.Body != "" {
+				details.Body = payload.Body
+			}
+			if payload.Footer != "" {
+				details.Footer = payload.Footer
+			}
+			if len(payload.Sections) > 0 {
+				details.Sections = payload.Sections
+			}
+		}
+	}
+
+	isProduct := false
+	if details.Type == "product" || details.Type == "product_list" || details.CatalogID != "" || details.ProductRetailerID != "" || len(details.Sections) > 0 {
+		isProduct = true
+	}
+
+	if !isProduct {
+		return nil, false
+	}
+
+	if details.Type == "" {
+		if len(details.Sections) > 0 {
+			details.Type = "product_list"
+		} else {
+			details.Type = "product"
+		}
+	}
+
+	if details.Body == "" && !strings.HasPrefix(strings.TrimSpace(m.Body), "{") {
+		details.Body = m.Body
+	}
+
+	return &details, true
+}
+
+func formatPrice(price float64, currency string) string {
+	if currency == "" {
+		currency = "BRL"
+	}
+	switch currency {
+	case "BRL":
+		return fmt.Sprintf("R$ %.2f", price)
+	case "USD":
+		return fmt.Sprintf("$ %.2f", price)
+	case "EUR":
+		return fmt.Sprintf("€ %.2f", price)
+	default:
+		return fmt.Sprintf("%.2f %s", price, currency)
+	}
+}
 
 // MessageBubble renders a single message bubble.
 //   - Inbound: left-aligned white card with contact initials avatar on the left.
-//   - Outbound: right-aligned blue (#3b82f6) card with delivery checkmarks on the right.
+//     If inbound order: styled order summary card with item list, price totals, and customer notes.
+//   - Outbound: right-aligned blue card with delivery checkmarks on the right.
+//     If outbound product/product_list: formatted catalog card displaying catalog badge, sections, and item SKUs.
 templ MessageBubble(m repository.ThreadMessage) {
+	{{ orderDetails, isOrder := parseOrderDetails(m) }}
+	{{ productDetails, isProduct := parseProductDetails(m) }}
 	if m.Direction == "inbound" {
-		<div class="msg-wrap flex items-end gap-2 justify-start" data-msg-id={ m.ID.String() }>
-			<!-- Contact avatar -->
-			<div class="flex-shrink-0 h-7 w-7 rounded-full bg-gradient-to-br from-zinc-300 to-zinc-400 flex items-center justify-center text-zinc-700 font-semibold text-xs select-none">
-				?
-			</div>
-			<!-- Bubble -->
-			<div class="msg-bubble max-w-xs lg:max-w-md bg-white border border-zinc-200 rounded-2xl rounded-bl-none px-3 py-2 shadow-sm">
-				<p class="text-sm text-zinc-800 whitespace-pre-wrap break-words">{ msgBody(m.Body) }</p>
-				<p class="text-xs text-zinc-400 text-right mt-1">{ m.CreatedAt.Format("15:04") }</p>
-			</div>
-		</div>
-	} else {
-		<div class="msg-wrap flex items-end gap-2 justify-end" data-msg-id={ m.ID.String() }>
-			<!-- Bubble -->
-			<div class="msg-bubble max-w-xs lg:max-w-md rounded-2xl rounded-br-none px-3 py-2 shadow-sm" style="background-color:#3b82f6;">
-				<p class="text-sm text-white whitespace-pre-wrap break-words">{ msgBody(m.Body) }</p>
-				<div class="flex items-center justify-end gap-1 mt-1">
-					<p class="text-xs text-blue-200">{ m.CreatedAt.Format("15:04") }</p>
-					if m.Status != nil && *m.Status == "sent" {
-						<!-- Single checkmark -->
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-						</svg>
-					} else if m.Status != nil && *m.Status == "delivered" {
-						<!-- Double checkmark text-blue-200 -->
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-						</svg>
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-200 -ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-						</svg>
-					} else if m.Status != nil && *m.Status == "read" {
-						<!-- Double checkmark text-cyan-200 -->
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-cyan-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-						</svg>
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-cyan-200 -ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-						</svg>
-					} else if m.Status != nil && *m.Status == "failed" {
-						<!-- Red warning icon/text -->
-						<span class="text-xs text-red-400 font-bold" title="Falha no envio">⚠️</span>
-					} else {
-						<!-- single checkmark/queued/sending -->
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-300 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
-						</svg>
+		if isOrder {
+			<div class="msg-wrap flex items-end gap-2 justify-start" data-msg-id={ m.ID.String() }>
+				<!-- Contact avatar -->
+				<div class="flex-shrink-0 h-7 w-7 rounded-full bg-gradient-to-br from-zinc-300 to-zinc-400 flex items-center justify-center text-zinc-700 font-semibold text-xs select-none">
+					?
+				</div>
+				<!-- Order Summary Card Bubble -->
+				<div class="msg-bubble max-w-xs lg:max-w-md bg-white border border-zinc-200 rounded-2xl rounded-bl-none p-3 shadow-sm flex flex-col gap-2">
+					<!-- Top badge -->
+					<div class="flex items-center justify-between gap-2 border-b border-zinc-100 pb-2">
+						<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+							🛒 Pedido do Catálogo
+						</span>
+						if orderDetails.CatalogID != "" {
+							<span class="text-[11px] font-mono text-zinc-500">ID: { orderDetails.CatalogID }</span>
+						}
+					</div>
+
+					<!-- Customer note callout -->
+					if orderDetails.CustomerNote != "" {
+						<div class="bg-amber-50 border-l-2 border-amber-400 px-2.5 py-1.5 rounded-r text-xs text-amber-900">
+							<span class="font-semibold block text-[10px] text-amber-700 uppercase tracking-wider">Nota do Cliente</span>
+							<p class="whitespace-pre-wrap">{ orderDetails.CustomerNote }</p>
+						</div>
 					}
+
+					<!-- Items Table -->
+					if len(orderDetails.Items) > 0 {
+						<div class="mt-1">
+							<div class="grid grid-cols-12 gap-1 text-[11px] font-semibold text-zinc-500 uppercase border-b border-zinc-200 pb-1 mb-1">
+								<div class="col-span-6">Item</div>
+								<div class="col-span-2 text-center">Qtd</div>
+								<div class="col-span-4 text-right">Preço</div>
+							</div>
+							<div class="flex flex-col gap-1 text-xs text-zinc-800">
+								for _, item := range orderDetails.Items {
+									<div class="grid grid-cols-12 gap-1 items-center">
+										<div class="col-span-6 font-mono text-[11px] truncate" title={ item.ProductRetailerID }>
+											{ item.ProductRetailerID }
+										</div>
+										<div class="col-span-2 text-center text-zinc-600 font-medium">
+											{ strconv.Itoa(item.Quantity) }
+										</div>
+										<div class="col-span-4 text-right font-medium">
+											{ formatPrice(item.ItemPrice, item.Currency) }
+										</div>
+									</div>
+								}
+							</div>
+						</div>
+					}
+
+					<!-- Subtotal & Currency -->
+					<div class="flex items-center justify-between border-t border-zinc-100 pt-2 mt-1">
+						<div class="flex items-center gap-1.5">
+							<span class="text-xs text-zinc-500 font-medium">Total:</span>
+							<span class="text-sm font-bold text-emerald-700">
+								{ formatPrice(orderDetails.TotalPrice, orderDetails.Currency) }
+							</span>
+							if orderDetails.Currency != "" {
+								<span class="text-[10px] uppercase font-semibold px-1.5 py-0.5 bg-zinc-100 text-zinc-600 rounded">
+									{ orderDetails.Currency }
+								</span>
+							}
+						</div>
+						<p class="text-[10px] text-zinc-400">{ m.CreatedAt.Format("15:04") }</p>
+					</div>
 				</div>
 			</div>
-		</div>
+		} else {
+			<div class="msg-wrap flex items-end gap-2 justify-start" data-msg-id={ m.ID.String() }>
+				<!-- Contact avatar -->
+				<div class="flex-shrink-0 h-7 w-7 rounded-full bg-gradient-to-br from-zinc-300 to-zinc-400 flex items-center justify-center text-zinc-700 font-semibold text-xs select-none">
+					?
+				</div>
+				<!-- Bubble -->
+				<div class="msg-bubble max-w-xs lg:max-w-md bg-white border border-zinc-200 rounded-2xl rounded-bl-none px-3 py-2 shadow-sm">
+					<p class="text-sm text-zinc-800 whitespace-pre-wrap break-words">{ msgBody(m.Body) }</p>
+					<p class="text-xs text-zinc-400 text-right mt-1">{ m.CreatedAt.Format("15:04") }</p>
+				</div>
+			</div>
+		}
+	} else {
+		if isProduct {
+			<div class="msg-wrap flex items-end gap-2 justify-end" data-msg-id={ m.ID.String() }>
+				<!-- Catalog Product Card Bubble -->
+				<div class="msg-bubble max-w-xs lg:max-w-md bg-zinc-900 text-white rounded-2xl rounded-br-none p-3 shadow-md border border-zinc-800 flex flex-col gap-2">
+					<!-- Header / Catalog Badge -->
+					<div class="flex items-center justify-between gap-2 border-b border-zinc-800 pb-2">
+						<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-900/60 text-blue-300 border border-blue-700/50">
+							📦 Catálogo de Produtos
+						</span>
+						if productDetails.CatalogID != "" {
+							<span class="text-[11px] font-mono text-zinc-400">ID: { productDetails.CatalogID }</span>
+						}
+					</div>
+
+					if productDetails.Header != "" {
+						<div class="font-bold text-sm text-blue-200">{ productDetails.Header }</div>
+					}
+
+					if productDetails.Body != "" {
+						<p class="text-xs text-zinc-300 whitespace-pre-wrap">{ productDetails.Body }</p>
+					}
+
+					<!-- Display sections or single product SKU -->
+					if len(productDetails.Sections) > 0 {
+						<div class="flex flex-col gap-2 mt-1">
+							<div class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+								{ strconv.Itoa(len(productDetails.Sections)) } Seção(ões) de Produtos
+							</div>
+							for _, sec := range productDetails.Sections {
+								<div class="bg-zinc-800/80 rounded-lg p-2 text-xs border border-zinc-700/50">
+									if sec.Title != "" {
+										<div class="font-semibold text-zinc-200 mb-1 text-[11px] flex items-center justify-between">
+											<span>{ sec.Title }</span>
+											<span class="text-[10px] text-zinc-400">({ strconv.Itoa(len(sec.ProductItems)) } itens)</span>
+										</div>
+									}
+									<div class="flex flex-wrap gap-1">
+										for _, item := range sec.ProductItems {
+											<span class="inline-block px-1.5 py-0.5 bg-zinc-900 text-zinc-300 font-mono text-[10px] rounded border border-zinc-700">
+												SKU: { item.ProductRetailerID }
+												if item.ItemPrice > 0 {
+													<span class="ml-1 text-emerald-400">({ formatPrice(item.ItemPrice, item.Currency) })</span>
+												}
+											</span>
+										}
+									</div>
+								</div>
+							}
+						</div>
+					} else if productDetails.ProductRetailerID != "" {
+						<div class="bg-zinc-800/80 rounded-lg p-2 text-xs border border-zinc-700/50 flex items-center justify-between">
+							<span class="text-zinc-400 text-[11px]">Produto SKU:</span>
+							<span class="font-mono text-xs text-blue-300 font-bold">{ productDetails.ProductRetailerID }</span>
+						</div>
+					}
+
+					if productDetails.Footer != "" {
+						<div class="text-[10px] text-zinc-400 italic border-t border-zinc-800/60 pt-1 mt-1">{ productDetails.Footer }</div>
+					}
+
+					<!-- Time and Status -->
+					<div class="flex items-center justify-end gap-1 mt-1">
+						<p class="text-[10px] text-zinc-400">{ m.CreatedAt.Format("15:04") }</p>
+						@statusCheckmarks(m.Status)
+					</div>
+				</div>
+			</div>
+		} else {
+			<div class="msg-wrap flex items-end gap-2 justify-end" data-msg-id={ m.ID.String() }>
+				<!-- Bubble -->
+				<div class="msg-bubble max-w-xs lg:max-w-md rounded-2xl rounded-br-none px-3 py-2 shadow-sm" style="background-color:#3b82f6;">
+					<p class="text-sm text-white whitespace-pre-wrap break-words">{ msgBody(m.Body) }</p>
+					<div class="flex items-center justify-end gap-1 mt-1">
+						<p class="text-xs text-blue-200">{ m.CreatedAt.Format("15:04") }</p>
+						@statusCheckmarks(m.Status)
+					</div>
+				</div>
+			</div>
+		}
+	}
+}
+
+// statusCheckmarks renders the delivery checkmark SVGs based on status.
+templ statusCheckmarks(status *string) {
+	if status != nil && *status == "sent" {
+		<!-- Single checkmark -->
+		<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+		</svg>
+	} else if status != nil && *status == "delivered" {
+		<!-- Double checkmark text-blue-200 -->
+		<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+		</svg>
+		<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-200 -ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+		</svg>
+	} else if status != nil && *status == "read" {
+		<!-- Double checkmark text-cyan-200 -->
+		<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-cyan-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+		</svg>
+		<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-cyan-200 -ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+		</svg>
+	} else if status != nil && *status == "failed" {
+		<!-- Red warning icon/text -->
+		<span class="text-xs text-red-400 font-bold" title="Falha no envio">⚠️</span>
+	} else {
+		<!-- single checkmark/queued/sending -->
+		<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-blue-300 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>
+		</svg>
 	}
 }
 
@@ -90,4 +462,3 @@ templ PollMessagesResponse(contactID string, afterID string, messages []reposito
 		class="hidden"
 	></div>
 }
-

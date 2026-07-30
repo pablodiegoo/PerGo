@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -175,12 +176,13 @@ type ConversationSummary struct {
 
 // ThreadMessage represents a single message in a chronological conversation thread.
 type ThreadMessage struct {
-	ID        uuid.UUID `json:"id"`
-	TraceID   string    `json:"trace_id"`
-	Direction string    `json:"direction"` // "inbound" or "outbound"
-	Body      string    `json:"body"`
-	CreatedAt time.Time `json:"created_at"`
-	Status    *string   `json:"status"`
+	ID        uuid.UUID         `json:"id"`
+	TraceID   string            `json:"trace_id"`
+	Direction string            `json:"direction"` // "inbound" or "outbound"
+	Body      string            `json:"body"`
+	CreatedAt time.Time         `json:"created_at"`
+	Status    *string           `json:"status"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
 }
 
 // ListConversations lists unified conversations grouped by contact_id.
@@ -253,7 +255,7 @@ func (r *AuditRepository) ListConversations(ctx context.Context, workspaceID uui
 // ListThreadByContact performs a UNION between inbound and outbound messages matching ANY identity owned by the Contact.
 func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID uuid.UUID, contactID uuid.UUID, afterID *uuid.UUID) ([]ThreadMessage, error) {
 	query := `
-		SELECT al.id, al.trace_id, 'inbound' AS direction, COALESCE(al.payload->>'body', '') AS body, al.created_at, NULL::VARCHAR AS status
+		SELECT al.id, al.trace_id, 'inbound' AS direction, COALESCE(al.payload->>'body', '') AS body, al.created_at, NULL::VARCHAR AS status, COALESCE(al.payload->'metadata', '{}'::jsonb) AS metadata
 		FROM audit_logs al
 		JOIN contact_identities ci ON ci.workspace_id = al.workspace_id 
 			AND ci.channel = al.payload->>'channel' 
@@ -265,7 +267,14 @@ func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID u
 
 		UNION ALL
 
-		SELECT al.id, al.trace_id, 'outbound' AS direction, COALESCE(al.payload->'request'->>'body', '') AS body, al.created_at, md.status AS status
+		SELECT al.id, al.trace_id, 'outbound' AS direction, COALESCE(al.payload->'request'->>'body', '') AS body, al.created_at, md.status AS status,
+		COALESCE(
+			al.payload->'request'->'metadata',
+			jsonb_build_object(
+				'type', COALESCE(al.payload->'request'->>'type', ''),
+				'product_json', COALESCE(al.payload->'request'->>'product', '')
+			)
+		) AS metadata
 		FROM audit_logs al
 		JOIN contact_identities ci ON ci.workspace_id = al.workspace_id 
 			AND ci.channel = al.payload->'request'->>'channel' 
@@ -288,8 +297,25 @@ func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID u
 	var messages []ThreadMessage
 	for rows.Next() {
 		var m ThreadMessage
-		if err := rows.Scan(&m.ID, &m.TraceID, &m.Direction, &m.Body, &m.CreatedAt, &m.Status); err != nil {
+		var metaBytes []byte
+		if err := rows.Scan(&m.ID, &m.TraceID, &m.Direction, &m.Body, &m.CreatedAt, &m.Status, &metaBytes); err != nil {
 			return nil, fmt.Errorf("scan thread message: %w", err)
+		}
+		if len(metaBytes) > 0 {
+			var metaAny map[string]any
+			if err := json.Unmarshal(metaBytes, &metaAny); err == nil && len(metaAny) > 0 {
+				m.Metadata = make(map[string]string)
+				for k, v := range metaAny {
+					switch val := v.(type) {
+					case string:
+						m.Metadata[k] = val
+					default:
+						if b, err := json.Marshal(val); err == nil {
+							m.Metadata[k] = string(b)
+						}
+					}
+				}
+			}
 		}
 		messages = append(messages, m)
 	}
