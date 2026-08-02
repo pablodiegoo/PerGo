@@ -1,0 +1,17 @@
+{
+  "event": "message.inbound",
+  "trace_id": "trc_123456789",
+  "message_id": "msg_inbound_001",
+  "channel": "whatsapp_cloud",
+  "timestamp": "1770033600",
+  "workspace_id": "ws_ecoar_ai",
+  "from": "+5511999999999",
+  "to": "+5511888888888",
+  "body": "Olá! Gostaria de participar da pesquisa.",
+  "media": {
+    "media_url": "https://example.com/audio.mp3",
+    "media_type": "audio/mp3",
+    "filename": "audio.mp3",
+    "caption": "Áudio de resposta"
+  }
+}

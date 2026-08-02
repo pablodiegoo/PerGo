@@ -1,0 +1,11 @@
+{
+  "code": "invalid_payload",
+  "message": "request body validation failed",
+  "more_info": "https://docs.pergo.dev/errors/invalid_payload",
+  "details": [
+    {
+      "field": "to",
+      "message": "is required and must be in E.164 format"
+    }
+  ]
+}
