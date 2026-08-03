@@ -657,7 +657,8 @@ func main() {
 	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/test", webhookHandler.TestSubscription)
 
 	// Campaigns routes
-	campaignHandler := admin.NewCampaignHandler(campaignRepo, wabaTemplateRepo, connectionRepo, publisher)
+	tagRepo := repository.NewTagRepository(pool)
+	campaignHandler := admin.NewCampaignHandler(campaignRepo, wabaTemplateRepo, connectionRepo, tagRepo, publisher)
 	adminGroup.GET("/campaigns", func(c *echo.Context) error {
 		ctx := c.Request().Context()
 		cookie, err := c.Cookie("pergo-active-workspace")
@@ -684,6 +685,12 @@ func main() {
 	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/start", campaignHandler.Start)
 	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/cancel", campaignHandler.Cancel)
 	adminGroup.DELETE("/workspaces/:workspace_id/campaigns/:id", campaignHandler.Delete)
+
+	// Campaign REST API routes (v1)
+	v1Group.POST("/workspaces/:workspace_id/campaigns", campaignHandler.APICreate)
+	v1Group.GET("/workspaces/:workspace_id/campaigns", campaignHandler.APIList)
+	v1Group.GET("/workspaces/:workspace_id/campaigns/:id", campaignHandler.APIGet)
+
 
 
 

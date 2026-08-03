@@ -87,7 +87,8 @@ func TestCampaignHandler(t *testing.T) {
 		t.Fatalf("EnsureCampaignStream failed: %v", err)
 	}
 
-	h := admin.NewCampaignHandler(campaignRepo, templateRepo, connectionRepo, pub)
+	tagRepo := repository.NewTagRepository(pool)
+	h := admin.NewCampaignHandler(campaignRepo, templateRepo, connectionRepo, tagRepo, pub)
 	e := echo.New()
 
 	t.Run("NewForm", func(t *testing.T) {
@@ -306,4 +307,122 @@ func TestCampaignHandler(t *testing.T) {
 			t.Errorf("expected campaign to be deleted, but still exists")
 		}
 	})
+
+	t.Run("REST API Campaign Endpoints", func(t *testing.T) {
+		// 1. Create an active connection with slug
+		connSlug := "waba-rest-test"
+		err := connectionRepo.Create(ctx, &repository.Connection{
+			ID:             uuid.New(),
+			WorkspaceID:    ws.ID,
+			Name:           "WABA REST Test",
+			Channel:        "whatsapp_cloud",
+			Slug:           connSlug,
+			SenderIdentity: "5511999990003",
+			Status:         "active",
+			IsDefault:      false,
+		})
+		if err != nil {
+			t.Fatalf("failed to create connection with slug: %v", err)
+		}
+
+		// 2. Pre-flight Failure: Invalid connection slug
+		invalidConnJSON := `{"name":"Fail Camp","connection_slug":"non-existent-slug","recipients":[{"to":"5511999998888"}]}`
+		reqFail1 := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), strings.NewReader(invalidConnJSON))
+		reqFail1.Header.Set("Content-Type", "application/json")
+		recFail1 := httptest.NewRecorder()
+		cFail1 := e.NewContext(reqFail1, recFail1)
+		cFail1.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		cFail1.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.APICreate(cFail1); err != nil {
+			t.Fatalf("APICreate failed: %v", err)
+		}
+		if recFail1.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400 for invalid connection, got %d", recFail1.Code)
+		}
+
+		// 3. Pre-flight Failure: No recipients
+		noRecipientsJSON := fmt.Sprintf(`{"name":"No Recip Camp","connection_slug":"%s"}`, connSlug)
+		reqFail2 := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), strings.NewReader(noRecipientsJSON))
+		reqFail2.Header.Set("Content-Type", "application/json")
+		recFail2 := httptest.NewRecorder()
+		cFail2 := e.NewContext(reqFail2, recFail2)
+		cFail2.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		cFail2.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.APICreate(cFail2); err != nil {
+			t.Fatalf("APICreate failed: %v", err)
+		}
+		if recFail2.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400 for missing recipients, got %d", recFail2.Code)
+		}
+
+		// 4. Valid Creation
+		validJSON := fmt.Sprintf(`{
+			"name": "Black Friday Promo",
+			"connection_slug": "%s",
+			"message_body": "Ola {{name}}! Promocao exclusiva.",
+			"batch_size": 100,
+			"delay_seconds": 2,
+			"recipients": [
+				{"to": "5511999998888", "variables": {"name": "Carlos"}},
+				{"to": "5511977776666", "variables": {"name": "Ana"}}
+			]
+		}`, connSlug)
+
+		reqValid := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), strings.NewReader(validJSON))
+		reqValid.Header.Set("Content-Type", "application/json")
+		recValid := httptest.NewRecorder()
+		cValid := e.NewContext(reqValid, recValid)
+		cValid.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		cValid.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.APICreate(cValid); err != nil {
+			t.Fatalf("APICreate valid failed: %v", err)
+		}
+		if recValid.Code != http.StatusCreated {
+			t.Fatalf("expected status 201 Created, got %d (body: %s)", recValid.Code, recValid.Body.String())
+		}
+
+		var createdCamp domain.Campaign
+		if err := json.Unmarshal(recValid.Body.Bytes(), &createdCamp); err != nil {
+			t.Fatalf("failed to unmarshal created campaign: %v", err)
+		}
+
+		if createdCamp.Name != "Black Friday Promo" {
+			t.Errorf("expected campaign name 'Black Friday Promo', got %s", createdCamp.Name)
+		}
+
+		// 5. APIList
+		reqList := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), nil)
+		recList := httptest.NewRecorder()
+		cList := e.NewContext(reqList, recList)
+		cList.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		cList.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.APIList(cList); err != nil {
+			t.Fatalf("APIList failed: %v", err)
+		}
+		if recList.Code != http.StatusOK {
+			t.Errorf("expected status 200 for APIList, got %d", recList.Code)
+		}
+
+		// 6. APIGet
+		reqGet := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s", ws.ID, createdCamp.ID), nil)
+		recGet := httptest.NewRecorder()
+		cGet := e.NewContext(reqGet, recGet)
+		cGet.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id")
+		cGet.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: createdCamp.ID.String()},
+		})
+
+		if err := h.APIGet(cGet); err != nil {
+			t.Fatalf("APIGet failed: %v", err)
+		}
+		if recGet.Code != http.StatusOK {
+			t.Errorf("expected status 200 for APIGet, got %d", recGet.Code)
+		}
+	})
 }
+

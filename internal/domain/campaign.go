@@ -15,14 +15,41 @@ const (
 	CampaignStatusDraft     CampaignStatus = "draft"
 	CampaignStatusScheduled CampaignStatus = "scheduled"
 	CampaignStatusSending   CampaignStatus = "sending"
+	CampaignStatusRunning   CampaignStatus = "running"
+	CampaignStatusPaused    CampaignStatus = "paused"
 	CampaignStatusCompleted CampaignStatus = "completed"
+	CampaignStatusFailed    CampaignStatus = "failed"
 	CampaignStatusCancelled CampaignStatus = "cancelled"
 )
 
-// CampaignRecipient represents an individual record within a mailing campaign.
+// RecipientStatus represents the status of an individual recipient message dispatch within a campaign.
+type RecipientStatus string
+
+const (
+	RecipientStatusPending    RecipientStatus = "pending"
+	RecipientStatusProcessing RecipientStatus = "processing"
+	RecipientStatusSent       RecipientStatus = "sent"
+	RecipientStatusFailed     RecipientStatus = "failed"
+	RecipientStatusSkipped    RecipientStatus = "skipped"
+)
+
+// CampaignRecipient represents an in-memory recipient record from CSV/form inputs.
 type CampaignRecipient struct {
 	To        string            `json:"to"`
 	Variables map[string]string `json:"variables"`
+}
+
+// CampaignRecipientRecord represents a persisted row in campaign_recipients table.
+type CampaignRecipientRecord struct {
+	ID           uuid.UUID         `json:"id"`
+	CampaignID   uuid.UUID         `json:"campaign_id"`
+	ContactID    *uuid.UUID        `json:"contact_id,omitempty"`
+	Phone        string            `json:"phone"`
+	Variables    map[string]string `json:"variables"`
+	Status       RecipientStatus   `json:"status"`
+	ErrorMessage *string           `json:"error_message,omitempty"`
+	SentAt       *time.Time        `json:"sent_at,omitempty"`
+	CreatedAt    time.Time         `json:"created_at"`
 }
 
 // SkippedRow details why a row from the mailing list CSV was ignored.
@@ -34,20 +61,26 @@ type SkippedRow struct {
 
 // Campaign represents a bulk mailing campaign model.
 type Campaign struct {
-	ID           uuid.UUID          `json:"id"`
-	WorkspaceID  uuid.UUID          `json:"workspace_id"`
-	ConnectionID *uuid.UUID         `json:"connection_id"`
-	Name         string             `json:"name"`
-	Status       CampaignStatus     `json:"status"`
-	BatchSize    int                `json:"batch_size"`
-	DelaySeconds int                `json:"delay_seconds"`
-	TemplateName *string            `json:"template_name"`
-	Channel      *string            `json:"channel"`
-	Recipients   []CampaignRecipient `json:"recipients"`
-	SkippedRows  []SkippedRow       `json:"skipped_rows"`
-	ScheduledAt  *time.Time         `json:"scheduled_at"`
-	CreatedAt    time.Time          `json:"created_at"`
-	UpdatedAt    time.Time          `json:"updated_at"`
+	ID               uuid.UUID           `json:"id"`
+	WorkspaceID      uuid.UUID           `json:"workspace_id"`
+	ConnectionID     *uuid.UUID          `json:"connection_id,omitempty"`
+	ConnectionSlug   *string             `json:"connection_slug,omitempty"`
+	Name             string              `json:"name"`
+	Status           CampaignStatus      `json:"status"`
+	BatchSize        int                 `json:"batch_size"`
+	DelaySeconds     int                 `json:"delay_seconds"`
+	TemplateName     *string             `json:"template_name,omitempty"`
+	MessageBody      *string             `json:"message_body,omitempty"`
+	Channel          *string             `json:"channel,omitempty"`
+	TagID            *uuid.UUID          `json:"tag_id,omitempty"`
+	TotalRecipients  int                 `json:"total_recipients"`
+	SentRecipients   int                 `json:"sent_recipients"`
+	FailedRecipients int                 `json:"failed_recipients"`
+	Recipients       []CampaignRecipient `json:"recipients,omitempty"`
+	SkippedRows      []SkippedRow        `json:"skipped_rows,omitempty"`
+	ScheduledAt      *time.Time          `json:"scheduled_at,omitempty"`
+	CreatedAt        time.Time           `json:"created_at"`
+	UpdatedAt        time.Time           `json:"updated_at"`
 }
 
 // SniffDelimiter checks the frequencies of commas, semicolons, and tabs to auto-detect a CSV delimiter.

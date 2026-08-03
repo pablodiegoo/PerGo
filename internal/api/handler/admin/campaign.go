@@ -23,6 +23,7 @@ type CampaignHandler struct {
 	CampaignRepo   *repository.CampaignRepository
 	TemplateRepo   *repository.WABATemplateRepository
 	ConnectionRepo *repository.ConnectionRepository
+	TagRepo        *repository.TagRepository
 	Publisher      *queue.JetStreamPublisher
 }
 
@@ -30,12 +31,14 @@ func NewCampaignHandler(
 	campaignRepo *repository.CampaignRepository,
 	templateRepo *repository.WABATemplateRepository,
 	connectionRepo *repository.ConnectionRepository,
+	tagRepo *repository.TagRepository,
 	publisher *queue.JetStreamPublisher,
 ) *CampaignHandler {
 	return &CampaignHandler{
 		CampaignRepo:   campaignRepo,
 		TemplateRepo:   templateRepo,
 		ConnectionRepo: connectionRepo,
+		TagRepo:        tagRepo,
 		Publisher:      publisher,
 	}
 }
@@ -503,3 +506,199 @@ func (h *CampaignHandler) Delete(c *echo.Context) error {
 
 	return c.String(http.StatusOK, "")
 }
+
+// REST API Handlers
+
+type CreateCampaignRequest struct {
+	Name           string                     `json:"name"`
+	ConnectionSlug string                     `json:"connection_slug"`
+	TemplateName   *string                    `json:"template_name,omitempty"`
+	MessageBody    *string                    `json:"message_body,omitempty"`
+	TagID          *uuid.UUID                 `json:"tag_id,omitempty"`
+	BatchSize      int                        `json:"batch_size,omitempty"`
+	DelaySeconds   int                        `json:"delay_seconds,omitempty"`
+	Recipients     []domain.CampaignRecipient `json:"recipients,omitempty"`
+}
+
+// APICreate handles campaign creation via JSON REST API with pre-flight validation.
+func (h *CampaignHandler) APICreate(c *echo.Context) error {
+	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	}
+	workspaceID, err := uuid.Parse(workspaceIDStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	}
+
+	var req CreateCampaignRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON payload"})
+	}
+
+	if req.Name == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "campaign name is required"})
+	}
+
+	// 1. Pre-flight Connection Validation
+	if req.ConnectionSlug == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "connection_slug is required"})
+	}
+
+	conn, err := h.ConnectionRepo.GetBySlug(c.Request().Context(), workspaceID, req.ConnectionSlug)
+	if err != nil || conn == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("active connection with slug %q not found for workspace", req.ConnectionSlug)})
+	}
+	if conn.Status != "active" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("connection %q is currently %s", req.ConnectionSlug, conn.Status)})
+	}
+
+	// 2. Pre-flight Recipient Validation
+	if len(req.Recipients) == 0 && req.TagID == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "campaign requires at least one recipient or a valid tag_id"})
+	}
+
+	var recipientRecords []domain.CampaignRecipientRecord
+	var sampleRecipients []domain.CampaignRecipient
+
+	// Resolve tag segment recipients if tag_id supplied
+	if req.TagID != nil && h.TagRepo != nil {
+		contacts, err := h.TagRepo.ListContactsByTag(c.Request().Context(), workspaceID, *req.TagID)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to resolve contacts for tag: %v", err)})
+		}
+		for _, contact := range contacts {
+			phone := ""
+			for _, ident := range contact.Identities {
+				if ident.SenderIdentity != "" {
+					phone = ident.SenderIdentity
+					break
+				}
+			}
+			cleanPhone, valid := domain.SanitizePhone(phone)
+			if !valid {
+				continue
+			}
+			contactID := contact.ID
+			recipientRecords = append(recipientRecords, domain.CampaignRecipientRecord{
+				ContactID: &contactID,
+				Phone:     cleanPhone,
+				Status:    domain.RecipientStatusPending,
+				Variables: map[string]string{"name": contact.Name},
+			})
+			sampleRecipients = append(sampleRecipients, domain.CampaignRecipient{
+				To:        cleanPhone,
+				Variables: map[string]string{"name": contact.Name},
+			})
+		}
+	}
+
+	// Resolve inline CSV/JSON recipients if provided
+	for _, rec := range req.Recipients {
+		cleanPhone, valid := domain.SanitizePhone(rec.To)
+		if !valid {
+			continue
+		}
+		recipientRecords = append(recipientRecords, domain.CampaignRecipientRecord{
+			Phone:     cleanPhone,
+			Status:    domain.RecipientStatusPending,
+			Variables: rec.Variables,
+		})
+		sampleRecipients = append(sampleRecipients, domain.CampaignRecipient{
+			To:        cleanPhone,
+			Variables: rec.Variables,
+		})
+	}
+
+	if len(recipientRecords) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "no valid E.164 recipients resolved for campaign"})
+	}
+
+	batchSize := req.BatchSize
+	if batchSize <= 0 {
+		batchSize = 100
+	}
+	delaySeconds := req.DelaySeconds
+	if delaySeconds <= 0 {
+		delaySeconds = 5
+	}
+
+	connID := conn.ID
+	connSlug := conn.Slug
+	channel := conn.Channel
+
+	camp := &domain.Campaign{
+		WorkspaceID:     workspaceID,
+		ConnectionID:    &connID,
+		ConnectionSlug:  &connSlug,
+		Name:            req.Name,
+		Status:          domain.CampaignStatusDraft,
+		BatchSize:       batchSize,
+		DelaySeconds:    delaySeconds,
+		TemplateName:    req.TemplateName,
+		MessageBody:     req.MessageBody,
+		Channel:         &channel,
+		TagID:           req.TagID,
+		TotalRecipients: len(recipientRecords),
+		Recipients:      sampleRecipients,
+	}
+
+	created, err := h.CampaignRepo.Create(c.Request().Context(), camp)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save campaign: %v", err)})
+	}
+
+	// Save persisted recipient records in campaign_recipients
+	if err := h.CampaignRepo.AddRecipients(c.Request().Context(), created.ID, recipientRecords); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save campaign recipients: %v", err)})
+	}
+
+	return c.JSON(http.StatusCreated, created)
+}
+
+// APIList returns campaigns for a workspace as JSON.
+func (h *CampaignHandler) APIList(c *echo.Context) error {
+	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	}
+	workspaceID, err := uuid.Parse(workspaceIDStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	}
+
+	campaigns, err := h.CampaignRepo.ListByWorkspace(c.Request().Context(), workspaceID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list campaigns"})
+	}
+
+	return c.JSON(http.StatusOK, campaigns)
+}
+
+// APIGet returns campaign detail and recipients as JSON.
+func (h *CampaignHandler) APIGet(c *echo.Context) error {
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
+	}
+
+	camp, err := h.CampaignRepo.GetByID(c.Request().Context(), id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+	}
+
+	recipients, err := h.CampaignRepo.ListRecipients(c.Request().Context(), id, nil, 100)
+	if err != nil {
+		recipients = []domain.CampaignRecipientRecord{}
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"campaign":   camp,
+		"recipients": recipients,
+	})
+}
+
