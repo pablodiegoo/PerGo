@@ -1,6 +1,6 @@
 # PerGo Domain Glossary
 
-PerGo is a self-hosted CPaaS that provides unified API messaging and compliance across WhatsApp Web, WhatsApp Cloud (WABA), and Telegram.
+PerGo is a self-hosted CPaaS that provides unified API messaging and compliance across WhatsApp Web, WhatsApp Cloud (WABA), Telegram, Instagram, and Email.
 
 ## Language
 
@@ -48,6 +48,18 @@ _Avoid_: Event routing manager, syncer coordinator
 An adapter satisfying the `IntegrationHandler` seam that syncs or forwards unified inbound events to a specific external system (e.g. Chatwoot, Typebot, N8N).
 _Avoid_: Syncer adapter, integration forwarder plugin
 
+**Campaign**:
+A scheduled or immediate bulk message dispatch targeting a defined contact segment or recipient list through a specific connection slug.
+_Avoid_: Broadcast job, bulk blast, mass message batch
 
+**Tag**:
+A workspace-scoped label attached to a contact for categorization and segment filtering.
+_Avoid_: Contact label, group tag, list category
 
+**Broadcaster Engine**:
+The consolidated module that orchestrates the batching, rate-limiting, and queued dispatch of campaign messages.
+_Avoid_: Bulk sender, campaign runner, batch pusher
 
+**Webhook Signature**:
+An HMAC-SHA256 digest generated using a workspace-scoped secret key and attached to outbound webhooks for cryptographic payload verification.
+_Avoid_: Token header, SHA hash, auth HMAC

@@ -1,0 +1,121 @@
+package pages
+
+import (
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/domain"
+)
+
+// TagBadge renders a colored tag pill badge.
+templ TagBadge(tag domain.Tag) {
+	<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold" style={ fmt.Sprintf("background-color: %s20; color: %s; border: 1px solid %s40;", tag.Color, tag.Color, tag.Color) }>
+		<span class="w-2 h-2 rounded-full" style={ fmt.Sprintf("background-color: %s;", tag.Color) }></span>
+		{ tag.Name }
+	</span>
+}
+
+// TagRow renders a single tag table row.
+templ TagRow(workspaceID uuid.UUID, tag domain.Tag) {
+	<tr class="hover:bg-zinc-50/50 transition-colors">
+		<td class="px-6 py-4">
+			@TagBadge(tag)
+		</td>
+		<td class="px-6 py-4 text-xs font-mono text-zinc-500">{ tag.Color }</td>
+		<td class="px-6 py-4 text-xs font-mono text-zinc-500">{ tag.CreatedAt.Format("02/01/2006 15:04") }</td>
+		<td class="px-6 py-4 text-right">
+			<button
+				class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold"
+				hx-delete={ fmt.Sprintf("/api/v1/workspaces/%s/tags/%s", workspaceID, tag.ID) }
+				hx-target="closest tr"
+				hx-swap="outerHTML"
+				hx-confirm="Tem certeza que deseja excluir esta tag?"
+			>
+				Excluir
+			</button>
+		</td>
+	</tr>
+}
+
+// TagListFragment renders the tag list table.
+templ TagListFragment(workspaceID uuid.UUID, tags []domain.Tag) {
+	<div class="overflow-x-auto border border-zinc-200 rounded-lg shadow-sm">
+		<table class="table min-w-full divide-y divide-zinc-200">
+			<thead class="bg-zinc-50 text-zinc-500 text-xs font-semibold uppercase tracking-wider text-left border-b border-zinc-200">
+				<tr>
+					<th class="px-6 py-3">Nome da Tag</th>
+					<th class="px-6 py-3">Cor Hex</th>
+					<th class="px-6 py-3">Criada Em</th>
+					<th class="px-6 py-3 text-right">Ações</th>
+				</tr>
+			</thead>
+			<tbody id="tag-list-body" class="divide-y divide-zinc-200 text-sm text-zinc-700 bg-white">
+				for _, t := range tags {
+					@TagRow(workspaceID, t)
+				}
+				if len(tags) == 0 {
+					<tr>
+						<td colspan="4" class="px-6 py-12 text-center text-zinc-400">Nenhuma tag cadastrada ainda.</td>
+					</tr>
+				}
+			</tbody>
+		</table>
+	</div>
+}
+
+// TagsPage renders the main tag management page.
+templ TagsPage(workspaceID uuid.UUID, tags []domain.Tag) {
+	<div class="space-y-6">
+		<div class="flex justify-between items-center">
+			<div>
+				<h1 class="text-2xl font-bold text-zinc-900">Etiquetas & Segmentação de Contatos</h1>
+				<p class="text-sm text-zinc-500">Crie tags dinâmicas e importe listas de contatos CSV para segmentar mensagens.</p>
+			</div>
+		</div>
+
+		<!-- Formulário de Criação de Tag -->
+		<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm">
+			<h2 class="text-md font-semibold text-zinc-900 mb-4">Nova Tag</h2>
+			<form
+				hx-post={ fmt.Sprintf("/api/v1/workspaces/%s/tags", workspaceID) }
+				hx-target="#tag-list-body"
+				hx-swap="afterbegin"
+				class="flex flex-wrap gap-4 items-end"
+			>
+				<div class="flex-1 min-w-[200px]">
+					<label for="tag-name" class="block text-xs font-semibold text-zinc-600 mb-1 uppercase tracking-wider">Nome da Tag</label>
+					<input type="text" id="tag-name" name="name" required placeholder="ex: Cliente VIP, Lead Frio" class="w-full px-3 py-2 border border-zinc-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950"/>
+				</div>
+				<div class="w-32">
+					<label for="tag-color" class="block text-xs font-semibold text-zinc-600 mb-1 uppercase tracking-wider">Cor Hex</label>
+					<input type="color" id="tag-color" name="color" value="#3B82F6" class="w-full h-9 p-1 border border-zinc-300 rounded-md cursor-pointer"/>
+				</div>
+				<button type="submit" class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none font-semibold px-5 h-9 rounded-md transition text-sm">
+					Criar Tag
+				</button>
+			</form>
+		</div>
+
+		<!-- Formulário de Importação de CSV -->
+		<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm">
+			<h2 class="text-md font-semibold text-zinc-900 mb-2">Importar Contatos via CSV</h2>
+			<p class="text-xs text-zinc-500 mb-4">O arquivo CSV deve conter pelo menos as colunas: <code>phone</code> (ou <code>sender_identity</code>), <code>name</code>, <code>email</code>, <code>tags</code> (separadas por vírgula).</p>
+			<form
+				hx-post={ fmt.Sprintf("/api/v1/workspaces/%s/contacts/import", workspaceID) }
+				hx-encoding="multipart/form-data"
+				hx-target="#import-result"
+				hx-swap="innerHTML"
+				class="flex gap-4 items-center"
+			>
+				<input type="file" name="file" accept=".csv" required class="text-sm text-zinc-600 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 cursor-pointer"/>
+				<button type="submit" class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold px-4 h-9 rounded-md transition text-sm">
+					Upload & Importar
+				</button>
+			</form>
+			<div id="import-result" class="mt-3"></div>
+		</div>
+
+		<!-- Tabela de Tags -->
+		@TagListFragment(workspaceID, tags)
+	</div>
+}

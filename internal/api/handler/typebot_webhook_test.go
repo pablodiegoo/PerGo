@@ -112,10 +112,11 @@ func TestTypebotWebhookHandler_HappyPath(t *testing.T) {
 	// Create Telegram Connection
 	connectionID := uuid.New()
 	senderIdentity := "@my_telegram_bot_" + uuid.New().String()
+	slug := "tg-bot-" + uuid.New().String()[:8]
 	_, err = pool.Exec(ctx, `
-		INSERT INTO connections (id, workspace_id, name, channel, sender_identity, status, is_default, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-	`, connectionID, ws.ID, "TG Webhook Connection", "telegram", senderIdentity, "active", true)
+		INSERT INTO connections (id, workspace_id, name, channel, sender_identity, status, is_default, slug, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+	`, connectionID, ws.ID, "TG Webhook Connection", "telegram", senderIdentity, "active", true, slug)
 	if err != nil {
 		t.Fatalf("failed to insert connection: %v", err)
 	}

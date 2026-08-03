@@ -77,12 +77,13 @@ func (r *CredentialsRepository) Save(ctx context.Context, workspaceID uuid.UUID,
 		if senderIdentity == "" {
 			senderIdentity = fmt.Sprintf("legacy_%s_%s", channel, newID.String())
 		}
+		slug := fmt.Sprintf("%s-%s", channel, newID.String()[:8])
 		_, err = r.pool.Exec(ctx,
 			`INSERT INTO connections (
 				id, workspace_id, name, channel, sender_identity, status, is_default, 
-				credentials, key_id, key_version, created_at, updated_at
-			 ) VALUES ($1, $2, $3, $4, $5, 'active', TRUE, $6, $7, $8, now(), now())`,
-			newID, workspaceID, name, channel, senderIdentity, ciphertext, keyID, keyVersion,
+				credentials, key_id, key_version, slug, created_at, updated_at
+			 ) VALUES ($1, $2, $3, $4, $5, 'active', TRUE, $6, $7, $8, $9, now(), now())`,
+			newID, workspaceID, name, channel, senderIdentity, ciphertext, keyID, keyVersion, slug,
 		)
 		return err
 	}
