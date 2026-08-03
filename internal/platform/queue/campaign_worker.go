@@ -10,6 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go/jetstream"
+	"golang.org/x/time/rate"
+
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -43,7 +45,7 @@ func NewCampaignWorker(
 	campaignRepo *repository.CampaignRepository,
 	connectionsRepo *repository.ConnectionRepository,
 	dispatchRepo *repository.MessageDispatchRepository,
-	publisher    *JetStreamPublisher,
+	publisher *JetStreamPublisher,
 ) *CampaignWorker {
 	ctx, cancel := context.WithCancel(ctx)
 	w := &CampaignWorker{
@@ -116,8 +118,8 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 		return
 	}
 
-	if campaign.Status == domain.CampaignStatusCancelled {
-		slog.Info("campaign_worker: campaign is cancelled, skipping batch", "campaign_id", task.CampaignID, "batch_index", task.BatchIndex)
+	if campaign.Status == domain.CampaignStatusCancelled || campaign.Status == domain.CampaignStatusFailed {
+		slog.Info("campaign_worker: campaign is inactive, skipping batch", "campaign_id", task.CampaignID, "status", campaign.Status)
 		_ = msg.Ack()
 		return
 	}
@@ -138,13 +140,40 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 		}
 	}
 
+	// Token-bucket rate limiter per batch (staggered dispatch rate)
+	delaySec := task.DelaySeconds
+	if delaySec <= 0 {
+		delaySec = 1
+	}
+	limiter := rate.NewLimiter(rate.Every(time.Duration(delaySec)*time.Second), 1)
+
 	for _, recipient := range task.Recipients {
-		// Double-check cancellation before sending each message
+		// 1. Enforce rate limit wait
+		if err := limiter.Wait(ctx); err != nil {
+			slog.Info("campaign_worker: context cancelled during rate limit wait", "campaign_id", task.CampaignID)
+			return
+		}
+
+		// 2. Check campaign status & handle Paused state
 		if recipientCampaign, err := w.campaignRepo.GetByID(ctx, task.CampaignID); err == nil {
-			if recipientCampaign.Status == domain.CampaignStatusCancelled {
-				slog.Info("campaign_worker: campaign cancelled mid-batch, halting batch processing", "campaign_id", task.CampaignID)
+			if recipientCampaign.Status == domain.CampaignStatusCancelled || recipientCampaign.Status == domain.CampaignStatusFailed {
+				slog.Info("campaign_worker: campaign halted mid-batch", "campaign_id", task.CampaignID, "status", recipientCampaign.Status)
 				_ = msg.Ack()
 				return
+			}
+
+			// Handle Paused state: wait until resumed or cancelled
+			for recipientCampaign.Status == domain.CampaignStatusPaused {
+				slog.Info("campaign_worker: campaign paused, waiting for resume", "campaign_id", task.CampaignID)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(1 * time.Second):
+					cCheck, err := w.campaignRepo.GetByID(ctx, task.CampaignID)
+					if err == nil && cCheck != nil {
+						recipientCampaign = cCheck
+					}
+				}
 			}
 		}
 
@@ -210,6 +239,7 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 		)
 		if err != nil {
 			slog.Error("campaign_worker: failed to get or create dispatch", "trace_id", traceID, "error", err)
+			_ = w.campaignRepo.UpdateCounters(ctx, task.CampaignID, 0, 1)
 			continue
 		}
 
@@ -217,14 +247,19 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 		payload, err := json.Marshal(qMsg)
 		if err != nil {
 			slog.Error("campaign_worker: failed to marshal QueueMessage", "trace_id", traceID, "error", err)
+			_ = w.campaignRepo.UpdateCounters(ctx, task.CampaignID, 0, 1)
 			continue
 		}
 
 		err = w.publisher.Publish(ctx, "messages.outbound", payload, traceID)
 		if err != nil {
 			slog.Error("campaign_worker: failed to publish message to JetStream", "trace_id", traceID, "error", err)
+			_ = w.campaignRepo.UpdateCounters(ctx, task.CampaignID, 0, 1)
 			continue
 		}
+
+		// Increment sent counters
+		_ = w.campaignRepo.UpdateCounters(ctx, task.CampaignID, 1, 0)
 	}
 
 	// Dynamic Sleep: delay_seconds + uniform random jitter in [-0.5s, +0.5s]

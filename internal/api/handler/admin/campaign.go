@@ -507,6 +507,73 @@ func (h *CampaignHandler) Delete(c *echo.Context) error {
 	return c.String(http.StatusOK, "")
 }
 
+func (h *CampaignHandler) Pause(c *echo.Context) error {
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid campaign ID")
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid campaign ID")
+	}
+
+	ctx := c.Request().Context()
+	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	if err != nil {
+		return c.String(http.StatusNotFound, "campaign not found")
+	}
+
+	if err := h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusPaused); err != nil {
+		return c.String(http.StatusInternalServerError, "failed to pause campaign")
+	}
+	camp.Status = domain.CampaignStatusPaused
+
+	return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
+}
+
+func (h *CampaignHandler) Resume(c *echo.Context) error {
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid campaign ID")
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid campaign ID")
+	}
+
+	ctx := c.Request().Context()
+	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	if err != nil {
+		return c.String(http.StatusNotFound, "campaign not found")
+	}
+
+	if err := h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusSending); err != nil {
+		return c.String(http.StatusInternalServerError, "failed to resume campaign")
+	}
+	camp.Status = domain.CampaignStatusSending
+
+	return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
+}
+
+func (h *CampaignHandler) GetRow(c *echo.Context) error {
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid campaign ID")
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid campaign ID")
+	}
+
+	camp, err := h.CampaignRepo.GetByID(c.Request().Context(), id)
+	if err != nil {
+		return c.String(http.StatusNotFound, "campaign not found")
+	}
+
+	return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
+}
+
+
 // REST API Handlers
 
 type CreateCampaignRequest struct {
@@ -701,4 +768,131 @@ func (h *CampaignHandler) APIGet(c *echo.Context) error {
 		"recipients": recipients,
 	})
 }
+
+// APIStart starts/resumes a campaign via REST API.
+func (h *CampaignHandler) APIStart(c *echo.Context) error {
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
+	}
+
+	ctx := c.Request().Context()
+	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+	}
+
+	if camp.Status != domain.CampaignStatusDraft && camp.Status != domain.CampaignStatusPaused {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "only draft or paused campaigns can be started"})
+	}
+
+	// Slice recipients into batches
+	recipients := camp.Recipients
+	batchSize := camp.BatchSize
+	if batchSize <= 0 {
+		batchSize = 100
+	}
+
+	totalRecipients := len(recipients)
+	var batches [][]domain.CampaignRecipient
+	for i := 0; i < totalRecipients; i += batchSize {
+		end := i + batchSize
+		if end > totalRecipients {
+			end = totalRecipients
+		}
+		batches = append(batches, recipients[i:end])
+	}
+
+	totalBatches := len(batches)
+	if totalBatches == 0 {
+		_ = h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusCompleted)
+		camp.Status = domain.CampaignStatusCompleted
+		return c.JSON(http.StatusOK, camp)
+	}
+
+	err = h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusRunning)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update campaign status"})
+	}
+	camp.Status = domain.CampaignStatusRunning
+
+	// Enqueue batch tasks
+	for idx, batch := range batches {
+		task := queue.CampaignBatchTask{
+			CampaignID:   camp.ID,
+			WorkspaceID:  camp.WorkspaceID,
+			BatchIndex:   idx + 1,
+			TotalBatches: totalBatches,
+			Recipients:   batch,
+			DelaySeconds: camp.DelaySeconds,
+		}
+		payload, err := json.Marshal(task)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to marshal batch task"})
+		}
+
+		traceID := fmt.Sprintf("campaign_%s_batch_%d", camp.ID, idx+1)
+		err = h.Publisher.Publish(ctx, "campaigns.batches", payload, traceID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to publish campaign batches"})
+		}
+	}
+
+	return c.JSON(http.StatusOK, camp)
+}
+
+// APIPause pauses an active campaign via REST API.
+func (h *CampaignHandler) APIPause(c *echo.Context) error {
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
+	}
+
+	ctx := c.Request().Context()
+	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+	}
+
+	if err := h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusPaused); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to pause campaign"})
+	}
+	camp.Status = domain.CampaignStatusPaused
+
+	return c.JSON(http.StatusOK, camp)
+}
+
+// APIResume resumes a paused campaign via REST API.
+func (h *CampaignHandler) APIResume(c *echo.Context) error {
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
+	}
+
+	ctx := c.Request().Context()
+	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+	}
+
+	if err := h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusRunning); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to resume campaign"})
+	}
+	camp.Status = domain.CampaignStatusRunning
+
+	return c.JSON(http.StatusOK, camp)
+}
+
 

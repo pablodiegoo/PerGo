@@ -165,7 +165,10 @@ func TestCampaignWorker_Cancelled(t *testing.T) {
 	campRepo := repository.NewCampaignRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 
-	ws, _ := wsRepo.Create(ctx, "camp_worker_ws_cancel_"+uuid.New().String())
+	ws, err := wsRepo.Create(ctx, "camp_worker_ws_cancel_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
 
 	_, _ = EnsureCampaignStream(ctx, nc)
@@ -183,7 +186,10 @@ func TestCampaignWorker_Cancelled(t *testing.T) {
 		BatchSize:    1,
 		DelaySeconds: 1,
 	}
-	camp, _ = campRepo.Create(ctx, camp)
+	camp, err = campRepo.Create(ctx, camp)
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
 
 	publisher := NewJetStreamPublisher(nc)
 	task := CampaignBatchTask{
@@ -203,12 +209,95 @@ func TestCampaignWorker_Cancelled(t *testing.T) {
 	defer worker.Stop()
 
 	// Wait to see if NATS message gets Acked without creating dispatches
-	// Fetch from the campaigns stream consumer to verify it is empty (acked)
 	time.Sleep(500 * time.Millisecond)
 
 	traceID := fmt.Sprintf("campaign_%s_%s", camp.ID.String(), "5511999998888")
-	_, err := dispatchRepo.GetByTraceID(ctx, traceID)
+	_, err = dispatchRepo.GetByTraceID(ctx, traceID)
 	if err == nil {
 		t.Errorf("expected no dispatch log for cancelled campaign, but found one")
 	}
 }
+
+func TestCampaignWorker_PauseAndResume(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	campRepo := repository.NewCampaignRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "camp_worker_ws_pause_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	_, _ = EnsureCampaignStream(ctx, nc)
+	_, _ = EnsureStream(ctx, nc)
+
+	js, _ := jetstream.New(nc)
+	campStream, _ := js.Stream(ctx, "CAMPAIGNS")
+	consumerName := "test-pause-consumer-" + uuid.New().String()
+	consumer, _ := EnsureCampaignConsumer(ctx, campStream, consumerName)
+
+	// Create paused campaign
+	camp := &domain.Campaign{
+		WorkspaceID:  ws.ID,
+		Name:         "Pause Camp",
+		Status:       domain.CampaignStatusPaused, // Starts paused!
+		BatchSize:    1,
+		DelaySeconds: 1,
+	}
+	camp, err = campRepo.Create(ctx, camp)
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
+
+	publisher := NewJetStreamPublisher(nc)
+	task := CampaignBatchTask{
+		CampaignID:   camp.ID,
+		WorkspaceID:  ws.ID,
+		BatchIndex:   1,
+		TotalBatches: 1,
+		Recipients: []domain.CampaignRecipient{
+			{To: "5511977778888", Variables: map[string]string{}},
+		},
+		DelaySeconds: 0,
+	}
+	taskBytes, _ := json.Marshal(task)
+	_ = publisher.Publish(ctx, "campaigns.batches", taskBytes, uuid.New().String())
+
+	worker := NewCampaignWorker(ctx, consumer, campRepo, connRepo, dispatchRepo, publisher)
+	defer worker.Stop()
+
+	// Wait 500ms while paused — no dispatch should be created
+	time.Sleep(500 * time.Millisecond)
+
+	traceID := fmt.Sprintf("campaign_%s_%s", camp.ID.String(), "5511977778888")
+	_, err = dispatchRepo.GetByTraceID(ctx, traceID)
+	if err == nil {
+		t.Fatalf("expected no dispatch log while paused, but found one")
+	}
+
+	// Resume campaign by updating status to sending
+	_ = campRepo.UpdateStatus(ctx, camp.ID, domain.CampaignStatusSending)
+
+	// Wait for completion
+	var finalCamp *domain.Campaign
+	for i := 0; i < 20; i++ {
+		finalCamp, _ = campRepo.GetByID(ctx, camp.ID)
+		if finalCamp.Status == domain.CampaignStatusCompleted {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if finalCamp.Status != domain.CampaignStatusCompleted {
+		t.Fatalf("campaign expected to be completed after resume, got: %s", finalCamp.Status)
+	}
+}
+

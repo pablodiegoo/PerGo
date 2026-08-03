@@ -681,8 +681,11 @@ func main() {
 	adminGroup.GET("/workspaces/:workspace_id/campaigns/new", campaignHandler.NewForm)
 	adminGroup.POST("/workspaces/:workspace_id/campaigns/upload", campaignHandler.UploadCSV)
 	adminGroup.POST("/workspaces/:workspace_id/campaigns", campaignHandler.Create)
+	adminGroup.GET("/workspaces/:workspace_id/campaigns/:id/row", campaignHandler.GetRow)
 	adminGroup.GET("/workspaces/:workspace_id/campaigns/:id/skipped/download", campaignHandler.DownloadSkipped)
 	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/start", campaignHandler.Start)
+	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/pause", campaignHandler.Pause)
+	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/resume", campaignHandler.Resume)
 	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/cancel", campaignHandler.Cancel)
 	adminGroup.DELETE("/workspaces/:workspace_id/campaigns/:id", campaignHandler.Delete)
 
@@ -690,6 +693,10 @@ func main() {
 	v1Group.POST("/workspaces/:workspace_id/campaigns", campaignHandler.APICreate)
 	v1Group.GET("/workspaces/:workspace_id/campaigns", campaignHandler.APIList)
 	v1Group.GET("/workspaces/:workspace_id/campaigns/:id", campaignHandler.APIGet)
+	v1Group.POST("/workspaces/:workspace_id/campaigns/:id/start", campaignHandler.APIStart)
+	v1Group.POST("/workspaces/:workspace_id/campaigns/:id/pause", campaignHandler.APIPause)
+	v1Group.POST("/workspaces/:workspace_id/campaigns/:id/resume", campaignHandler.APIResume)
+
 
 
 

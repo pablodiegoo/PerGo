@@ -66,7 +66,15 @@ templ CampaignsContent(workspaceID uuid.UUID, campaigns []domain.Campaign, templ
 }
 
 templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
-	<tr id={ fmt.Sprintf("campaign-row-%s", c.ID) } class="hover:bg-zinc-50/50 transition-colors">
+	<tr 
+		id={ fmt.Sprintf("campaign-row-%s", c.ID) } 
+		class="hover:bg-zinc-50/50 transition-colors"
+		if c.Status == domain.CampaignStatusSending || c.Status == domain.CampaignStatusRunning {
+			hx-get={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/row", workspaceID, c.ID) }
+			hx-trigger="every 2s"
+			hx-swap="outerHTML"
+		}
+	>
 		<td class="px-6 py-4 font-semibold text-zinc-900">{ c.Name }</td>
 		<td class="px-6 py-4">
 			if c.Channel != nil {
@@ -82,16 +90,26 @@ templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
 				<span class="text-zinc-300">—</span>
 			}
 		</td>
-		<td class="px-6 py-4 font-mono text-xs text-zinc-500">{ fmt.Sprintf("%d", len(c.Recipients)) }</td>
+		<td class="px-6 py-4 font-mono text-xs text-zinc-500">
+			if c.TotalRecipients > 0 {
+				{ fmt.Sprintf("%d / %d", c.SentRecipients, c.TotalRecipients) }
+			} else {
+				{ fmt.Sprintf("%d", len(c.Recipients)) }
+			}
+		</td>
 		<td class="px-6 py-4">
 			if c.Status == domain.CampaignStatusDraft {
 				<span class="badge badge-sm bg-zinc-100 text-zinc-700 border-zinc-200 px-2 py-0.5 text-xs font-semibold">Rascunho</span>
 			} else if c.Status == domain.CampaignStatusScheduled {
 				<span class="badge badge-sm bg-amber-50 text-amber-700 border-amber-200 px-2 py-0.5 text-xs font-semibold">Agendada</span>
-			} else if c.Status == domain.CampaignStatusSending {
+			} else if c.Status == domain.CampaignStatusSending || c.Status == domain.CampaignStatusRunning {
 				<span class="badge badge-sm bg-blue-50 text-blue-700 border-blue-200 px-2 py-0.5 text-xs font-semibold animate-pulse">Enviando</span>
+			} else if c.Status == domain.CampaignStatusPaused {
+				<span class="badge badge-sm bg-amber-100 text-amber-800 border-amber-300 px-2 py-0.5 text-xs font-semibold">Pausada</span>
 			} else if c.Status == domain.CampaignStatusCompleted {
 				<span class="badge badge-sm bg-emerald-50 text-emerald-700 border-emerald-200 px-2 py-0.5 text-xs font-semibold">Concluída</span>
+			} else if c.Status == domain.CampaignStatusFailed {
+				<span class="badge badge-sm bg-rose-100 text-rose-800 border-rose-300 px-2 py-0.5 text-xs font-semibold">Falhou</span>
 			} else if c.Status == domain.CampaignStatusCancelled {
 				<span class="badge badge-sm bg-rose-50 text-rose-700 border-rose-200 px-2 py-0.5 text-xs font-semibold">Cancelada</span>
 			}
@@ -109,7 +127,33 @@ templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
 						Enviar
 					</button>
 				}
-				if c.Status == domain.CampaignStatusSending {
+				if c.Status == domain.CampaignStatusSending || c.Status == domain.CampaignStatusRunning {
+					<button
+						class="btn btn-ghost hover:bg-amber-50 text-amber-600 btn-xs font-semibold"
+						hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/pause", workspaceID, c.ID) }
+						hx-target={ fmt.Sprintf("#campaign-row-%s", c.ID) }
+						hx-swap="outerHTML"
+					>
+						Pausar
+					</button>
+					<button
+						class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold"
+						hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/cancel", workspaceID, c.ID) }
+						hx-target={ fmt.Sprintf("#campaign-row-%s", c.ID) }
+						hx-swap="outerHTML"
+					>
+						Cancelar
+					</button>
+				}
+				if c.Status == domain.CampaignStatusPaused {
+					<button
+						class="btn btn-ghost hover:bg-emerald-50 text-emerald-600 btn-xs font-semibold"
+						hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/resume", workspaceID, c.ID) }
+						hx-target={ fmt.Sprintf("#campaign-row-%s", c.ID) }
+						hx-swap="outerHTML"
+					>
+						Retomar
+					</button>
 					<button
 						class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold"
 						hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/cancel", workspaceID, c.ID) }
