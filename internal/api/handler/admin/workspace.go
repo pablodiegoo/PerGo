@@ -137,3 +137,53 @@ func (h *WorkspaceHandler) Delete(c *echo.Context) error {
 
 	return c.NoContent(http.StatusOK)
 }
+
+// GetWebhookSecret returns the workspace's webhook secret key.
+func (h *WorkspaceHandler) GetWebhookSecret(c *echo.Context) error {
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	}
+
+	ws, err := h.Repo.GetByID(c.Request().Context(), id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+	}
+
+	secret := ""
+	if ws.WebhookSecret != nil {
+		secret = *ws.WebhookSecret
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"workspace_id":   id.String(),
+		"webhook_secret": secret,
+	})
+}
+
+// GenerateWebhookSecret generates or regenerates a workspace's webhook secret key.
+func (h *WorkspaceHandler) GenerateWebhookSecret(c *echo.Context) error {
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	}
+
+	secret, err := h.Repo.GenerateWebhookSecret(c.Request().Context(), id)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate webhook secret"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"workspace_id":   id.String(),
+		"webhook_secret": secret,
+	})
+}
+

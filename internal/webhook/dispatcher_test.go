@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -554,3 +555,62 @@ func TestDefaultDispatcher_VerbsIntegration(t *testing.T) {
 		}
 	}
 }
+
+func TestDispatcher_WorkspaceWebhookSecretFallback(t *testing.T) {
+	wsID := uuid.New()
+	subID := uuid.New()
+	secretStr := "workspace_secret_key_12345"
+
+	subStore := &mockSubscriptionStore{
+		sub: &repository.WebhookSubscription{
+			ID:          subID,
+			WorkspaceID: wsID,
+			URL:         "http://example.com/webhook",
+			Active:      true,
+			Secret:      nil, // Empty subscription secret
+		},
+	}
+
+	wsStore := &mockWorkspaceStore{
+		ws: &repository.Workspace{
+			ID:            wsID,
+			Name:          "Secret Test WS",
+			WebhookSecret: &secretStr,
+		},
+	}
+
+	client := &mockHTTPClient{
+		response: &http.Response{
+			StatusCode: http.StatusOK,
+			Status:     "200 OK",
+			Body:       io.NopCloser(strings.NewReader(`{}`)),
+		},
+	}
+
+	dispatcher := webhook.NewDefaultDispatcher(subStore, nil, wsStore, client, nil)
+	task := webhook.WebhookDeliveryTask{
+		ID:             uuid.New(),
+		SubscriptionID: subID,
+		WorkspaceID:    wsID,
+		Event:          "message.created",
+		Payload:        []byte(`{"text":"hello"}`),
+	}
+
+	err := dispatcher.Dispatch(context.Background(), task)
+	if err != nil {
+		t.Fatalf("dispatch failed: %v", err)
+	}
+
+	if len(client.requests) == 0 {
+		t.Fatalf("expected 1 http request made")
+	}
+
+	capturedSignature := client.requests[0].Header.Get("X-PerGo-Signature")
+	if capturedSignature == "" {
+		t.Errorf("expected X-PerGo-Signature header to be set")
+	}
+	if !strings.Contains(capturedSignature, "v1=") {
+		t.Errorf("expected signature to contain v1=, got: %s", capturedSignature)
+	}
+}
+

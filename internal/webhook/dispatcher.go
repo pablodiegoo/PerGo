@@ -148,9 +148,16 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, task WebhookDeliveryTa
 		}
 	}
 
-	// 3. Dispatch HTTP Post request
+	// 3. Resolve Secret and Dispatch HTTP Post request
+	secret := sub.Secret
+	if len(secret) == 0 && d.wsStore != nil {
+		if ws, err := d.wsStore.GetByID(ctx, task.WorkspaceID); err == nil && ws != nil && ws.WebhookSecret != nil {
+			secret = []byte(*ws.WebhookSecret)
+		}
+	}
+
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
-	signature := SignPayload(payloadBytes, sub.Secret, timestamp)
+	signature := SignPayload(payloadBytes, secret, timestamp)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sub.URL, bytes.NewReader(payloadBytes))
 	if err != nil {
