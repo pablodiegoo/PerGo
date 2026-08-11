@@ -658,6 +658,32 @@ func main() {
 
 	// Campaigns routes
 	tagRepo := repository.NewTagRepository(pool)
+	// Tags & Contact Import/Export routes
+	tagAdminHandler := admin.NewTagAdminHandler(tagRepo, contactRepo)
+	adminGroup.GET("/tags", func(c *echo.Context) error {
+		ctx := c.Request().Context()
+		cookie, err := c.Cookie("pergo-active-workspace")
+		var wsID uuid.UUID
+		if err == nil && cookie != nil && cookie.Value != "" {
+			wsID, _ = uuid.Parse(cookie.Value)
+		}
+		if wsID == uuid.Nil {
+			list, err := wsRepo.List(ctx, 1)
+			if err == nil && len(list) > 0 {
+				wsID = list[0].ID
+			}
+		}
+		if wsID == uuid.Nil {
+			return c.String(http.StatusBadRequest, "nenhum workspace encontrado. Crie um workspace primeiro.")
+		}
+		return c.Redirect(http.StatusFound, fmt.Sprintf("/admin/workspaces/%s/tags", wsID.String()))
+	})
+	adminGroup.GET("/workspaces/:workspace_id/tags", tagAdminHandler.Page)
+	adminGroup.POST("/workspaces/:workspace_id/tags", tagAdminHandler.CreateTag)
+	adminGroup.DELETE("/workspaces/:workspace_id/tags/:id", tagAdminHandler.DeleteTag)
+	adminGroup.POST("/workspaces/:workspace_id/contacts/import", tagAdminHandler.ImportContactsCSV)
+	adminGroup.GET("/workspaces/:workspace_id/contacts/export", tagAdminHandler.ExportContactsCSV)
+
 	campaignHandler := admin.NewCampaignHandler(campaignRepo, wabaTemplateRepo, connectionRepo, tagRepo, publisher)
 	adminGroup.GET("/campaigns", func(c *echo.Context) error {
 		ctx := c.Request().Context()
@@ -697,6 +723,16 @@ func main() {
 	v1Group.POST("/workspaces/:workspace_id/campaigns/:id/start", campaignHandler.APIStart)
 	v1Group.POST("/workspaces/:workspace_id/campaigns/:id/pause", campaignHandler.APIPause)
 	v1Group.POST("/workspaces/:workspace_id/campaigns/:id/resume", campaignHandler.APIResume)
+
+	// Tag & Contact API routes (v1)
+	v1Group.GET("/workspaces/:workspace_id/tags", tagAdminHandler.ListTags)
+	v1Group.POST("/workspaces/:workspace_id/tags", tagAdminHandler.CreateTag)
+	v1Group.DELETE("/workspaces/:workspace_id/tags/:id", tagAdminHandler.DeleteTag)
+	v1Group.POST("/workspaces/:workspace_id/contacts/:contact_id/tags/:tag_id", tagAdminHandler.AddContactTag)
+	v1Group.DELETE("/workspaces/:workspace_id/contacts/:contact_id/tags/:tag_id", tagAdminHandler.RemoveContactTag)
+	v1Group.POST("/workspaces/:workspace_id/contacts/import", tagAdminHandler.ImportContactsCSV)
+	v1Group.GET("/workspaces/:workspace_id/contacts/export", tagAdminHandler.ExportContactsCSV)
+
 
 
 

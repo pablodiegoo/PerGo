@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/csv"
+	"log/slog"
 	"errors"
 	"io"
 	"net/http"
@@ -357,13 +358,19 @@ func (h *TagAdminHandler) ExportContactsCSV(c *echo.Context) error {
 	if tagIDStr != "" {
 		tagID, err := uuid.Parse(tagIDStr)
 		if err == nil {
-			contacts, _ = h.tagRepo.ListContactsByTag(c.Request().Context(), workspaceID, tagID)
+			var tagErr error
+			contacts, tagErr = h.tagRepo.ListContactsByTag(c.Request().Context(), workspaceID, tagID)
+			if tagErr != nil {
+				slog.Error("failed to list contacts by tag for export", "workspace_id", workspaceID, "tag_id", tagID, "error", tagErr)
+			}
 		}
 	}
 	if contacts == nil {
-		contacts, err = h.contactRepo.SearchContacts(c.Request().Context(), workspaceID, "", uuid.Nil, 10000)
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		var searchErr error
+		contacts, searchErr = h.contactRepo.SearchContacts(c.Request().Context(), workspaceID, "", uuid.Nil, 10000)
+		if searchErr != nil {
+			slog.Error("failed to search contacts for export", "workspace_id", workspaceID, "error", searchErr)
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": searchErr.Error()})
 		}
 	}
 
