@@ -13,26 +13,26 @@ import (
 
 type loggerKey struct{}
 
-// NewLogger creates a slog.Logger with a trace_id attribute.
+// NewLogger creates a slog.Logger with a trace_id attribute and PII redaction.
 func NewLogger(traceID string) *slog.Logger {
-	return slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("trace_id", traceID)
+	return slog.New(NewRedactingHandler(slog.NewJSONHandler(os.Stdout, nil))).With("trace_id", traceID)
 }
 
 // NewLoggerWithWriter creates a slog.Logger that writes to the given writer
-// with a trace_id attribute. Useful for testing.
+// with a trace_id attribute and PII redaction. Useful for testing.
 func NewLoggerWithWriter(traceID string, w io.Writer) *slog.Logger {
-	return slog.New(slog.NewJSONHandler(w, nil)).With("trace_id", traceID)
+	return slog.New(NewRedactingHandler(slog.NewJSONHandler(w, nil))).With("trace_id", traceID)
 }
 
 // LoggerFromContext extracts the trace_id from context and returns a logger
-// with the trace_id attribute. If no trace_id is present, a default logger
-// is returned.
+// with the trace_id attribute and PII redaction. If no trace_id is present,
+// a default logger is returned.
 func LoggerFromContext(ctx context.Context) *slog.Logger {
 	traceID, ok := middleware.TraceIDFrom(ctx)
 	if !ok {
 		return slog.Default()
 	}
-	return slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("trace_id", traceID)
+	return slog.New(NewRedactingHandler(slog.NewJSONHandler(os.Stdout, nil))).With("trace_id", traceID)
 }
 
 // WithContext stores a logger in the context.
