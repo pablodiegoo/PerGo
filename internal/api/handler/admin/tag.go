@@ -10,7 +10,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
+	"github.com/pablojhp.pergo/internal/domain"
+	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/pages"
+	"time"
 )
 
 type TagAdminHandler struct {
@@ -31,6 +35,28 @@ type CreateTagRequest struct {
 }
 
 // ListTags handles GET /api/v1/workspaces/:workspace_id/tags
+// Page handles GET /admin/workspaces/:workspace_id/tags
+func (h *TagAdminHandler) Page(c *echo.Context) error {
+	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid workspace ID")
+	}
+	workspaceID, err := uuid.Parse(workspaceIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid workspace ID")
+	}
+
+	tags, err := h.tagRepo.ListTags(c.Request().Context(), workspaceID)
+	if err != nil {
+		tags = []domain.Tag{}
+	}
+
+	if mw.IsHTMX(c) {
+		return mw.Render(c, http.StatusOK, pages.TagListFragment(workspaceID, tags))
+	}
+	return mw.Render(c, http.StatusOK, pages.TagsPage(workspaceID, tags))
+}
+
 func (h *TagAdminHandler) ListTags(c *echo.Context) error {
 	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
 	if err != nil {
@@ -313,4 +339,66 @@ func (h *TagAdminHandler) ImportContactsCSV(c *echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, result)
+}
+
+// ExportContactsCSV handles GET /api/v1/workspaces/:workspace_id/contacts/export
+func (h *TagAdminHandler) ExportContactsCSV(c *echo.Context) error {
+	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	}
+	workspaceID, err := uuid.Parse(workspaceIDStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	}
+
+	tagIDStr := c.QueryParam("tag_id")
+	var contacts []domain.Contact
+	if tagIDStr != "" {
+		tagID, err := uuid.Parse(tagIDStr)
+		if err == nil {
+			contacts, _ = h.tagRepo.ListContactsByTag(c.Request().Context(), workspaceID, tagID)
+		}
+	}
+	if contacts == nil {
+		contacts, err = h.contactRepo.SearchContacts(c.Request().Context(), workspaceID, "", uuid.Nil, 10000)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+	}
+
+	c.Response().Header().Set("Content-Type", "text/csv")
+	c.Response().Header().Set("Content-Disposition", "attachment; filename=contacts.csv")
+
+	writer := csv.NewWriter(c.Response())
+	_ = writer.Write([]string{"id", "name", "email", "channel", "sender_identity", "tags", "created_at"})
+
+	for _, contact := range contacts {
+		var identityStr string
+		var channelStr string
+		if len(contact.Identities) > 0 {
+			channelStr = contact.Identities[0].Channel
+			identityStr = contact.Identities[0].SenderIdentity
+		}
+		tags, _ := h.tagRepo.GetContactTags(c.Request().Context(), workspaceID, contact.ID)
+		var tagNames []string
+		for _, t := range tags {
+			tagNames = append(tagNames, t.Name)
+		}
+		email := ""
+		if contact.Email != nil {
+			email = *contact.Email
+		}
+		_ = writer.Write([]string{
+			contact.ID.String(),
+			contact.Name,
+			email,
+			channelStr,
+			identityStr,
+			strings.Join(tagNames, ","),
+			contact.CreatedAt.Format(time.RFC3339),
+		})
+	}
+	writer.Flush()
+	return nil
 }

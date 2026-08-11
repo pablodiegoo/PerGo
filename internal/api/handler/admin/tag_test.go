@@ -180,6 +180,28 @@ func TestTagAdminHandler(t *testing.T) {
 		}
 	})
 
+		t.Run("ExportContactsCSV_Success", func(t *testing.T) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/workspaces/%s/contacts/export", ws.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/contacts/export")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+		})
+
+		if err := handler.ExportContactsCSV(c); err != nil {
+			t.Fatalf("ExportContactsCSV failed: %v", err)
+		}
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), "id,name,email,channel,sender_identity,tags,created_at") {
+			t.Errorf("expected CSV header in body, got %s", rec.Body.String())
+		}
+	})
+
 	t.Run("DeleteTag_Success", func(t *testing.T) {
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/workspaces/%s/tags/%s", ws.ID, createdTag.ID), nil)
