@@ -12,7 +12,7 @@
 #    make lint       → golangci-lint
 # ─────────────────────────────────────────────────────────────
 
-.PHONY: dev prod infra infra-down build generate test test-race lint clean help
+.PHONY: dev prod infra infra-down build generate test test-race test-integration coverage migrate-up migrate-down lint clean help down
 
 # Carrega variáveis do .env se ele existir (sem expor no shell pai)
 ifneq (,$(wildcard .env))
@@ -88,6 +88,28 @@ test:
 ## test-race: executa testes com race detector
 test-race:
 	@go test ./... -race -count=1
+
+
+## test-integration: executa os testes de integração
+test-integration:
+	@go test -v ./... -tags=integration -count=1
+
+## coverage: gera relatório de cobertura de código
+coverage:
+	@go test ./... -coverprofile=coverage.out
+	@go tool cover -func=coverage.out
+
+## migrate-up: aplica todas as migrations pendentes
+migrate-up:
+	@goose -dir internal/platform/postgres/migrations postgres "$" up
+
+## migrate-down: reverte a última migration
+migrate-down:
+	@goose -dir internal/platform/postgres/migrations postgres "$" down
+
+## down: derruba todos os containers da aplicação de forma idempotente
+down:
+	@docker compose down --remove-orphans || true
 
 ## lint: análise estática com golangci-lint
 lint:

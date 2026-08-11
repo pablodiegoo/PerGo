@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/platform/netpolicy"
+	"github.com/pablojhp.pergo/internal/platform/breaker"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -48,6 +50,10 @@ func (e *HTTPError) Error() string {
 	return fmt.Sprintf("http status %s", e.Status)
 }
 
+func (e *HTTPError) Terminal() bool {
+	return e.StatusCode >= 400 && e.StatusCode < 500 && e.StatusCode != 429
+}
+
 var (
 	ErrSubscriptionInactive = errors.New("webhook subscription is inactive")
 	ErrSubscriptionNotFound = errors.New("webhook subscription not found")
@@ -77,12 +83,13 @@ type DefaultDispatcher struct {
 	wsStore     WorkspaceStore
 	client      HTTPClient
 	verbsEngine *VerbsEngine
+	breaker     *breaker.CircuitBreaker
 }
 
 // NewDefaultDispatcher creates a new DefaultDispatcher instance.
 func NewDefaultDispatcher(subStore SubscriptionStore, dlqStore DLQStore, wsStore WorkspaceStore, client HTTPClient, verbsEngine *VerbsEngine) *DefaultDispatcher {
 	if client == nil {
-		client = &http.Client{Timeout: 10 * time.Second}
+		client = netpolicy.NewPublicHTTPClient(netpolicy.WithTimeout(10 * time.Second))
 	}
 	return &DefaultDispatcher{
 		subStore:    subStore,
@@ -90,6 +97,7 @@ func NewDefaultDispatcher(subStore SubscriptionStore, dlqStore DLQStore, wsStore
 		wsStore:     wsStore,
 		client:      client,
 		verbsEngine: verbsEngine,
+		breaker:     breaker.NewCircuitBreaker(5, 5*time.Minute),
 	}
 }
 
@@ -106,6 +114,12 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, task WebhookDeliveryTa
 
 	if !sub.Active {
 		return ErrSubscriptionInactive
+	}
+
+	if d.breaker != nil {
+		if err := d.breaker.Allow(sub.URL); err != nil {
+			return err
+		}
 	}
 
 	payloadBytes := task.Payload
@@ -172,12 +186,22 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, task WebhookDeliveryTa
 
 	resp, err := d.client.Do(req)
 	if err != nil {
+		if d.breaker != nil {
+			d.breaker.RecordFailure(sub.URL)
+		}
 		return fmt.Errorf("http dispatch error: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if d.breaker != nil {
+			d.breaker.RecordFailure(sub.URL)
+		}
 		return &HTTPError{StatusCode: resp.StatusCode, Status: resp.Status}
+	}
+
+	if d.breaker != nil {
+		d.breaker.RecordSuccess(sub.URL)
 	}
 
 	// Read response body to extract potential messaging verbs

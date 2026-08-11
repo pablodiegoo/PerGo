@@ -1,7 +1,12 @@
 package handler
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"io"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -41,6 +46,7 @@ type MessageHandler struct {
 	S3Client       *storage.S3Client
 	ConnectionRepo ConnectionFinder
 	WindowChecker  *session.WindowChecker
+	IdempotencyRepo *repository.IdempotencyRepository
 }
 
 // RegisterRoutes wires the message endpoints onto the Echo router.
@@ -59,9 +65,15 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 	// Extract workspace_id from context (set by auth middleware)
 	workspaceID, _ := tenant.WorkspaceIDFrom(c.Request().Context())
 
+	// Read body bytes for deterministic hashing
+	bodyBytes, _ := io.ReadAll(c.Request().Body)
+	c.Request().Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
 	// Bind JSON body to request struct
+	var keyHash string
 	var req domain.CreateMessageRequest
 	if err := c.Bind(&req); err != nil {
+		c.Request().Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 		return c.JSON(http.StatusBadRequest, domain.ErrorResponse{
 			Code:    "invalid_payload",
 			Message: "request body validation failed",
@@ -70,6 +82,39 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 			},
 		})
 	}
+	c.Request().Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	// Extract Idempotency-Key header or generate key hash from payload
+	idempotencyKey := c.Request().Header.Get("Idempotency-Key")
+	if idempotencyKey != "" {
+		hasher := sha256.New()
+		hasher.Write([]byte(idempotencyKey))
+		keyHash = hex.EncodeToString(hasher.Sum(nil))
+	} else {
+		hasher := sha256.New()
+		hasher.Write(bodyBytes)
+		keyHash = hex.EncodeToString(hasher.Sum(nil))
+		idempotencyKey = keyHash
+	}
+
+	if h.IdempotencyRepo != nil && workspaceID != uuid.Nil {
+		if entry, err := h.IdempotencyRepo.GetByIdempotencyKey(c.Request().Context(), workspaceID, keyHash); err == nil && entry != nil && entry.StatusCode != nil {
+			c.Response().Header().Set("Content-Type", "application/json")
+			c.Response().WriteHeader(*entry.StatusCode)
+			_, _ = c.Response().Write(entry.ResponseBody)
+			return nil
+		}
+		_, _ = h.IdempotencyRepo.CheckAndStore(c.Request().Context(), workspaceID, keyHash, traceID, 24*time.Hour)
+		_ = h.IdempotencyRepo.RecordLedger(c.Request().Context(), &repository.IngressLedgerEntry{
+			WorkspaceID:    workspaceID,
+			TraceID:        traceID,
+			IdempotencyKey: idempotencyKey,
+			Channel:        req.Channel,
+			Recipient:      req.To,
+			Status:         "accepted",
+		})
+	}
+
 
 	// Dynamically wrap legacy fields if Ingestor is not injected
 	ingestor := h.Ingestor
@@ -241,9 +286,17 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 	c.Response().Header().Set("X-Trace-Id", traceID)
 
 	// Return 202 Accepted
-	return c.JSON(http.StatusAccepted, domain.CreateMessageResponse{
+	resp := domain.CreateMessageResponse{
 		MessageID: msgID,
 		Status:    domain.StatusQueued,
 		QueuedAt:  qMsg.QueuedAt,
-	})
+	}
+
+	respBytes, _ := json.Marshal(resp)
+	if h.IdempotencyRepo != nil && workspaceID != uuid.Nil {
+		_ = h.IdempotencyRepo.UpdateLedgerStatus(c.Request().Context(), workspaceID, traceID, "enqueued", nil)
+		_ = h.IdempotencyRepo.UpdateResponse(c.Request().Context(), workspaceID, keyHash, http.StatusAccepted, respBytes, nil)
+	}
+
+	return c.JSON(http.StatusAccepted, resp)
 }

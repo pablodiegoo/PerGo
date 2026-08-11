@@ -19,6 +19,7 @@ import (
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -171,7 +172,7 @@ type MetaErrorResponse struct {
 // NewWABAAdapter creates a new WABAAdapter.
 func NewWABAAdapter(connectionsRepo *repository.ConnectionRepository, client *http.Client, windowChecker WindowChecker, externalBaseURL string) *WABAAdapter {
 	if client == nil {
-		client = http.DefaultClient
+		client = netpolicy.NewPublicHTTPClient()
 	}
 	return &WABAAdapter{
 		connectionsRepo: connectionsRepo,

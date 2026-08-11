@@ -14,6 +14,7 @@ import (
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -61,7 +62,7 @@ type TelegramErrorResponse struct {
 // NewTelegramAdapter creates a new TelegramAdapter.
 func NewTelegramAdapter(connectionsRepo *repository.ConnectionRepository, client *http.Client, s3Client *storage.S3Client) *TelegramAdapter {
 	if client == nil {
-		client = http.DefaultClient
+		client = netpolicy.NewPublicHTTPClient()
 	}
 	return &TelegramAdapter{
 		connectionsRepo: connectionsRepo,

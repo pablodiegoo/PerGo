@@ -2,6 +2,8 @@ package audit
 
 import (
 	"context"
+	"expvar"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -11,53 +13,56 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+var (
+	droppedEventsCounter  = expvar.NewInt("audit_events_dropped")
+	fallbackEventsCounter = expvar.NewInt("audit_events_fallback")
+)
+
 // Writer is the interface for writing audit events.
 type Writer interface {
-	// Write sends an event to the buffered channel for batch writing.
-	// If the channel is full, the event is dropped and a warning is logged.
 	Write(e Event) error
-
-	// Close shuts down the writer, draining all remaining events before returning.
 	Close() error
+	EnsurePartitions(ctx context.Context) error
 }
 
-// NewWriter creates a new buffered batch writer that sends events to PostgreSQL
-// via pgx.CopyFrom. Events are buffered in a bounded channel and flushed by
-// background worker goroutines.
-//
-// Parameters:
-//   - pool: the pgxpool.Pool for database connections
-//   - bufSize: capacity of the internal event channel
-//   - workers: number of background goroutines processing events
 func NewWriter(pool *pgxpool.Pool, bufSize int, workers int) Writer {
 	bw := &BatchWriter{
 		ch:        make(chan Event, bufSize),
 		pool:      pool,
 		batchSize: 100,
+		stopCh:    make(chan struct{}),
 	}
+	
+	if pool != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_ = bw.EnsurePartitions(ctx)
+		cancel()
+	}
+
 	bw.wg.Add(workers)
 	for i := 0; i < workers; i++ {
 		go bw.worker()
 	}
+
+	go bw.partitionMaintenanceLoop()
+
 	return bw
 }
 
-// BatchWriter is the internal implementation of Writer that collects events
-// into batches and flushes them via pgx.CopyFrom.
 type BatchWriter struct {
 	ch        chan Event
 	pool      *pgxpool.Pool
 	wg        sync.WaitGroup
 	batchSize int
+	stopCh    chan struct{}
 }
 
-// Write sends an event to the batch writer's channel. If the channel is full,
-// the event is dropped and a warning is logged.
 func (w *BatchWriter) Write(e Event) error {
 	select {
 	case w.ch <- e:
 		return nil
 	default:
+		droppedEventsCounter.Add(1)
 		slog.Warn("audit channel full, dropping event",
 			"event_type", e.EventType,
 			"trace_id", e.TraceID,
@@ -66,16 +71,79 @@ func (w *BatchWriter) Write(e Event) error {
 	}
 }
 
-// Close shuts down the writer by closing the channel and waiting for all
-// workers to drain remaining events.
 func (w *BatchWriter) Close() error {
+	close(w.stopCh)
 	close(w.ch)
-	w.wg.Wait()
+
+	done := make(chan struct{})
+	go func() {
+		w.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case <-time.After(10 * time.Second):
+		slog.Error("audit batch writer close timed out after 10s")
+		return fmt.Errorf("audit close timeout")
+	}
+}
+
+func (w *BatchWriter) EnsurePartitions(ctx context.Context) error {
+	if w.pool == nil {
+		return nil
+	}
+
+	now := time.Now().UTC()
+	months := []time.Time{
+		time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC),
+		time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, time.UTC),
+	}
+
+	for _, m := range months {
+		start := m.Format("2006-01-02")
+		nextMonth := m.AddDate(0, 1, 0)
+		end := nextMonth.Format("2006-01-02")
+		partName := fmt.Sprintf("audit_logs_y%04dm%02d", m.Year(), int(m.Month()))
+
+		query := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s PARTITION OF audit_logs FOR VALUES FROM ('%s') TO ('%s')",
+			pgx.Identifier{partName}.Sanitize(),
+			start,
+			end,
+		)
+		_, err := w.pool.Exec(ctx, query)
+		if err != nil {
+			slog.Error("failed to create audit partition", "partition", partName, "error", err)
+		}
+	}
+
+	// Detach partitions older than 90 days
+	oldCutoff := now.AddDate(0, 0, -90)
+	oldMonth := time.Date(oldCutoff.Year(), oldCutoff.Month(), 1, 0, 0, 0, 0, time.UTC)
+	oldPartName := fmt.Sprintf("audit_logs_y%04dm%02d", oldMonth.Year(), int(oldMonth.Month()))
+	detachQuery := fmt.Sprintf("ALTER TABLE audit_logs DETACH PARTITION %s", pgx.Identifier{oldPartName}.Sanitize())
+	_, _ = w.pool.Exec(ctx, detachQuery)
+
 	return nil
 }
 
-// worker collects events into a batch slice and flushes them when the batch
-// is full, when the channel is closed, or when the 50ms idle timer expires.
+func (w *BatchWriter) partitionMaintenanceLoop() {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-w.stopCh:
+			return
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			_ = w.EnsurePartitions(ctx)
+			cancel()
+		}
+	}
+}
+
 func (w *BatchWriter) worker() {
 	defer w.wg.Done()
 	batch := make([]Event, 0, w.batchSize)
@@ -86,44 +154,72 @@ func (w *BatchWriter) worker() {
 		select {
 		case e, ok := <-w.ch:
 			if !ok {
-				// Flush any remaining events after channel close
 				if len(batch) > 0 {
-					w.flush(batch)
+					w.flushWithRetry(batch)
 				}
 				return
 			}
 			batch = append(batch, e)
 			if len(batch) >= w.batchSize {
-				w.flush(batch)
+				w.flushWithRetry(batch)
 				batch = batch[:0]
 			}
 		case <-ticker.C:
 			if len(batch) > 0 {
-				w.flush(batch)
+				w.flushWithRetry(batch)
 				batch = batch[:0]
 			}
 		}
 	}
 }
 
-// flush writes a batch of events to PostgreSQL using pgx.CopyFrom.
-func (w *BatchWriter) flush(events []Event) {
+func (w *BatchWriter) flushWithRetry(events []Event) {
 	if len(events) == 0 {
 		return
 	}
 
-	conn, err := w.pool.Acquire(context.Background())
-	if err != nil {
-		slog.Error("failed to acquire pgx connection for audit flush",
-			"error", err,
-			"events_dropped", len(events),
+	maxRetries := 3
+	backoff := 100 * time.Millisecond
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		err := w.flush(events)
+		if err == nil {
+			return
+		}
+
+		if attempt < maxRetries {
+			time.Sleep(backoff)
+			backoff *= 2
+		}
+	}
+
+	// Last resort fallback: log events to slog and increment counter
+	fallbackEventsCounter.Add(int64(len(events)))
+	for _, e := range events {
+		slog.Error("audit batch write failed after retries, logging to slog fallback",
+			"workspace_id", e.WorkspaceID,
+			"trace_id", e.TraceID,
+			"event_type", e.EventType,
 		)
-		return
+	}
+}
+
+func (w *BatchWriter) flush(events []Event) error {
+	if w.pool == nil {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	conn, err := w.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to acquire pgx connection: %w", err)
 	}
 	defer conn.Release()
 
 	_, err = conn.Conn().CopyFrom(
-		context.Background(),
+		ctx,
 		pgx.Identifier{"audit_logs"},
 		[]string{"id", "workspace_id", "trace_id", "event_type", "payload", "created_at"},
 		pgx.CopyFromSlice(len(events), func(i int) ([]any, error) {
@@ -131,10 +227,5 @@ func (w *BatchWriter) flush(events []Event) {
 			return []any{uuid.New(), e.WorkspaceID, e.TraceID, e.EventType, e.Payload, e.CreatedAt}, nil
 		}),
 	)
-	if err != nil {
-		slog.Error("failed to flush audit batch",
-			"error", err,
-			"events_dropped", len(events),
-		)
-	}
+	return err
 }

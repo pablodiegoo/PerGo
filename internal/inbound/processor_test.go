@@ -152,6 +152,10 @@ func (f *fakeAuditWriter) Close() error {
 	return nil
 }
 
+func (f *fakeAuditWriter) EnsurePartitions(ctx context.Context) error {
+	return nil
+}
+
 func TestInboundProcessor_Process(t *testing.T) {
 	pool := getTestPool(t)
 	defer pool.Close()

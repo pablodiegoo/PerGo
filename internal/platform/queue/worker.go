@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sync/atomic"
 	"time"
+	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/repository"
 
 	"github.com/nats-io/nats.go/jetstream"
 
@@ -20,10 +24,28 @@ type Worker struct {
 	cancel       context.CancelFunc
 	done         chan struct{}
 	orchestrator *DispatchOrchestrator
+	inFlight     atomic.Int64
+	drainTimeout time.Duration
+	claimsRepo   *repository.DeliveryClaimRepository
+	workerID     string
 }
 
 // NewWorker starts a goroutine that reads messages from consumer and
 // delegates to the orchestrator. Call Stop() to initiate shutdown.
+
+func (w *Worker) SetClaimsRepo(repo *repository.DeliveryClaimRepository, workerID string) {
+	w.claimsRepo = repo
+	w.workerID = workerID
+}
+
+func (w *Worker) SetDrainTimeout(d time.Duration) {
+	w.drainTimeout = d
+}
+
+func (w *Worker) InFlightCount() int64 {
+	return w.inFlight.Load()
+}
+
 func NewWorker(
 	ctx context.Context,
 	consumer jetstream.Consumer,
@@ -31,6 +53,7 @@ func NewWorker(
 ) *Worker {
 	ctx, cancel := context.WithCancel(ctx)
 	w := &Worker{
+		drainTimeout: 30 * time.Second,
 		consumer:     consumer,
 		cancel:       cancel,
 		done:         make(chan struct{}),
@@ -87,6 +110,8 @@ func (w *Worker) run(ctx context.Context) {
 // processMessage deserializes the JSON payload, enriches the context,
 // and delegates to the orchestrator's Process method.
 func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
+	w.inFlight.Add(1)
+	defer w.inFlight.Add(-1)
 	var qMsg domain.QueueMessage
 	if err := json.Unmarshal(msg.Data(), &qMsg); err != nil {
 		slog.Error("worker: failed to unmarshal payload", "error", err)
@@ -112,7 +137,28 @@ func (w *Worker) processMessage(ctx context.Context, msg jetstream.Msg) {
 		return
 	}
 
-	_ = w.orchestrator.Process(ctx, adaptMsg(msg), &qMsg, attempt)
+	if w.claimsRepo != nil && workspaceID != uuid.Nil {
+		claim := &repository.DeliveryClaim{
+			WorkspaceID:      workspaceID,
+			TraceID:          traceID,
+			MessageSubject:   msg.Subject(),
+			WorkerInstanceID: w.workerID,
+		}
+		inserted, claimErr := w.claimsRepo.CreateClaim(ctx, claim)
+		if claimErr == nil && !inserted {
+			slog.Warn("worker: message delivery already claimed by another worker, skipping", "trace_id", traceID)
+			_ = msg.Ack()
+			return
+		}
+		defer func() {
+			_ = w.claimsRepo.ReleaseClaim(ctx, workspaceID, traceID)
+		}()
+	}
+
+	err := w.orchestrator.Process(ctx, adaptMsg(msg), &qMsg, attempt)
+	if err != nil && channel.IsUncertain(err) {
+		slog.Warn("worker: dispatch returned uncertain error, skipping auto-retry to prevent double dispatch", "trace_id", traceID, "error", err)
+	}
 }
 
 // adaptMsg wraps a jetstream.Msg as a DispatchMessage.
@@ -148,6 +194,18 @@ func (m *jetStreamMsg) NakWithDelay(delay time.Duration) error { return m.msg.Na
 // Stop cancels the consumer context and waits for the goroutine to finish.
 func (w *Worker) Stop() {
 	w.cancel()
+
+	// Graceful drain in-flight messages up to drainTimeout
+	timeout := w.drainTimeout
+	if timeout <= 0 {
+		timeout = 30 * time.Second
+	}
+
+	deadline := time.Now().Add(timeout)
+	for w.inFlight.Load() > 0 && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+
 	<-w.done
 }
 

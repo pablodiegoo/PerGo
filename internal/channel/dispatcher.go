@@ -72,3 +72,30 @@ func IsTerminal(err error) bool {
 	var t interface{ Terminal() bool }
 	return errors.As(err, &t) && t.Terminal()
 }
+
+// UncertainError marks an error as uncertain (the adapter cannot verify if the provider received the message).
+// The worker skips auto-retry on uncertain errors to prevent double dispatch.
+type UncertainError struct {
+	Err error
+}
+
+func (e *UncertainError) Error() string {
+	return fmt.Sprintf("uncertain: %v", e.Err)
+}
+
+func (e *UncertainError) Unwrap() error {
+	return e.Err
+}
+
+func (e *UncertainError) Uncertain() bool {
+	return true
+}
+
+func NewUncertainError(err error) error {
+	return &UncertainError{Err: err}
+}
+
+func IsUncertain(err error) bool {
+	var u interface{ Uncertain() bool }
+	return errors.As(err, &u) && u.Uncertain()
+}

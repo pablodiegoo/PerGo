@@ -7,7 +7,7 @@ WORKDIR /app
 RUN apk add --no-cache git ca-certificates
 RUN go install github.com/a-h/templ/cmd/templ@v0.3.1020
 
-# Copy all files (needed first due to local go.mod replaces)
+# Copy all files
 COPY . .
 
 RUN go mod download
@@ -19,9 +19,13 @@ RUN templ generate ./...
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o pergo ./cmd/pergo
 
 # Stage 2: Minimal runtime image
-FROM gcr.io/distroless/static-debian12:latest
+FROM gcr.io/distroless/static-debian12:nonroot
+
+LABEL org.opencontainers.image.title="PerGo"       org.opencontainers.image.description="Omnichannel CPaaS Gateway in Go"       org.opencontainers.image.vendor="PerGo"
 
 WORKDIR /app
+
+ENV GOTRACEBACK=crash
 
 # Copy root CA certificates
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
@@ -29,11 +33,13 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 # Copy the compiled binary
 COPY --from=builder /app/pergo .
 
-# Copy static assets (needed for admin UI)
+# Copy static assets
 COPY --from=builder /app/static ./static
 
-# Expose port
+USER 65532:65532
+
 EXPOSE 8080
 
-# Command to run the application
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3   CMD ["/app/pergo", "-healthcheck"]
+
 ENTRYPOINT ["/app/pergo"]

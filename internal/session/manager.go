@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"go.mau.fi/whatsmeow/types"
 	waEvents "go.mau.fi/whatsmeow/types/events"
 
@@ -18,6 +19,40 @@ import (
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/repository"
 )
+
+type SessionState string
+
+const (
+	StateInitializing SessionState = "initializing"
+	StateConnecting   SessionState = "connecting"
+	StateConnected    SessionState = "connected"
+	StateDisconnected SessionState = "disconnected"
+	StateReconnecting SessionState = "reconnecting"
+	StateTerminal     SessionState = "terminal"
+)
+
+type SessionHealthInfo struct {
+	ConnectionID uuid.UUID    `json:"connection_id"`
+	State        SessionState `json:"state"`
+	LastSeen     time.Time    `json:"last_seen"`
+	LastError    string       `json:"last_error,omitempty"`
+}
+
+type WhatsAppClientInterface interface {
+	SetJID(jid types.JID)
+	Run(ctx context.Context) error
+}
+
+type ClientFactory interface {
+	CreateClient(cfg whatsapp.ClientConfig) (WhatsAppClientInterface, error)
+}
+
+type defaultClientFactory struct{}
+
+func (f *defaultClientFactory) CreateClient(cfg whatsapp.ClientConfig) (WhatsAppClientInterface, error) {
+	return whatsapp.NewWhatsAppClient(cfg)
+}
+
 
 const (
 	// maxConcurrentReconnect limits how many devices reconnect simultaneously
@@ -40,10 +75,59 @@ type Manager struct {
 	dispatchers      *channel.Registry
 	waVersion        string
 	inboundProcessor *inbound.InboundProcessor
+	clientFactory    ClientFactory
+	qrTimeout        time.Duration
+	pairingCancels   map[uuid.UUID]context.CancelFunc
+	healthMap        map[uuid.UUID]*SessionHealthInfo
 	mu               sync.Mutex
 }
 
 // NewManager creates a session manager.
+
+func (m *Manager) SetClientFactory(f ClientFactory) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.clientFactory = f
+}
+
+func (m *Manager) SetQRTimeout(d time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.qrTimeout = d
+}
+
+func (m *Manager) SessionHealth(connectionID uuid.UUID) (*SessionHealthInfo, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if info, ok := m.healthMap[connectionID]; ok {
+		return info, nil
+	}
+	return &SessionHealthInfo{
+		ConnectionID: connectionID,
+		State:        StateDisconnected,
+		LastSeen:     time.Time{},
+	}, nil
+}
+
+func (m *Manager) ListSessions() []*SessionHealthInfo {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	list := make([]*SessionHealthInfo, 0, len(m.healthMap))
+	for _, info := range m.healthMap {
+		list = append(list, info)
+	}
+	return list
+}
+
+func (m *Manager) CancelPairing(connectionID uuid.UUID) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if cancel, ok := m.pairingCancels[connectionID]; ok {
+		cancel()
+		delete(m.pairingCancels, connectionID)
+	}
+}
+
 func NewManager(
 	db *sql.DB,
 	repo *repository.ConnectionRepository,
@@ -59,6 +143,10 @@ func NewManager(
 		dispatchers:      dispatchers,
 		waVersion:        waVersion,
 		inboundProcessor: inboundProcessor,
+		clientFactory:    &defaultClientFactory{},
+		qrTimeout:        120 * time.Second,
+		pairingCancels:   make(map[uuid.UUID]context.CancelFunc),
+		healthMap:        make(map[uuid.UUID]*SessionHealthInfo),
 	}
 }
 

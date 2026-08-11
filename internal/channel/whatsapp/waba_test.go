@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
@@ -1148,3 +1149,15 @@ func TestWABAInboundAdapter_OrderParsing(t *testing.T) {
 	}
 }
 
+
+func TestWABAAdapter_SSRFProtection(t *testing.T) {
+	client := netpolicy.NewPublicHTTPClient()
+	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:9999", nil)
+	if err != nil {
+		t.Fatalf("failed to create request: %v", err)
+	}
+	_, err = client.Do(req)
+	if err == nil {
+		t.Fatalf("expected error for restricted IP, got nil")
+	}
+}

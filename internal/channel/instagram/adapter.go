@@ -11,6 +11,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -102,7 +103,7 @@ type MetaErrorResponse struct {
 // NewAdapter creates a new InstagramAdapter.
 func NewAdapter(connectionsRepo *repository.ConnectionRepository, client *http.Client, externalBaseURL string) *InstagramAdapter {
 	if client == nil {
-		client = http.DefaultClient
+		client = netpolicy.NewPublicHTTPClient()
 	}
 	return &InstagramAdapter{
 		connectionsRepo: connectionsRepo,
