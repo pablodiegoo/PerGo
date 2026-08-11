@@ -13,6 +13,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/media"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -140,7 +141,7 @@ func (a *TelegramInboundAdapter) Parse(
 	}
 
 	// 3. Verify secret token
-	if config.SecretToken != receivedToken {
+	if !crypto.CompareHashConstantTime(config.SecretToken, receivedToken) {
 		return nil, fmt.Errorf("secret token mismatch")
 	}
 

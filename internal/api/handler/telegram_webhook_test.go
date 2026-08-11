@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -427,5 +428,65 @@ func TestTelegramWebhookSecretInvalid(t *testing.T) {
 	}
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("got status %d, want 401", rec.Code)
+	}
+}
+
+func TestTelegramWebhookPayloadTooLarge(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	kek := make([]byte, 32)
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	connRepo := repository.NewConnectionRepository(pool, enc)
+	wsRepo := repository.NewWorkspaceRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "tg_large_payload_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	configPayload := map[string]string{
+		"token":        "bot123:test",
+		"secret_token": "secret-large-test",
+	}
+	configBytes, _ := json.Marshal(configPayload)
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "Bot Large",
+		Channel:        "telegram",
+		SenderIdentity: "@botlarge",
+		Credentials:    configBytes,
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("failed to create conn: %v", err)
+	}
+
+	e := echo.New()
+	mediaEngine := media.NewDefaultEngine(nil)
+	h := NewTelegramWebhookHandler(connRepo, nil, mediaEngine)
+
+	largeBody := make([]byte, 5*1024*1024+100)
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/telegram/%s", ws.ID), bytes.NewReader(largeBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Telegram-Bot-Api-Secret-Token", "secret-large-test")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/webhooks/telegram/:workspace_id")
+	c.SetPathValues(echo.PathValues{
+		{Name: "workspace_id", Value: ws.ID.String()},
+	})
+
+	err = h.Handle(c)
+	if err != nil {
+		t.Fatalf("Handle returned error: %v", err)
+	}
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("got status %d, want 413", rec.Code)
 	}
 }

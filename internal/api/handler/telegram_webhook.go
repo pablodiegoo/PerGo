@@ -2,18 +2,26 @@ package handler
 
 import (
 	"encoding/json"
-	"io"
+	"errors"
 	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/channel/telegram"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
+)
+
+const (
+	// HeaderTelegramSecretToken is the HTTP header for Telegram bot secret token verification.
+	HeaderTelegramSecretToken = "X-Telegram-Bot-Api-Secret-Token"
+	// MaxTelegramWebhookPayloadSize limits Telegram webhook payloads to 5MiB.
+	MaxTelegramWebhookPayloadSize = 5 * 1024 * 1024
 )
 
 // TelegramWebhookHandler handles inbound webhooks from Telegram.
@@ -47,6 +55,9 @@ func (h *TelegramWebhookHandler) SetBaseURL(url string) {
 
 // Handle processes the incoming Telegram webhook POST request.
 func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
+	ctx := c.Request().Context()
+	traceID, _ := middleware.TraceIDFrom(ctx)
+
 	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
 	if err != nil || workspaceIDStr == "" {
 		return c.NoContent(http.StatusBadRequest)
@@ -58,13 +69,13 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 	}
 
 	// Retrieve secret token from headers
-	receivedToken := c.Request().Header.Get("X-Telegram-Bot-Api-Secret-Token")
+	receivedToken := c.Request().Header.Get(HeaderTelegramSecretToken)
 	if receivedToken == "" {
 		return c.NoContent(http.StatusUnauthorized)
 	}
 
 	// Load registered connections for the workspace
-	conns, err := h.connectionsRepo.ListByWorkspace(c.Request().Context(), workspaceID)
+	conns, err := h.connectionsRepo.ListByWorkspace(ctx, workspaceID)
 	if err != nil {
 		return c.NoContent(http.StatusUnauthorized)
 	}
@@ -74,36 +85,34 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 		if conn.Channel != "telegram" {
 			continue
 		}
-		matchingConn = conn
-		break
+		var config struct {
+			SecretToken string `json:"secret_token"`
+		}
+		if err := json.Unmarshal(conn.Credentials, &config); err == nil && config.SecretToken != "" {
+			if crypto.CompareHashConstantTime(receivedToken, config.SecretToken) {
+				matchingConn = conn
+				break
+			}
+		}
 	}
 
 	if matchingConn == nil {
-		slog.Warn("tg webhook: no matching connection found for workspace", "workspace_id", workspaceID)
+		slog.Warn("tg webhook: no matching connection found for secret token", "workspace_id", workspaceID, "trace_id", traceID)
 		return c.NoContent(http.StatusUnauthorized)
 	}
 
-	var config struct {
-		SecretToken string `json:"secret_token"`
-	}
-	if err := json.Unmarshal(matchingConn.Credentials, &config); err != nil || config.SecretToken == "" {
-		slog.Warn("tg webhook: missing or invalid secret token in connection credentials", "workspace_id", workspaceID)
-		return c.NoContent(http.StatusUnauthorized)
-	}
-
-	if !crypto.CompareHashConstantTime(receivedToken, config.SecretToken) {
-		slog.Warn("tg webhook: secret token mismatch", "workspace_id", workspaceID)
-		return c.NoContent(http.StatusUnauthorized)
-	}
-
-	// Read raw request body
-	body, err := io.ReadAll(c.Request().Body)
+	// Read raw request body with 5MiB limit
+	body, err := ReadLimitedBody(c.Request().Body, MaxTelegramWebhookPayloadSize)
 	if err != nil {
+		if errors.Is(err, ErrPayloadTooLarge) {
+			slog.Warn("tg webhook: body exceeds 5MiB limit", "workspace_id", workspaceID, "trace_id", traceID)
+			return c.NoContent(http.StatusRequestEntityTooLarge)
+		}
 		return c.NoContent(http.StatusBadRequest)
 	}
 
 	headers := map[string]string{
-		"X-Telegram-Bot-Api-Secret-Token": receivedToken,
+		HeaderTelegramSecretToken: receivedToken,
 	}
 
 	if h.telegramBaseURL != "" {
@@ -112,18 +121,17 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 		}
 	}
 
-	events, err := h.adapter.Parse(c.Request().Context(), body, headers, matchingConn)
+	events, err := h.adapter.Parse(ctx, body, headers, matchingConn)
 	if err != nil {
-		slog.Warn("tg webhook: adapter failed to parse", "error", err)
+		slog.Warn("tg webhook: adapter failed to parse", "error", err, "trace_id", traceID)
 		return c.NoContent(http.StatusForbidden)
 	}
 
-	ctx := c.Request().Context()
 	for _, event := range events {
 		if h.inboundProcessor != nil {
 			err = h.inboundProcessor.Process(ctx, event)
 			if err != nil {
-				slog.Error("tg webhook: inbound processor failed", "error", err)
+				slog.Error("tg webhook: inbound processor failed", "error", err, "trace_id", traceID)
 				return c.NoContent(http.StatusInternalServerError)
 			}
 		}
