@@ -94,7 +94,18 @@ func (h *CampaignHandler) NewForm(c *echo.Context) error {
 		connections = []*repository.Connection{}
 	}
 
-	return mw.Render(c, http.StatusOK, pages.CampaignCreateForm(workspaceID, templates, connections))
+	var tags []domain.Tag
+	if h.TagRepo != nil {
+		var tagErr error
+		tags, tagErr = h.TagRepo.ListTags(c.Request().Context(), workspaceID)
+		if tagErr != nil {
+			tags = []domain.Tag{}
+		}
+	} else {
+		tags = []domain.Tag{}
+	}
+
+	return mw.Render(c, http.StatusOK, pages.CampaignCreateForm(workspaceID, templates, connections, tags))
 }
 
 func (h *CampaignHandler) UploadCSV(c *echo.Context) error {
@@ -300,6 +311,30 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		}
 	}
 
+	var formTagIDs []uuid.UUID
+	if tagIDStr := c.FormValue("tag_id"); tagIDStr != "" {
+		if parsedID, err := uuid.Parse(tagIDStr); err == nil {
+			formTagIDs = append(formTagIDs, parsedID)
+		}
+	}
+	_ = c.Request().ParseForm()
+	if tagIDsVals, ok := c.Request().Form["tag_ids"]; ok {
+		for _, tidStr := range tagIDsVals {
+			if parsedID, err := uuid.Parse(tidStr); err == nil {
+				already := false
+				for _, existing := range formTagIDs {
+					if existing == parsedID {
+						already = true
+						break
+					}
+				}
+				if !already {
+					formTagIDs = append(formTagIDs, parsedID)
+				}
+			}
+		}
+	}
+
 	recipientsRaw := c.FormValue("recipients_data")
 	skippedRaw := c.FormValue("skipped_data")
 
@@ -312,6 +347,77 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 	if skippedRaw != "" {
 		_ = json.Unmarshal([]byte(skippedRaw), &skipped)
 	}
+
+	// Combine contacts from tags and CSV recipients, deduplicating by phone
+	seenPhones := make(map[string]bool)
+	var mergedRecipients []domain.CampaignRecipient
+	var recipientRecords []domain.CampaignRecipientRecord
+
+	if len(formTagIDs) > 0 && h.TagRepo != nil {
+		for _, tagID := range formTagIDs {
+			contacts, err := h.TagRepo.ListContactsByTag(c.Request().Context(), workspaceID, tagID)
+			if err == nil {
+				for _, contact := range contacts {
+					phone := ""
+					for _, ident := range contact.Identities {
+						if ident.SenderIdentity != "" {
+							if clean, valid := domain.SanitizePhone(ident.SenderIdentity); valid {
+								phone = clean
+								break
+							}
+						}
+					}
+					if phone == "" {
+						if clean, valid := domain.SanitizePhone(contact.Name); valid {
+							phone = clean
+						}
+					}
+					if phone == "" {
+						continue
+					}
+					if seenPhones[phone] {
+						continue
+					}
+					seenPhones[phone] = true
+
+					contactID := contact.ID
+					recipientRecords = append(recipientRecords, domain.CampaignRecipientRecord{
+						ContactID: &contactID,
+						Phone:     phone,
+						Status:    domain.RecipientStatusPending,
+						Variables: map[string]string{"name": contact.Name},
+					})
+					mergedRecipients = append(mergedRecipients, domain.CampaignRecipient{
+						To:        phone,
+						Variables: map[string]string{"name": contact.Name},
+					})
+				}
+			}
+		}
+	}
+
+	for _, rec := range recipients {
+		cleanPhone, valid := domain.SanitizePhone(rec.To)
+		if !valid {
+			continue
+		}
+		if seenPhones[cleanPhone] {
+			continue
+		}
+		seenPhones[cleanPhone] = true
+
+		recipientRecords = append(recipientRecords, domain.CampaignRecipientRecord{
+			Phone:     cleanPhone,
+			Status:    domain.RecipientStatusPending,
+			Variables: rec.Variables,
+		})
+		mergedRecipients = append(mergedRecipients, domain.CampaignRecipient{
+			To:        cleanPhone,
+			Variables: rec.Variables,
+		})
+	}
+
+	recipients = mergedRecipients
 
 	// Resolve template parameters from form if WABA template selected
 	if channel == "whatsapp_cloud" && templateName != nil {
@@ -331,22 +437,37 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		}
 	}
 
-	camp := &domain.Campaign{
-		WorkspaceID:  workspaceID,
-		ConnectionID: &connectionID,
-		Name:         name,
-		Status:       domain.CampaignStatusDraft,
-		BatchSize:    batchSize,
-		DelaySeconds: delaySeconds,
-		TemplateName: templateName,
-		Channel:      &channel,
-		Recipients:   recipients,
-		SkippedRows:  skipped,
+	var primaryTagID *uuid.UUID
+	if len(formTagIDs) > 0 {
+		primaryTagID = &formTagIDs[0]
 	}
 
-	_, err = h.CampaignRepo.Create(c.Request().Context(), camp)
+	connSlug := conn.Slug
+	camp := &domain.Campaign{
+		WorkspaceID:     workspaceID,
+		ConnectionID:    &connectionID,
+		ConnectionSlug:  &connSlug,
+		Name:            name,
+		Status:          domain.CampaignStatusDraft,
+		BatchSize:       batchSize,
+		DelaySeconds:    delaySeconds,
+		TemplateName:    templateName,
+		Channel:         &channel,
+		TagID:           primaryTagID,
+		TotalRecipients: len(recipientRecords),
+		Recipients:      recipients,
+		SkippedRows:     skipped,
+	}
+
+	created, err := h.CampaignRepo.Create(c.Request().Context(), camp)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, fmt.Sprintf("failed to save campaign: %v", err))
+	}
+
+	if len(recipientRecords) > 0 {
+		if err := h.CampaignRepo.AddRecipients(c.Request().Context(), created.ID, recipientRecords); err != nil {
+			return c.String(http.StatusInternalServerError, fmt.Sprintf("failed to save campaign recipients: %v", err))
+		}
 	}
 
 	// Redirect back to campaigns list page
@@ -589,6 +710,7 @@ type CreateCampaignRequest struct {
 	TemplateName   *string                    `json:"template_name,omitempty"`
 	MessageBody    *string                    `json:"message_body,omitempty"`
 	TagID          *uuid.UUID                 `json:"tag_id,omitempty"`
+	TagIDs         []uuid.UUID                `json:"tag_ids,omitempty"`
 	BatchSize      int                        `json:"batch_size,omitempty"`
 	DelaySeconds   int                        `json:"delay_seconds,omitempty"`
 	Recipients     []domain.CampaignRecipient `json:"recipients,omitempty"`
@@ -627,43 +749,77 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("connection %q is currently %s", req.ConnectionSlug, conn.Status)})
 	}
 
+	// Collect target tag IDs (combining tag_id and tag_ids)
+	var targetTagIDs []uuid.UUID
+	if req.TagID != nil {
+		targetTagIDs = append(targetTagIDs, *req.TagID)
+	}
+	for _, tid := range req.TagIDs {
+		if tid != uuid.Nil {
+			already := false
+			for _, existing := range targetTagIDs {
+				if existing == tid {
+					already = true
+					break
+				}
+			}
+			if !already {
+				targetTagIDs = append(targetTagIDs, tid)
+			}
+		}
+	}
+
 	// 2. Pre-flight Recipient Validation
-	if len(req.Recipients) == 0 && req.TagID == nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "campaign requires at least one recipient or a valid tag_id"})
+	if len(req.Recipients) == 0 && len(targetTagIDs) == 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "campaign requires at least one recipient or a valid tag_id/tag_ids"})
 	}
 
 	var recipientRecords []domain.CampaignRecipientRecord
 	var sampleRecipients []domain.CampaignRecipient
+	seenPhones := make(map[string]bool)
 
-	// Resolve tag segment recipients if tag_id supplied
-	if req.TagID != nil && h.TagRepo != nil {
-		contacts, err := h.TagRepo.ListContactsByTag(c.Request().Context(), workspaceID, *req.TagID)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to resolve contacts for tag: %v", err)})
-		}
-		for _, contact := range contacts {
-			phone := ""
-			for _, ident := range contact.Identities {
-				if ident.SenderIdentity != "" {
-					phone = ident.SenderIdentity
-					break
+	// Resolve tag segment recipients if tag_id or tag_ids supplied
+	if len(targetTagIDs) > 0 && h.TagRepo != nil {
+		for _, tagID := range targetTagIDs {
+			contacts, err := h.TagRepo.ListContactsByTag(c.Request().Context(), workspaceID, tagID)
+			if err != nil {
+				return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to resolve contacts for tag: %v", err)})
+			}
+			for _, contact := range contacts {
+				phone := ""
+				for _, ident := range contact.Identities {
+					if ident.SenderIdentity != "" {
+						if clean, valid := domain.SanitizePhone(ident.SenderIdentity); valid {
+							phone = clean
+							break
+						}
+					}
 				}
+				if phone == "" {
+					if clean, valid := domain.SanitizePhone(contact.Name); valid {
+						phone = clean
+					}
+				}
+				if phone == "" {
+					continue
+				}
+				if seenPhones[phone] {
+					continue
+				}
+				seenPhones[phone] = true
+
+				contactID := contact.ID
+				recipientRecords = append(recipientRecords, domain.CampaignRecipientRecord{
+					ContactID: &contactID,
+					Phone:     phone,
+					Status:    domain.RecipientStatusPending,
+					Variables: map[string]string{"name": contact.Name},
+				})
+				sampleRecipients = append(sampleRecipients, domain.CampaignRecipient{
+					To:        phone,
+					Variables: map[string]string{"name": contact.Name},
+				})
 			}
-			cleanPhone, valid := domain.SanitizePhone(phone)
-			if !valid {
-				continue
-			}
-			contactID := contact.ID
-			recipientRecords = append(recipientRecords, domain.CampaignRecipientRecord{
-				ContactID: &contactID,
-				Phone:     cleanPhone,
-				Status:    domain.RecipientStatusPending,
-				Variables: map[string]string{"name": contact.Name},
-			})
-			sampleRecipients = append(sampleRecipients, domain.CampaignRecipient{
-				To:        cleanPhone,
-				Variables: map[string]string{"name": contact.Name},
-			})
 		}
 	}
 
@@ -673,6 +829,11 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 		if !valid {
 			continue
 		}
+		if seenPhones[cleanPhone] {
+			continue
+		}
+		seenPhones[cleanPhone] = true
+
 		recipientRecords = append(recipientRecords, domain.CampaignRecipientRecord{
 			Phone:     cleanPhone,
 			Status:    domain.RecipientStatusPending,
@@ -701,6 +862,13 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 	connSlug := conn.Slug
 	channel := conn.Channel
 
+	var primaryTagID *uuid.UUID
+	if req.TagID != nil {
+		primaryTagID = req.TagID
+	} else if len(targetTagIDs) > 0 {
+		primaryTagID = &targetTagIDs[0]
+	}
+
 	camp := &domain.Campaign{
 		WorkspaceID:     workspaceID,
 		ConnectionID:    &connID,
@@ -712,7 +880,7 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 		TemplateName:    req.TemplateName,
 		MessageBody:     req.MessageBody,
 		Channel:         &channel,
-		TagID:           req.TagID,
+		TagID:           primaryTagID,
 		TotalRecipients: len(recipientRecords),
 		Recipients:      sampleRecipients,
 	}

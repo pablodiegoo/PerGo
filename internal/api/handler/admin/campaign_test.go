@@ -424,5 +424,137 @@ func TestCampaignHandler(t *testing.T) {
 			t.Errorf("expected status 200 for APIGet, got %d", recGet.Code)
 		}
 	})
+
+	t.Run("Tag Filtering and Selector", func(t *testing.T) {
+		contactRepo := repository.NewContactRepository(pool)
+
+		_ = connectionRepo.Create(ctx, &repository.Connection{
+			ID:             uuid.New(),
+			WorkspaceID:    ws.ID,
+			Name:           "WABA REST Test",
+			Channel:        "whatsapp_cloud",
+			Slug:           "waba-rest-test",
+			SenderIdentity: "5511999990003",
+			Status:         "active",
+			IsDefault:      false,
+		})
+
+		// 1. Create a tag and a tagged contact
+		tag, err := tagRepo.CreateTag(ctx, ws.ID, "VIP Customers", "#FF0000")
+		if err != nil {
+			t.Fatalf("failed to create tag: %v", err)
+		}
+
+		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "5511988887777", "VIP John", "", "")
+		if err != nil {
+			t.Fatalf("failed to create contact: %v", err)
+		}
+
+		if err := tagRepo.AddTagToContact(ctx, ws.ID, contact.ID, tag.ID); err != nil {
+			t.Fatalf("failed to add tag to contact: %v", err)
+		}
+
+		// 2. Test NewForm includes tag in dropdown
+		reqForm := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/workspaces/%s/campaigns/new", ws.ID), nil)
+		recForm := httptest.NewRecorder()
+		cForm := e.NewContext(reqForm, recForm)
+		cForm.SetPath("/admin/workspaces/:workspace_id/campaigns/new")
+		cForm.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.NewForm(cForm); err != nil {
+			t.Fatalf("NewForm failed: %v", err)
+		}
+		if !strings.Contains(recForm.Body.String(), "VIP Customers") {
+			t.Errorf("expected form HTML to contain tag name 'VIP Customers', got: %s", recForm.Body.String())
+		}
+		if !strings.Contains(recForm.Body.String(), "tag_id") {
+			t.Errorf("expected form HTML to contain tag_id select dropdown")
+		}
+
+		// 3. Test Form Create with tag_id
+		form := url.Values{}
+		form.Set("name", "VIP Tag Campaign")
+		form.Set("channel", "whatsapp")
+		form.Set("tag_id", tag.ID.String())
+		form.Set("batch_size", "100")
+		form.Set("delay_seconds", "1")
+
+		reqCreate := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns", ws.ID), strings.NewReader(form.Encode()))
+		reqCreate.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		recCreate := httptest.NewRecorder()
+		cCreate := e.NewContext(reqCreate, recCreate)
+		cCreate.SetPath("/admin/workspaces/:workspace_id/campaigns")
+		cCreate.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.Create(cCreate); err != nil {
+			t.Fatalf("Create with tag_id failed: %v", err)
+		}
+		if recCreate.Code != http.StatusOK {
+			t.Errorf("expected 200 OK for Create with tag_id, got %d", recCreate.Code)
+		}
+
+		// Verify campaign recipients in DB
+		camps, _ := campaignRepo.ListByWorkspace(ctx, ws.ID)
+		var vipCamp *domain.Campaign
+		for i := range camps {
+			if camps[i].Name == "VIP Tag Campaign" {
+				vipCamp = &camps[i]
+				break
+			}
+		}
+		if vipCamp == nil {
+			t.Fatalf("VIP Tag Campaign not found in DB")
+		}
+		if len(vipCamp.Recipients) != 1 || vipCamp.Recipients[0].To != "5511988887777" {
+			t.Errorf("expected 1 recipient (5511988887777) resolved from tag, got: %+v", vipCamp.Recipients)
+		}
+
+		// 4. Test REST APICreate with tag_ids and recipient deduplication
+		apiTag, err := tagRepo.CreateTag(ctx, ws.ID, "API Segment", "#00FF00")
+		if err != nil {
+			t.Fatalf("failed to create apiTag: %v", err)
+		}
+		contact2, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "5511977776666", "Segment Alice", "", "")
+		if err != nil {
+			t.Fatalf("failed to create contact2: %v", err)
+		}
+		if err := tagRepo.AddTagToContact(ctx, ws.ID, contact2.ID, apiTag.ID); err != nil {
+			t.Fatalf("failed to tag contact2: %v", err)
+		}
+
+		apiPayload := fmt.Sprintf(`{
+			"name": "API Tagged Campaign",
+			"connection_slug": "waba-rest-test",
+			"tag_ids": ["%s"],
+			"recipients": [
+				{"to": "5511977776666", "variables": {"name": "Duplicate Alice"}},
+				{"to": "5511966665555", "variables": {"name": "New Bob"}}
+			]
+		}`, apiTag.ID)
+
+		reqAPI := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), strings.NewReader(apiPayload))
+		reqAPI.Header.Set("Content-Type", "application/json")
+		recAPI := httptest.NewRecorder()
+		cAPI := e.NewContext(reqAPI, recAPI)
+		cAPI.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		cAPI.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.APICreate(cAPI); err != nil {
+			t.Fatalf("APICreate with tag_ids failed: %v", err)
+		}
+		if recAPI.Code != http.StatusCreated {
+			t.Fatalf("expected status 201 for APICreate with tag_ids, got %d: %s", recAPI.Code, recAPI.Body.String())
+		}
+
+		var createdAPICamp domain.Campaign
+		if err := json.Unmarshal(recAPI.Body.Bytes(), &createdAPICamp); err != nil {
+			t.Fatalf("failed to unmarshal campaign: %v", err)
+		}
+
+		// Deduplication check: 5511977776666 (from tag & inline) + 5511966665555 (inline) = 2 recipients
+		if createdAPICamp.TotalRecipients != 2 {
+			t.Errorf("expected 2 total recipients after deduplication, got %d", createdAPICamp.TotalRecipients)
+		}
+	})
 }
 

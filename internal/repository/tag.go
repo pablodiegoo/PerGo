@@ -198,6 +198,7 @@ func (r *TagRepository) ListContactsByTag(ctx context.Context, workspaceID, tagI
 	defer rows.Close()
 
 	var contacts []domain.Contact
+	var contactIDs []uuid.UUID
 	for rows.Next() {
 		var c domain.Contact
 		var email *string
@@ -211,6 +212,39 @@ func (r *TagRepository) ListContactsByTag(ctx context.Context, workspaceID, tagI
 		c.ClosedAt = closedAt
 		c.BotPausedAt = botPausedAt
 		contacts = append(contacts, c)
+		contactIDs = append(contactIDs, c.ID)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(contacts) > 0 {
+		identRows, err := r.pool.Query(ctx, `
+			SELECT id, contact_id, workspace_id, channel, sender_identity, created_at
+			FROM contact_identities
+			WHERE workspace_id = $1 AND contact_id = ANY($2)
+		`, workspaceID, contactIDs)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list contact identities by tag: %w", err)
+		}
+		defer identRows.Close()
+
+		identMap := make(map[uuid.UUID][]domain.ContactIdentity)
+		for identRows.Next() {
+			var ci domain.ContactIdentity
+			if err := identRows.Scan(&ci.ID, &ci.ContactID, &ci.WorkspaceID, &ci.Channel, &ci.SenderIdentity, &ci.CreatedAt); err != nil {
+				return nil, err
+			}
+			identMap[ci.ContactID] = append(identMap[ci.ContactID], ci)
+		}
+		if err := identRows.Err(); err != nil {
+			return nil, err
+		}
+
+		for i := range contacts {
+			contacts[i].Identities = identMap[contacts[i].ID]
+		}
+	}
+
 	return contacts, nil
 }

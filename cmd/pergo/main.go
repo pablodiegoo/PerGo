@@ -252,7 +252,7 @@ func main() {
 		os.Exit(1)
 	}
 	campaignRepo := repository.NewCampaignRepository(pool)
-	campaignWorker := queue.NewCampaignWorker(ctx, campConsumer, campaignRepo, connectionRepo, dispatchRepo, publisher)
+	campaignWorker := queue.NewCampaignWorker(ctx, campConsumer, campaignRepo, connectionRepo, dispatchRepo, publisher, auditWriter)
 	slog.Info("campaign worker started", "consumer", "campaign-worker-1")
 
 	// --- Webhook Worker ---

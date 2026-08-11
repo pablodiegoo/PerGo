@@ -13,6 +13,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -35,6 +36,7 @@ type CampaignWorker struct {
 	connectionsRepo *repository.ConnectionRepository
 	dispatchRepo    *repository.MessageDispatchRepository
 	publisher       *JetStreamPublisher
+	auditWriter     audit.Writer
 	msgCtx          jetstream.MessagesContext
 }
 
@@ -46,6 +48,7 @@ func NewCampaignWorker(
 	connectionsRepo *repository.ConnectionRepository,
 	dispatchRepo *repository.MessageDispatchRepository,
 	publisher *JetStreamPublisher,
+	auditWriter audit.Writer,
 ) *CampaignWorker {
 	ctx, cancel := context.WithCancel(ctx)
 	w := &CampaignWorker{
@@ -56,6 +59,7 @@ func NewCampaignWorker(
 		connectionsRepo: connectionsRepo,
 		dispatchRepo:    dispatchRepo,
 		publisher:       publisher,
+		auditWriter:     auditWriter,
 	}
 	go w.run(ctx)
 	return w
@@ -101,6 +105,27 @@ func (w *CampaignWorker) run(ctx context.Context) {
 
 		w.processBatch(ctx, msg)
 	}
+}
+
+// EmitAuditLog writes an audit log event for a campaign dispatch state change.
+func (w *CampaignWorker) EmitAuditLog(workspaceID uuid.UUID, traceID, eventType, status, recipient string, campaignID uuid.UUID, channel, errStr string) error {
+	if w.auditWriter == nil {
+		return nil
+	}
+	payload := map[string]any{
+		"campaign_id": campaignID,
+		"recipient":   recipient,
+		"status":      status,
+		"channel":     channel,
+	}
+	if errStr != "" {
+		payload["error"] = errStr
+	}
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return w.auditWriter.Write(audit.NewEvent(workspaceID, traceID, eventType, payloadBytes))
 }
 
 func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
@@ -228,7 +253,7 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 		}
 
 		// Create database dispatch record
-		_, err := w.dispatchRepo.GetOrCreateDispatch(
+		dispatch, err := w.dispatchRepo.GetOrCreateDispatch(
 			ctx,
 			task.WorkspaceID,
 			traceID,
@@ -240,6 +265,19 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 		if err != nil {
 			slog.Error("campaign_worker: failed to get or create dispatch", "trace_id", traceID, "error", err)
 			_ = w.campaignRepo.UpdateCounters(ctx, task.CampaignID, 0, 1)
+			_ = w.EmitAuditLog(task.WorkspaceID, traceID, "campaign_dispatch", "failed", recipient.To, task.CampaignID, channel, err.Error())
+			continue
+		}
+
+		if dispatch != nil && dispatch.Status == "delivered" {
+			slog.Info("campaign_worker: recipient dispatch state delivered", "trace_id", traceID)
+			_ = w.EmitAuditLog(task.WorkspaceID, traceID, "campaign_dispatch", "delivered", recipient.To, task.CampaignID, channel, "")
+			continue
+		}
+
+		if dispatch != nil && dispatch.Status == "sent" {
+			slog.Info("campaign_worker: recipient dispatch state already sent", "trace_id", traceID)
+			_ = w.EmitAuditLog(task.WorkspaceID, traceID, "campaign_dispatch", "sent", recipient.To, task.CampaignID, channel, "")
 			continue
 		}
 
@@ -248,6 +286,7 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 		if err != nil {
 			slog.Error("campaign_worker: failed to marshal QueueMessage", "trace_id", traceID, "error", err)
 			_ = w.campaignRepo.UpdateCounters(ctx, task.CampaignID, 0, 1)
+			_ = w.EmitAuditLog(task.WorkspaceID, traceID, "campaign_dispatch", "failed", recipient.To, task.CampaignID, channel, err.Error())
 			continue
 		}
 
@@ -255,11 +294,13 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 		if err != nil {
 			slog.Error("campaign_worker: failed to publish message to JetStream", "trace_id", traceID, "error", err)
 			_ = w.campaignRepo.UpdateCounters(ctx, task.CampaignID, 0, 1)
+			_ = w.EmitAuditLog(task.WorkspaceID, traceID, "campaign_dispatch", "failed", recipient.To, task.CampaignID, channel, err.Error())
 			continue
 		}
 
 		// Increment sent counters
 		_ = w.campaignRepo.UpdateCounters(ctx, task.CampaignID, 1, 0)
+		_ = w.EmitAuditLog(task.WorkspaceID, traceID, "campaign_dispatch", "sent", recipient.To, task.CampaignID, channel, "")
 	}
 
 	// Dynamic Sleep: delay_seconds + uniform random jitter in [-0.5s, +0.5s]
