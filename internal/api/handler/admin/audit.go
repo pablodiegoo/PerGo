@@ -3,6 +3,7 @@ package admin
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -129,6 +130,28 @@ func (h *AuditHandler) ExportOutboundCSV(c *echo.Context) error {
 	return h.exportCSV(c, filters, "outbound")
 }
 
+func writeAuditLogsCSV(w io.Writer, entries []repository.AuditEntry) error {
+	writer := csv.NewWriter(w)
+	if err := writer.Write([]string{"timestamp", "workspace_id", "trace_id", "event_type", "payload"}); err != nil {
+		return err
+	}
+
+	for _, entry := range entries {
+		payload := strings.Trim(string(entry.Payload), `"`)
+		if err := writer.Write([]string{
+			entry.CreatedAt.Format(time.RFC3339),
+			entry.WorkspaceID.String(),
+			entry.TraceID,
+			entry.EventType,
+			payload,
+		}); err != nil {
+			return err
+		}
+	}
+	writer.Flush()
+	return writer.Error()
+}
+
 func (h *AuditHandler) exportCSV(c *echo.Context, filters repository.AuditFilters, prefix string) error {
 	ctx := c.Request().Context()
 
@@ -141,22 +164,5 @@ func (h *AuditHandler) exportCSV(c *echo.Context, filters repository.AuditFilter
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s-audit-logs-%s.csv", prefix, time.Now().Format("2006-01-02")))
 
 	c.Response().WriteHeader(http.StatusOK)
-	w := csv.NewWriter(c.Response())
-	defer w.Flush()
-
-	w.Write([]string{"timestamp", "workspace_id", "trace_id", "event_type", "payload"})
-
-	for _, entry := range entries {
-		payload := string(entry.Payload)
-		payload = strings.Trim(payload, "\"")
-		w.Write([]string{
-			entry.CreatedAt.Format(time.RFC3339),
-			entry.WorkspaceID.String(),
-			entry.TraceID,
-			entry.EventType,
-			payload,
-		})
-	}
-
-	return nil
+	return writeAuditLogsCSV(c.Response(), entries)
 }

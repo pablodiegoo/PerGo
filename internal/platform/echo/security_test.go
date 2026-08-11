@@ -1,4 +1,4 @@
-package middleware
+package echosrv
 
 import (
 	"net/http"

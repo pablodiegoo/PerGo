@@ -3,6 +3,7 @@ package telegram
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -379,6 +380,33 @@ func TestTelegramDispatch(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "exceeds 5MB limit") {
 			t.Errorf("expected error containing 'exceeds 5MB limit', got: %v", err)
+		}
+	})
+
+	t.Run("Telegram S3 Media Download Failure Error Wrapping", func(t *testing.T) {
+		s3Client, err := storage.NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "pergo-bucket", true)
+		if err != nil {
+			t.Fatalf("failed to init s3 client: %v", err)
+		}
+
+		adapter := NewTelegramAdapter(connectionsRepo, nil, s3Client)
+
+		payload := &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "@test_bot",
+			To:             "987654321",
+			Media: &domain.Media{
+				MediaURL:  "/media/" + ws.ID.String() + "/nonexistent.png",
+				MediaType: "image",
+			},
+		}
+
+		_, err = adapter.Dispatch(tenantCtx, payload)
+		if err == nil {
+			t.Fatal("expected error for nonexistent S3 key, got nil")
+		}
+		if !errors.Is(err, ErrTelegramMediaRetryable) {
+			t.Errorf("expected error to wrap ErrTelegramMediaRetryable, got: %v", err)
 		}
 	})
 }

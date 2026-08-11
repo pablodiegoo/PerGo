@@ -1,4 +1,4 @@
-package middleware
+package echosrv
 
 import (
 	"github.com/labstack/echo/v5"

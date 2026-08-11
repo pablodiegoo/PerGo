@@ -180,7 +180,7 @@ func TestTagAdminHandler(t *testing.T) {
 		}
 	})
 
-		t.Run("ExportContactsCSV_Success", func(t *testing.T) {
+	t.Run("ExportContactsCSV_Success", func(t *testing.T) {
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/workspaces/%s/contacts/export", ws.ID), nil)
 		rec := httptest.NewRecorder()
@@ -219,6 +219,26 @@ func TestTagAdminHandler(t *testing.T) {
 
 		if rec.Code != http.StatusNoContent {
 			t.Fatalf("expected 244 No Content, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+	t.Run("RedirectToWorkspaceTags_Success", func(t *testing.T) {
+		handlerWithWS := admin.NewTagAdminHandler(tagRepo, contactRepo, wsRepo)
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/tags", nil)
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handlerWithWS.RedirectToWorkspaceTags(c); err != nil {
+			t.Fatalf("RedirectToWorkspaceTags failed: %v", err)
+		}
+
+		if rec.Code != http.StatusFound {
+			t.Fatalf("expected 302 Found, got %d", rec.Code)
+		}
+		expectedLocation := fmt.Sprintf("/admin/workspaces/%s/tags", ws.ID)
+		if loc := rec.Header().Get("Location"); loc != expectedLocation {
+			t.Errorf("expected Location %s, got %s", expectedLocation, loc)
 		}
 	})
 }

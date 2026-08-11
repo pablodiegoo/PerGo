@@ -52,7 +52,7 @@ func (r *IdempotencyRepository) CheckAndStore(ctx context.Context, workspaceID u
 	}
 	expiresAt := time.Now().Add(ttl)
 
-	query := `INSERT INTO message_idempotency (workspace_id, key_hash, trace_id, expires_at) VALUES (, , , ) ON CONFLICT (workspace_id, key_hash) DO NOTHING`
+	query := `INSERT INTO message_idempotency (workspace_id, key_hash, trace_id, expires_at) VALUES ($1, $2, $3, $4) ON CONFLICT (workspace_id, key_hash) DO NOTHING`
 	res, err := r.pool.Exec(ctx, query, workspaceID, keyHash, traceID, expiresAt)
 	if err != nil {
 		return false, fmt.Errorf("failed to check and store idempotency key: %w", err)
@@ -63,7 +63,7 @@ func (r *IdempotencyRepository) CheckAndStore(ctx context.Context, workspaceID u
 
 func (r *IdempotencyRepository) GetByIdempotencyKey(ctx context.Context, workspaceID uuid.UUID, keyHash string) (*IdempotencyEntry, error) {
 	var entry IdempotencyEntry
-	query := `SELECT id, workspace_id, key_hash, trace_id, status_code, response_body, provider_message_id, created_at, expires_at FROM message_idempotency WHERE workspace_id =  AND key_hash =  AND expires_at > NOW()`
+	query := `SELECT id, workspace_id, key_hash, trace_id, status_code, response_body, provider_message_id, created_at, expires_at FROM message_idempotency WHERE workspace_id = $1 AND key_hash = $2 AND expires_at > NOW()`
 	err := r.pool.QueryRow(ctx, query, workspaceID, keyHash).Scan(
 		&entry.ID, &entry.WorkspaceID, &entry.KeyHash, &entry.TraceID,
 		&entry.StatusCode, &entry.ResponseBody, &entry.ProviderMessageID,
@@ -79,7 +79,7 @@ func (r *IdempotencyRepository) GetByIdempotencyKey(ctx context.Context, workspa
 }
 
 func (r *IdempotencyRepository) UpdateResponse(ctx context.Context, workspaceID uuid.UUID, keyHash string, statusCode int, responseBody []byte, providerMsgID *string) error {
-	query := `UPDATE message_idempotency SET status_code = , response_body = , provider_message_id =  WHERE workspace_id =  AND key_hash = `
+	query := `UPDATE message_idempotency SET status_code = $3, response_body = $4, provider_message_id = $5 WHERE workspace_id = $1 AND key_hash = $2`
 	_, err := r.pool.Exec(ctx, query, workspaceID, keyHash, statusCode, responseBody, providerMsgID)
 	return err
 }
@@ -92,13 +92,13 @@ func (r *IdempotencyRepository) RecordLedger(ctx context.Context, entry *Ingress
 		entry.Status = "accepted"
 	}
 
-	query := `INSERT INTO message_ingress_ledger (id, workspace_id, trace_id, idempotency_key, channel, recipient, status, error_reason, created_at, updated_at) VALUES (, , , , , , , , NOW(), NOW())`
+	query := `INSERT INTO message_ingress_ledger (id, workspace_id, trace_id, idempotency_key, channel, recipient, status, error_reason, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`
 	_, err := r.pool.Exec(ctx, query, entry.ID, entry.WorkspaceID, entry.TraceID, entry.IdempotencyKey, entry.Channel, entry.Recipient, entry.Status, entry.ErrorReason)
 	return err
 }
 
 func (r *IdempotencyRepository) UpdateLedgerStatus(ctx context.Context, workspaceID uuid.UUID, traceID, status string, errReason *string) error {
-	query := `UPDATE message_ingress_ledger SET status = , error_reason = , updated_at = NOW() WHERE workspace_id =  AND trace_id = `
+	query := `UPDATE message_ingress_ledger SET status = $3, error_reason = $4, updated_at = NOW() WHERE workspace_id = $1 AND trace_id = $2`
 	_, err := r.pool.Exec(ctx, query, workspaceID, traceID, status, errReason)
 	return err
 }

@@ -354,6 +354,21 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 	return c.String(http.StatusOK, "")
 }
 
+func writeSkippedRowsCSV(w io.Writer, skippedRows []domain.SkippedRow) error {
+	writer := csv.NewWriter(w)
+	if err := writer.Write([]string{"Linha", "Registro Original", "Motivo da Rejeicao"}); err != nil {
+		return err
+	}
+
+	for _, row := range skippedRows {
+		if err := writer.Write([]string{strconv.Itoa(row.LineNumber), row.RawInput, row.Reason}); err != nil {
+			return err
+		}
+	}
+	writer.Flush()
+	return writer.Error()
+}
+
 func (h *CampaignHandler) DownloadSkipped(c *echo.Context) error {
 	idStr, err := echo.PathParam[string](c, "id")
 	if err != nil {
@@ -373,14 +388,7 @@ func (h *CampaignHandler) DownloadSkipped(c *echo.Context) error {
 	c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=campanha_%s_rejeitados.csv", id.String()[:8]))
 	c.Response().WriteHeader(http.StatusOK)
 
-	writer := csv.NewWriter(c.Response())
-	_ = writer.Write([]string{"Linha", "Registro Original", "Motivo da Rejeicao"})
-
-	for _, row := range camp.SkippedRows {
-		_ = writer.Write([]string{strconv.Itoa(row.LineNumber), row.RawInput, row.Reason})
-	}
-	writer.Flush()
-	return nil
+	return writeSkippedRowsCSV(c.Response(), camp.SkippedRows)
 }
 
 func (h *CampaignHandler) Start(c *echo.Context) error {
@@ -572,7 +580,6 @@ func (h *CampaignHandler) GetRow(c *echo.Context) error {
 
 	return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
 }
-
 
 // REST API Handlers
 
@@ -894,5 +901,3 @@ func (h *CampaignHandler) APIResume(c *echo.Context) error {
 
 	return c.JSON(http.StatusOK, camp)
 }
-
-

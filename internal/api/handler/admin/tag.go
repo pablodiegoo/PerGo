@@ -2,17 +2,17 @@ package admin
 
 import (
 	"encoding/csv"
-	"log/slog"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
-	"github.com/pablojhp.pergo/internal/domain"
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 	"time"
@@ -21,13 +21,38 @@ import (
 type TagAdminHandler struct {
 	tagRepo     *repository.TagRepository
 	contactRepo *repository.ContactRepository
+	wsRepo      *repository.WorkspaceRepository
 }
 
-func NewTagAdminHandler(tagRepo *repository.TagRepository, contactRepo *repository.ContactRepository) *TagAdminHandler {
-	return &TagAdminHandler{
+func NewTagAdminHandler(tagRepo *repository.TagRepository, contactRepo *repository.ContactRepository, wsRepo ...*repository.WorkspaceRepository) *TagAdminHandler {
+	h := &TagAdminHandler{
 		tagRepo:     tagRepo,
 		contactRepo: contactRepo,
 	}
+	if len(wsRepo) > 0 {
+		h.wsRepo = wsRepo[0]
+	}
+	return h
+}
+
+// RedirectToWorkspaceTags handles GET /tags by redirecting to /admin/workspaces/:workspace_id/tags
+func (h *TagAdminHandler) RedirectToWorkspaceTags(c *echo.Context) error {
+	ctx := c.Request().Context()
+	cookie, err := c.Cookie("pergo-active-workspace")
+	var wsID uuid.UUID
+	if err == nil && cookie != nil && cookie.Value != "" {
+		wsID, _ = uuid.Parse(cookie.Value)
+	}
+	if wsID == uuid.Nil && h.wsRepo != nil {
+		list, err := h.wsRepo.List(ctx, 1)
+		if err == nil && len(list) > 0 {
+			wsID = list[0].ID
+		}
+	}
+	if wsID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "nenhum workspace encontrado. Crie um workspace primeiro.")
+	}
+	return c.Redirect(http.StatusFound, "/admin/workspaces/"+wsID.String()+"/tags")
 }
 
 type CreateTagRequest struct {
@@ -342,6 +367,40 @@ func (h *TagAdminHandler) ImportContactsCSV(c *echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
+func writeContactsCSV(w io.Writer, contacts []domain.Contact, fetchTagNames func(contactID uuid.UUID) []string) error {
+	writer := csv.NewWriter(w)
+	if err := writer.Write([]string{"id", "name", "email", "channel", "sender_identity", "tags", "created_at"}); err != nil {
+		return err
+	}
+
+	for _, contact := range contacts {
+		var identityStr string
+		var channelStr string
+		if len(contact.Identities) > 0 {
+			channelStr = contact.Identities[0].Channel
+			identityStr = contact.Identities[0].SenderIdentity
+		}
+		tagNames := fetchTagNames(contact.ID)
+		email := ""
+		if contact.Email != nil {
+			email = *contact.Email
+		}
+		if err := writer.Write([]string{
+			contact.ID.String(),
+			contact.Name,
+			email,
+			channelStr,
+			identityStr,
+			strings.Join(tagNames, ","),
+			contact.CreatedAt.Format(time.RFC3339),
+		}); err != nil {
+			return err
+		}
+	}
+	writer.Flush()
+	return writer.Error()
+}
+
 // ExportContactsCSV handles GET /api/v1/workspaces/:workspace_id/contacts/export
 func (h *TagAdminHandler) ExportContactsCSV(c *echo.Context) error {
 	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
@@ -377,35 +436,12 @@ func (h *TagAdminHandler) ExportContactsCSV(c *echo.Context) error {
 	c.Response().Header().Set("Content-Type", "text/csv")
 	c.Response().Header().Set("Content-Disposition", "attachment; filename=contacts.csv")
 
-	writer := csv.NewWriter(c.Response())
-	_ = writer.Write([]string{"id", "name", "email", "channel", "sender_identity", "tags", "created_at"})
-
-	for _, contact := range contacts {
-		var identityStr string
-		var channelStr string
-		if len(contact.Identities) > 0 {
-			channelStr = contact.Identities[0].Channel
-			identityStr = contact.Identities[0].SenderIdentity
-		}
-		tags, _ := h.tagRepo.GetContactTags(c.Request().Context(), workspaceID, contact.ID)
+	return writeContactsCSV(c.Response(), contacts, func(contactID uuid.UUID) []string {
+		tags, _ := h.tagRepo.GetContactTags(c.Request().Context(), workspaceID, contactID)
 		var tagNames []string
 		for _, t := range tags {
 			tagNames = append(tagNames, t.Name)
 		}
-		email := ""
-		if contact.Email != nil {
-			email = *contact.Email
-		}
-		_ = writer.Write([]string{
-			contact.ID.String(),
-			contact.Name,
-			email,
-			channelStr,
-			identityStr,
-			strings.Join(tagNames, ","),
-			contact.CreatedAt.Format(time.RFC3339),
-		})
-	}
-	writer.Flush()
-	return nil
+		return tagNames
+	})
 }

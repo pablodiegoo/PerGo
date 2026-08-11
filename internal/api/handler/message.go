@@ -6,8 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"io"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"time"
@@ -40,12 +40,12 @@ type ConnectionFinder interface {
 
 // MessageHandler holds dependencies for the POST /messages endpoint.
 type MessageHandler struct {
-	Ingestor       outbound.OutboundProcessor
-	Publisher      Publisher
-	QueueDepth     *middleware.QueueDepthTracker
-	S3Client       *storage.S3Client
-	ConnectionRepo ConnectionFinder
-	WindowChecker  *session.WindowChecker
+	Ingestor        outbound.OutboundProcessor
+	Publisher       Publisher
+	QueueDepth      *middleware.QueueDepthTracker
+	S3Client        *storage.S3Client
+	ConnectionRepo  ConnectionFinder
+	WindowChecker   *session.WindowChecker
 	IdempotencyRepo *repository.IdempotencyRepository
 }
 
@@ -84,37 +84,11 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 	}
 	c.Request().Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
-	// Extract Idempotency-Key header or generate key hash from payload
-	idempotencyKey := c.Request().Header.Get("Idempotency-Key")
-	if idempotencyKey != "" {
-		hasher := sha256.New()
-		hasher.Write([]byte(idempotencyKey))
-		keyHash = hex.EncodeToString(hasher.Sum(nil))
-	} else {
-		hasher := sha256.New()
-		hasher.Write(bodyBytes)
-		keyHash = hex.EncodeToString(hasher.Sum(nil))
-		idempotencyKey = keyHash
+	// Idempotency check and ledger recording
+	idempotencyKey, keyHash := h.hashIdempotencyKey(c.Request().Header.Get("Idempotency-Key"), bodyBytes)
+	if cached, err := h.checkAndRecordIdempotency(c, workspaceID, traceID, keyHash, idempotencyKey, &req); err != nil || cached {
+		return err
 	}
-
-	if h.IdempotencyRepo != nil && workspaceID != uuid.Nil {
-		if entry, err := h.IdempotencyRepo.GetByIdempotencyKey(c.Request().Context(), workspaceID, keyHash); err == nil && entry != nil && entry.StatusCode != nil {
-			c.Response().Header().Set("Content-Type", "application/json")
-			c.Response().WriteHeader(*entry.StatusCode)
-			_, _ = c.Response().Write(entry.ResponseBody)
-			return nil
-		}
-		_, _ = h.IdempotencyRepo.CheckAndStore(c.Request().Context(), workspaceID, keyHash, traceID, 24*time.Hour)
-		_ = h.IdempotencyRepo.RecordLedger(c.Request().Context(), &repository.IngressLedgerEntry{
-			WorkspaceID:    workspaceID,
-			TraceID:        traceID,
-			IdempotencyKey: idempotencyKey,
-			Channel:        req.Channel,
-			Recipient:      req.To,
-			Status:         "accepted",
-		})
-	}
-
 
 	// Dynamically wrap legacy fields if Ingestor is not injected
 	ingestor := h.Ingestor
@@ -293,10 +267,55 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 	}
 
 	respBytes, _ := json.Marshal(resp)
-	if h.IdempotencyRepo != nil && workspaceID != uuid.Nil {
-		_ = h.IdempotencyRepo.UpdateLedgerStatus(c.Request().Context(), workspaceID, traceID, "enqueued", nil)
-		_ = h.IdempotencyRepo.UpdateResponse(c.Request().Context(), workspaceID, keyHash, http.StatusAccepted, respBytes, nil)
-	}
+	h.recordIdempotencyCompletion(c.Request().Context(), workspaceID, traceID, keyHash, respBytes)
 
 	return c.JSON(http.StatusAccepted, resp)
+}
+
+// hashIdempotencyKey computes the SHA-256 hash for the given header key or body payload.
+func (h *MessageHandler) hashIdempotencyKey(headerKey string, bodyBytes []byte) (idempotencyKey string, keyHash string) {
+	if headerKey != "" {
+		hasher := sha256.New()
+		hasher.Write([]byte(headerKey))
+		return headerKey, hex.EncodeToString(hasher.Sum(nil))
+	}
+	hasher := sha256.New()
+	hasher.Write(bodyBytes)
+	keyHash = hex.EncodeToString(hasher.Sum(nil))
+	return keyHash, keyHash
+}
+
+// checkAndRecordIdempotency performs idempotency lookup, key registration, and initial ledger recording.
+// Returns true if a cached response was served directly to c.
+func (h *MessageHandler) checkAndRecordIdempotency(c *echo.Context, workspaceID uuid.UUID, traceID string, keyHash string, idempotencyKey string, req *domain.CreateMessageRequest) (bool, error) {
+	if h.IdempotencyRepo == nil || workspaceID == uuid.Nil {
+		return false, nil
+	}
+
+	ctx := c.Request().Context()
+	if entry, err := h.IdempotencyRepo.GetByIdempotencyKey(ctx, workspaceID, keyHash); err == nil && entry != nil && entry.StatusCode != nil {
+		c.Response().Header().Set("Content-Type", "application/json")
+		c.Response().WriteHeader(*entry.StatusCode)
+		_, _ = c.Response().Write(entry.ResponseBody)
+		return true, nil
+	}
+
+	_, _ = h.IdempotencyRepo.CheckAndStore(ctx, workspaceID, keyHash, traceID, 24*time.Hour)
+	_ = h.IdempotencyRepo.RecordLedger(ctx, &repository.IngressLedgerEntry{
+		WorkspaceID:    workspaceID,
+		TraceID:        traceID,
+		IdempotencyKey: idempotencyKey,
+		Channel:        req.Channel,
+		Recipient:      req.To,
+		Status:         "accepted",
+	})
+	return false, nil
+}
+
+// recordIdempotencyCompletion updates the ledger status to enqueued and records the HTTP 202 response body.
+func (h *MessageHandler) recordIdempotencyCompletion(ctx context.Context, workspaceID uuid.UUID, traceID string, keyHash string, respBytes []byte) {
+	if h.IdempotencyRepo != nil && workspaceID != uuid.Nil {
+		_ = h.IdempotencyRepo.UpdateLedgerStatus(ctx, workspaceID, traceID, "enqueued", nil)
+		_ = h.IdempotencyRepo.UpdateResponse(ctx, workspaceID, keyHash, http.StatusAccepted, respBytes, nil)
+	}
 }

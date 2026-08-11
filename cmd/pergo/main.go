@@ -23,7 +23,6 @@ import (
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	apipkg "github.com/pablojhp.pergo/internal/api/handler/api"
-	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/api/mcp"
 	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/channel"
@@ -31,10 +30,13 @@ import (
 	"github.com/pablojhp.pergo/internal/channel/instagram"
 	"github.com/pablojhp.pergo/internal/channel/telegram"
 	"github.com/pablojhp.pergo/internal/channel/whatsapp"
+	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/config"
 	"github.com/pablojhp.pergo/internal/inbound"
+	"github.com/pablojhp.pergo/internal/integration/chatwoot"
+	"github.com/pablojhp.pergo/internal/integration/typebot"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/outbound"
-	"github.com/pablojhp.pergo/internal/webhook"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	echosrv "github.com/pablojhp.pergo/internal/platform/echo"
@@ -44,11 +46,9 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/platform/shutdown"
 	"github.com/pablojhp.pergo/internal/platform/storage"
-	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
-	"github.com/pablojhp.pergo/internal/integration/chatwoot"
-	"github.com/pablojhp.pergo/internal/integration/typebot"
+	"github.com/pablojhp.pergo/internal/webhook"
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
@@ -630,7 +630,7 @@ func main() {
 	// Chatwoot integration routes
 	adminGroup.GET("/workspaces/:workspace_id/integrations/chatwoot", chatwootAdminHandler.GetSettings)
 	adminGroup.POST("/workspaces/:workspace_id/integrations/chatwoot", chatwootAdminHandler.PostSettings)
-	
+
 	// Typebot integration routes
 	adminGroup.GET("/workspaces/:workspace_id/integrations/typebot", typebotAdminHandler.GetSettings)
 	adminGroup.POST("/workspaces/:workspace_id/integrations/typebot", typebotAdminHandler.PostSettings)
@@ -659,25 +659,8 @@ func main() {
 	// Campaigns routes
 	tagRepo := repository.NewTagRepository(pool)
 	// Tags & Contact Import/Export routes
-	tagAdminHandler := admin.NewTagAdminHandler(tagRepo, contactRepo)
-	adminGroup.GET("/tags", func(c *echo.Context) error {
-		ctx := c.Request().Context()
-		cookie, err := c.Cookie("pergo-active-workspace")
-		var wsID uuid.UUID
-		if err == nil && cookie != nil && cookie.Value != "" {
-			wsID, _ = uuid.Parse(cookie.Value)
-		}
-		if wsID == uuid.Nil {
-			list, err := wsRepo.List(ctx, 1)
-			if err == nil && len(list) > 0 {
-				wsID = list[0].ID
-			}
-		}
-		if wsID == uuid.Nil {
-			return c.String(http.StatusBadRequest, "nenhum workspace encontrado. Crie um workspace primeiro.")
-		}
-		return c.Redirect(http.StatusFound, fmt.Sprintf("/admin/workspaces/%s/tags", wsID.String()))
-	})
+	tagAdminHandler := admin.NewTagAdminHandler(tagRepo, contactRepo, wsRepo)
+	adminGroup.GET("/tags", tagAdminHandler.RedirectToWorkspaceTags)
 	adminGroup.GET("/workspaces/:workspace_id/tags", tagAdminHandler.Page)
 	adminGroup.POST("/workspaces/:workspace_id/tags", tagAdminHandler.CreateTag)
 	adminGroup.DELETE("/workspaces/:workspace_id/tags/:id", tagAdminHandler.DeleteTag)
@@ -732,11 +715,6 @@ func main() {
 	v1Group.DELETE("/workspaces/:workspace_id/contacts/:contact_id/tags/:tag_id", tagAdminHandler.RemoveContactTag)
 	v1Group.POST("/workspaces/:workspace_id/contacts/import", tagAdminHandler.ImportContactsCSV)
 	v1Group.GET("/workspaces/:workspace_id/contacts/export", tagAdminHandler.ExportContactsCSV)
-
-
-
-
-
 
 	// Static files
 	e.Static("/static", "static")
