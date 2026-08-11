@@ -690,6 +690,7 @@ func main() {
 	adminGroup.DELETE("/workspaces/:workspace_id/campaigns/:id", campaignHandler.Delete)
 
 	// Campaign REST API routes (v1)
+	v1Group := e.Group("/api/v1")
 	v1Group.POST("/workspaces/:workspace_id/campaigns", campaignHandler.APICreate)
 	v1Group.GET("/workspaces/:workspace_id/campaigns", campaignHandler.APIList)
 	v1Group.GET("/workspaces/:workspace_id/campaigns/:id", campaignHandler.APIGet)
