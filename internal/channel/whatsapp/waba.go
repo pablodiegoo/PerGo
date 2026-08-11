@@ -45,6 +45,7 @@ type WABAConfig struct {
 	Token            string `json:"token"`
 	WABAAccountID    string `json:"waba_account_id"`
 	VerifyToken      string `json:"verify_token"`
+	AppSecret        string `json:"app_secret,omitempty"`
 	DefaultCatalogID string `json:"default_catalog_id,omitempty"`
 }
 

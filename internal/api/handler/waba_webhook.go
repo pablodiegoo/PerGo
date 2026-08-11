@@ -1,13 +1,18 @@
 package handler
 
 import (
+	"crypto/hmac"
 	"crypto/rsa"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/google/uuid"
@@ -21,12 +26,53 @@ import (
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
+const (
+	// MaxWABAPayloadSize limits WABA webhook payloads to 2MiB.
+	MaxWABAPayloadSize = 2 * 1024 * 1024
+)
+
+// ErrPayloadTooLarge is returned when the request body exceeds MaxWABAPayloadSize.
+var ErrPayloadTooLarge = errors.New("waba webhook: request body exceeds 2MiB limit")
+
+// ReadLimitedBody reads up to limit bytes from r. If the body exceeds limit, returns ErrPayloadTooLarge.
+func ReadLimitedBody(r io.Reader, limit int64) ([]byte, error) {
+	if r == nil {
+		return []byte{}, nil
+	}
+	lr := io.LimitReader(r, limit+1)
+	body, err := io.ReadAll(lr)
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit {
+		return nil, ErrPayloadTooLarge
+	}
+	return body, nil
+}
+
+// VerifyWABASignature verifies the X-Hub-Signature-256 header against the payload body and app secret using HMAC-SHA256 and hmac.Equal.
+func VerifyWABASignature(body []byte, secret string, signatureHeader string) bool {
+	if secret == "" || signatureHeader == "" {
+		return false
+	}
+	sigHex := strings.TrimPrefix(signatureHeader, "sha256=")
+	sigBytes, err := hex.DecodeString(sigHex)
+	if err != nil {
+		return false
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	expectedMAC := mac.Sum(nil)
+	return hmac.Equal(expectedMAC, sigBytes)
+}
+
 // WABAWebhookHandler handles verification and inbound payloads for Meta's WhatsApp Cloud API (WABA).
 type WABAWebhookHandler struct {
 	connectionsRepo  *repository.ConnectionRepository
 	templatesRepo    *repository.WABATemplateRepository
 	inboundProcessor *inbound.InboundProcessor
 	adapter          channel.InboundAdapter
+	verifySignature  bool
 }
 
 func NewWABAWebhookHandler(
@@ -34,11 +80,21 @@ func NewWABAWebhookHandler(
 	inboundProcessor *inbound.InboundProcessor,
 	mediaEngine media.Engine,
 ) *WABAWebhookHandler {
+	verify := true
+	if val := strings.ToLower(strings.TrimSpace(os.Getenv("WABA_WEBHOOK_VERIFY_SIGNATURE"))); val == "false" || val == "0" || val == "off" || val == "no" {
+		verify = false
+	}
 	return &WABAWebhookHandler{
 		connectionsRepo:  connectionsRepo,
 		inboundProcessor: inboundProcessor,
 		adapter:          whatsapp.NewWABAInboundAdapter(mediaEngine),
+		verifySignature:  verify,
 	}
+}
+
+// SetVerifySignature enables or disables X-Hub-Signature-256 signature verification.
+func (h *WABAWebhookHandler) SetVerifySignature(verify bool) {
+	h.verifySignature = verify
 }
 
 // SetTemplatesRepo injects the WABATemplateRepository for template status updates.
@@ -149,10 +205,38 @@ func (h *WABAWebhookHandler) HandlePost(c *echo.Context) error {
 		return c.NoContent(http.StatusForbidden)
 	}
 
-	// Read raw request body
-	body, err := io.ReadAll(c.Request().Body)
+	// Read raw request body with 2MiB limit
+	body, err := ReadLimitedBody(c.Request().Body, MaxWABAPayloadSize)
 	if err != nil {
+		if errors.Is(err, ErrPayloadTooLarge) {
+			slog.Warn("waba webhook: body exceeds 2MiB limit", "workspace_id", workspaceID)
+			return c.NoContent(http.StatusRequestEntityTooLarge)
+		}
 		return c.NoContent(http.StatusBadRequest)
+	}
+
+	// Verify X-Hub-Signature-256 signature if enabled
+	if h.verifySignature {
+		sigHeader := c.Request().Header.Get("X-Hub-Signature-256")
+		var creds struct {
+			AppSecret   string `json:"app_secret"`
+			VerifyToken string `json:"verify_token"`
+			Token       string `json:"token"`
+		}
+		_ = json.Unmarshal(matchingConn.Credentials, &creds)
+
+		secret := creds.AppSecret
+		if secret == "" {
+			secret = creds.VerifyToken
+		}
+		if secret == "" {
+			secret = creds.Token
+		}
+
+		if sigHeader == "" || secret == "" || !VerifyWABASignature(body, secret, sigHeader) {
+			slog.Warn("waba webhook: signature verification failed", "workspace_id", workspaceID)
+			return c.NoContent(http.StatusUnauthorized)
+		}
 	}
 
 	// Check for template status/quality update events

@@ -2,7 +2,11 @@ package handler
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -105,6 +109,7 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, sessRepo, contactRepo, dispatchRepo, nil)
 	h := NewWABAWebhookHandler(connRepo, inboundProcessor, mediaEngine)
+	h.SetVerifySignature(false)
 
 	e := echo.New()
 
@@ -334,5 +339,214 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 
 func TestWABAWebhook_OrderDeduplication(t *testing.T) {
 	// Wrapper to satisfy test runner criteria
+}
+
+func TestReadLimitedBody(t *testing.T) {
+	t.Run("under limit", func(t *testing.T) {
+		input := "hello world"
+		body, err := ReadLimitedBody(strings.NewReader(input), 100)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if string(body) != input {
+			t.Errorf("got %q, want %q", string(body), input)
+		}
+	})
+
+	t.Run("exactly limit", func(t *testing.T) {
+		input := "12345"
+		body, err := ReadLimitedBody(strings.NewReader(input), 5)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if string(body) != input {
+			t.Errorf("got %q, want %q", string(body), input)
+		}
+	})
+
+	t.Run("over limit", func(t *testing.T) {
+		input := "123456"
+		_, err := ReadLimitedBody(strings.NewReader(input), 5)
+		if !errors.Is(err, ErrPayloadTooLarge) {
+			t.Errorf("expected ErrPayloadTooLarge, got: %v", err)
+		}
+	})
+
+	t.Run("nil reader", func(t *testing.T) {
+		body, err := ReadLimitedBody(nil, 100)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(body) != 0 {
+			t.Errorf("expected empty body, got %v", body)
+		}
+	})
+}
+
+func computeWABATestHMAC(body []byte, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
+}
+
+func TestWABAWebhook_SignatureAndBodyLimit(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	kek := make([]byte, 32)
+	enc, _ := crypto.NewEncryptor(kek)
+	connRepo := repository.NewConnectionRepository(pool, enc)
+
+	ws, err := wsRepo.Create(ctx, "waba_sig_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	appSecret := "meta-waba-app-secret-12345"
+	configPayload := map[string]string{
+		"app_secret":   appSecret,
+		"verify_token": "waba-verify-token",
+		"token":        "waba-test-token",
+	}
+	configBytes, _ := json.Marshal(configPayload)
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "Test Sig WABA",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "987654321",
+		Credentials:    configBytes,
+	}
+	_ = connRepo.Create(ctx, conn)
+
+	h := NewWABAWebhookHandler(connRepo, nil, nil)
+	e := echo.New()
+
+	payloadJSON := `{"object":"whatsapp_business_account","entry":[]}`
+
+	t.Run("valid signature succeeds", func(t *testing.T) {
+		h.SetVerifySignature(true)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/waba/%s", ws.ID), strings.NewReader(payloadJSON))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Hub-Signature-256", computeWABATestHMAC([]byte(payloadJSON), appSecret))
+
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/webhooks/waba/:workspace_id")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		err := h.HandlePost(c)
+		if err != nil {
+			t.Fatalf("HandlePost returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200", rec.Code)
+		}
+	})
+
+	t.Run("missing signature returns 401", func(t *testing.T) {
+		h.SetVerifySignature(true)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/waba/%s", ws.ID), strings.NewReader(payloadJSON))
+		req.Header.Set("Content-Type", "application/json")
+
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/webhooks/waba/:workspace_id")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		err := h.HandlePost(c)
+		if err != nil {
+			t.Fatalf("HandlePost returned error: %v", err)
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("status = %d, want 401", rec.Code)
+		}
+	})
+
+	t.Run("invalid signature returns 401", func(t *testing.T) {
+		h.SetVerifySignature(true)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/waba/%s", ws.ID), strings.NewReader(payloadJSON))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Hub-Signature-256", "sha256=000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/webhooks/waba/:workspace_id")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		err := h.HandlePost(c)
+		if err != nil {
+			t.Fatalf("HandlePost returned error: %v", err)
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("status = %d, want 401", rec.Code)
+		}
+	})
+
+	t.Run("tampered body returns 401", func(t *testing.T) {
+		h.SetVerifySignature(true)
+		sig := computeWABATestHMAC([]byte(payloadJSON), appSecret)
+		tamperedPayload := `{"object":"whatsapp_business_account","entry":[{"id":"tampered"}]}`
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/waba/%s", ws.ID), strings.NewReader(tamperedPayload))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Hub-Signature-256", sig)
+
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/webhooks/waba/:workspace_id")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		err := h.HandlePost(c)
+		if err != nil {
+			t.Fatalf("HandlePost returned error: %v", err)
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("status = %d, want 401", rec.Code)
+		}
+	})
+
+	t.Run("body too large returns 413", func(t *testing.T) {
+		h.SetVerifySignature(false)
+		largeBody := strings.Repeat("A", MaxWABAPayloadSize+10)
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/waba/%s", ws.ID), strings.NewReader(largeBody))
+		req.Header.Set("Content-Type", "application/json")
+
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/webhooks/waba/:workspace_id")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		err := h.HandlePost(c)
+		if err != nil {
+			t.Fatalf("HandlePost returned error: %v", err)
+		}
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("status = %d, want 413 (StatusRequestEntityTooLarge)", rec.Code)
+		}
+	})
+
+	t.Run("dev mode bypass signature check", func(t *testing.T) {
+		h.SetVerifySignature(false)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/waba/%s", ws.ID), strings.NewReader(payloadJSON))
+		req.Header.Set("Content-Type", "application/json")
+
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/webhooks/waba/:workspace_id")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		err := h.HandlePost(c)
+		if err != nil {
+			t.Fatalf("HandlePost returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200", rec.Code)
+		}
+	})
 }
 
