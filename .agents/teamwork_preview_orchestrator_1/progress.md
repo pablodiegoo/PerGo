@@ -1,5 +1,5 @@
 ## Current Status
-Last visited: 2026-08-11T18:32:10Z
+Last visited: 2026-08-11T18:40:05Z
 
 ## Iteration Status
 Current iteration: 1 / 32
@@ -14,9 +14,9 @@ Current iteration: 1 / 32
   - [x] spec_miner_survey_1 (Issues #44 & #45) [completed]
 - [x] Synthesize survey findings into PROJECT.md
 - [x] Milestone 1: Refactoring and Fixing Import Cycles (#39, #42) [PASSED & DONE]
-- [/] Milestone 2: Idempotency SQL Fixes (#41)
-  - [x] worker_m2 (4066fe01-3077-4f19-93a5-d649a66b6c9d) [running]
-- [ ] Milestone 3: Outbound Webhooks HMAC-SHA256 Signature (#43)
+- [x] Milestone 2: Idempotency SQL Fixes (#41) [PASSED & DONE]
+- [/] Milestone 3: Outbound Webhooks HMAC-SHA256 Signature (#43)
+  - [x] worker_m3 (c1d88a25-a637-43e3-ab42-4b0552afb8ba) [running - running webhook & workspace test suites]
 - [ ] Milestone 4: Campaign Tag Filtering & Selector (#44)
 - [ ] Milestone 5: Campaign Worker Audit Log Emissions (#45)
 - [ ] Final E2E Integration Verification & Hardening

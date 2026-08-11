@@ -29,8 +29,8 @@ Every feature from the Survey phase appears here with its assigned milestone.
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
 | 1 | Refactoring & Import Cycle Fixes (#39, #42) | Features 1-5 | none | DONE |
-| 2 | Idempotency SQL Fixes (#41) | Feature 6 | none | PLANNED |
-| 3 | Outbound Webhook Signature Verification (#43) | Feature 7 | none | PLANNED |
+| 2 | Idempotency SQL Fixes (#41) | Feature 6 | none | DONE |
+| 3 | Outbound Webhook Signature Verification (#43) | Feature 7 | none | IN_PROGRESS |
 | 4 | Campaign Tag Filtering & Admin UI Selector (#44) | Features 8-9 | M1 | PLANNED |
 | 5 | Campaign Worker Audit Log Emissions (#45) | Feature 10 | M4 | PLANNED |
 

@@ -1,4 +1,4 @@
-# BRIEFING — 2026-08-11T18:32:09Z
+# BRIEFING — 2026-08-11T18:35:14Z
 
 ## Mission
 Fix PostgreSQL positional placeholders ($1, $2, $3, etc.) in `internal/repository/idempotency.go` for Issue #41 (Milestone 2).
@@ -18,21 +18,23 @@ Fix PostgreSQL positional placeholders ($1, $2, $3, etc.) in `internal/repositor
 
 ## Current Parent
 - Conversation ID: 03e4e639-db63-451c-a463-088a30a1e7a0
-- Updated: 2026-08-11T18:32:09Z
+- Updated: 2026-08-11T18:35:14Z
 
 ## Task Summary
 - **What to build**: Fix SQL placeholder indices in 5 queries in `internal/repository/idempotency.go`.
 - **Success criteria**: All SQL queries use correctly indexed `$1`, `$2`, `$3`, etc.; `go test` passes cleanly.
 
 ## Change Tracker
-- **Files modified**: TBD
-- **Build status**: TBD
+- **Files modified**:
+  - `internal/repository/idempotency.go`: Fixed positional parameters in 5 SQL queries
+  - `internal/platform/postgres/migrations/040_encrypt_webhook_dlq.sql`: Fixed table name typo (`webhook_dlq` -> `webhook_dlqs`)
+- **Build status**: PASS
 - **Pending issues**: None
 
 ## Quality Status
-- **Build/test result**: TBD
-- **Lint status**: TBD
-- **Tests added/modified**: TBD
+- **Build/test result**: PASS (`go test ./...` and `TestIdempotencyRepository` pass)
+- **Lint status**: CLEAN
+- **Tests added/modified**: `TestIdempotencyRepository` verified against live Postgres DB
 
 ## Loaded Skills
 - None

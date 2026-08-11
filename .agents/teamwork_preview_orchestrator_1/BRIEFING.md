@@ -1,4 +1,4 @@
-# BRIEFING — 2026-08-11T18:32:10Z
+# BRIEFING — 2026-08-11T18:39:20Z
 
 ## Mission
 Orchestrate resolution of issues #39, #41, #42, #43, #44, and #45 in PerGo repository.
@@ -20,13 +20,13 @@ Orchestrate resolution of issues #39, #41, #42, #43, #44, and #45 in PerGo repos
 - **Work items**:
   1. Survey & Architecture Mapping (M0) [done]
   2. Issue #39 & #42 Refactoring & Import Cycle Fixes (M1) [done]
-  3. Issue #41 Idempotency SQL Fixes (M2) [in-progress]
-  4. Issue #43 Outbound Webhooks HMAC-SHA256 (M3) [pending]
+  3. Issue #41 Idempotency SQL Fixes (M2) [done]
+  4. Issue #43 Outbound Webhooks HMAC-SHA256 (M3) [in-progress]
   5. Issue #44 Campaign Tag Filtering & Selector (M4) [pending]
   6. Issue #45 Campaign Worker Audit Log Emissions (M5) [pending]
   7. Final E2E Integration Verification & Hardening (M6) [pending]
-- **Current phase**: 2 (Milestone 2 Implementation)
-- **Current focus**: Worker M2 fixing positional placeholders in `internal/repository/idempotency.go` for Issue #41
+- **Current phase**: 3 (Milestone 3 Implementation)
+- **Current focus**: Worker M3 verifying Outbound Webhooks HMAC-SHA256 for Issue #43
 
 ## 🔒 Key Constraints
 - NEVER write, modify, or create source code files directly.
@@ -42,7 +42,8 @@ Orchestrate resolution of issues #39, #41, #42, #43, #44, and #45 in PerGo repos
 ## Key Decisions Made
 - Selected Project Pattern with multi-milestone decomposition for issues #39, #41, #42, #43, #44, #45.
 - Milestone 1 PASS (Worker DONE, Reviewers APPROVE, Challengers APPROVE, Auditor CLEAN).
-- Dispatched Worker M2 for Milestone 2 (#41).
+- Milestone 2 PASS (Worker DONE, Reviewer APPROVE, Challenger APPROVE, Auditor CLEAN).
+- Dispatched Worker M3 for Milestone 3 (#43).
 
 ## Team Roster
 | Agent | Type | Work Item | Status | Conv ID |
@@ -56,12 +57,16 @@ Orchestrate resolution of issues #39, #41, #42, #43, #44, and #45 in PerGo repos
 | challenger_m1_1 | teamwork_preview_challenger | Test M1 Errors & Imports | completed | 24c92361-3f0f-4b74-a265-b447df8bee6e |
 | challenger_m1_2 | teamwork_preview_challenger | Test M1 Edge Cases | completed | e615a184-9952-4bf1-bcc5-74e73a0ca9dd |
 | auditor_m1_1 | teamwork_preview_auditor | Forensic Audit M1 | completed | be8d9f32-1761-4cbb-926e-7a1cf745213e |
-| worker_m2 | teamwork_preview_worker | Implement M2 (#41) | running | 4066fe01-3077-4f19-93a5-d649a66b6c9d |
+| worker_m2 | teamwork_preview_worker | Implement M2 (#41) | completed | 4066fe01-3077-4f19-93a5-d649a66b6c9d |
+| reviewer_m2_1 | teamwork_preview_reviewer | Review M2 SQL Fixes | completed | 5e7d94bf-dad3-484d-a375-0a4a55a4f78f |
+| challenger_m2_1 | teamwork_preview_challenger | Test M2 Postgres | completed | a29691c7-9a8d-444a-87a9-8a9c6b03dc1c |
+| auditor_m2_1 | teamwork_preview_auditor | Forensic Audit M2 | completed | 76cad73c-e8e6-47cb-9b11-55c41aa081e0 |
+| worker_m3 | teamwork_preview_worker | Verify M3 (#43) | running | c1d88a25-a637-43e3-ab42-4b0552afb8ba |
 
 ## Succession Status
 - Succession required: no
-- Spawn count: 10 / 16
-- Pending subagents: 4066fe01-3077-4f19-93a5-d649a66b6c9d
+- Spawn count: 14 / 16
+- Pending subagents: c1d88a25-a637-43e3-ab42-4b0552afb8ba
 - Predecessor: none
 - Successor: not yet spawned
 
@@ -76,4 +81,4 @@ Orchestrate resolution of issues #39, #41, #42, #43, #44, and #45 in PerGo repos
 - /home/pablodiegoo/coding/PerGo/.agents/teamwork_preview_orchestrator_1/plan.md — Execution plan
 - /home/pablodiegoo/coding/PerGo/.agents/teamwork_preview_orchestrator_1/progress.md — Progress log
 - /home/pablodiegoo/coding/PerGo/.agents/teamwork_preview_orchestrator_1/PROJECT.md — Project & Milestone definition
-- /home/pablodiegoo/coding/PerGo/.agents/teamwork_preview_orchestrator_1/GATE_STATUS.md — Milestone 1 Gate Status
+- /home/pablodiegoo/coding/PerGo/.agents/teamwork_preview_orchestrator_1/GATE_STATUS.md — Gate Statuses
