@@ -1,4 +1,4 @@
-# SPEC-v1.8: PerGo Broadcaster Engine, Contact Tagging & Developer Gateway Extensions
+# PerGo Broadcaster Engine, Contact Tagging & Developer Gateway Extensions
 
 ## Problem Statement
 
