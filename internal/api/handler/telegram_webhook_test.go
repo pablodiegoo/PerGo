@@ -115,7 +115,7 @@ func TestTelegramWebhookHandler(t *testing.T) {
 	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, nil, nil, sessRepo, contactRepo, dispatchRepo, nil)
 	h := NewTelegramWebhookHandler(connRepo, inboundProcessor, mediaEngine)
 
-	t.Run("Missing Secret Token Header -> 403", func(t *testing.T) {
+	t.Run("Missing Secret Token Header -> 401", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/telegram/%s", ws.ID), strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
 		rec := httptest.NewRecorder()
@@ -129,12 +129,12 @@ func TestTelegramWebhookHandler(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Handle returned error: %v", err)
 		}
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("got status %d, want 403", rec.Code)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("got status %d, want 401", rec.Code)
 		}
 	})
 
-	t.Run("Incorrect Secret Token Header -> 403", func(t *testing.T) {
+	t.Run("Incorrect Secret Token Header -> 401", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/telegram/%s", ws.ID), strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Telegram-Bot-Api-Secret-Token", "wrong-secret-token")
@@ -149,8 +149,8 @@ func TestTelegramWebhookHandler(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Handle returned error: %v", err)
 		}
-		if rec.Code != http.StatusForbidden {
-			t.Errorf("got status %d, want 403", rec.Code)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("got status %d, want 401", rec.Code)
 		}
 	})
 
@@ -267,5 +267,165 @@ func TestInboundAuditLogging(t *testing.T) {
 	}
 	if entries[0].TraceID != "trace-abc-123" {
 		t.Errorf("expected TraceID trace-abc-123, got %s", entries[0].TraceID)
+	}
+}
+
+func TestTelegramWebhookSecretValid(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	kek := make([]byte, 32)
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	connRepo := repository.NewConnectionRepository(pool, enc)
+	wsRepo := repository.NewWorkspaceRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "tg_sec_valid_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	configPayload := map[string]string{
+		"token":        "bot123:test",
+		"secret_token": "valid-secret-123",
+	}
+	configBytes, _ := json.Marshal(configPayload)
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "Valid Bot",
+		Channel:        "telegram",
+		SenderIdentity: "@validbot",
+		Credentials:    configBytes,
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("failed to create conn: %v", err)
+	}
+
+	e := echo.New()
+	mediaEngine := media.NewDefaultEngine(nil)
+	h := NewTelegramWebhookHandler(connRepo, nil, mediaEngine)
+
+	body := `{"update_id":1,"message":{"message_id":1,"chat":{"id":12345}}}`
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/telegram/%s", ws.ID), strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Telegram-Bot-Api-Secret-Token", "valid-secret-123")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/webhooks/telegram/:workspace_id")
+	c.SetPathValues(echo.PathValues{
+		{Name: "workspace_id", Value: ws.ID.String()},
+	})
+
+	err = h.Handle(c)
+	if err != nil {
+		t.Fatalf("Handle returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("got status %d, want 200", rec.Code)
+	}
+}
+
+func TestTelegramWebhookSecretMissing(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	kek := make([]byte, 32)
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	connRepo := repository.NewConnectionRepository(pool, enc)
+	wsRepo := repository.NewWorkspaceRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "tg_sec_missing_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	e := echo.New()
+	mediaEngine := media.NewDefaultEngine(nil)
+	h := NewTelegramWebhookHandler(connRepo, nil, mediaEngine)
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/telegram/%s", ws.ID), strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/webhooks/telegram/:workspace_id")
+	c.SetPathValues(echo.PathValues{
+		{Name: "workspace_id", Value: ws.ID.String()},
+	})
+
+	err = h.Handle(c)
+	if err != nil {
+		t.Fatalf("Handle returned error: %v", err)
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("got status %d, want 401", rec.Code)
+	}
+}
+
+func TestTelegramWebhookSecretInvalid(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	kek := make([]byte, 32)
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	connRepo := repository.NewConnectionRepository(pool, enc)
+	wsRepo := repository.NewWorkspaceRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "tg_sec_invalid_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	configPayload := map[string]string{
+		"token":        "bot123:test",
+		"secret_token": "correct-secret",
+	}
+	configBytes, _ := json.Marshal(configPayload)
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "Valid Bot",
+		Channel:        "telegram",
+		SenderIdentity: "@validbot",
+		Credentials:    configBytes,
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("failed to create conn: %v", err)
+	}
+
+	e := echo.New()
+	mediaEngine := media.NewDefaultEngine(nil)
+	h := NewTelegramWebhookHandler(connRepo, nil, mediaEngine)
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/telegram/%s", ws.ID), strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Telegram-Bot-Api-Secret-Token", "wrong-secret-token")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/webhooks/telegram/:workspace_id")
+	c.SetPathValues(echo.PathValues{
+		{Name: "workspace_id", Value: ws.ID.String()},
+	})
+
+	err = h.Handle(c)
+	if err != nil {
+		t.Fatalf("Handle returned error: %v", err)
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("got status %d, want 401", rec.Code)
 	}
 }

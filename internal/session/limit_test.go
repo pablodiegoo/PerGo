@@ -97,7 +97,7 @@ func TestStartPairing_LimitExceeded(t *testing.T) {
 		d := &repository.Connection{
 			ID:             id,
 			WorkspaceID:    workspaceID,
-			Name:           "Test Web Client",
+			Name:           "Test Web Client " + id.String()[:8],
 			Channel:        "whatsapp",
 			JID:            &jidStr,
 			SenderIdentity: "551199999000" + string(rune('1'+i)),

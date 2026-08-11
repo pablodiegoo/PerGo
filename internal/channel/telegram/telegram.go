@@ -17,6 +17,11 @@ import (
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
+// ErrTelegramMediaRetryable is returned for retryable media storage or download failures.
+var ErrTelegramMediaRetryable = errors.New("telegram: retryable media storage failure")
+
+const maxTelegramResponseBodySize = 5 * 1024 * 1024 // 5MB limit
+
 // TelegramAdapter implements channel.Dispatcher for Telegram Bot API.
 type TelegramAdapter struct {
 	connectionsRepo *repository.ConnectionRepository
@@ -110,7 +115,7 @@ func (a *TelegramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 
 		bodyRC, _, err := a.s3Client.Download(ctx, key)
 		if err != nil {
-			return "", fmt.Errorf("telegram media download from S3 failed: %w", err)
+			return "", fmt.Errorf("%w: telegram media download from S3 failed: %v", ErrTelegramMediaRetryable, err)
 		}
 		defer bodyRC.Close()
 
@@ -262,7 +267,16 @@ func (a *TelegramAdapter) executeRequest(req *http.Request) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	respBytes, _ := io.ReadAll(resp.Body)
+	lr := io.LimitReader(resp.Body, maxTelegramResponseBodySize+1)
+	respBytes, err := io.ReadAll(lr)
+	if err != nil {
+		return "", fmt.Errorf("read Telegram API response: %w", err)
+	}
+
+	if int64(len(respBytes)) > maxTelegramResponseBodySize {
+		return "", fmt.Errorf("telegram response body exceeds 5MB limit")
+	}
+
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return string(respBytes), nil
 	}

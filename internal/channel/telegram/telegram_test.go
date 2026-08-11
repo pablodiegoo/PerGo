@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -352,6 +353,32 @@ func TestTelegramDispatch(t *testing.T) {
 		_, err := adapter.Dispatch(tenantCtx, payload)
 		if err != nil {
 			t.Fatalf("expected nil error on success, got: %v", err)
+		}
+	})
+
+	t.Run("Telegram Response Body > 5MB Returns Error", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			// Write > 5MB payload
+			bigData := make([]byte, 5*1024*1024+100)
+			_, _ = w.Write(bigData)
+		}))
+		defer server.Close()
+
+		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
+		adapter.SetBaseURL(server.URL)
+
+		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "@test_bot",
+			To:             "987654321",
+			Body:           "Too large response test",
+		})
+		if err == nil {
+			t.Fatal("expected error for response body > 5MB, got nil")
+		}
+		if !strings.Contains(err.Error(), "exceeds 5MB limit") {
+			t.Errorf("expected error containing 'exceeds 5MB limit', got: %v", err)
 		}
 	})
 }

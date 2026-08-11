@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/pablojhp.pergo/internal/channel/telegram"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/media"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -58,13 +60,13 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 	// Retrieve secret token from headers
 	receivedToken := c.Request().Header.Get("X-Telegram-Bot-Api-Secret-Token")
 	if receivedToken == "" {
-		return c.NoContent(http.StatusForbidden)
+		return c.NoContent(http.StatusUnauthorized)
 	}
 
 	// Load registered connections for the workspace
 	conns, err := h.connectionsRepo.ListByWorkspace(c.Request().Context(), workspaceID)
 	if err != nil {
-		return c.NoContent(http.StatusForbidden)
+		return c.NoContent(http.StatusUnauthorized)
 	}
 
 	var matchingConn *repository.Connection
@@ -78,7 +80,20 @@ func (h *TelegramWebhookHandler) Handle(c *echo.Context) error {
 
 	if matchingConn == nil {
 		slog.Warn("tg webhook: no matching connection found for workspace", "workspace_id", workspaceID)
-		return c.NoContent(http.StatusForbidden)
+		return c.NoContent(http.StatusUnauthorized)
+	}
+
+	var config struct {
+		SecretToken string `json:"secret_token"`
+	}
+	if err := json.Unmarshal(matchingConn.Credentials, &config); err != nil || config.SecretToken == "" {
+		slog.Warn("tg webhook: missing or invalid secret token in connection credentials", "workspace_id", workspaceID)
+		return c.NoContent(http.StatusUnauthorized)
+	}
+
+	if !crypto.CompareHashConstantTime(receivedToken, config.SecretToken) {
+		slog.Warn("tg webhook: secret token mismatch", "workspace_id", workspaceID)
+		return c.NoContent(http.StatusUnauthorized)
 	}
 
 	// Read raw request body
