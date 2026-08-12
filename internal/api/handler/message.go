@@ -300,22 +300,30 @@ func (h *MessageHandler) checkAndRecordIdempotency(c *echo.Context, workspaceID 
 		return true, nil
 	}
 
-	_, _ = h.IdempotencyRepo.CheckAndStore(ctx, workspaceID, keyHash, traceID, 24*time.Hour)
-	_ = h.IdempotencyRepo.RecordLedger(ctx, &repository.IngressLedgerEntry{
+	if _, err := h.IdempotencyRepo.CheckAndStore(ctx, workspaceID, keyHash, traceID, 24*time.Hour); err != nil {
+		slog.Error("failed to store idempotency key", "trace_id", traceID, "workspace_id", workspaceID.String(), "error", err)
+	}
+	if err := h.IdempotencyRepo.RecordLedger(ctx, &repository.IngressLedgerEntry{
 		WorkspaceID:    workspaceID,
 		TraceID:        traceID,
 		IdempotencyKey: idempotencyKey,
 		Channel:        req.Channel,
 		Recipient:      req.To,
 		Status:         "accepted",
-	})
+	}); err != nil {
+		slog.Error("failed to record idempotency ledger", "trace_id", traceID, "workspace_id", workspaceID.String(), "error", err)
+	}
 	return false, nil
 }
 
 // recordIdempotencyCompletion updates the ledger status to enqueued and records the HTTP 202 response body.
 func (h *MessageHandler) recordIdempotencyCompletion(ctx context.Context, workspaceID uuid.UUID, traceID string, keyHash string, respBytes []byte) {
 	if h.IdempotencyRepo != nil && workspaceID != uuid.Nil {
-		_ = h.IdempotencyRepo.UpdateLedgerStatus(ctx, workspaceID, traceID, "enqueued", nil)
-		_ = h.IdempotencyRepo.UpdateResponse(ctx, workspaceID, keyHash, http.StatusAccepted, respBytes, nil)
+		if err := h.IdempotencyRepo.UpdateLedgerStatus(ctx, workspaceID, traceID, "enqueued", nil); err != nil {
+			slog.Error("failed to update idempotency ledger status", "trace_id", traceID, "workspace_id", workspaceID.String(), "error", err)
+		}
+		if err := h.IdempotencyRepo.UpdateResponse(ctx, workspaceID, keyHash, http.StatusAccepted, respBytes, nil); err != nil {
+			slog.Error("failed to update idempotency response", "trace_id", traceID, "workspace_id", workspaceID.String(), "error", err)
+		}
 	}
 }

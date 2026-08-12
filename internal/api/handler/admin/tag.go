@@ -24,15 +24,12 @@ type TagAdminHandler struct {
 	wsRepo      *repository.WorkspaceRepository
 }
 
-func NewTagAdminHandler(tagRepo *repository.TagRepository, contactRepo *repository.ContactRepository, wsRepo ...*repository.WorkspaceRepository) *TagAdminHandler {
-	h := &TagAdminHandler{
+func NewTagAdminHandler(tagRepo *repository.TagRepository, contactRepo *repository.ContactRepository, wsRepo *repository.WorkspaceRepository) *TagAdminHandler {
+	return &TagAdminHandler{
 		tagRepo:     tagRepo,
 		contactRepo: contactRepo,
+		wsRepo:      wsRepo,
 	}
-	if len(wsRepo) > 0 {
-		h.wsRepo = wsRepo[0]
-	}
-	return h
 }
 
 // RedirectToWorkspaceTags handles GET /tags by redirecting to /admin/workspaces/:workspace_id/tags
@@ -43,7 +40,7 @@ func (h *TagAdminHandler) RedirectToWorkspaceTags(c *echo.Context) error {
 	if err == nil && cookie != nil && cookie.Value != "" {
 		wsID, _ = uuid.Parse(cookie.Value)
 	}
-	if wsID == uuid.Nil && h.wsRepo != nil {
+	if wsID == uuid.Nil {
 		list, err := h.wsRepo.List(ctx, 1)
 		if err == nil && len(list) > 0 {
 			wsID = list[0].ID

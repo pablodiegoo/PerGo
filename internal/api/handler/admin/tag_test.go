@@ -37,7 +37,7 @@ func TestTagAdminHandler(t *testing.T) {
 	tagRepo := repository.NewTagRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 
-	handler := admin.NewTagAdminHandler(tagRepo, contactRepo)
+	handler := admin.NewTagAdminHandler(tagRepo, contactRepo, wsRepo)
 
 	var createdTag domain.Tag
 

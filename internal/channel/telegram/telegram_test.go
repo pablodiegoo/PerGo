@@ -408,5 +408,8 @@ func TestTelegramDispatch(t *testing.T) {
 		if !errors.Is(err, ErrTelegramMediaRetryable) {
 			t.Errorf("expected error to wrap ErrTelegramMediaRetryable, got: %v", err)
 		}
+		if unwrapped := errors.Unwrap(err); unwrapped != ErrTelegramMediaRetryable {
+			t.Errorf("expected errors.Unwrap(err) to equal ErrTelegramMediaRetryable, got: %v", unwrapped)
+		}
 	})
 }

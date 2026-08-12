@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"regexp"
 	"strings"
 	"time"
@@ -145,4 +146,79 @@ func CalculateDuration(totalValid, batchSize, delaySeconds int) int {
 		batches++
 	}
 	return batches * delaySeconds
+}
+
+// TagContactLister defines the interface for querying contacts associated with a specific tag.
+type TagContactLister interface {
+	ListContactsByTag(ctx context.Context, workspaceID, tagID uuid.UUID) ([]Contact, error)
+}
+
+// DeduplicateUUIDs returns a slice of unique non-nil UUIDs preserving input order.
+func DeduplicateUUIDs(ids []uuid.UUID) []uuid.UUID {
+	seen := make(map[uuid.UUID]bool, len(ids))
+	result := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		if id != uuid.Nil && !seen[id] {
+			seen[id] = true
+			result = append(result, id)
+		}
+	}
+	return result
+}
+
+// ResolveTagRecipients resolves contacts from specified tag IDs into campaign recipient records and recipients, deduplicating by phone.
+// Contacts without a valid phone number in their identities are skipped (no name fallback).
+func ResolveTagRecipients(
+	ctx context.Context,
+	lister TagContactLister,
+	workspaceID uuid.UUID,
+	tagIDs []uuid.UUID,
+) ([]CampaignRecipientRecord, []CampaignRecipient, map[string]bool, error) {
+	seenPhones := make(map[string]bool)
+	var records []CampaignRecipientRecord
+	var recipients []CampaignRecipient
+
+	uniqueIDs := DeduplicateUUIDs(tagIDs)
+	if lister == nil || len(uniqueIDs) == 0 {
+		return records, recipients, seenPhones, nil
+	}
+
+	for _, tagID := range uniqueIDs {
+		contacts, err := lister.ListContactsByTag(ctx, workspaceID, tagID)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		for _, contact := range contacts {
+			phone := ""
+			for _, ident := range contact.Identities {
+				if ident.SenderIdentity != "" {
+					if clean, valid := SanitizePhone(ident.SenderIdentity); valid {
+						phone = clean
+						break
+					}
+				}
+			}
+			if phone == "" {
+				continue
+			}
+			if seenPhones[phone] {
+				continue
+			}
+			seenPhones[phone] = true
+
+			contactID := contact.ID
+			records = append(records, CampaignRecipientRecord{
+				ContactID: &contactID,
+				Phone:     phone,
+				Status:    RecipientStatusPending,
+				Variables: map[string]string{"name": contact.Name},
+			})
+			recipients = append(recipients, CampaignRecipient{
+				To:        phone,
+				Variables: map[string]string{"name": contact.Name},
+			})
+		}
+	}
+
+	return records, recipients, seenPhones, nil
 }

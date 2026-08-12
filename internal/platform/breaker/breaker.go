@@ -69,6 +69,16 @@ func (cb *CircuitBreaker) RecordSuccess(endpoint string) {
 	}
 }
 
+func (cb *CircuitBreaker) ConsecutiveFailures(endpoint string) int {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	if ep, ok := cb.endpoints[endpoint]; ok {
+		return ep.consecutiveFailures
+	}
+	return 0
+}
+
 func (cb *CircuitBreaker) RecordFailure(endpoint string) {
 	cb.mu.Lock()
 	defer cb.mu.Unlock()
@@ -79,9 +89,17 @@ func (cb *CircuitBreaker) RecordFailure(endpoint string) {
 		cb.endpoints[endpoint] = ep
 	}
 
+	if ep.state == StateHalfOpen {
+		ep.state = StateOpen
+		ep.consecutiveFailures = cb.maxFailures
+		ep.openUntil = time.Now().Add(cb.resetTimeout)
+		return
+	}
+
 	ep.consecutiveFailures++
-	if ep.state == StateHalfOpen || ep.consecutiveFailures >= cb.maxFailures {
+	if ep.consecutiveFailures >= cb.maxFailures {
 		ep.state = StateOpen
 		ep.openUntil = time.Now().Add(cb.resetTimeout)
 	}
 }
+

@@ -527,9 +527,18 @@ func TestCampaignWorker_AuditEmissions_Failed(t *testing.T) {
 	mockAudit := &fakeAuditWriter{}
 	worker := &CampaignWorker{auditWriter: mockAudit}
 
-	err := worker.EmitAuditLog(wsID, traceID, "campaign_dispatch", "failed", "5511999993333", campID, "whatsapp", "publish error")
+	err := worker.emitAuditLog(auditDispatchEvent{
+		WorkspaceID: wsID,
+		TraceID:     traceID,
+		EventType:   "campaign_dispatch",
+		Status:      "failed",
+		Recipient:   "5511999993333",
+		CampaignID:  campID,
+		Channel:     "whatsapp",
+		ErrStr:      "publish error",
+	})
 	if err != nil {
-		t.Fatalf("EmitAuditLog returned error: %v", err)
+		t.Fatalf("emitAuditLog returned error: %v", err)
 	}
 
 	events := mockAudit.Events()

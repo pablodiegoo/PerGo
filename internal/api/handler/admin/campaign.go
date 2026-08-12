@@ -321,19 +321,11 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 	if tagIDsVals, ok := c.Request().Form["tag_ids"]; ok {
 		for _, tidStr := range tagIDsVals {
 			if parsedID, err := uuid.Parse(tidStr); err == nil {
-				already := false
-				for _, existing := range formTagIDs {
-					if existing == parsedID {
-						already = true
-						break
-					}
-				}
-				if !already {
-					formTagIDs = append(formTagIDs, parsedID)
-				}
+				formTagIDs = append(formTagIDs, parsedID)
 			}
 		}
 	}
+	formTagIDs = domain.DeduplicateUUIDs(formTagIDs)
 
 	recipientsRaw := c.FormValue("recipients_data")
 	skippedRaw := c.FormValue("skipped_data")
@@ -349,51 +341,9 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 	}
 
 	// Combine contacts from tags and CSV recipients, deduplicating by phone
-	seenPhones := make(map[string]bool)
-	var mergedRecipients []domain.CampaignRecipient
-	var recipientRecords []domain.CampaignRecipientRecord
-
-	if len(formTagIDs) > 0 && h.TagRepo != nil {
-		for _, tagID := range formTagIDs {
-			contacts, err := h.TagRepo.ListContactsByTag(c.Request().Context(), workspaceID, tagID)
-			if err == nil {
-				for _, contact := range contacts {
-					phone := ""
-					for _, ident := range contact.Identities {
-						if ident.SenderIdentity != "" {
-							if clean, valid := domain.SanitizePhone(ident.SenderIdentity); valid {
-								phone = clean
-								break
-							}
-						}
-					}
-					if phone == "" {
-						if clean, valid := domain.SanitizePhone(contact.Name); valid {
-							phone = clean
-						}
-					}
-					if phone == "" {
-						continue
-					}
-					if seenPhones[phone] {
-						continue
-					}
-					seenPhones[phone] = true
-
-					contactID := contact.ID
-					recipientRecords = append(recipientRecords, domain.CampaignRecipientRecord{
-						ContactID: &contactID,
-						Phone:     phone,
-						Status:    domain.RecipientStatusPending,
-						Variables: map[string]string{"name": contact.Name},
-					})
-					mergedRecipients = append(mergedRecipients, domain.CampaignRecipient{
-						To:        phone,
-						Variables: map[string]string{"name": contact.Name},
-					})
-				}
-			}
-		}
+	recipientRecords, mergedRecipients, seenPhones, err := domain.ResolveTagRecipients(c.Request().Context(), h.TagRepo, workspaceID, formTagIDs)
+	if err != nil {
+		return c.String(http.StatusBadRequest, fmt.Sprintf("failed to resolve tag recipients: %v", err))
 	}
 
 	for _, rec := range recipients {
@@ -418,6 +368,10 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 	}
 
 	recipients = mergedRecipients
+
+	if len(recipientRecords) == 0 {
+		return c.String(http.StatusBadRequest, "A campanha precisa de pelo menos um destinatário. Selecione uma tag ou envie um CSV.")
+	}
 
 	// Resolve template parameters from form if WABA template selected
 	if channel == "whatsapp_cloud" && templateName != nil {
@@ -756,71 +710,19 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 	}
 	for _, tid := range req.TagIDs {
 		if tid != uuid.Nil {
-			already := false
-			for _, existing := range targetTagIDs {
-				if existing == tid {
-					already = true
-					break
-				}
-			}
-			if !already {
-				targetTagIDs = append(targetTagIDs, tid)
-			}
+			targetTagIDs = append(targetTagIDs, tid)
 		}
 	}
+	targetTagIDs = domain.DeduplicateUUIDs(targetTagIDs)
 
 	// 2. Pre-flight Recipient Validation
 	if len(req.Recipients) == 0 && len(targetTagIDs) == 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "campaign requires at least one recipient or a valid tag_id/tag_ids"})
 	}
 
-	var recipientRecords []domain.CampaignRecipientRecord
-	var sampleRecipients []domain.CampaignRecipient
-	seenPhones := make(map[string]bool)
-
-	// Resolve tag segment recipients if tag_id or tag_ids supplied
-	if len(targetTagIDs) > 0 && h.TagRepo != nil {
-		for _, tagID := range targetTagIDs {
-			contacts, err := h.TagRepo.ListContactsByTag(c.Request().Context(), workspaceID, tagID)
-			if err != nil {
-				return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to resolve contacts for tag: %v", err)})
-			}
-			for _, contact := range contacts {
-				phone := ""
-				for _, ident := range contact.Identities {
-					if ident.SenderIdentity != "" {
-						if clean, valid := domain.SanitizePhone(ident.SenderIdentity); valid {
-							phone = clean
-							break
-						}
-					}
-				}
-				if phone == "" {
-					if clean, valid := domain.SanitizePhone(contact.Name); valid {
-						phone = clean
-					}
-				}
-				if phone == "" {
-					continue
-				}
-				if seenPhones[phone] {
-					continue
-				}
-				seenPhones[phone] = true
-
-				contactID := contact.ID
-				recipientRecords = append(recipientRecords, domain.CampaignRecipientRecord{
-					ContactID: &contactID,
-					Phone:     phone,
-					Status:    domain.RecipientStatusPending,
-					Variables: map[string]string{"name": contact.Name},
-				})
-				sampleRecipients = append(sampleRecipients, domain.CampaignRecipient{
-					To:        phone,
-					Variables: map[string]string{"name": contact.Name},
-				})
-			}
-		}
+	recipientRecords, sampleRecipients, seenPhones, err := domain.ResolveTagRecipients(c.Request().Context(), h.TagRepo, workspaceID, targetTagIDs)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to resolve contacts for tag: %v", err)})
 	}
 
 	// Resolve inline CSV/JSON recipients if provided

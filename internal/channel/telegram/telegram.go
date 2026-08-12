@@ -116,7 +116,7 @@ func (a *TelegramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 
 		bodyRC, _, err := a.s3Client.Download(ctx, key)
 		if err != nil {
-			return "", fmt.Errorf("%w: telegram media download from S3 failed: %w", ErrTelegramMediaRetryable, err)
+			return "", fmt.Errorf("%w: telegram media download from S3 failed: %v", ErrTelegramMediaRetryable, err)
 		}
 		defer bodyRC.Close()
 

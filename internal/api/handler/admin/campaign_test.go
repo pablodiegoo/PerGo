@@ -144,6 +144,34 @@ func TestCampaignHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("Create Campaign Validation - No Recipients", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("name", "Empty Recipients Campaign")
+		form.Set("channel", "whatsapp")
+		form.Set("batch_size", "50")
+		form.Set("delay_seconds", "3")
+		form.Set("body_template", "Test")
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns", ws.ID), strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+		})
+
+		if err := h.Create(c); err != nil {
+			t.Fatalf("Create failed: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "A campanha precisa de pelo menos um destinatário. Selecione uma tag ou envie um CSV.") {
+			t.Errorf("expected validation error, got: %s", rec.Body.String())
+		}
+	})
+
 	t.Run("Create Campaign", func(t *testing.T) {
 		recipients := []domain.CampaignRecipient{
 			{To: "5511999998888", Variables: map[string]string{"name": "John"}},
