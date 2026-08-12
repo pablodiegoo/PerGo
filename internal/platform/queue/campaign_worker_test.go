@@ -584,24 +584,24 @@ func TestCampaignWorker_StartTask_DynamicResolution(t *testing.T) {
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
 
 	// Create tag
-	tag, err := tagRepo.Create(ctx, ws.ID, "VIP", "#3b82f6")
+	tag, err := tagRepo.CreateTag(ctx, ws.ID, "VIP", "#3b82f6")
 	if err != nil {
 		t.Fatalf("failed to create tag: %v", err)
 	}
 
 	// Create contacts with whatsapp identities
-	contact1, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "5511999998888", "Alice")
+	contact1, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "5511999998888", "Alice", "", "5511999998888")
 	if err != nil {
 		t.Fatalf("failed to create contact1: %v", err)
 	}
-	contact2, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "5521988887777", "Bob")
+	contact2, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "5521988887777", "Bob", "", "5521988887777")
 	if err != nil {
 		t.Fatalf("failed to create contact2: %v", err)
 	}
 
 	// Tag both contacts
-	_ = tagRepo.AddContactTag(ctx, contact1.ID, tag.ID)
-	_ = tagRepo.AddContactTag(ctx, contact2.ID, tag.ID)
+	_ = tagRepo.AddTagToContact(ctx, ws.ID, contact1.ID, tag.ID)
+	_ = tagRepo.AddTagToContact(ctx, ws.ID, contact2.ID, tag.ID)
 
 	// Ensure Streams
 	_, _ = EnsureCampaignStream(ctx, nc)
@@ -705,7 +705,7 @@ func TestCampaignWorker_StartTask_EmptyResolution(t *testing.T) {
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
 
 	// Create a tag with no contacts
-	tag, err := tagRepo.Create(ctx, ws.ID, "EmptyTag", "#ff0000")
+	tag, err := tagRepo.CreateTag(ctx, ws.ID, "EmptyTag", "#ff0000")
 	if err != nil {
 		t.Fatalf("failed to create tag: %v", err)
 	}
@@ -798,15 +798,15 @@ func TestCampaignWorker_StartTask_TagPlusCSVMerge(t *testing.T) {
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
 
 	// Create tag and contact
-	tag, err := tagRepo.Create(ctx, ws.ID, "TagMerge", "#00ff00")
+	tag, err := tagRepo.CreateTag(ctx, ws.ID, "TagMerge", "#00ff00")
 	if err != nil {
 		t.Fatalf("failed to create tag: %v", err)
 	}
-	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "5511999998888", "Alice")
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "5511999998888", "Alice", "", "5511999998888")
 	if err != nil {
 		t.Fatalf("failed to create contact: %v", err)
 	}
-	_ = tagRepo.AddContactTag(ctx, contact.ID, tag.ID)
+	_ = tagRepo.AddTagToContact(ctx, ws.ID, contact.ID, tag.ID)
 
 	_, _ = EnsureCampaignStream(ctx, nc)
 	_, _ = EnsureStream(ctx, nc)

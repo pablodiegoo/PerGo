@@ -486,7 +486,33 @@ func (h *CampaignHandler) Start(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "only campaigns in draft status can be started")
 	}
 
-	// Slice into batches
+	// Dynamic tag resolution path: publish CampaignStartTask to campaigns.start
+	if len(camp.TagIDs) > 0 {
+		err = h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusSending)
+		if err != nil {
+			return c.String(http.StatusInternalServerError, "failed to update campaign status")
+		}
+		camp.Status = domain.CampaignStatusSending
+
+		startTask := domain.CampaignStartTask{
+			CampaignID:  camp.ID,
+			WorkspaceID: camp.WorkspaceID,
+		}
+		payload, err := json.Marshal(startTask)
+		if err != nil {
+			return c.String(http.StatusInternalServerError, "failed to marshal start task")
+		}
+
+		traceID := fmt.Sprintf("campaign_%s_start", camp.ID)
+		err = h.Publisher.Publish(ctx, "campaigns.start", payload, traceID)
+		if err != nil {
+			return c.String(http.StatusInternalServerError, "failed to publish campaign start")
+		}
+
+		return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
+	}
+
+	// Legacy inline batching path: for campaigns without tag_ids (CSV-only).
 	recipients := camp.Recipients
 	batchSize := camp.BatchSize
 	if batchSize <= 0 {
@@ -867,7 +893,34 @@ func (h *CampaignHandler) APIStart(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "only draft or paused campaigns can be started"})
 	}
 
-	// Slice recipients into batches
+	// Dynamic tag resolution path: publish CampaignStartTask to campaigns.start
+	// The CampaignWorker will resolve tags, merge with CSV recipients, and publish batch tasks.
+	if len(camp.TagIDs) > 0 {
+		err = h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusRunning)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update campaign status"})
+		}
+		camp.Status = domain.CampaignStatusRunning
+
+		startTask := domain.CampaignStartTask{
+			CampaignID:  camp.ID,
+			WorkspaceID: camp.WorkspaceID,
+		}
+		payload, err := json.Marshal(startTask)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to marshal start task"})
+		}
+
+		traceID := fmt.Sprintf("campaign_%s_start", camp.ID)
+		err = h.Publisher.Publish(ctx, "campaigns.start", payload, traceID)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to publish campaign start"})
+		}
+
+		return c.JSON(http.StatusOK, camp)
+	}
+
+	// Legacy inline batching path: for campaigns without tag_ids (CSV-only).
 	recipients := camp.Recipients
 	batchSize := camp.BatchSize
 	if batchSize <= 0 {
