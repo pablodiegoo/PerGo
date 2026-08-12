@@ -239,3 +239,16 @@ Do not make direct repo edits outside a GSD workflow unless the user explicitly 
 
 <!-- GSD:profile-end -->
 
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in GitHub Issues using the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Canonical 5-role triage label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout (`CONTEXT.md` + `docs/adr/` at repo root). See `docs/agents/domain.md`.

@@ -341,7 +341,7 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 	}
 
 	// Combine contacts from tags and CSV recipients, deduplicating by phone
-	recipientRecords, mergedRecipients, seenPhones, err := domain.ResolveTagRecipients(c.Request().Context(), h.TagRepo, workspaceID, formTagIDs)
+	recipientRecords, mergedRecipients, seenPhones, err := domain.ResolveTagRecipients(c.Request().Context(), h.TagRepo, workspaceID, formTagIDs, "")
 	if err != nil {
 		return c.String(http.StatusBadRequest, fmt.Sprintf("failed to resolve tag recipients: %v", err))
 	}
@@ -720,7 +720,7 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "campaign requires at least one recipient or a valid tag_id/tag_ids"})
 	}
 
-	recipientRecords, sampleRecipients, seenPhones, err := domain.ResolveTagRecipients(c.Request().Context(), h.TagRepo, workspaceID, targetTagIDs)
+	recipientRecords, sampleRecipients, seenPhones, err := domain.ResolveTagRecipients(c.Request().Context(), h.TagRepo, workspaceID, targetTagIDs, "")
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to resolve contacts for tag: %v", err)})
 	}

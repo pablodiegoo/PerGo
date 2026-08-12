@@ -252,7 +252,8 @@ func main() {
 		os.Exit(1)
 	}
 	campaignRepo := repository.NewCampaignRepository(pool)
-	campaignWorker := queue.NewCampaignWorker(ctx, campConsumer, campaignRepo, connectionRepo, dispatchRepo, publisher, auditWriter)
+	tagRepo := repository.NewTagRepository(pool)
+	campaignWorker := queue.NewCampaignWorker(ctx, campConsumer, campaignRepo, connectionRepo, dispatchRepo, publisher, auditWriter, tagRepo)
 	slog.Info("campaign worker started", "consumer", "campaign-worker-1")
 
 	// --- Webhook Worker ---
@@ -657,7 +658,6 @@ func main() {
 	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/test", webhookHandler.TestSubscription)
 
 	// Campaigns routes
-	tagRepo := repository.NewTagRepository(pool)
 	// Tags & Contact Import/Export routes
 	tagAdminHandler := admin.NewTagAdminHandler(tagRepo, contactRepo, wsRepo)
 	adminGroup.GET("/tags", tagAdminHandler.RedirectToWorkspaceTags)

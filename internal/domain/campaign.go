@@ -74,6 +74,7 @@ type Campaign struct {
 	MessageBody      *string             `json:"message_body,omitempty"`
 	Channel          *string             `json:"channel,omitempty"`
 	TagID            *uuid.UUID          `json:"tag_id,omitempty"`
+	TagIDs           []uuid.UUID         `json:"tag_ids,omitempty"`
 	TotalRecipients  int                 `json:"total_recipients"`
 	SentRecipients   int                 `json:"sent_recipients"`
 	FailedRecipients int                 `json:"failed_recipients"`
@@ -82,6 +83,13 @@ type Campaign struct {
 	ScheduledAt      *time.Time          `json:"scheduled_at,omitempty"`
 	CreatedAt        time.Time           `json:"created_at"`
 	UpdatedAt        time.Time           `json:"updated_at"`
+}
+
+// CampaignStartTask represents the payload for starting a campaign with dynamic tag resolution.
+// Published to the campaigns.start JetStream subject.
+type CampaignStartTask struct {
+	CampaignID  uuid.UUID `json:"campaign_id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
 }
 
 // SniffDelimiter checks the frequencies of commas, semicolons, and tabs to auto-detect a CSV delimiter.
@@ -173,6 +181,7 @@ func ResolveTagRecipients(
 	lister TagContactLister,
 	workspaceID uuid.UUID,
 	tagIDs []uuid.UUID,
+	channelFilter string,
 ) ([]CampaignRecipientRecord, []CampaignRecipient, map[string]bool, error) {
 	seenPhones := make(map[string]bool)
 	var records []CampaignRecipientRecord
@@ -191,6 +200,9 @@ func ResolveTagRecipients(
 		for _, contact := range contacts {
 			phone := ""
 			for _, ident := range contact.Identities {
+				if channelFilter != "" && !strings.EqualFold(ident.Channel, channelFilter) {
+					continue
+				}
 				if ident.SenderIdentity != "" {
 					if clean, valid := SanitizePhone(ident.SenderIdentity); valid {
 						phone = clean
