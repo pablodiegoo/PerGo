@@ -8,7 +8,14 @@ import (
 
 var ErrCircuitOpen = errors.New("circuit breaker is open")
 
+const (
+	StateClosed int = iota
+	StateOpen
+	StateHalfOpen
+)
+
 type EndpointBreaker struct {
+	state               int
 	consecutiveFailures int
 	openUntil           time.Time
 }
@@ -39,17 +46,15 @@ func (cb *CircuitBreaker) Allow(endpoint string) error {
 	defer cb.mu.Unlock()
 
 	ep, ok := cb.endpoints[endpoint]
-	if !ok {
+	if !ok || ep.state == StateClosed {
 		return nil
 	}
 
-	if !ep.openUntil.IsZero() {
-		if time.Now().Before(ep.openUntil) {
-			return ErrCircuitOpen
-		}
-		ep.consecutiveFailures = 0
-		ep.openUntil = time.Time{}
+	if ep.state == StateHalfOpen || time.Now().Before(ep.openUntil) {
+		return ErrCircuitOpen
 	}
+
+	ep.state = StateHalfOpen
 	return nil
 }
 
@@ -58,6 +63,7 @@ func (cb *CircuitBreaker) RecordSuccess(endpoint string) {
 	defer cb.mu.Unlock()
 
 	if ep, ok := cb.endpoints[endpoint]; ok {
+		ep.state = StateClosed
 		ep.consecutiveFailures = 0
 		ep.openUntil = time.Time{}
 	}
@@ -74,7 +80,8 @@ func (cb *CircuitBreaker) RecordFailure(endpoint string) {
 	}
 
 	ep.consecutiveFailures++
-	if ep.consecutiveFailures >= cb.maxFailures {
+	if ep.state == StateHalfOpen || ep.consecutiveFailures >= cb.maxFailures {
+		ep.state = StateOpen
 		ep.openUntil = time.Now().Add(cb.resetTimeout)
 	}
 }
