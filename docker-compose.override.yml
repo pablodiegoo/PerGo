@@ -1,0 +1,50 @@
+# =============================================================================
+# PerGo — Local development override
+# =============================================================================
+# Auto-loaded by `docker compose up` (no flags needed).
+# Adds a local Postgres so you don't depend on external infra.
+#
+# To run:  docker compose up
+# To stop: docker compose down
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pergo
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pergo"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    # Expose ports to host for local debugging (natscli, etc)
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
+  pergo:
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    environment:
+      PERGO_DATABASE_URL: postgres://postgres:postgres@postgres:5432/pergo?sslmode=disable
+
+volumes:
+  postgres-data:
+
+# Override the external network requirement — in dev, we don't need it
+networks:
+  shared-infra:
+    external: false

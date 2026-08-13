@@ -1,30 +1,27 @@
-version: "3.8"
+# =============================================================================
+# PerGo — Production / Dokploy compose
+# =============================================================================
+# This file runs: pergo app + NATS (PerGo-specific).
+# Postgres is EXTERNAL — provided by your shared infra compose.
+#
+# For local development, Docker Compose auto-loads docker-compose.override.yml
+# which adds a local Postgres instance. Just run: docker compose up
+#
+# For Dokploy, set these env vars in the project's Environment panel:
+#   PERGO_DATABASE_URL  → postgres://pergo:xxx@postgres:5432/pergo?sslmode=disable
+#   PERGO_ADMIN_PASSWORD
+#   PERGO_EXTERNAL_URL
+# =============================================================================
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: pergo_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: pergo
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d pergo"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   nats:
     image: nats:2.10-alpine
-    container_name: pergo_nats
     restart: unless-stopped
     command: ["-js", "-sd", "/data"]
-    ports:
-      - "4222:4222"
-      - "8222:8222"
+    volumes:
+      - nats-data:/data
+    expose:
+      - "4222"
     healthcheck:
       test: ["CMD", "nats-server", "--check", "4222"]
       interval: 5s
@@ -33,18 +30,25 @@ services:
 
   pergo:
     build: .
-    container_name: pergo_app
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${PERGO_PORT:-8080}:8080"
     depends_on:
-      postgres:
-        condition: service_healthy
       nats:
         condition: service_healthy
     environment:
-      PERGO_DATABASE_URL: postgres://postgres:postgres@postgres:5432/pergo?sslmode=disable
+      PERGO_DATABASE_URL: ${PERGO_DATABASE_URL}
       PERGO_NATS_URL: nats://nats:4222
       PERGO_SERVER_PORT: "8080"
       PERGO_ADMIN_PASSWORD: ${PERGO_ADMIN_PASSWORD:-pergo-dev-2026}
       PERGO_EXTERNAL_URL: ${PERGO_EXTERNAL_URL:-http://localhost:8080}
+    networks:
+      - default
+      - shared-infra
+
+volumes:
+  nats-data:
+
+networks:
+  shared-infra:
+    external: true
