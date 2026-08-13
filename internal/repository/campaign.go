@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -154,14 +155,14 @@ func (r *CampaignRepository) AddRecipients(ctx context.Context, campaignID uuid.
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
 	for _, rec := range recipients {
 		varsJSON, err := json.Marshal(rec.Variables)
 		if err != nil {
-			return err
+			return fmt.Errorf("marshal recipient variables: %w", err)
 		}
 		status := rec.Status
 		if status == "" {
@@ -175,7 +176,7 @@ func (r *CampaignRepository) AddRecipients(ctx context.Context, campaignID uuid.
 			campaignID, rec.ContactID, rec.Phone, varsJSON, status, rec.ErrorMessage, rec.SentAt,
 		)
 		if err != nil {
-			return err
+			return fmt.Errorf("insert campaign recipient: %w", err)
 		}
 	}
 
@@ -185,10 +186,13 @@ func (r *CampaignRepository) AddRecipients(ctx context.Context, campaignID uuid.
 		campaignID,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("update campaign total_recipients: %w", err)
 	}
 
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	return nil
 }
 
 func (r *CampaignRepository) ListRecipients(ctx context.Context, campaignID uuid.UUID, status *domain.RecipientStatus, limit int) ([]domain.CampaignRecipientRecord, error) {

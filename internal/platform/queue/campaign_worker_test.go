@@ -1225,10 +1225,24 @@ func TestCampaignWorker_StartTask_Idempotency(t *testing.T) {
 		t.Fatalf("failed to create campaign: %v", err)
 	}
 
+	// 1. Verify AddRecipients repository idempotency directly: calling it twice with identical records succeeds
+	c1ID := contact1.ID
+	c2ID := contact2.ID
+	recs := []domain.CampaignRecipientRecord{
+		{ContactID: &c1ID, Phone: "5511999998888", Status: domain.RecipientStatusPending, Variables: map[string]string{"name": "Alice"}},
+		{ContactID: &c2ID, Phone: "5521988887777", Status: domain.RecipientStatusPending, Variables: map[string]string{"name": "Bob"}},
+	}
+	if err := campRepo.AddRecipients(ctx, camp.ID, recs); err != nil {
+		t.Fatalf("first AddRecipients failed: %v", err)
+	}
+	if err := campRepo.AddRecipients(ctx, camp.ID, recs); err != nil {
+		t.Fatalf("second AddRecipients failed on duplicate insert: %v", err)
+	}
+
 	mockAudit := &fakeAuditWriter{}
 	publisher := NewJetStreamPublisher(nc)
 
-	// Publish start task #1
+	// 2. Publish start task #1
 	startTask := domain.CampaignStartTask{
 		CampaignID:  camp.ID,
 		WorkspaceID: ws.ID,

@@ -305,11 +305,14 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 		payload, err := json.Marshal(batchTask)
 		if err != nil {
 			slog.Error("campaign_worker: failed to marshal batch task during start", "campaign_id", task.CampaignID, "error", err)
-			continue
+			_ = msg.NakWithDelay(time.Second)
+			return
 		}
 		traceID := fmt.Sprintf("campaign_%s_batch_%d", task.CampaignID, idx+1)
 		if err := w.publisher.Publish(ctx, "campaigns.batches", payload, traceID); err != nil {
 			slog.Error("campaign_worker: failed to publish batch task during start", "campaign_id", task.CampaignID, "batch", idx+1, "error", err)
+			_ = msg.NakWithDelay(time.Second)
+			return
 		}
 	}
 

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"strings"
 	"time"
@@ -198,7 +199,7 @@ func ResolveTagRecipients(
 	for _, tagID := range uniqueIDs {
 		contacts, err := lister.ListContactsByTag(ctx, workspaceID, tagID)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, nil, fmt.Errorf("list contacts by tag: %w", err)
 		}
 		for _, contact := range contacts {
 			if contact.ID != uuid.Nil {
