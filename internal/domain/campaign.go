@@ -42,6 +42,7 @@ type CampaignRecipient struct {
 }
 
 // CampaignRecipientRecord represents a persisted row in campaign_recipients table.
+// Phone holds the recipient destination address (phone number, channel handle, or contact identifier).
 type CampaignRecipientRecord struct {
 	ID           uuid.UUID         `json:"id"`
 	CampaignID   uuid.UUID         `json:"campaign_id"`
@@ -176,6 +177,14 @@ func DeduplicateUUIDs(ids []uuid.UUID) []uuid.UUID {
 	return result
 }
 
+// TagResolutionResult bundles the resolved recipient records (including pending and skipped),
+// valid outbound recipients to be dispatched, and the set of seen recipient phones/identities.
+type TagResolutionResult struct {
+	Records    []CampaignRecipientRecord
+	Recipients []CampaignRecipient
+	SeenPhones map[string]bool
+}
+
 // ResolveTagRecipients resolves contacts from specified tag IDs into campaign recipient records and recipients.
 // Contacts matching the channel filter with a valid phone are added as RecipientStatusPending to records and included in recipients.
 // Contacts lacking an identity for the channel filter are added as RecipientStatusSkipped to records and excluded from recipients.
@@ -185,7 +194,7 @@ func ResolveTagRecipients(
 	workspaceID uuid.UUID,
 	tagIDs []uuid.UUID,
 	channelFilter string,
-) ([]CampaignRecipientRecord, []CampaignRecipient, map[string]bool, error) {
+) (TagResolutionResult, error) {
 	seenPhones := make(map[string]bool)
 	seenContactIDs := make(map[uuid.UUID]bool)
 	var records []CampaignRecipientRecord
@@ -193,13 +202,17 @@ func ResolveTagRecipients(
 
 	uniqueIDs := DeduplicateUUIDs(tagIDs)
 	if lister == nil || len(uniqueIDs) == 0 {
-		return records, recipients, seenPhones, nil
+		return TagResolutionResult{
+			Records:    records,
+			Recipients: recipients,
+			SeenPhones: seenPhones,
+		}, nil
 	}
 
 	for _, tagID := range uniqueIDs {
 		contacts, err := lister.ListContactsByTag(ctx, workspaceID, tagID)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("list contacts by tag: %w", err)
+			return TagResolutionResult{}, fmt.Errorf("list contacts by tag: %w", err)
 		}
 		for _, contact := range contacts {
 			if contact.ID != uuid.Nil {
@@ -279,5 +292,9 @@ func ResolveTagRecipients(
 		}
 	}
 
-	return records, recipients, seenPhones, nil
+	return TagResolutionResult{
+		Records:    records,
+		Recipients: recipients,
+		SeenPhones: seenPhones,
+	}, nil
 }

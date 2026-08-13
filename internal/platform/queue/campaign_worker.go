@@ -184,7 +184,7 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 	slog.Info("campaign_worker: processing start task", "campaign_id", task.CampaignID, "tag_ids_count", len(campaign.TagIDs), "csv_recipients_count", len(campaign.Recipients))
 
 	// 1. Resolve tag recipients with channel filter
-	tagRecords, validTagRecipients, seenPhones, err := domain.ResolveTagRecipients(ctx, w.tagLister, campaign.WorkspaceID, campaign.TagIDs, channel)
+	tagRes, err := domain.ResolveTagRecipients(ctx, w.tagLister, campaign.WorkspaceID, campaign.TagIDs, channel)
 	if err != nil {
 		slog.Error("campaign_worker: failed to resolve tag recipients", "campaign_id", task.CampaignID, "error", err)
 		_ = w.campaignRepo.UpdateStatus(ctx, task.CampaignID, domain.CampaignStatusFailed)
@@ -193,21 +193,21 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 	}
 
 	// 2. Merge with static CSV recipients (stored in campaign.Recipients at creation time)
-	allRecords := make([]domain.CampaignRecipientRecord, 0, len(tagRecords)+len(campaign.Recipients))
-	allRecords = append(allRecords, tagRecords...)
+	allRecords := make([]domain.CampaignRecipientRecord, 0, len(tagRes.Records)+len(campaign.Recipients))
+	allRecords = append(allRecords, tagRes.Records...)
 
-	mergedRecipients := make([]domain.CampaignRecipient, 0, len(validTagRecipients)+len(campaign.Recipients))
-	mergedRecipients = append(mergedRecipients, validTagRecipients...)
+	mergedRecipients := make([]domain.CampaignRecipient, 0, len(tagRes.Recipients)+len(campaign.Recipients))
+	mergedRecipients = append(mergedRecipients, tagRes.Recipients...)
 
 	for _, csvRec := range campaign.Recipients {
 		phone := csvRec.To
 		if clean, valid := domain.SanitizePhone(phone); valid {
 			phone = clean
 		}
-		if seenPhones[phone] {
+		if tagRes.SeenPhones[phone] {
 			continue // deduplicate against tag-resolved recipients (tag wins)
 		}
-		seenPhones[phone] = true
+		tagRes.SeenPhones[phone] = true
 		allRecords = append(allRecords, domain.CampaignRecipientRecord{
 			Phone:     phone,
 			Status:    domain.RecipientStatusPending,

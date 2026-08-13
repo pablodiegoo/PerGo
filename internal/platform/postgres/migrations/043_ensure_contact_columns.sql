@@ -1,9 +1,0 @@
--- +goose Up
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT '{}';
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS closed_at TIMESTAMPTZ;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS bot_active BOOLEAN NOT NULL DEFAULT TRUE;
-ALTER TABLE contacts ADD COLUMN IF NOT EXISTS bot_paused_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS idx_contacts_tags ON contacts USING gin(tags);
-
--- +goose Down
-DROP INDEX IF EXISTS idx_contacts_tags;

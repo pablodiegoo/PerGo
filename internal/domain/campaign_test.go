@@ -173,7 +173,7 @@ func TestResolveTagRecipients(t *testing.T) {
 		},
 	}
 
-	records, recipients, seenPhones, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1, tag2}, "whatsapp")
+	res, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1, tag2}, "whatsapp")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -181,19 +181,19 @@ func TestResolveTagRecipients(t *testing.T) {
 	// c1 should be resolved as pending
 	// c2 should be resolved as skipped (no identities)
 	// c3 should be skipped by deduplication against c1
-	if len(records) != 2 {
-		t.Fatalf("expected 2 records resolved (1 pending, 1 skipped), got %d", len(records))
+	if len(res.Records) != 2 {
+		t.Fatalf("expected 2 records resolved (1 pending, 1 skipped), got %d", len(res.Records))
 	}
-	if len(recipients) != 1 {
-		t.Fatalf("expected 1 recipient resolved, got %d", len(recipients))
+	if len(res.Recipients) != 1 {
+		t.Fatalf("expected 1 recipient resolved, got %d", len(res.Recipients))
 	}
-	if records[0].Phone != "5511999998888" || records[0].Status != RecipientStatusPending {
-		t.Errorf("expected c1 to be pending with 5511999998888, got phone %s, status %s", records[0].Phone, records[0].Status)
+	if res.Records[0].Phone != "5511999998888" || res.Records[0].Status != RecipientStatusPending {
+		t.Errorf("expected c1 to be pending with 5511999998888, got phone %s, status %s", res.Records[0].Phone, res.Records[0].Status)
 	}
-	if records[1].Status != RecipientStatusSkipped {
-		t.Errorf("expected c2 to be skipped, got status %s", records[1].Status)
+	if res.Records[1].Status != RecipientStatusSkipped {
+		t.Errorf("expected c2 to be skipped, got status %s", res.Records[1].Status)
 	}
-	if !seenPhones["5511999998888"] {
+	if !res.SeenPhones["5511999998888"] {
 		t.Errorf("expected seenPhones['5511999998888'] to be true")
 	}
 }
@@ -232,40 +232,40 @@ func TestResolveTagRecipients_ChannelFilter(t *testing.T) {
 	// - Alice matches whatsapp -> Status: RecipientStatusPending
 	// - Bob lacks whatsapp identity -> Status: RecipientStatusSkipped
 	// - recipients slice contains ONLY Alice
-	records, recipients, seenPhones, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1}, "whatsapp")
+	res, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1}, "whatsapp")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(records) != 2 {
-		t.Fatalf("expected 2 records (1 pending, 1 skipped), got %d", len(records))
+	if len(res.Records) != 2 {
+		t.Fatalf("expected 2 records (1 pending, 1 skipped), got %d", len(res.Records))
 	}
-	if records[0].Phone != "5511999998888" || records[0].Status != RecipientStatusPending {
-		t.Errorf("expected records[0] to be Alice pending, got phone %s, status %s", records[0].Phone, records[0].Status)
+	if res.Records[0].Phone != "5511999998888" || res.Records[0].Status != RecipientStatusPending {
+		t.Errorf("expected records[0] to be Alice pending, got phone %s, status %s", res.Records[0].Phone, res.Records[0].Status)
 	}
-	if records[1].Phone != "5521988887777" || records[1].Status != RecipientStatusSkipped {
-		t.Errorf("expected records[1] to be Bob skipped, got phone %s, status %s", records[1].Phone, records[1].Status)
+	if res.Records[1].Phone != "5521988887777" || res.Records[1].Status != RecipientStatusSkipped {
+		t.Errorf("expected records[1] to be Bob skipped, got phone %s, status %s", res.Records[1].Phone, res.Records[1].Status)
 	}
-	if len(recipients) != 1 {
-		t.Fatalf("expected 1 recipient for batch dispatch, got %d", len(recipients))
+	if len(res.Recipients) != 1 {
+		t.Fatalf("expected 1 recipient for batch dispatch, got %d", len(res.Recipients))
 	}
-	if recipients[0].To != "5511999998888" {
-		t.Errorf("expected recipient Alice, got %s", recipients[0].To)
+	if res.Recipients[0].To != "5511999998888" {
+		t.Errorf("expected recipient Alice, got %s", res.Recipients[0].To)
 	}
-	if !seenPhones["5511999998888"] || !seenPhones["5521988887777"] {
+	if !res.SeenPhones["5511999998888"] || !res.SeenPhones["5521988887777"] {
 		t.Errorf("expected seenPhones to contain both Alice and Bob's identities")
 	}
 
 	// Empty filter — both should match as pending if they have valid phones
-	records2, recipients2, _, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1}, "")
+	res2, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(records2) != 2 {
-		t.Fatalf("expected 2 records for empty filter, got %d", len(records2))
+	if len(res2.Records) != 2 {
+		t.Fatalf("expected 2 records for empty filter, got %d", len(res2.Records))
 	}
-	if len(recipients2) != 2 {
-		t.Fatalf("expected 2 recipients for empty filter, got %d", len(recipients2))
+	if len(res2.Recipients) != 2 {
+		t.Fatalf("expected 2 recipients for empty filter, got %d", len(res2.Recipients))
 	}
 }
 
@@ -290,24 +290,24 @@ func TestResolveTagRecipients_SkippedNoIdentities(t *testing.T) {
 		},
 	}
 
-	records, recipients, seenPhones, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1}, "whatsapp")
+	res, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1}, "whatsapp")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(records) != 1 {
-		t.Fatalf("expected 1 skipped record, got %d", len(records))
+	if len(res.Records) != 1 {
+		t.Fatalf("expected 1 skipped record, got %d", len(res.Records))
 	}
-	if records[0].Status != RecipientStatusSkipped {
-		t.Errorf("expected status skipped, got %s", records[0].Status)
+	if res.Records[0].Status != RecipientStatusSkipped {
+		t.Errorf("expected status skipped, got %s", res.Records[0].Status)
 	}
-	if records[0].Phone != "carol@example.com" {
-		t.Errorf("expected identity carol@example.com, got %s", records[0].Phone)
+	if res.Records[0].Phone != "carol@example.com" {
+		t.Errorf("expected identity carol@example.com, got %s", res.Records[0].Phone)
 	}
-	if len(recipients) != 0 {
-		t.Errorf("expected 0 recipients, got %d", len(recipients))
+	if len(res.Recipients) != 0 {
+		t.Errorf("expected 0 recipients, got %d", len(res.Recipients))
 	}
-	if !seenPhones["carol@example.com"] {
+	if !res.SeenPhones["carol@example.com"] {
 		t.Errorf("expected seenPhones to contain carol@example.com")
 	}
 }

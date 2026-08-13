@@ -75,7 +75,6 @@ func NewTelegramAdapter(connectionsRepo *repository.ConnectionRepository, client
 // SetBaseURL overrides the base API URL (useful for testing).
 func (a *TelegramAdapter) SetBaseURL(url string) {
 	a.baseURL = url
-	a.client = &http.Client{}
 }
 
 // Dispatch sends a message through the Telegram Bot API.
