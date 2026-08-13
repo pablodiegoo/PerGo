@@ -13,6 +13,13 @@ Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all o
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
+### Agent Directive: Continuous Sync
+**CRITICAL**: You must always keep the issue tracker in sync with your real-time progress. Whenever you:
+- Start working on an issue (assign to yourself, add an `in-progress` label)
+- Encounter a blocker, change scope, or make significant progress
+- Complete an issue
+You MUST immediately run the corresponding `gh issue` commands (`edit`, `comment`, `close`) to reflect this state on the issue tracker before ending your turn.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

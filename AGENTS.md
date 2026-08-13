@@ -244,6 +244,7 @@ Do not make direct repo edits outside a GSD workflow unless the user explicitly 
 ### Issue tracker
 
 Issues and specs live in GitHub Issues using the `gh` CLI. See `docs/agents/issue-tracker.md`.
+**CRITICAL AGENT RULE**: You MUST proactively keep the issue tracker in sync. Whenever you start an issue, hit a blocker, make significant progress, or complete the issue, immediately use `gh issue comment`, `edit`, or `close` to reflect the new status before moving on.
 
 ### Triage labels
 
