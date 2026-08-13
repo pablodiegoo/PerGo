@@ -27,7 +27,10 @@ type CampaignBatchTask struct {
 	DelaySeconds int                        `json:"delay_seconds"`
 }
 
-// CampaignWorker consumes campaign batches sequentially and publishes individual messages.
+// CampaignWorker consumes campaign start and batch messages sequentially.
+// It handles two subjects:
+//   - campaigns.start: dynamically resolves tags → recipients → publishes batch tasks
+//   - campaigns.batches: dispatches individual messages per recipient
 type CampaignWorker struct {
 	consumer        jetstream.Consumer
 	cancel          context.CancelFunc
@@ -37,6 +40,7 @@ type CampaignWorker struct {
 	dispatchRepo    *repository.MessageDispatchRepository
 	publisher       *JetStreamPublisher
 	auditWriter     audit.Writer
+	tagLister       domain.TagContactLister
 	msgCtx          jetstream.MessagesContext
 }
 
@@ -49,6 +53,7 @@ func NewCampaignWorker(
 	dispatchRepo *repository.MessageDispatchRepository,
 	publisher *JetStreamPublisher,
 	auditWriter audit.Writer,
+	tagLister domain.TagContactLister,
 ) *CampaignWorker {
 	ctx, cancel := context.WithCancel(ctx)
 	w := &CampaignWorker{
@@ -60,6 +65,7 @@ func NewCampaignWorker(
 		dispatchRepo:    dispatchRepo,
 		publisher:       publisher,
 		auditWriter:     auditWriter,
+		tagLister:       tagLister,
 	}
 	go w.run(ctx)
 	return w
@@ -103,7 +109,13 @@ func (w *CampaignWorker) run(ctx context.Context) {
 			continue
 		}
 
-		w.processBatch(ctx, msg)
+		subject := msg.Subject()
+		switch subject {
+		case "campaigns.start":
+			w.processStart(ctx, msg)
+		default:
+			w.processBatch(ctx, msg)
+		}
 	}
 }
 
@@ -138,6 +150,155 @@ func (w *CampaignWorker) emitAuditLog(event auditDispatchEvent) error {
 		return err
 	}
 	return w.auditWriter.Write(audit.NewEvent(event.WorkspaceID, event.TraceID, event.EventType, payloadBytes))
+}
+
+// processStart handles a campaigns.start message: dynamically resolves tags,
+// merges with static CSV recipients, deduplicates, persists to campaign_recipients,
+// and self-publishes CampaignBatchTask messages to campaigns.batches.
+func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
+	var task domain.CampaignStartTask
+	if err := json.Unmarshal(msg.Data(), &task); err != nil {
+		slog.Error("campaign_worker: failed to unmarshal start task", "error", err)
+		_ = msg.Ack()
+		return
+	}
+
+	campaign, err := w.campaignRepo.GetByID(ctx, task.CampaignID)
+	if err != nil {
+		slog.Error("campaign_worker: failed to get campaign for start", "campaign_id", task.CampaignID, "error", err)
+		_ = msg.Ack()
+		return
+	}
+
+	if campaign.Status == domain.CampaignStatusCancelled || campaign.Status == domain.CampaignStatusFailed {
+		slog.Info("campaign_worker: campaign is inactive, skipping start", "campaign_id", task.CampaignID, "status", campaign.Status)
+		_ = msg.Ack()
+		return
+	}
+
+	channel := "whatsapp"
+	if campaign.Channel != nil {
+		channel = *campaign.Channel
+	}
+
+	slog.Info("campaign_worker: processing start task", "campaign_id", task.CampaignID, "tag_ids_count", len(campaign.TagIDs), "csv_recipients_count", len(campaign.Recipients))
+
+	// 1. Resolve tag recipients with channel filter
+	tagRecords, _, seenPhones, err := domain.ResolveTagRecipients(ctx, w.tagLister, campaign.WorkspaceID, campaign.TagIDs, channel)
+	if err != nil {
+		slog.Error("campaign_worker: failed to resolve tag recipients", "campaign_id", task.CampaignID, "error", err)
+		_ = w.campaignRepo.UpdateStatus(ctx, task.CampaignID, domain.CampaignStatusFailed)
+		_ = msg.Ack()
+		return
+	}
+
+	// 2. Merge with static CSV recipients (stored in campaign.Recipients at creation time)
+	allRecords := make([]domain.CampaignRecipientRecord, 0, len(tagRecords)+len(campaign.Recipients))
+	allRecords = append(allRecords, tagRecords...)
+
+	var mergedRecipients []domain.CampaignRecipient
+	for _, rec := range tagRecords {
+		mergedRecipients = append(mergedRecipients, domain.CampaignRecipient{
+			To:        rec.Phone,
+			Variables: rec.Variables,
+		})
+	}
+
+	for _, csvRec := range campaign.Recipients {
+		phone := csvRec.To
+		if clean, valid := domain.SanitizePhone(phone); valid {
+			phone = clean
+		}
+		if seenPhones[phone] {
+			continue // deduplicate against tag-resolved recipients
+		}
+		seenPhones[phone] = true
+		allRecords = append(allRecords, domain.CampaignRecipientRecord{
+			Phone:     phone,
+			Status:    domain.RecipientStatusPending,
+			Variables: csvRec.Variables,
+		})
+		mergedRecipients = append(mergedRecipients, domain.CampaignRecipient{
+			To:        phone,
+			Variables: csvRec.Variables,
+		})
+	}
+
+	// 3. Handle zero recipients
+	if len(allRecords) == 0 {
+		slog.Info("campaign_worker: campaign resolved to zero recipients", "campaign_id", task.CampaignID)
+		_ = w.campaignRepo.UpdateStatus(ctx, task.CampaignID, domain.CampaignStatusCompleted)
+		if auditErr := w.emitAuditLog(auditDispatchEvent{
+			WorkspaceID: campaign.WorkspaceID,
+			TraceID:     fmt.Sprintf("campaign_%s_start", task.CampaignID.String()),
+			EventType:   "campaign.dispatch.completed_empty",
+			Status:      "completed_empty",
+			CampaignID:  task.CampaignID,
+			Channel:     channel,
+		}); auditErr != nil {
+			slog.Error("campaign_worker: failed to emit completed_empty audit log", "campaign_id", task.CampaignID, "error", auditErr)
+		}
+		_ = msg.Ack()
+		return
+	}
+
+	// 4. Persist resolved recipients to campaign_recipients table
+	if err := w.campaignRepo.AddRecipients(ctx, task.CampaignID, allRecords); err != nil {
+		slog.Error("campaign_worker: failed to persist campaign recipients", "campaign_id", task.CampaignID, "error", err)
+		_ = w.campaignRepo.UpdateStatus(ctx, task.CampaignID, domain.CampaignStatusFailed)
+		_ = msg.Ack()
+		return
+	}
+
+	// 5. Update status to sending
+	if err := w.campaignRepo.UpdateStatus(ctx, task.CampaignID, domain.CampaignStatusSending); err != nil {
+		slog.Error("campaign_worker: failed to update campaign status to sending", "campaign_id", task.CampaignID, "error", err)
+		_ = msg.Ack()
+		return
+	}
+
+	// 6. Slice into batches and publish CampaignBatchTask messages
+	batchSize := campaign.BatchSize
+	if batchSize <= 0 {
+		batchSize = 100
+	}
+
+	var batches [][]domain.CampaignRecipient
+	for i := 0; i < len(mergedRecipients); i += batchSize {
+		end := i + batchSize
+		if end > len(mergedRecipients) {
+			end = len(mergedRecipients)
+		}
+		batches = append(batches, mergedRecipients[i:end])
+	}
+
+	totalBatches := len(batches)
+	for idx, batch := range batches {
+		batchTask := CampaignBatchTask{
+			CampaignID:   task.CampaignID,
+			WorkspaceID:  campaign.WorkspaceID,
+			BatchIndex:   idx + 1,
+			TotalBatches: totalBatches,
+			Recipients:   batch,
+			DelaySeconds: campaign.DelaySeconds,
+		}
+		payload, err := json.Marshal(batchTask)
+		if err != nil {
+			slog.Error("campaign_worker: failed to marshal batch task during start", "campaign_id", task.CampaignID, "error", err)
+			continue
+		}
+		traceID := fmt.Sprintf("campaign_%s_batch_%d", task.CampaignID, idx+1)
+		if err := w.publisher.Publish(ctx, "campaigns.batches", payload, traceID); err != nil {
+			slog.Error("campaign_worker: failed to publish batch task during start", "campaign_id", task.CampaignID, "batch", idx+1, "error", err)
+		}
+	}
+
+	slog.Info("campaign_worker: start task completed, batches published",
+		"campaign_id", task.CampaignID,
+		"total_recipients", len(allRecords),
+		"total_batches", totalBatches,
+	)
+	_ = msg.Ack()
 }
 
 func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {

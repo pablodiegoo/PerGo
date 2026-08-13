@@ -49,19 +49,19 @@ func (r *CampaignRepository) Create(ctx context.Context, c *domain.Campaign) (*d
 		`INSERT INTO campaigns (
 			workspace_id, connection_id, connection_slug, name, status, batch_size, delay_seconds, 
 			template_name, message_body, channel, tag_id, total_recipients, sent_recipients, failed_recipients, 
-			recipients, skipped_rows, scheduled_at
-		 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+			recipients, skipped_rows, scheduled_at, tag_ids
+		 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 		 RETURNING id, workspace_id, connection_id, connection_slug, name, status, batch_size, delay_seconds, 
 		           template_name, message_body, channel, tag_id, total_recipients, sent_recipients, failed_recipients, 
-		           recipients, skipped_rows, scheduled_at, created_at, updated_at`,
+		           recipients, skipped_rows, scheduled_at, tag_ids, created_at, updated_at`,
 		c.WorkspaceID, c.ConnectionID, c.ConnectionSlug, c.Name, c.Status, c.BatchSize, c.DelaySeconds,
 		c.TemplateName, c.MessageBody, c.Channel, c.TagID, c.TotalRecipients, c.SentRecipients, c.FailedRecipients,
-		recipientsJSON, skippedJSON, c.ScheduledAt,
+		recipientsJSON, skippedJSON, c.ScheduledAt, c.TagIDs,
 	).Scan(
 		&dbCampaign.ID, &dbCampaign.WorkspaceID, &dbCampaign.ConnectionID, &dbCampaign.ConnectionSlug, &dbCampaign.Name, &dbCampaign.Status,
 		&dbCampaign.BatchSize, &dbCampaign.DelaySeconds, &dbCampaign.TemplateName, &dbCampaign.MessageBody, &dbCampaign.Channel, &dbCampaign.TagID,
 		&dbCampaign.TotalRecipients, &dbCampaign.SentRecipients, &dbCampaign.FailedRecipients,
-		&recipientsJSON, &skippedJSON, &dbCampaign.ScheduledAt, &dbCampaign.CreatedAt, &dbCampaign.UpdatedAt,
+		&recipientsJSON, &skippedJSON, &dbCampaign.ScheduledAt, &dbCampaign.TagIDs, &dbCampaign.CreatedAt, &dbCampaign.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -84,14 +84,14 @@ func (r *CampaignRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, workspace_id, connection_id, connection_slug, name, status, batch_size, delay_seconds, 
 		        template_name, message_body, channel, tag_id, total_recipients, sent_recipients, failed_recipients, 
-		        recipients, skipped_rows, scheduled_at, created_at, updated_at
+		        recipients, skipped_rows, scheduled_at, tag_ids, created_at, updated_at
 		 FROM campaigns WHERE id = $1`,
 		id,
 	).Scan(
 		&c.ID, &c.WorkspaceID, &c.ConnectionID, &c.ConnectionSlug, &c.Name, &c.Status,
 		&c.BatchSize, &c.DelaySeconds, &c.TemplateName, &c.MessageBody, &c.Channel, &c.TagID,
 		&c.TotalRecipients, &c.SentRecipients, &c.FailedRecipients,
-		&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.CreatedAt, &c.UpdatedAt,
+		&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.TagIDs, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -251,7 +251,7 @@ func (r *CampaignRepository) ListByWorkspace(ctx context.Context, workspaceID uu
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, workspace_id, connection_id, connection_slug, name, status, batch_size, delay_seconds, 
 		        template_name, message_body, channel, tag_id, total_recipients, sent_recipients, failed_recipients, 
-		        recipients, skipped_rows, scheduled_at, created_at, updated_at
+		        recipients, skipped_rows, scheduled_at, tag_ids, created_at, updated_at
 		 FROM campaigns WHERE workspace_id = $1 ORDER BY created_at DESC`,
 		workspaceID,
 	)
@@ -268,7 +268,7 @@ func (r *CampaignRepository) ListByWorkspace(ctx context.Context, workspaceID uu
 			&c.ID, &c.WorkspaceID, &c.ConnectionID, &c.ConnectionSlug, &c.Name, &c.Status,
 			&c.BatchSize, &c.DelaySeconds, &c.TemplateName, &c.MessageBody, &c.Channel, &c.TagID,
 			&c.TotalRecipients, &c.SentRecipients, &c.FailedRecipients,
-			&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.CreatedAt, &c.UpdatedAt,
+			&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.TagIDs, &c.CreatedAt, &c.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err

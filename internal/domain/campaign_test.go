@@ -173,7 +173,7 @@ func TestResolveTagRecipients(t *testing.T) {
 		},
 	}
 
-	records, recipients, seenPhones, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1, tag2})
+	records, recipients, seenPhones, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1, tag2}, "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -195,3 +195,62 @@ func TestResolveTagRecipients(t *testing.T) {
 	}
 }
 
+func TestResolveTagRecipients_ChannelFilter(t *testing.T) {
+	ctx := context.Background()
+	wsID := uuid.New()
+	tag1 := uuid.New()
+
+	c1ID := uuid.New()
+	c2ID := uuid.New()
+
+	mock := &mockTagLister{
+		contacts: map[uuid.UUID][]Contact{
+			tag1: {
+				{
+					ID:   c1ID,
+					Name: "Alice",
+					Identities: []ContactIdentity{
+						{Channel: "whatsapp", SenderIdentity: "+5511999998888"},
+						{Channel: "telegram", SenderIdentity: "alice_tg"},
+					},
+				},
+				{
+					ID:   c2ID,
+					Name: "Bob",
+					Identities: []ContactIdentity{
+						{Channel: "telegram", SenderIdentity: "5521988887777"},
+					},
+				},
+			},
+		},
+	}
+
+	// Filter by whatsapp — only Alice should match (Bob has only telegram)
+	records, recipients, seenPhones, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1}, "whatsapp")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record for whatsapp filter, got %d", len(records))
+	}
+	if records[0].Phone != "5511999998888" {
+		t.Errorf("expected phone 5511999998888, got %s", records[0].Phone)
+	}
+	if len(recipients) != 1 {
+		t.Errorf("expected 1 recipient, got %d", len(recipients))
+	}
+	if !seenPhones["5511999998888"] {
+		t.Errorf("expected seenPhones to contain 5511999998888")
+	}
+
+	// Empty filter — both should match if they have valid phones
+	records2, _, _, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Alice matches (whatsapp phone), Bob's telegram identity is "5521988887777" which has 13 digits — valid phone
+	if len(records2) != 2 {
+		t.Fatalf("expected 2 records for empty filter, got %d", len(records2))
+	}
+}

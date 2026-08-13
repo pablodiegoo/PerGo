@@ -49,12 +49,20 @@ An adapter satisfying the `IntegrationHandler` seam that syncs or forwards unifi
 _Avoid_: Syncer adapter, integration forwarder plugin
 
 **Campaign**:
-A scheduled or immediate bulk message dispatch targeting a defined contact segment or recipient list through a specific connection slug.
+A scheduled or immediate bulk message dispatch targeting a defined contact segment (via union of Tags) or recipient list through a specific connection slug. Recipients are dynamically evaluated at execution time, using only the identity that matches the campaign's connection channel. Empty dispatches are considered valid and logged.
 _Avoid_: Broadcast job, bulk blast, mass message batch
 
 **Tag**:
-A workspace-scoped label attached to a contact for categorization and segment filtering.
+A workspace-scoped label attached to a contact for categorization and segment filtering. Multiple tags in a campaign operate as a Union (OR).
 _Avoid_: Contact label, group tag, list category
+
+**Contact**:
+A single person or entity within a workspace, possessing one or more Identities (e.g. WhatsApp, Email).
+_Avoid_: User, lead, audience member
+
+**Identity**:
+A channel-specific address (like a phone number or email) belonging to a Contact. Campaigns only target the primary identity matching the campaign's channel.
+_Avoid_: Contact point, address, phone number
 
 **Broadcaster Engine**:
 The consolidated module that orchestrates the batching, rate-limiting, and queued dispatch of campaign messages.

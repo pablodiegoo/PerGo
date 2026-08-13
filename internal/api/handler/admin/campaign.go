@@ -2,6 +2,7 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -340,36 +341,8 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		_ = json.Unmarshal([]byte(skippedRaw), &skipped)
 	}
 
-	// Combine contacts from tags and CSV recipients, deduplicating by phone
-	recipientRecords, mergedRecipients, seenPhones, err := domain.ResolveTagRecipients(c.Request().Context(), h.TagRepo, workspaceID, formTagIDs)
-	if err != nil {
-		return c.String(http.StatusBadRequest, fmt.Sprintf("failed to resolve tag recipients: %v", err))
-	}
-
-	for _, rec := range recipients {
-		cleanPhone, valid := domain.SanitizePhone(rec.To)
-		if !valid {
-			continue
-		}
-		if seenPhones[cleanPhone] {
-			continue
-		}
-		seenPhones[cleanPhone] = true
-
-		recipientRecords = append(recipientRecords, domain.CampaignRecipientRecord{
-			Phone:     cleanPhone,
-			Status:    domain.RecipientStatusPending,
-			Variables: rec.Variables,
-		})
-		mergedRecipients = append(mergedRecipients, domain.CampaignRecipient{
-			To:        cleanPhone,
-			Variables: rec.Variables,
-		})
-	}
-
-	recipients = mergedRecipients
-
-	if len(recipientRecords) == 0 {
+	// Validation: campaign requires at least one source of recipients (tags or CSV)
+	if len(formTagIDs) == 0 && len(recipients) == 0 {
 		return c.String(http.StatusBadRequest, "A campanha precisa de pelo menos um destinatário. Selecione uma tag ou envie um CSV.")
 	}
 
@@ -408,20 +381,15 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		TemplateName:    templateName,
 		Channel:         &channel,
 		TagID:           primaryTagID,
-		TotalRecipients: len(recipientRecords),
+		TagIDs:          formTagIDs,
+		TotalRecipients: len(recipients),
 		Recipients:      recipients,
 		SkippedRows:     skipped,
 	}
 
-	created, err := h.CampaignRepo.Create(c.Request().Context(), camp)
+	_, err = h.CampaignRepo.Create(c.Request().Context(), camp)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, fmt.Sprintf("failed to save campaign: %v", err))
-	}
-
-	if len(recipientRecords) > 0 {
-		if err := h.CampaignRepo.AddRecipients(c.Request().Context(), created.ID, recipientRecords); err != nil {
-			return c.String(http.StatusInternalServerError, fmt.Sprintf("failed to save campaign recipients: %v", err))
-		}
 	}
 
 	// Redirect back to campaigns list page
@@ -466,6 +434,21 @@ func (h *CampaignHandler) DownloadSkipped(c *echo.Context) error {
 	return writeSkippedRowsCSV(c.Response(), camp.SkippedRows)
 }
 
+// publishCampaignStart marshals and publishes a CampaignStartTask to the campaigns.start JetStream subject.
+func (h *CampaignHandler) publishCampaignStart(ctx context.Context, camp *domain.Campaign) error {
+	startTask := domain.CampaignStartTask{
+		CampaignID:  camp.ID,
+		WorkspaceID: camp.WorkspaceID,
+	}
+	payload, err := json.Marshal(startTask)
+	if err != nil {
+		return fmt.Errorf("failed to marshal start task: %w", err)
+	}
+
+	traceID := fmt.Sprintf("campaign_%s_start", camp.ID)
+	return h.Publisher.Publish(ctx, "campaigns.start", payload, traceID)
+}
+
 func (h *CampaignHandler) Start(c *echo.Context) error {
 	idStr, err := echo.PathParam[string](c, "id")
 	if err != nil {
@@ -486,58 +469,14 @@ func (h *CampaignHandler) Start(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "only campaigns in draft status can be started")
 	}
 
-	// Slice into batches
-	recipients := camp.Recipients
-	batchSize := camp.BatchSize
-	if batchSize <= 0 {
-		batchSize = 100
-	}
-
-	totalRecipients := len(recipients)
-	var batches [][]domain.CampaignRecipient
-	for i := 0; i < totalRecipients; i += batchSize {
-		end := i + batchSize
-		if end > totalRecipients {
-			end = totalRecipients
-		}
-		batches = append(batches, recipients[i:end])
-	}
-
-	totalBatches := len(batches)
-	if totalBatches == 0 {
-		// Nothing to send, complete campaign immediately
-		_ = h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusCompleted)
-		camp.Status = domain.CampaignStatusCompleted
-		return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
-	}
-
-	// Update DB status to sending
 	err = h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusSending)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to update campaign status")
 	}
 	camp.Status = domain.CampaignStatusSending
 
-	// Enqueue batches
-	for idx, batch := range batches {
-		task := queue.CampaignBatchTask{
-			CampaignID:   camp.ID,
-			WorkspaceID:  camp.WorkspaceID,
-			BatchIndex:   idx + 1,
-			TotalBatches: totalBatches,
-			Recipients:   batch,
-			DelaySeconds: camp.DelaySeconds,
-		}
-		payload, err := json.Marshal(task)
-		if err != nil {
-			return c.String(http.StatusInternalServerError, "failed to marshal batch task")
-		}
-
-		traceID := fmt.Sprintf("campaign_%s_batch_%d", camp.ID, idx+1)
-		err = h.Publisher.Publish(ctx, "campaigns.batches", payload, traceID)
-		if err != nil {
-			return c.String(http.StatusInternalServerError, "failed to publish campaign batches")
-		}
+	if err := h.publishCampaignStart(ctx, camp); err != nil {
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
 	return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
@@ -720,37 +659,6 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "campaign requires at least one recipient or a valid tag_id/tag_ids"})
 	}
 
-	recipientRecords, sampleRecipients, seenPhones, err := domain.ResolveTagRecipients(c.Request().Context(), h.TagRepo, workspaceID, targetTagIDs)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("failed to resolve contacts for tag: %v", err)})
-	}
-
-	// Resolve inline CSV/JSON recipients if provided
-	for _, rec := range req.Recipients {
-		cleanPhone, valid := domain.SanitizePhone(rec.To)
-		if !valid {
-			continue
-		}
-		if seenPhones[cleanPhone] {
-			continue
-		}
-		seenPhones[cleanPhone] = true
-
-		recipientRecords = append(recipientRecords, domain.CampaignRecipientRecord{
-			Phone:     cleanPhone,
-			Status:    domain.RecipientStatusPending,
-			Variables: rec.Variables,
-		})
-		sampleRecipients = append(sampleRecipients, domain.CampaignRecipient{
-			To:        cleanPhone,
-			Variables: rec.Variables,
-		})
-	}
-
-	if len(recipientRecords) == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "no valid E.164 recipients resolved for campaign"})
-	}
-
 	batchSize := req.BatchSize
 	if batchSize <= 0 {
 		batchSize = 100
@@ -783,18 +691,14 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 		MessageBody:     req.MessageBody,
 		Channel:         &channel,
 		TagID:           primaryTagID,
-		TotalRecipients: len(recipientRecords),
-		Recipients:      sampleRecipients,
+		TagIDs:          targetTagIDs,
+		TotalRecipients: len(req.Recipients),
+		Recipients:      req.Recipients,
 	}
 
 	created, err := h.CampaignRepo.Create(c.Request().Context(), camp)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save campaign: %v", err)})
-	}
-
-	// Save persisted recipient records in campaign_recipients
-	if err := h.CampaignRepo.AddRecipients(c.Request().Context(), created.ID, recipientRecords); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save campaign recipients: %v", err)})
 	}
 
 	return c.JSON(http.StatusCreated, created)
@@ -867,56 +771,14 @@ func (h *CampaignHandler) APIStart(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "only draft or paused campaigns can be started"})
 	}
 
-	// Slice recipients into batches
-	recipients := camp.Recipients
-	batchSize := camp.BatchSize
-	if batchSize <= 0 {
-		batchSize = 100
-	}
-
-	totalRecipients := len(recipients)
-	var batches [][]domain.CampaignRecipient
-	for i := 0; i < totalRecipients; i += batchSize {
-		end := i + batchSize
-		if end > totalRecipients {
-			end = totalRecipients
-		}
-		batches = append(batches, recipients[i:end])
-	}
-
-	totalBatches := len(batches)
-	if totalBatches == 0 {
-		_ = h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusCompleted)
-		camp.Status = domain.CampaignStatusCompleted
-		return c.JSON(http.StatusOK, camp)
-	}
-
-	err = h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusRunning)
+	err = h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusSending)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update campaign status"})
 	}
-	camp.Status = domain.CampaignStatusRunning
+	camp.Status = domain.CampaignStatusSending
 
-	// Enqueue batch tasks
-	for idx, batch := range batches {
-		task := queue.CampaignBatchTask{
-			CampaignID:   camp.ID,
-			WorkspaceID:  camp.WorkspaceID,
-			BatchIndex:   idx + 1,
-			TotalBatches: totalBatches,
-			Recipients:   batch,
-			DelaySeconds: camp.DelaySeconds,
-		}
-		payload, err := json.Marshal(task)
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to marshal batch task"})
-		}
-
-		traceID := fmt.Sprintf("campaign_%s_batch_%d", camp.ID, idx+1)
-		err = h.Publisher.Publish(ctx, "campaigns.batches", payload, traceID)
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to publish campaign batches"})
-		}
+	if err := h.publishCampaignStart(ctx, camp); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, camp)

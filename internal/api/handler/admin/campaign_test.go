@@ -499,7 +499,7 @@ func TestCampaignHandler(t *testing.T) {
 			t.Errorf("expected form HTML to contain tag_id select dropdown")
 		}
 
-		// 3. Test Form Create with tag_id
+		// 3. Test Form Create with tag_id only (no CSV) — deferred tag resolution
 		form := url.Values{}
 		form.Set("name", "VIP Tag Campaign")
 		form.Set("channel", "whatsapp")
@@ -521,7 +521,7 @@ func TestCampaignHandler(t *testing.T) {
 			t.Errorf("expected 200 OK for Create with tag_id, got %d", recCreate.Code)
 		}
 
-		// Verify campaign recipients in DB
+		// Verify campaign row has tag_ids stored, but NO recipients resolved at creation time
 		camps, _ := campaignRepo.ListByWorkspace(ctx, ws.ID)
 		var vipCamp *domain.Campaign
 		for i := range camps {
@@ -533,11 +533,21 @@ func TestCampaignHandler(t *testing.T) {
 		if vipCamp == nil {
 			t.Fatalf("VIP Tag Campaign not found in DB")
 		}
-		if len(vipCamp.Recipients) != 1 || vipCamp.Recipients[0].To != "5511988887777" {
-			t.Errorf("expected 1 recipient (5511988887777) resolved from tag, got: %+v", vipCamp.Recipients)
+		// Tag IDs must be stored on the campaign row
+		if len(vipCamp.TagIDs) != 1 || vipCamp.TagIDs[0] != tag.ID {
+			t.Errorf("expected tag_ids [%s] on campaign, got: %v", tag.ID, vipCamp.TagIDs)
+		}
+		// Recipients JSONB should be empty (no CSV was provided)
+		if len(vipCamp.Recipients) != 0 {
+			t.Errorf("expected 0 recipients at creation time (deferred), got: %d", len(vipCamp.Recipients))
+		}
+		// campaign_recipients table should be empty
+		recipientRecords, _ := campaignRepo.ListRecipients(ctx, vipCamp.ID, nil, 100)
+		if len(recipientRecords) != 0 {
+			t.Errorf("expected 0 campaign_recipients at creation time (deferred), got: %d", len(recipientRecords))
 		}
 
-		// 4. Test REST APICreate with tag_ids and recipient deduplication
+		// 4. Test REST APICreate with tag_ids + inline recipients (deferred tag resolution)
 		apiTag, err := tagRepo.CreateTag(ctx, ws.ID, "API Segment", "#00FF00")
 		if err != nil {
 			t.Fatalf("failed to create apiTag: %v", err)
@@ -579,9 +589,68 @@ func TestCampaignHandler(t *testing.T) {
 			t.Fatalf("failed to unmarshal campaign: %v", err)
 		}
 
-		// Deduplication check: 5511977776666 (from tag & inline) + 5511966665555 (inline) = 2 recipients
+		// At creation time, only inline recipients are stored (tags are deferred).
+		// 2 inline recipients — deduplication happens at execution time, not creation.
 		if createdAPICamp.TotalRecipients != 2 {
-			t.Errorf("expected 2 total recipients after deduplication, got %d", createdAPICamp.TotalRecipients)
+			t.Errorf("expected 2 total recipients (inline only, tags deferred), got %d", createdAPICamp.TotalRecipients)
+		}
+		// Tag IDs must be stored on the campaign row
+		if len(createdAPICamp.TagIDs) != 1 || createdAPICamp.TagIDs[0] != apiTag.ID {
+			t.Errorf("expected tag_ids [%s] on campaign, got: %v", apiTag.ID, createdAPICamp.TagIDs)
+		}
+		// 5. Test REST APICreate with tags only (no recipients) — deferred tag resolution
+		tagsOnlyPayload := fmt.Sprintf(`{
+			"name": "Tags Only Campaign",
+			"connection_slug": "waba-rest-test",
+			"tag_ids": ["%s"]
+		}`, apiTag.ID)
+
+		reqTagsOnly := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), strings.NewReader(tagsOnlyPayload))
+		reqTagsOnly.Header.Set("Content-Type", "application/json")
+		recTagsOnly := httptest.NewRecorder()
+		cTagsOnly := e.NewContext(reqTagsOnly, recTagsOnly)
+		cTagsOnly.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		cTagsOnly.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.APICreate(cTagsOnly); err != nil {
+			t.Fatalf("APICreate with tags only failed: %v", err)
+		}
+		if recTagsOnly.Code != http.StatusCreated {
+			t.Fatalf("expected status 201 for APICreate with tags only, got %d: %s", recTagsOnly.Code, recTagsOnly.Body.String())
+		}
+
+		var tagsOnlyCamp domain.Campaign
+		if err := json.Unmarshal(recTagsOnly.Body.Bytes(), &tagsOnlyCamp); err != nil {
+			t.Fatalf("failed to unmarshal tags-only campaign: %v", err)
+		}
+		// Tag IDs stored
+		if len(tagsOnlyCamp.TagIDs) != 1 || tagsOnlyCamp.TagIDs[0] != apiTag.ID {
+			t.Errorf("expected tag_ids [%s] on tags-only campaign, got: %v", apiTag.ID, tagsOnlyCamp.TagIDs)
+		}
+		// No inline recipients
+		if tagsOnlyCamp.TotalRecipients != 0 {
+			t.Errorf("expected 0 total recipients for tags-only campaign, got %d", tagsOnlyCamp.TotalRecipients)
+		}
+		// campaign_recipients table empty
+		tagsOnlyRecords, _ := campaignRepo.ListRecipients(ctx, tagsOnlyCamp.ID, nil, 100)
+		if len(tagsOnlyRecords) != 0 {
+			t.Errorf("expected 0 campaign_recipients for tags-only campaign, got: %d", len(tagsOnlyRecords))
+		}
+
+		// 6. Test: create campaign with neither tags nor CSV → HTTP 400
+		noSourceJSON := `{"name":"Empty Sources","connection_slug":"waba-rest-test"}`
+		reqNoSource := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), strings.NewReader(noSourceJSON))
+		reqNoSource.Header.Set("Content-Type", "application/json")
+		recNoSource := httptest.NewRecorder()
+		cNoSource := e.NewContext(reqNoSource, recNoSource)
+		cNoSource.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		cNoSource.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.APICreate(cNoSource); err != nil {
+			t.Fatalf("APICreate no-source failed: %v", err)
+		}
+		if recNoSource.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400 for no recipients and no tags, got %d", recNoSource.Code)
 		}
 	})
 }
