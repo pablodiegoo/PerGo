@@ -170,7 +170,8 @@ func (r *CampaignRepository) AddRecipients(ctx context.Context, campaignID uuid.
 
 		_, err = tx.Exec(ctx,
 			`INSERT INTO campaign_recipients (campaign_id, contact_id, phone, variables, status, error_message, sent_at)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			 VALUES ($1, $2, $3, $4, $5, $6, $7)
+			 ON CONFLICT (campaign_id, phone) DO NOTHING`,
 			campaignID, rec.ContactID, rec.Phone, varsJSON, status, rec.ErrorMessage, rec.SentAt,
 		)
 		if err != nil {

@@ -16,5 +16,6 @@ func RunMigrations(db *sql.DB) error {
 	if err := goose.SetDialect("postgres"); err != nil {
 		return err
 	}
-	return goose.Up(db, "migrations")
+	return goose.Up(db, "migrations", goose.WithAllowMissing())
 }
+

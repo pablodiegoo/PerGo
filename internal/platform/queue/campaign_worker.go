@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
 	"time"
 
 	"github.com/google/uuid"
@@ -184,7 +184,7 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 	slog.Info("campaign_worker: processing start task", "campaign_id", task.CampaignID, "tag_ids_count", len(campaign.TagIDs), "csv_recipients_count", len(campaign.Recipients))
 
 	// 1. Resolve tag recipients with channel filter
-	tagRecords, _, seenPhones, err := domain.ResolveTagRecipients(ctx, w.tagLister, campaign.WorkspaceID, campaign.TagIDs, channel)
+	tagRecords, validTagRecipients, seenPhones, err := domain.ResolveTagRecipients(ctx, w.tagLister, campaign.WorkspaceID, campaign.TagIDs, channel)
 	if err != nil {
 		slog.Error("campaign_worker: failed to resolve tag recipients", "campaign_id", task.CampaignID, "error", err)
 		_ = w.campaignRepo.UpdateStatus(ctx, task.CampaignID, domain.CampaignStatusFailed)
@@ -196,13 +196,8 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 	allRecords := make([]domain.CampaignRecipientRecord, 0, len(tagRecords)+len(campaign.Recipients))
 	allRecords = append(allRecords, tagRecords...)
 
-	var mergedRecipients []domain.CampaignRecipient
-	for _, rec := range tagRecords {
-		mergedRecipients = append(mergedRecipients, domain.CampaignRecipient{
-			To:        rec.Phone,
-			Variables: rec.Variables,
-		})
-	}
+	mergedRecipients := make([]domain.CampaignRecipient, 0, len(validTagRecipients)+len(campaign.Recipients))
+	mergedRecipients = append(mergedRecipients, validTagRecipients...)
 
 	for _, csvRec := range campaign.Recipients {
 		phone := csvRec.To
@@ -210,7 +205,7 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 			phone = clean
 		}
 		if seenPhones[phone] {
-			continue // deduplicate against tag-resolved recipients
+			continue // deduplicate against tag-resolved recipients (tag wins)
 		}
 		seenPhones[phone] = true
 		allRecords = append(allRecords, domain.CampaignRecipientRecord{
@@ -224,7 +219,7 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 		})
 	}
 
-	// 3. Handle zero recipients
+	// 3. Handle zero recipients (no records at all)
 	if len(allRecords) == 0 {
 		slog.Info("campaign_worker: campaign resolved to zero recipients", "campaign_id", task.CampaignID)
 		_ = w.campaignRepo.UpdateStatus(ctx, task.CampaignID, domain.CampaignStatusCompleted)
@@ -242,7 +237,7 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 		return
 	}
 
-	// 4. Persist resolved recipients to campaign_recipients table
+	// 4. Persist resolved recipients to campaign_recipients table (idempotent via ON CONFLICT)
 	if err := w.campaignRepo.AddRecipients(ctx, task.CampaignID, allRecords); err != nil {
 		slog.Error("campaign_worker: failed to persist campaign recipients", "campaign_id", task.CampaignID, "error", err)
 		_ = w.campaignRepo.UpdateStatus(ctx, task.CampaignID, domain.CampaignStatusFailed)
@@ -250,14 +245,39 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 		return
 	}
 
-	// 5. Update status to sending
+	// 5. Emit audit logs for skipped contacts
+	for _, rec := range allRecords {
+		if rec.Status == domain.RecipientStatusSkipped {
+			if auditErr := w.emitAuditLog(auditDispatchEvent{
+				WorkspaceID: campaign.WorkspaceID,
+				TraceID:     fmt.Sprintf("campaign_%s_%s", task.CampaignID.String(), rec.Phone),
+				EventType:   "campaign.dispatch.skipped",
+				Status:      "skipped",
+				Recipient:   rec.Phone,
+				CampaignID:  task.CampaignID,
+				Channel:     channel,
+			}); auditErr != nil {
+				slog.Error("campaign_worker: failed to emit skipped audit log", "campaign_id", task.CampaignID, "recipient", rec.Phone, "error", auditErr)
+			}
+		}
+	}
+
+	// 6. Handle case where all resolved contacts were skipped (no batches to send)
+	if len(mergedRecipients) == 0 {
+		slog.Info("campaign_worker: all campaign recipients were skipped", "campaign_id", task.CampaignID)
+		_ = w.campaignRepo.UpdateStatus(ctx, task.CampaignID, domain.CampaignStatusCompleted)
+		_ = msg.Ack()
+		return
+	}
+
+	// 7. Update status to sending
 	if err := w.campaignRepo.UpdateStatus(ctx, task.CampaignID, domain.CampaignStatusSending); err != nil {
 		slog.Error("campaign_worker: failed to update campaign status to sending", "campaign_id", task.CampaignID, "error", err)
 		_ = msg.Ack()
 		return
 	}
 
-	// 6. Slice into batches and publish CampaignBatchTask messages
+	// 8. Slice into batches and publish CampaignBatchTask messages
 	batchSize := campaign.BatchSize
 	if batchSize <= 0 {
 		batchSize = 100
@@ -296,6 +316,7 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 	slog.Info("campaign_worker: start task completed, batches published",
 		"campaign_id", task.CampaignID,
 		"total_recipients", len(allRecords),
+		"valid_recipients", len(mergedRecipients),
 		"total_batches", totalBatches,
 	)
 	_ = msg.Ack()

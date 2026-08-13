@@ -49,7 +49,7 @@ An adapter satisfying the `IntegrationHandler` seam that syncs or forwards unifi
 _Avoid_: Syncer adapter, integration forwarder plugin
 
 **Campaign**:
-A scheduled or immediate bulk message dispatch targeting a defined contact segment (via union of Tags) or recipient list through a specific connection slug. Recipients are dynamically evaluated at execution time, using only the identity that matches the campaign's connection channel. Empty dispatches are considered valid and logged.
+A scheduled or immediate bulk message dispatch targeting a defined contact segment (via union of Tags) or static CSV through a specific connection slug. Recipients are dynamically evaluated at execution time. Contacts lacking an identity for the campaign's channel are explicitly recorded as `skipped` for transparency. In conflicts between Tag contacts and CSV contacts, the Tag (database) contact takes precedence. Empty dispatches are considered valid and logged.
 _Avoid_: Broadcast job, bulk blast, mass message batch
 
 **Tag**:

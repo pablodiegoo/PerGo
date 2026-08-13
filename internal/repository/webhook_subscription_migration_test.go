@@ -30,6 +30,12 @@ func TestWebhookSubscriptionMigration(t *testing.T) {
 	if err := goose.SetDialect("postgres"); err != nil {
 		t.Fatalf("failed to set goose dialect: %v", err)
 	}
+
+	// Always restore database to latest version on exit
+	defer func() {
+		_ = postgres.RunMigrations(db)
+	}()
+
 	goose.SetBaseFS(nil)
 
 	// Clean up tables
@@ -37,7 +43,7 @@ func TestWebhookSubscriptionMigration(t *testing.T) {
 	_, _ = db.ExecContext(ctx, "DELETE FROM workspaces WHERE name LIKE 'migration-test-workspace-%'")
 
 	// 1. Migrate Down to 22
-	if err := goose.DownTo(db, dir, 22); err != nil {
+	if err := goose.DownTo(db, dir, 22, goose.WithAllowMissing()); err != nil {
 		t.Fatalf("failed to migrate Down to 22: %v", err)
 	}
 
@@ -70,7 +76,7 @@ func TestWebhookSubscriptionMigration(t *testing.T) {
 	}
 
 	// 3. Migrate Up to 23
-	if err := goose.UpTo(db, dir, 23); err != nil {
+	if err := goose.UpTo(db, dir, 23, goose.WithAllowMissing()); err != nil {
 		t.Fatalf("failed to migrate Up to 23: %v", err)
 	}
 
@@ -95,7 +101,7 @@ func TestWebhookSubscriptionMigration(t *testing.T) {
 	}
 
 	// 4. Migrate Down to 22 (restore legacy webhook_configs)
-	if err := goose.DownTo(db, dir, 22); err != nil {
+	if err := goose.DownTo(db, dir, 22, goose.WithAllowMissing()); err != nil {
 		t.Fatalf("failed to migrate Down to 22: %v", err)
 	}
 
@@ -109,8 +115,8 @@ func TestWebhookSubscriptionMigration(t *testing.T) {
 		t.Errorf("expected URL 'https://old.url', got '%s'", restoredURL)
 	}
 
-	// 5. Migrate back Up to 23 to leave the database clean
-	if err := goose.UpTo(db, dir, 23); err != nil {
-		t.Fatalf("failed to migrate back Up to 23: %v", err)
+	// 5. Migrate back Up to latest to leave the database clean
+	if err := postgres.RunMigrations(db); err != nil {
+		t.Fatalf("failed to migrate back Up to latest: %v", err)
 	}
 }

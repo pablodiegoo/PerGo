@@ -149,3 +149,58 @@ func TestCampaignRepositoryScheduledAt(t *testing.T) {
 		t.Errorf("expected ScheduledAt %v, got %v", schedTime, fetched.ScheduledAt)
 	}
 }
+
+func TestCampaignRepository_AddRecipients_Idempotent(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := NewWorkspaceRepository(pool)
+	repo := NewCampaignRepository(pool)
+
+	ws, _ := wsRepo.Create(ctx, "campaign_test_ws_recips_"+uuid.New().String())
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	c, err := repo.Create(ctx, &domain.Campaign{
+		WorkspaceID: ws.ID,
+		Name:        "Idempotent Recipients Camp",
+		Status:      domain.CampaignStatusDraft,
+	})
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
+
+	records := []domain.CampaignRecipientRecord{
+		{Phone: "5511999991111", Status: domain.RecipientStatusPending, Variables: map[string]string{"name": "User 1"}},
+		{Phone: "5511999992222", Status: domain.RecipientStatusSkipped, Variables: map[string]string{"name": "User 2"}},
+	}
+
+	// First insert
+	if err := repo.AddRecipients(ctx, c.ID, records); err != nil {
+		t.Fatalf("first AddRecipients failed: %v", err)
+	}
+
+	// Re-insert same recipients (simulate retry / crash resumption)
+	if err := repo.AddRecipients(ctx, c.ID, records); err != nil {
+		t.Fatalf("second AddRecipients should be idempotent but failed: %v", err)
+	}
+
+	// Check total recipients
+	fetched, err := repo.GetByID(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("failed to get campaign: %v", err)
+	}
+	if fetched.TotalRecipients != 2 {
+		t.Errorf("expected total_recipients 2, got %d", fetched.TotalRecipients)
+	}
+
+	// List all
+	allRecs, err := repo.ListRecipients(ctx, c.ID, nil, 10)
+	if err != nil {
+		t.Fatalf("failed to list recipients: %v", err)
+	}
+	if len(allRecs) != 2 {
+		t.Errorf("expected 2 recipients in table, got %d", len(allRecs))
+	}
+}
+

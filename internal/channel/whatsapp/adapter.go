@@ -96,7 +96,7 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 		"stagger", stagger,
 	)
 
-	var msg waE2E.Message
+	var msg *waE2E.Message
 
 	interMsg, err := buildInteractiveOrOverrideMsg(m)
 	if err != nil {
@@ -104,7 +104,7 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 	}
 	
 	if interMsg != nil {
-		msg = *interMsg
+		msg = interMsg
 	} else if m.Media != nil {
 		if a.s3Client == nil {
 			return "", channel.NewTerminalError(fmt.Errorf("whatsapp: media storage client not configured"))
@@ -155,6 +155,7 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 			caption = &m.Media.Caption
 		}
 
+		msg = &waE2E.Message{}
 		switch m.Media.MediaType {
 		case "image":
 			msg.ImageMessage = &waE2E.ImageMessage{
@@ -208,10 +209,12 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 		}
 	} else {
 		body := m.Body
-		msg.Conversation = &body
+		msg = &waE2E.Message{
+			Conversation: &body,
+		}
 	}
 
-	respSend, err := wc.Client().SendMessage(ctx, recipientJID, &msg)
+	respSend, err := wc.Client().SendMessage(ctx, recipientJID, msg)
 	if err != nil {
 		a.log.Error("whatsapp: send failed",
 			"error", err,

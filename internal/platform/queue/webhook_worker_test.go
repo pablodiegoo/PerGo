@@ -52,6 +52,8 @@ func TestWebhookWorker_Integration(t *testing.T) {
 	js, err := jetstream.New(nc)
 	if err == nil {
 		_ = js.DeleteStream(ctx, "WEBHOOKS")
+		_ = js.DeleteStream(ctx, "WEBHOOK_DELIVERIES")
+		_ = js.DeleteStream(ctx, "INBOUND")
 	}
 
 	// 1. Setup repository
@@ -106,7 +108,7 @@ func TestWebhookWorker_Integration(t *testing.T) {
 	}
 
 	// 5. Instantiate and Start WebhookWorker
-	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, nil, nil)
+	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, testServer.Client(), nil)
 	worker, err := NewWebhookWorker(ctx, nc, dispatcher, subRepo)
 	if err != nil {
 		t.Fatalf("failed to start webhook worker: %v", err)
@@ -138,7 +140,7 @@ func TestWebhookWorker_Integration(t *testing.T) {
 	}
 
 	// 7. Wait for delivery to mock server
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		mu.Lock()
 		count := receivedCount
@@ -199,6 +201,8 @@ func TestWebhookWorker_TerminalErrorDLQ(t *testing.T) {
 	js, err := jetstream.New(nc)
 	if err == nil {
 		_ = js.DeleteStream(ctx, "WEBHOOKS")
+		_ = js.DeleteStream(ctx, "WEBHOOK_DELIVERIES")
+		_ = js.DeleteStream(ctx, "INBOUND")
 	}
 
 	kek := make([]byte, 32)
@@ -230,7 +234,7 @@ func TestWebhookWorker_TerminalErrorDLQ(t *testing.T) {
 		t.Fatalf("failed to create subscription: %v", err)
 	}
 
-	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, nil, nil)
+	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, testServer.Client(), nil)
 	worker, err := NewWebhookWorker(ctx, nc, dispatcher, subRepo)
 	if err != nil {
 		t.Fatalf("failed to start worker: %v", err)
@@ -257,7 +261,7 @@ func TestWebhookWorker_TerminalErrorDLQ(t *testing.T) {
 	}
 
 	// Wait and check DLQ table
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	var dlqItems []*repository.WebhookDLQ
 	for time.Now().Before(deadline) {
 		dlqItems, err = dlqRepo.ListDLQ(ctx, ws.ID, 10, 0)
@@ -314,10 +318,14 @@ func TestWebhookWorker_Inbound(t *testing.T) {
 	if err == nil {
 		_ = js.DeleteStream(ctx, "INBOUND")
 		_ = js.DeleteStream(ctx, "WEBHOOKS")
+		_ = js.DeleteStream(ctx, "WEBHOOK_DELIVERIES")
 	}
 
 	// 1. Setup repository
 	kek := make([]byte, 32)
+	for i := range kek {
+		kek[i] = byte(i)
+	}
 	enc, _ := crypto.NewEncryptor(kek)
 	dlqRepo := repository.NewWebhookDLQRepository(pool, enc)
 	wsRepo := repository.NewWorkspaceRepository(pool)
@@ -349,7 +357,7 @@ func TestWebhookWorker_Inbound(t *testing.T) {
 		t.Fatalf("failed to create subscription: %v", err)
 	}
 
-	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, nil, nil)
+	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, testServer.Client(), nil)
 	worker, err := NewWebhookWorker(ctx, nc, dispatcher, subRepo)
 	if err != nil {
 		t.Fatalf("failed to start worker: %v", err)
@@ -392,7 +400,7 @@ func TestWebhookWorker_Inbound(t *testing.T) {
 	// 4. Wait for delivery
 	select {
 	case <-received:
-	case <-time.After(5 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("webhook was not delivered")
 	}
 

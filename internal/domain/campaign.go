@@ -131,10 +131,11 @@ func SanitizePhone(phone string) (string, bool) {
 	return cleaned, false
 }
 
+var varRegex = regexp.MustCompile(`\{\{(.+?)\}\}`)
+
 // ResolveVariables replaces dynamic placeholders format `{{placeholder}}` with mapped values from the row.
 func ResolveVariables(input string, row map[string]string) string {
-	re := regexp.MustCompile(`\{\{(.+?)\}\}`)
-	return re.ReplaceAllStringFunc(input, func(match string) string {
+	return varRegex.ReplaceAllStringFunc(input, func(match string) string {
 		colName := strings.TrimSpace(match[2 : len(match)-2])
 		colKey := strings.ToLower(colName)
 		if val, exists := row[colKey]; exists {
@@ -174,8 +175,9 @@ func DeduplicateUUIDs(ids []uuid.UUID) []uuid.UUID {
 	return result
 }
 
-// ResolveTagRecipients resolves contacts from specified tag IDs into campaign recipient records and recipients, deduplicating by phone.
-// Contacts without a valid phone number in their identities are skipped (no name fallback).
+// ResolveTagRecipients resolves contacts from specified tag IDs into campaign recipient records and recipients.
+// Contacts matching the channel filter with a valid phone are added as RecipientStatusPending to records and included in recipients.
+// Contacts lacking an identity for the channel filter are added as RecipientStatusSkipped to records and excluded from recipients.
 func ResolveTagRecipients(
 	ctx context.Context,
 	lister TagContactLister,
@@ -184,6 +186,7 @@ func ResolveTagRecipients(
 	channelFilter string,
 ) ([]CampaignRecipientRecord, []CampaignRecipient, map[string]bool, error) {
 	seenPhones := make(map[string]bool)
+	seenContactIDs := make(map[uuid.UUID]bool)
 	var records []CampaignRecipientRecord
 	var recipients []CampaignRecipient
 
@@ -198,6 +201,13 @@ func ResolveTagRecipients(
 			return nil, nil, nil, err
 		}
 		for _, contact := range contacts {
+			if contact.ID != uuid.Nil {
+				if seenContactIDs[contact.ID] {
+					continue
+				}
+				seenContactIDs[contact.ID] = true
+			}
+
 			phone := ""
 			for _, ident := range contact.Identities {
 				if channelFilter != "" && !strings.EqualFold(ident.Channel, channelFilter) {
@@ -207,28 +217,64 @@ func ResolveTagRecipients(
 					if clean, valid := SanitizePhone(ident.SenderIdentity); valid {
 						phone = clean
 						break
+					} else if channelFilter == "" || !strings.HasPrefix(strings.ToLower(channelFilter), "whatsapp") {
+						// For non-phone or non-whatsapp channels when no sanitize phone is enforced
+						phone = ident.SenderIdentity
+						break
 					}
 				}
 			}
-			if phone == "" {
-				continue
-			}
-			if seenPhones[phone] {
-				continue
-			}
-			seenPhones[phone] = true
 
 			contactID := contact.ID
-			records = append(records, CampaignRecipientRecord{
-				ContactID: &contactID,
-				Phone:     phone,
-				Status:    RecipientStatusPending,
-				Variables: map[string]string{"name": contact.Name},
-			})
-			recipients = append(recipients, CampaignRecipient{
-				To:        phone,
-				Variables: map[string]string{"name": contact.Name},
-			})
+
+			if phone != "" {
+				if seenPhones[phone] {
+					continue
+				}
+				seenPhones[phone] = true
+
+				records = append(records, CampaignRecipientRecord{
+					ContactID: &contactID,
+					Phone:     phone,
+					Status:    RecipientStatusPending,
+					Variables: map[string]string{"name": contact.Name},
+				})
+				recipients = append(recipients, CampaignRecipient{
+					To:        phone,
+					Variables: map[string]string{"name": contact.Name},
+				})
+			} else {
+				// Contact lacked matching identity for the channel -> mark as skipped
+				skippedIdentity := ""
+				for _, ident := range contact.Identities {
+					if ident.SenderIdentity != "" {
+						if clean, valid := SanitizePhone(ident.SenderIdentity); valid {
+							skippedIdentity = clean
+						} else {
+							skippedIdentity = ident.SenderIdentity
+						}
+						break
+					}
+				}
+				if skippedIdentity == "" && contact.Email != nil && *contact.Email != "" {
+					skippedIdentity = *contact.Email
+				}
+				if skippedIdentity == "" {
+					skippedIdentity = contact.ID.String()
+				}
+
+				if seenPhones[skippedIdentity] {
+					continue
+				}
+				seenPhones[skippedIdentity] = true
+
+				records = append(records, CampaignRecipientRecord{
+					ContactID: &contactID,
+					Phone:     skippedIdentity,
+					Status:    RecipientStatusSkipped,
+					Variables: map[string]string{"name": contact.Name},
+				})
+			}
 		}
 	}
 

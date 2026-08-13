@@ -186,6 +186,7 @@ func NewWABAAdapter(connectionsRepo *repository.ConnectionRepository, client *ht
 // SetBaseURL overrides the base API URL (useful for testing).
 func (a *WABAAdapter) SetBaseURL(url string) {
 	a.baseURL = url
+	a.client = &http.Client{}
 }
 
 // Dispatch sends a message through the WhatsApp Cloud REST API.

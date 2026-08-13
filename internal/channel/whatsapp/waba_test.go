@@ -595,7 +595,7 @@ func TestWABA_MediaExternalURL(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter := NewWABAAdapter(connectionsRepo, nil, nil, "https://example.com")
+	adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "https://example.com")
 	adapter.SetBaseURL(server.URL)
 
 	payload := &channel.MessagePayload{
@@ -964,7 +964,7 @@ func TestWABAAdapter_ProductPayloads(t *testing.T) {
 		})
 
 		tenantCtx := tenant.WithWorkspaceID(context.Background(), ws.ID)
-		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		// 1. Dispatch Single Product

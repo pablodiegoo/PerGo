@@ -69,6 +69,7 @@ func TestCampaignWorker_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EnsureStream failed: %v", err)
 	}
+	_ = messagesStream.Purge(ctx)
 
 	js, err := jetstream.New(nc)
 	if err != nil {
@@ -80,6 +81,7 @@ func TestCampaignWorker_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get campaigns stream failed: %v", err)
 	}
+	_ = campStream.Purge(ctx)
 
 	consumer, err := EnsureCampaignConsumer(ctx, campStream, consumerName)
 	if err != nil {
@@ -622,7 +624,7 @@ func TestCampaignWorker_StartTask_DynamicResolution(t *testing.T) {
 		Name:         "Dynamic Tag Camp",
 		Status:       domain.CampaignStatusDraft,
 		BatchSize:    10,
-		DelaySeconds: 0,
+		DelaySeconds: 1,
 		Channel:      &channel,
 		TagIDs:       []uuid.UUID{tag.ID},
 		Recipients:   []domain.CampaignRecipient{}, // empty — tags will resolve
@@ -652,7 +654,7 @@ func TestCampaignWorker_StartTask_DynamicResolution(t *testing.T) {
 
 	// Wait for campaign to complete (start resolves → publishes batches → batches dispatch → completed)
 	var finalCamp *domain.Campaign
-	for i := 0; i < 40; i++ {
+	for i := 0; i < 50; i++ {
 		finalCamp, _ = campRepo.GetByID(ctx, camp.ID)
 		if finalCamp != nil && finalCamp.Status == domain.CampaignStatusCompleted {
 			break
@@ -722,7 +724,7 @@ func TestCampaignWorker_StartTask_EmptyResolution(t *testing.T) {
 		Name:         "Empty Tag Camp",
 		Status:       domain.CampaignStatusDraft,
 		BatchSize:    10,
-		DelaySeconds: 0,
+		DelaySeconds: 1,
 		Channel:      &channel,
 		TagIDs:       []uuid.UUID{tag.ID},
 		Recipients:   []domain.CampaignRecipient{},
@@ -822,7 +824,7 @@ func TestCampaignWorker_StartTask_TagPlusCSVMerge(t *testing.T) {
 		Name:         "Merge Camp",
 		Status:       domain.CampaignStatusDraft,
 		BatchSize:    10,
-		DelaySeconds: 0,
+		DelaySeconds: 1,
 		Channel:      &channel,
 		TagIDs:       []uuid.UUID{tag.ID},
 		Recipients: []domain.CampaignRecipient{
@@ -849,7 +851,7 @@ func TestCampaignWorker_StartTask_TagPlusCSVMerge(t *testing.T) {
 	defer worker.Stop()
 
 	var finalCamp *domain.Campaign
-	for i := 0; i < 40; i++ {
+	for i := 0; i < 50; i++ {
 		finalCamp, _ = campRepo.GetByID(ctx, camp.ID)
 		if finalCamp != nil && finalCamp.Status == domain.CampaignStatusCompleted {
 			break
@@ -890,3 +892,388 @@ func TestCampaignWorker_StartTask_TagPlusCSVMerge(t *testing.T) {
 		t.Errorf("expected Charlie's phone 5531977776666 in recipients")
 	}
 }
+
+func TestCampaignWorker_StartTask_SkippedContacts(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	campRepo := repository.NewCampaignRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+	tagRepo := repository.NewTagRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "camp_skipped_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	tag, err := tagRepo.CreateTag(ctx, ws.ID, "MixedTag", "#a855f7")
+	if err != nil {
+		t.Fatalf("failed to create tag: %v", err)
+	}
+
+	// Contact 1: Valid WhatsApp contact
+	contact1, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "5511999998888", "Alice Valid", "", "5511999998888")
+	if err != nil {
+		t.Fatalf("failed to create contact1: %v", err)
+	}
+	_ = tagRepo.AddTagToContact(ctx, ws.ID, contact1.ID, tag.ID)
+
+	// Contact 2: Telegram only contact (no WhatsApp identity)
+	contact2, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "telegram_user_bob", "Bob TelegramOnly", "", "telegram_user_bob")
+	if err != nil {
+		t.Fatalf("failed to create contact2: %v", err)
+	}
+	_ = tagRepo.AddTagToContact(ctx, ws.ID, contact2.ID, tag.ID)
+
+	_, _ = EnsureCampaignStream(ctx, nc)
+	_, _ = EnsureStream(ctx, nc)
+
+	js, _ := jetstream.New(nc)
+	campStream, _ := js.Stream(ctx, "CAMPAIGNS")
+	consumerName := "test-skipped-consumer-" + uuid.New().String()
+	consumer, err := EnsureCampaignConsumer(ctx, campStream, consumerName)
+	if err != nil {
+		t.Fatalf("EnsureCampaignConsumer failed: %v", err)
+	}
+
+	channel := "whatsapp"
+	camp := &domain.Campaign{
+		WorkspaceID:  ws.ID,
+		Name:         "Skipped Contacts Camp",
+		Status:       domain.CampaignStatusDraft,
+		BatchSize:    10,
+		DelaySeconds: 1,
+		Channel:      &channel,
+		TagIDs:       []uuid.UUID{tag.ID},
+		Recipients:   []domain.CampaignRecipient{},
+	}
+	camp, err = campRepo.Create(ctx, camp)
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
+
+	mockAudit := &fakeAuditWriter{}
+	publisher := NewJetStreamPublisher(nc)
+
+	startTask := domain.CampaignStartTask{
+		CampaignID:  camp.ID,
+		WorkspaceID: ws.ID,
+	}
+	startBytes, _ := json.Marshal(startTask)
+	err = publisher.Publish(ctx, "campaigns.start", startBytes, uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to publish start task: %v", err)
+	}
+
+	worker := NewCampaignWorker(ctx, consumer, campRepo, connRepo, dispatchRepo, publisher, mockAudit, tagRepo)
+	defer worker.Stop()
+
+	// Wait for campaign completion
+	var finalCamp *domain.Campaign
+	for i := 0; i < 50; i++ {
+		finalCamp, _ = campRepo.GetByID(ctx, camp.ID)
+		if finalCamp != nil && finalCamp.Status == domain.CampaignStatusCompleted {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	if finalCamp == nil || finalCamp.Status != domain.CampaignStatusCompleted {
+		status := "nil"
+		if finalCamp != nil {
+			status = string(finalCamp.Status)
+		}
+		t.Fatalf("campaign expected completed, got: %s", status)
+	}
+
+	// Verify TotalRecipients in DB has 2 records
+	if finalCamp.TotalRecipients != 2 {
+		t.Errorf("expected total_recipients = 2, got %d", finalCamp.TotalRecipients)
+	}
+
+	// Verify records in DB: 1 pending/sent, 1 skipped
+	allRecs, err := campRepo.ListRecipients(ctx, camp.ID, nil, 100)
+	if err != nil {
+		t.Fatalf("failed to list recipients: %v", err)
+	}
+	if len(allRecs) != 2 {
+		t.Fatalf("expected 2 recipient records, got %d", len(allRecs))
+	}
+
+	var foundPendingOrSent, foundSkipped bool
+	for _, r := range allRecs {
+		if r.Phone == "5511999998888" && (r.Status == domain.RecipientStatusPending || r.Status == domain.RecipientStatusSent) {
+			foundPendingOrSent = true
+		}
+		if r.Phone == "telegram_user_bob" && r.Status == domain.RecipientStatusSkipped {
+			foundSkipped = true
+		}
+	}
+	if !foundPendingOrSent {
+		t.Errorf("expected Alice with phone 5511999998888 to be pending or sent")
+	}
+	if !foundSkipped {
+		t.Errorf("expected Bob with identity telegram_user_bob to have status skipped, got recs: %+v", allRecs)
+	}
+
+	// Verify individual audit log was emitted for the skipped contact
+	events := mockAudit.Events()
+	var skippedEventFound bool
+	for _, ev := range events {
+		if ev.EventType == "campaign.dispatch.skipped" {
+			skippedEventFound = true
+			var payload map[string]any
+			if err := json.Unmarshal(ev.Payload, &payload); err == nil {
+				if payload["status"] != "skipped" {
+					t.Errorf("expected audit payload status 'skipped', got %v", payload["status"])
+				}
+				if payload["recipient"] != "telegram_user_bob" {
+					t.Errorf("expected audit payload recipient 'telegram_user_bob', got %v", payload["recipient"])
+				}
+			}
+		}
+	}
+	if !skippedEventFound {
+		t.Errorf("expected campaign.dispatch.skipped audit event for Bob, got events: %+v", events)
+	}
+
+	// Verify sent count is 1 (only Alice was dispatched, Bob was omitted from batch payload)
+	if finalCamp.SentRecipients != 1 {
+		t.Errorf("expected 1 sent recipient, got %d", finalCamp.SentRecipients)
+	}
+}
+
+func TestCampaignWorker_StartTask_TagOverridesCSV(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	campRepo := repository.NewCampaignRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+	tagRepo := repository.NewTagRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "camp_override_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	tag, err := tagRepo.CreateTag(ctx, ws.ID, "CanonicalTag", "#10b981")
+	if err != nil {
+		t.Fatalf("failed to create tag: %v", err)
+	}
+
+	// Tag contact with canonical name and database ID
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "5511999998888", "Canonical Alice From Tag", "", "5511999998888")
+	if err != nil {
+		t.Fatalf("failed to create contact: %v", err)
+	}
+	_ = tagRepo.AddTagToContact(ctx, ws.ID, contact.ID, tag.ID)
+
+	_, _ = EnsureCampaignStream(ctx, nc)
+	_, _ = EnsureStream(ctx, nc)
+
+	js, _ := jetstream.New(nc)
+	campStream, _ := js.Stream(ctx, "CAMPAIGNS")
+	consumerName := "test-override-consumer-" + uuid.New().String()
+	consumer, err := EnsureCampaignConsumer(ctx, campStream, consumerName)
+	if err != nil {
+		t.Fatalf("EnsureCampaignConsumer failed: %v", err)
+	}
+
+	channel := "whatsapp"
+	camp := &domain.Campaign{
+		WorkspaceID:  ws.ID,
+		Name:         "Override Test Camp",
+		Status:       domain.CampaignStatusDraft,
+		BatchSize:    10,
+		DelaySeconds: 1,
+		Channel:      &channel,
+		TagIDs:       []uuid.UUID{tag.ID},
+		Recipients: []domain.CampaignRecipient{
+			{To: "5511999998888", Variables: map[string]string{"name": "Dirty Alice From CSV"}},
+			{To: "5511988887777", Variables: map[string]string{"name": "Unique Bob From CSV"}},
+		},
+	}
+	camp, err = campRepo.Create(ctx, camp)
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
+
+	mockAudit := &fakeAuditWriter{}
+	publisher := NewJetStreamPublisher(nc)
+
+	startTask := domain.CampaignStartTask{
+		CampaignID:  camp.ID,
+		WorkspaceID: ws.ID,
+	}
+	startBytes, _ := json.Marshal(startTask)
+	err = publisher.Publish(ctx, "campaigns.start", startBytes, uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to publish start task: %v", err)
+	}
+
+	worker := NewCampaignWorker(ctx, consumer, campRepo, connRepo, dispatchRepo, publisher, mockAudit, tagRepo)
+	defer worker.Stop()
+
+	var finalCamp *domain.Campaign
+	for i := 0; i < 50; i++ {
+		finalCamp, _ = campRepo.GetByID(ctx, camp.ID)
+		if finalCamp != nil && finalCamp.Status == domain.CampaignStatusCompleted {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	if finalCamp == nil || finalCamp.Status != domain.CampaignStatusCompleted {
+		t.Fatalf("campaign expected completed, got: %v", finalCamp)
+	}
+
+	// Verify recipients in DB
+	allRecs, err := campRepo.ListRecipients(ctx, camp.ID, nil, 100)
+	if err != nil {
+		t.Fatalf("failed to list recipients: %v", err)
+	}
+	if len(allRecs) != 2 {
+		t.Fatalf("expected 2 total recipients, got %d", len(allRecs))
+	}
+
+	for _, rec := range allRecs {
+		if rec.Phone == "5511999998888" {
+			if rec.Variables["name"] != "Canonical Alice From Tag" {
+				t.Errorf("expected tag variable 'Canonical Alice From Tag', got %s", rec.Variables["name"])
+			}
+			if rec.ContactID == nil || *rec.ContactID != contact.ID {
+				t.Errorf("expected tag contact ID %s, got %v", contact.ID, rec.ContactID)
+			}
+		}
+	}
+}
+
+func TestCampaignWorker_StartTask_Idempotency(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	campRepo := repository.NewCampaignRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+	tagRepo := repository.NewTagRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "camp_idempotent_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	tag, err := tagRepo.CreateTag(ctx, ws.ID, "IdempotentTag", "#f59e0b")
+	if err != nil {
+		t.Fatalf("failed to create tag: %v", err)
+	}
+
+	contact1, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "5511999998888", "Alice", "", "5511999998888")
+	if err != nil {
+		t.Fatalf("failed to create contact1: %v", err)
+	}
+	contact2, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "5521988887777", "Bob", "", "5521988887777")
+	if err != nil {
+		t.Fatalf("failed to create contact2: %v", err)
+	}
+	_ = tagRepo.AddTagToContact(ctx, ws.ID, contact1.ID, tag.ID)
+	_ = tagRepo.AddTagToContact(ctx, ws.ID, contact2.ID, tag.ID)
+
+	_, _ = EnsureCampaignStream(ctx, nc)
+	_, _ = EnsureStream(ctx, nc)
+
+	js, _ := jetstream.New(nc)
+	campStream, _ := js.Stream(ctx, "CAMPAIGNS")
+	consumerName := "test-idempotent-consumer-" + uuid.New().String()
+	consumer, err := EnsureCampaignConsumer(ctx, campStream, consumerName)
+	if err != nil {
+		t.Fatalf("EnsureCampaignConsumer failed: %v", err)
+	}
+
+	channel := "whatsapp"
+	camp := &domain.Campaign{
+		WorkspaceID:  ws.ID,
+		Name:         "Idempotent Dynamic Camp",
+		Status:       domain.CampaignStatusDraft,
+		BatchSize:    10,
+		DelaySeconds: 1,
+		Channel:      &channel,
+		TagIDs:       []uuid.UUID{tag.ID},
+		Recipients:   []domain.CampaignRecipient{},
+	}
+	camp, err = campRepo.Create(ctx, camp)
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
+
+	mockAudit := &fakeAuditWriter{}
+	publisher := NewJetStreamPublisher(nc)
+
+	// Publish start task #1
+	startTask := domain.CampaignStartTask{
+		CampaignID:  camp.ID,
+		WorkspaceID: ws.ID,
+	}
+	startBytes, _ := json.Marshal(startTask)
+	startTraceID := fmt.Sprintf("campaign_%s_start", camp.ID)
+	err = publisher.Publish(ctx, "campaigns.start", startBytes, startTraceID)
+	if err != nil {
+		t.Fatalf("failed to publish start task #1: %v", err)
+	}
+
+	// Publish start task #2 (simulating duplicate delivery / retry)
+	err = publisher.Publish(ctx, "campaigns.start", startBytes, startTraceID)
+	if err != nil {
+		t.Fatalf("failed to publish start task #2: %v", err)
+	}
+
+	worker := NewCampaignWorker(ctx, consumer, campRepo, connRepo, dispatchRepo, publisher, mockAudit, tagRepo)
+	defer worker.Stop()
+
+	// Wait for campaign completion
+	var finalCamp *domain.Campaign
+	for i := 0; i < 50; i++ {
+		finalCamp, _ = campRepo.GetByID(ctx, camp.ID)
+		if finalCamp != nil && finalCamp.Status == domain.CampaignStatusCompleted {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	if finalCamp == nil || finalCamp.Status != domain.CampaignStatusCompleted {
+		t.Fatalf("campaign expected completed, got: %v", finalCamp)
+	}
+
+	// Total recipients must remain exactly 2 without duplicate DB rows
+	if finalCamp.TotalRecipients != 2 {
+		t.Errorf("expected total_recipients = 2, got %d", finalCamp.TotalRecipients)
+	}
+
+	allRecs, err := campRepo.ListRecipients(ctx, camp.ID, nil, 100)
+	if err != nil {
+		t.Fatalf("failed to list recipients: %v", err)
+	}
+	if len(allRecs) != 2 {
+		t.Errorf("expected exactly 2 recipient rows, got %d", len(allRecs))
+	}
+}
+

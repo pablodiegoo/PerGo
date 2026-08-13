@@ -152,7 +152,7 @@ func TestResolveTagRecipients(t *testing.T) {
 					ID:   c1ID,
 					Name: "Alice",
 					Identities: []ContactIdentity{
-						{SenderIdentity: "+5511999998888"},
+						{Channel: "whatsapp", SenderIdentity: "+5511999998888"},
 					},
 				},
 				{
@@ -166,29 +166,32 @@ func TestResolveTagRecipients(t *testing.T) {
 					ID:   c3ID,
 					Name: "Alice Duplicate Phone",
 					Identities: []ContactIdentity{
-						{SenderIdentity: "5511999998888"}, // Duplicate phone of c1
+						{Channel: "whatsapp", SenderIdentity: "5511999998888"}, // Duplicate phone of c1
 					},
 				},
 			},
 		},
 	}
 
-	records, recipients, seenPhones, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1, tag2}, "")
+	records, recipients, seenPhones, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1, tag2}, "whatsapp")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// c2 should be skipped because no identities (name fallback removed)
-	// c3 should be skipped because phone 5511999998888 is duplicate
-	// Only c1 should be resolved
-	if len(records) != 1 {
-		t.Fatalf("expected 1 record resolved, got %d", len(records))
+	// c1 should be resolved as pending
+	// c2 should be resolved as skipped (no identities)
+	// c3 should be skipped by deduplication against c1
+	if len(records) != 2 {
+		t.Fatalf("expected 2 records resolved (1 pending, 1 skipped), got %d", len(records))
 	}
 	if len(recipients) != 1 {
 		t.Fatalf("expected 1 recipient resolved, got %d", len(recipients))
 	}
-	if records[0].Phone != "5511999998888" {
-		t.Errorf("expected phone 5511999998888, got %s", records[0].Phone)
+	if records[0].Phone != "5511999998888" || records[0].Status != RecipientStatusPending {
+		t.Errorf("expected c1 to be pending with 5511999998888, got phone %s, status %s", records[0].Phone, records[0].Status)
+	}
+	if records[1].Status != RecipientStatusSkipped {
+		t.Errorf("expected c2 to be skipped, got status %s", records[1].Status)
 	}
 	if !seenPhones["5511999998888"] {
 		t.Errorf("expected seenPhones['5511999998888'] to be true")
@@ -225,32 +228,86 @@ func TestResolveTagRecipients_ChannelFilter(t *testing.T) {
 		},
 	}
 
-	// Filter by whatsapp — only Alice should match (Bob has only telegram)
+	// Filter by whatsapp:
+	// - Alice matches whatsapp -> Status: RecipientStatusPending
+	// - Bob lacks whatsapp identity -> Status: RecipientStatusSkipped
+	// - recipients slice contains ONLY Alice
+	records, recipients, seenPhones, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1}, "whatsapp")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(records) != 2 {
+		t.Fatalf("expected 2 records (1 pending, 1 skipped), got %d", len(records))
+	}
+	if records[0].Phone != "5511999998888" || records[0].Status != RecipientStatusPending {
+		t.Errorf("expected records[0] to be Alice pending, got phone %s, status %s", records[0].Phone, records[0].Status)
+	}
+	if records[1].Phone != "5521988887777" || records[1].Status != RecipientStatusSkipped {
+		t.Errorf("expected records[1] to be Bob skipped, got phone %s, status %s", records[1].Phone, records[1].Status)
+	}
+	if len(recipients) != 1 {
+		t.Fatalf("expected 1 recipient for batch dispatch, got %d", len(recipients))
+	}
+	if recipients[0].To != "5511999998888" {
+		t.Errorf("expected recipient Alice, got %s", recipients[0].To)
+	}
+	if !seenPhones["5511999998888"] || !seenPhones["5521988887777"] {
+		t.Errorf("expected seenPhones to contain both Alice and Bob's identities")
+	}
+
+	// Empty filter — both should match as pending if they have valid phones
+	records2, recipients2, _, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(records2) != 2 {
+		t.Fatalf("expected 2 records for empty filter, got %d", len(records2))
+	}
+	if len(recipients2) != 2 {
+		t.Fatalf("expected 2 recipients for empty filter, got %d", len(recipients2))
+	}
+}
+
+func TestResolveTagRecipients_SkippedNoIdentities(t *testing.T) {
+	ctx := context.Background()
+	wsID := uuid.New()
+	tag1 := uuid.New()
+
+	c1ID := uuid.New()
+	email := "carol@example.com"
+
+	mock := &mockTagLister{
+		contacts: map[uuid.UUID][]Contact{
+			tag1: {
+				{
+					ID:         c1ID,
+					Name:       "Carol",
+					Email:      &email,
+					Identities: nil,
+				},
+			},
+		},
+	}
+
 	records, recipients, seenPhones, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1}, "whatsapp")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if len(records) != 1 {
-		t.Fatalf("expected 1 record for whatsapp filter, got %d", len(records))
+		t.Fatalf("expected 1 skipped record, got %d", len(records))
 	}
-	if records[0].Phone != "5511999998888" {
-		t.Errorf("expected phone 5511999998888, got %s", records[0].Phone)
+	if records[0].Status != RecipientStatusSkipped {
+		t.Errorf("expected status skipped, got %s", records[0].Status)
 	}
-	if len(recipients) != 1 {
-		t.Errorf("expected 1 recipient, got %d", len(recipients))
+	if records[0].Phone != "carol@example.com" {
+		t.Errorf("expected identity carol@example.com, got %s", records[0].Phone)
 	}
-	if !seenPhones["5511999998888"] {
-		t.Errorf("expected seenPhones to contain 5511999998888")
+	if len(recipients) != 0 {
+		t.Errorf("expected 0 recipients, got %d", len(recipients))
 	}
-
-	// Empty filter — both should match if they have valid phones
-	records2, _, _, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1}, "")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	// Alice matches (whatsapp phone), Bob's telegram identity is "5521988887777" which has 13 digits — valid phone
-	if len(records2) != 2 {
-		t.Fatalf("expected 2 records for empty filter, got %d", len(records2))
+	if !seenPhones["carol@example.com"] {
+		t.Errorf("expected seenPhones to contain carol@example.com")
 	}
 }

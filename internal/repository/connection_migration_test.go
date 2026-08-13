@@ -64,6 +64,11 @@ func TestConnectionMigration(t *testing.T) {
 		t.Fatalf("failed to set goose dialect: %v", err)
 	}
 
+	// Always restore database to latest version on exit
+	defer func() {
+		_ = postgres.RunMigrations(db)
+	}()
+
 	// Reset base FS to local OS filesystem to avoid side-effects from tests that set it to embed.FS
 	goose.SetBaseFS(nil)
 
@@ -81,12 +86,12 @@ func TestConnectionMigration(t *testing.T) {
 	_, _ = db.ExecContext(ctx, "DELETE FROM workspaces WHERE name LIKE 'migration-test-workspace-%'")
 
 	// 1. Ensure we migrate Down to version 11 first to start from baseline
-	if err := goose.DownTo(db, dir, 11); err != nil {
+	if err := goose.DownTo(db, dir, 11, goose.WithAllowMissing()); err != nil {
 		t.Fatalf("failed to migrate Down to 11: %v", err)
 	}
 
 	// 2. Migrate Up to version 11 (no-op if already at 11)
-	if err := goose.UpTo(db, dir, 11); err != nil {
+	if err := goose.UpTo(db, dir, 11, goose.WithAllowMissing()); err != nil {
 		t.Fatalf("failed to migrate Up to version 11: %v", err)
 	}
 
@@ -135,7 +140,7 @@ func TestConnectionMigration(t *testing.T) {
 		return
 	}
 
-	if err := goose.UpTo(db, dir, 12); err != nil {
+	if err := goose.UpTo(db, dir, 12, goose.WithAllowMissing()); err != nil {
 		t.Fatalf("failed to migrate Up to version 12: %v", err)
 	}
 
@@ -203,7 +208,7 @@ func TestConnectionMigration(t *testing.T) {
 	}
 
 	// 5. Migrate Down to version 11 (restore legacy tables)
-	if err := goose.DownTo(db, dir, 11); err != nil {
+	if err := goose.DownTo(db, dir, 11, goose.WithAllowMissing()); err != nil {
 		t.Fatalf("failed to migrate Down to version 11: %v", err)
 	}
 
