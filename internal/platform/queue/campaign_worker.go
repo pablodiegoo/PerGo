@@ -137,10 +137,13 @@ func (w *CampaignWorker) emitAuditLog(event auditDispatchEvent) error {
 		return nil
 	}
 	payload := map[string]any{
-		"campaign_id": event.CampaignID,
-		"recipient":   event.Recipient,
-		"status":      event.Status,
-		"channel":     event.Channel,
+		"workspace_id": event.WorkspaceID,
+		"trace_id":     event.TraceID,
+		"campaign_id":  event.CampaignID,
+		"recipient_id": event.Recipient,
+		"recipient":    event.Recipient,
+		"status":       event.Status,
+		"channel":      event.Channel,
 	}
 	if event.ErrStr != "" {
 		payload["error"] = event.ErrStr
@@ -266,15 +269,17 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 	if len(allRecords) == 0 {
 		slog.Info("campaign_worker: campaign resolved to zero recipients", "campaign_id", task.CampaignID)
 		_ = w.campaignRepo.UpdateStatus(ctx, task.CampaignID, domain.CampaignStatusCompleted)
+		startTraceID := fmt.Sprintf("campaign_%s_start", task.CampaignID.String())
 		if auditErr := w.emitAuditLog(auditDispatchEvent{
 			WorkspaceID: campaign.WorkspaceID,
-			TraceID:     fmt.Sprintf("campaign_%s_start", task.CampaignID.String()),
+			TraceID:     startTraceID,
 			EventType:   "campaign.dispatch.completed_empty",
 			Status:      "completed_empty",
+			Recipient:   "system",
 			CampaignID:  task.CampaignID,
 			Channel:     channel,
 		}); auditErr != nil {
-			slog.Error("campaign_worker: failed to emit completed_empty audit log", "campaign_id", task.CampaignID, "error", auditErr)
+			slog.Error("campaign_worker: failed to emit completed_empty audit log", "trace_id", startTraceID, "campaign_id", task.CampaignID, "error", auditErr)
 		}
 		_ = msg.Ack()
 		return
@@ -291,16 +296,17 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 	// 5. Emit audit logs for skipped contacts
 	for _, rec := range allRecords {
 		if rec.Status == domain.RecipientStatusSkipped {
+			recipTraceID := fmt.Sprintf("campaign_%s_%s", task.CampaignID.String(), rec.Phone)
 			if auditErr := w.emitAuditLog(auditDispatchEvent{
 				WorkspaceID: campaign.WorkspaceID,
-				TraceID:     fmt.Sprintf("campaign_%s_%s", task.CampaignID.String(), rec.Phone),
+				TraceID:     recipTraceID,
 				EventType:   "campaign.dispatch.skipped",
 				Status:      "skipped",
 				Recipient:   rec.Phone,
 				CampaignID:  task.CampaignID,
 				Channel:     channel,
 			}); auditErr != nil {
-				slog.Error("campaign_worker: failed to emit skipped audit log", "campaign_id", task.CampaignID, "recipient", rec.Phone, "error", auditErr)
+				slog.Error("campaign_worker: failed to emit skipped audit log", "trace_id", recipTraceID, "campaign_id", task.CampaignID, "recipient", rec.Phone, "error", auditErr)
 			}
 		}
 	}
@@ -508,7 +514,7 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 			if auditErr := w.emitAuditLog(auditDispatchEvent{
 				WorkspaceID: task.WorkspaceID,
 				TraceID:     traceID,
-				EventType:   "campaign_dispatch",
+				EventType:   "campaign.dispatch.failed",
 				Status:      "failed",
 				Recipient:   recipient.To,
 				CampaignID:  task.CampaignID,
@@ -525,7 +531,7 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 			if auditErr := w.emitAuditLog(auditDispatchEvent{
 				WorkspaceID: task.WorkspaceID,
 				TraceID:     traceID,
-				EventType:   "campaign_dispatch",
+				EventType:   "campaign.dispatch.delivered",
 				Status:      "delivered",
 				Recipient:   recipient.To,
 				CampaignID:  task.CampaignID,
@@ -541,7 +547,7 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 			if auditErr := w.emitAuditLog(auditDispatchEvent{
 				WorkspaceID: task.WorkspaceID,
 				TraceID:     traceID,
-				EventType:   "campaign_dispatch",
+				EventType:   "campaign.dispatch.sent",
 				Status:      "sent",
 				Recipient:   recipient.To,
 				CampaignID:  task.CampaignID,
@@ -560,7 +566,7 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 			if auditErr := w.emitAuditLog(auditDispatchEvent{
 				WorkspaceID: task.WorkspaceID,
 				TraceID:     traceID,
-				EventType:   "campaign_dispatch",
+				EventType:   "campaign.dispatch.failed",
 				Status:      "failed",
 				Recipient:   recipient.To,
 				CampaignID:  task.CampaignID,
@@ -579,7 +585,7 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 			if auditErr := w.emitAuditLog(auditDispatchEvent{
 				WorkspaceID: task.WorkspaceID,
 				TraceID:     traceID,
-				EventType:   "campaign_dispatch",
+				EventType:   "campaign.dispatch.failed",
 				Status:      "failed",
 				Recipient:   recipient.To,
 				CampaignID:  task.CampaignID,
@@ -596,7 +602,7 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 		if auditErr := w.emitAuditLog(auditDispatchEvent{
 			WorkspaceID: task.WorkspaceID,
 			TraceID:     traceID,
-			EventType:   "campaign_dispatch",
+			EventType:   "campaign.dispatch.sent",
 			Status:      "sent",
 			Recipient:   recipient.To,
 			CampaignID:  task.CampaignID,

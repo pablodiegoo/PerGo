@@ -406,10 +406,15 @@ func TestCampaignWorker_AuditEmissions_Sent(t *testing.T) {
 	foundSent := false
 	expectedTrace := fmt.Sprintf("campaign_%s_%s", camp.ID.String(), "5511999991111")
 	for _, ev := range events {
-		if ev.EventType == "campaign_dispatch" && ev.TraceID == expectedTrace && ev.WorkspaceID == ws.ID {
+		if ev.EventType == "campaign.dispatch.sent" && ev.TraceID == expectedTrace && ev.WorkspaceID == ws.ID {
 			var payload map[string]any
 			if err := json.Unmarshal(ev.Payload, &payload); err == nil {
-				if payload["status"] == "sent" && payload["recipient"] == "5511999991111" {
+				if payload["status"] == "sent" &&
+					payload["recipient"] == "5511999991111" &&
+					payload["recipient_id"] == "5511999991111" &&
+					payload["workspace_id"] == ws.ID.String() &&
+					payload["campaign_id"] == camp.ID.String() &&
+					payload["trace_id"] == expectedTrace {
 					foundSent = true
 					break
 				}
@@ -418,7 +423,7 @@ func TestCampaignWorker_AuditEmissions_Sent(t *testing.T) {
 	}
 
 	if !foundSent {
-		t.Errorf("expected audit event with status 'sent' for recipient 5511999991111, events: %+v", events)
+		t.Errorf("expected audit event with EventType 'campaign.dispatch.sent' for recipient 5511999991111, events: %+v", events)
 	}
 }
 
@@ -505,10 +510,15 @@ func TestCampaignWorker_AuditEmissions_Delivered(t *testing.T) {
 	events := mockAudit.Events()
 	foundDelivered := false
 	for _, ev := range events {
-		if ev.EventType == "campaign_dispatch" && ev.TraceID == traceID && ev.WorkspaceID == ws.ID {
+		if ev.EventType == "campaign.dispatch.delivered" && ev.TraceID == traceID && ev.WorkspaceID == ws.ID {
 			var payload map[string]any
 			if err := json.Unmarshal(ev.Payload, &payload); err == nil {
-				if payload["status"] == "delivered" && payload["recipient"] == "5511999992222" {
+				if payload["status"] == "delivered" &&
+					payload["recipient"] == "5511999992222" &&
+					payload["recipient_id"] == "5511999992222" &&
+					payload["workspace_id"] == ws.ID.String() &&
+					payload["campaign_id"] == camp.ID.String() &&
+					payload["trace_id"] == traceID {
 					foundDelivered = true
 					break
 				}
@@ -517,7 +527,7 @@ func TestCampaignWorker_AuditEmissions_Delivered(t *testing.T) {
 	}
 
 	if !foundDelivered {
-		t.Errorf("expected audit event with status 'delivered' for recipient 5511999992222, events: %+v", events)
+		t.Errorf("expected audit event with EventType 'campaign.dispatch.delivered' for recipient 5511999992222, events: %+v", events)
 	}
 }
 
@@ -532,7 +542,7 @@ func TestCampaignWorker_AuditEmissions_Failed(t *testing.T) {
 	err := worker.emitAuditLog(auditDispatchEvent{
 		WorkspaceID: wsID,
 		TraceID:     traceID,
-		EventType:   "campaign_dispatch",
+		EventType:   "campaign.dispatch.failed",
 		Status:      "failed",
 		Recipient:   "5511999993333",
 		CampaignID:  campID,
@@ -549,7 +559,7 @@ func TestCampaignWorker_AuditEmissions_Failed(t *testing.T) {
 	}
 
 	ev := events[0]
-	if ev.EventType != "campaign_dispatch" || ev.TraceID != traceID || ev.WorkspaceID != wsID {
+	if ev.EventType != "campaign.dispatch.failed" || ev.TraceID != traceID || ev.WorkspaceID != wsID {
 		t.Errorf("unexpected event metadata: %+v", ev)
 	}
 
@@ -558,7 +568,13 @@ func TestCampaignWorker_AuditEmissions_Failed(t *testing.T) {
 		t.Fatalf("failed to unmarshal payload: %v", err)
 	}
 
-	if payload["status"] != "failed" || payload["recipient"] != "5511999993333" || payload["error"] != "publish error" {
+	if payload["status"] != "failed" ||
+		payload["recipient"] != "5511999993333" ||
+		payload["recipient_id"] != "5511999993333" ||
+		payload["workspace_id"] != wsID.String() ||
+		payload["campaign_id"] != campID.String() ||
+		payload["trace_id"] != traceID ||
+		payload["error"] != "publish error" {
 		t.Errorf("unexpected payload content: %+v", payload)
 	}
 }
@@ -1026,8 +1042,9 @@ func TestCampaignWorker_StartTask_SkippedContacts(t *testing.T) {
 	// Verify individual audit log was emitted for the skipped contact
 	events := mockAudit.Events()
 	var skippedEventFound bool
+	expectedBobTrace := fmt.Sprintf("campaign_%s_%s", camp.ID.String(), "telegram_user_bob")
 	for _, ev := range events {
-		if ev.EventType == "campaign.dispatch.skipped" {
+		if ev.EventType == "campaign.dispatch.skipped" && ev.TraceID == expectedBobTrace && ev.WorkspaceID == ws.ID {
 			skippedEventFound = true
 			var payload map[string]any
 			if err := json.Unmarshal(ev.Payload, &payload); err == nil {
@@ -1036,6 +1053,18 @@ func TestCampaignWorker_StartTask_SkippedContacts(t *testing.T) {
 				}
 				if payload["recipient"] != "telegram_user_bob" {
 					t.Errorf("expected audit payload recipient 'telegram_user_bob', got %v", payload["recipient"])
+				}
+				if payload["recipient_id"] != "telegram_user_bob" {
+					t.Errorf("expected audit payload recipient_id 'telegram_user_bob', got %v", payload["recipient_id"])
+				}
+				if payload["workspace_id"] != ws.ID.String() {
+					t.Errorf("expected audit payload workspace_id '%s', got %v", ws.ID.String(), payload["workspace_id"])
+				}
+				if payload["campaign_id"] != camp.ID.String() {
+					t.Errorf("expected audit payload campaign_id '%s', got %v", camp.ID.String(), payload["campaign_id"])
+				}
+				if payload["trace_id"] != expectedBobTrace {
+					t.Errorf("expected audit payload trace_id '%s', got %v", expectedBobTrace, payload["trace_id"])
 				}
 			}
 		}
@@ -1320,6 +1349,133 @@ func TestCampaignWorker_StartTask_Idempotency(t *testing.T) {
 	}
 	if len(allRecs) != 2 {
 		t.Errorf("expected exactly 2 recipient rows, got %d", len(allRecs))
+	}
+}
+
+func TestCampaignWorker_PostgresAuditIntegration(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	campRepo := repository.NewCampaignRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "camp_pg_audit_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() {
+		_, _ = pool.Exec(context.Background(), "DELETE FROM audit_logs WHERE workspace_id = $1", ws.ID)
+		_ = wsRepo.Delete(context.Background(), ws.ID)
+	}()
+
+	_, _ = EnsureCampaignStream(ctx, nc)
+	_, _ = EnsureStream(ctx, nc)
+
+	js, _ := jetstream.New(nc)
+	campStream, _ := js.Stream(ctx, "CAMPAIGNS")
+	consumerName := "test-pg-audit-consumer-" + uuid.New().String()
+	consumer, _ := EnsureCampaignConsumer(ctx, campStream, consumerName)
+
+	channel := "whatsapp"
+	recipientPhone := "5511998877665"
+	camp := &domain.Campaign{
+		WorkspaceID:  ws.ID,
+		Name:         "Postgres Audit Integration Campaign",
+		Status:       domain.CampaignStatusSending,
+		BatchSize:    1,
+		DelaySeconds: 1,
+		Channel:      &channel,
+		Recipients: []domain.CampaignRecipient{
+			{To: recipientPhone, Variables: map[string]string{"name": "AuditTester"}},
+		},
+	}
+	camp, err = campRepo.Create(ctx, camp)
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
+
+	// Real batch writer to Postgres audit_logs
+	auditWriter := audit.NewWriter(pool, 100, 1)
+
+	publisher := NewJetStreamPublisher(nc)
+	task := CampaignBatchTask{
+		CampaignID:   camp.ID,
+		WorkspaceID:  ws.ID,
+		BatchIndex:   1,
+		TotalBatches: 1,
+		Recipients:   camp.Recipients,
+		DelaySeconds: 0,
+	}
+	taskBytes, _ := json.Marshal(task)
+	_ = publisher.Publish(ctx, "campaigns.batches", taskBytes, uuid.New().String())
+
+	worker := NewCampaignWorker(ctx, consumer, campRepo, connRepo, dispatchRepo, publisher, auditWriter, nil)
+	defer worker.Stop()
+
+	// Wait for campaign completion
+	var finalCamp *domain.Campaign
+	for i := 0; i < 30; i++ {
+		finalCamp, _ = campRepo.GetByID(ctx, camp.ID)
+		if finalCamp != nil && finalCamp.Status == domain.CampaignStatusCompleted {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if finalCamp == nil || finalCamp.Status != domain.CampaignStatusCompleted {
+		t.Fatalf("expected campaign to complete, got status: %v", finalCamp)
+	}
+
+	// Close audit writer to flush batch to Postgres
+	if err := auditWriter.Close(); err != nil {
+		t.Fatalf("failed to close auditWriter: %v", err)
+	}
+
+	// Query PostgreSQL audit_logs table directly to verify persistence
+	expectedTrace := fmt.Sprintf("campaign_%s_%s", camp.ID.String(), recipientPhone)
+	var count int
+	var payloadBytes []byte
+	err = pool.QueryRow(ctx,
+		`SELECT COUNT(*), COALESCE(MAX(payload::text), '{}')::bytea
+		 FROM audit_logs 
+		 WHERE workspace_id = $1 AND trace_id = $2 AND event_type = $3`,
+		ws.ID, expectedTrace, "campaign.dispatch.sent",
+	).Scan(&count, &payloadBytes)
+	if err != nil {
+		t.Fatalf("failed to query audit_logs: %v", err)
+	}
+
+	if count < 1 {
+		t.Fatalf("expected at least 1 audit_logs row for trace_id %s, got %d", expectedTrace, count)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		t.Fatalf("failed to unmarshal audit_logs payload: %v", err)
+	}
+
+	if payload["status"] != "sent" {
+		t.Errorf("expected payload status 'sent', got %v", payload["status"])
+	}
+	if payload["recipient"] != recipientPhone {
+		t.Errorf("expected payload recipient '%s', got %v", recipientPhone, payload["recipient"])
+	}
+	if payload["recipient_id"] != recipientPhone {
+		t.Errorf("expected payload recipient_id '%s', got %v", recipientPhone, payload["recipient_id"])
+	}
+	if payload["workspace_id"] != ws.ID.String() {
+		t.Errorf("expected payload workspace_id '%s', got %v", ws.ID.String(), payload["workspace_id"])
+	}
+	if payload["campaign_id"] != camp.ID.String() {
+		t.Errorf("expected payload campaign_id '%s', got %v", camp.ID.String(), payload["campaign_id"])
+	}
+	if payload["trace_id"] != expectedTrace {
+		t.Errorf("expected payload trace_id '%s', got %v", expectedTrace, payload["trace_id"])
 	}
 }
 
