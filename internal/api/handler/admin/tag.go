@@ -372,7 +372,9 @@ func (h *TagAdminHandler) ImportContactsCSV(c *echo.Context) error {
 			}
 		}
 		if len(attrs) > 0 {
-			_ = h.contactRepo.UpdateAttributes(c.Request().Context(), workspaceID, contact.ID, attrs)
+			if err := h.contactRepo.UpdateAttributes(c.Request().Context(), workspaceID, contact.ID, attrs); err != nil {
+				slog.Error("failed to update contact attributes during csv import", "workspace_id", workspaceID, "contact_id", contact.ID, "error", err)
+			}
 		}
 
 		result.Imported++

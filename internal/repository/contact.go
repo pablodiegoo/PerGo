@@ -40,7 +40,9 @@ func (r *ContactRepository) GetByID(ctx context.Context, workspaceID, contactID 
 	}
 
 	if len(attrsRaw) > 0 {
-		_ = json.Unmarshal(attrsRaw, &c.Attributes)
+		if err := json.Unmarshal(attrsRaw, &c.Attributes); err != nil {
+			return nil, fmt.Errorf("unmarshal contact attributes: %w", err)
+		}
 	}
 	if c.Attributes == nil {
 		c.Attributes = make(map[string]string)
@@ -391,7 +393,9 @@ func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid
 			return nil, err
 		}
 		if len(attrsRaw) > 0 {
-			_ = json.Unmarshal(attrsRaw, &c.Attributes)
+			if err := json.Unmarshal(attrsRaw, &c.Attributes); err != nil {
+				return nil, fmt.Errorf("unmarshal contact attributes: %w", err)
+			}
 		}
 		if c.Attributes == nil {
 			c.Attributes = make(map[string]string)

@@ -253,14 +253,6 @@ func ResolveTagRecipients(
 				}
 				seenPhones[phone] = true
 
-				recVars := make(map[string]string, len(vars))
-				for k, v := range vars {
-					recVars[k] = v
-				}
-				recipVars := make(map[string]string, len(vars))
-				for k, v := range vars {
-					recipVars[k] = v
-				}
 
 				records = append(records, CampaignRecipientRecord{
 					ContactID: &contactID,
