@@ -702,6 +702,12 @@ func main() {
 
 	// Campaign REST API routes (v1)
 	v1Group := e.Group("/api/v1")
+	v1Group.POST("/campaigns", campaignHandler.APICreate)
+	v1Group.GET("/campaigns", campaignHandler.APIList)
+	v1Group.GET("/campaigns/:id", campaignHandler.APIGet)
+	v1Group.POST("/campaigns/:id/start", campaignHandler.APIStart)
+	v1Group.POST("/campaigns/:id/pause", campaignHandler.APIPause)
+	v1Group.POST("/campaigns/:id/resume", campaignHandler.APIResume)
 	v1Group.POST("/workspaces/:workspace_id/campaigns", campaignHandler.APICreate)
 	v1Group.GET("/workspaces/:workspace_id/campaigns", campaignHandler.APIList)
 	v1Group.GET("/workspaces/:workspace_id/campaigns/:id", campaignHandler.APIGet)

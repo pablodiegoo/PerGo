@@ -252,11 +252,12 @@ func (h *WebhookDLQHandler) TestSubscription(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "payload is required")
 	}
 
-	// Sign payload using decrypted subscription secret
-	timestamp := fmt.Sprintf("%d", time.Now().Unix())
-	signature := webhook.SignPayload([]byte(payloadStr), sub.Secret, timestamp)
+	var signature string
+	if len(sub.Secret) > 0 {
+		timestamp := fmt.Sprintf("%d", time.Now().Unix())
+		signature = webhook.SignPayload([]byte(payloadStr), sub.Secret, timestamp)
+	}
 
-	// Measure roundtrip latency
 	start := time.Now()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sub.URL, bytes.NewReader([]byte(payloadStr)))
@@ -265,7 +266,9 @@ func (h *WebhookDLQHandler) TestSubscription(c *echo.Context) error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-PerGo-Signature", signature)
+	if signature != "" {
+		req.Header.Set("X-PerGo-Signature", signature)
+	}
 	req.Header.Set("X-Trace-ID", "simulated-"+uuid.New().String()[:8])
 	req.Header.Set("X-PerGo-Simulated", "true")
 

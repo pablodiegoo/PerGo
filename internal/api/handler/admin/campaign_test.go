@@ -20,6 +20,7 @@ import (
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -708,6 +709,43 @@ func TestCampaignHandler(t *testing.T) {
 		}
 		if recNoSource.Code != http.StatusUnprocessableEntity {
 			t.Errorf("expected status 422 for no recipients and no tags, got %d", recNoSource.Code)
+		}
+
+		// 7. Test: APICreate via tenant context (inferred workspace ID)
+		tenantCtxReq := httptest.NewRequest(http.MethodPost, "/api/v1/campaigns", strings.NewReader(tagsOnlyPayload))
+		tenantCtxReq = tenantCtxReq.WithContext(tenant.WithWorkspaceID(tenantCtxReq.Context(), ws.ID))
+		tenantCtxReq.Header.Set("Content-Type", "application/json")
+		recTenantCtx := httptest.NewRecorder()
+		cTenantCtx := e.NewContext(tenantCtxReq, recTenantCtx)
+		cTenantCtx.SetPath("/api/v1/campaigns")
+
+		if err := h.APICreate(cTenantCtx); err != nil {
+			t.Fatalf("APICreate with tenant context failed: %v", err)
+		}
+		if recTenantCtx.Code != http.StatusCreated {
+			t.Fatalf("expected status 201 for APICreate with tenant context, got %d: %s", recTenantCtx.Code, recTenantCtx.Body.String())
+		}
+	})
+
+	t.Run("Create_MalformedJSON", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("name", "Malformed Campaign")
+		form.Set("connection_id", "00000000-0000-0000-0000-000000000001")
+		form.Set("recipients_data", "{invalid-json")
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns", ws.ID), strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		err := h.Create(c)
+		if err != nil {
+			t.Fatalf("unexpected error from Create: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400 for malformed recipients_data, got %d", rec.Code)
 		}
 	})
 }

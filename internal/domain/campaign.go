@@ -135,6 +135,17 @@ func SanitizePhone(phone string) (string, bool) {
 
 var varRegex = regexp.MustCompile(`\{\{(.+?)\}\}`)
 
+// MergeVariables merges key-value pairs from src into dest. If dest is nil, a new map is initialized.
+func MergeVariables(dest, src map[string]string) map[string]string {
+	if dest == nil {
+		dest = make(map[string]string, len(src))
+	}
+	for k, v := range src {
+		dest[k] = v
+	}
+	return dest
+}
+
 // ResolveVariables replaces dynamic placeholders format `{{placeholder}}` with mapped values from the row.
 func ResolveVariables(input string, row map[string]string) string {
 	return varRegex.ReplaceAllStringFunc(input, func(match string) string {

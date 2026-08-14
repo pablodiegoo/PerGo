@@ -190,7 +190,11 @@ func (h *WorkspaceHandler) GenerateWebhookSecret(c *echo.Context) error {
 	var req struct {
 		WebhookSecret string `json:"webhook_secret"`
 	}
-	_ = c.Bind(&req)
+	if c.Request().Body != nil && c.Request().ContentLength > 0 {
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request payload"})
+		}
+	}
 
 	var secret string
 	if req.WebhookSecret != "" {

@@ -216,20 +216,10 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 				if rec.Phone == phone {
 					if rec.Status == domain.RecipientStatusPending {
 						foundPending = true
-						if allRecords[i].Variables == nil {
-							allRecords[i].Variables = make(map[string]string)
-						}
-						for k, v := range csvRec.Variables {
-							allRecords[i].Variables[k] = v
-						}
+						allRecords[i].Variables = domain.MergeVariables(allRecords[i].Variables, csvRec.Variables)
 					} else if rec.Status == domain.RecipientStatusSkipped {
 						allRecords[i].Status = domain.RecipientStatusPending
-						if allRecords[i].Variables == nil {
-							allRecords[i].Variables = make(map[string]string)
-						}
-						for k, v := range csvRec.Variables {
-							allRecords[i].Variables[k] = v
-						}
+						allRecords[i].Variables = domain.MergeVariables(allRecords[i].Variables, csvRec.Variables)
 						mergedRecipients = append(mergedRecipients, domain.CampaignRecipient{
 							To:        phone,
 							Variables: allRecords[i].Variables,
@@ -241,12 +231,7 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 			if foundPending {
 				for i, mr := range mergedRecipients {
 					if mr.To == phone {
-						if mergedRecipients[i].Variables == nil {
-							mergedRecipients[i].Variables = make(map[string]string)
-						}
-						for k, v := range csvRec.Variables {
-							mergedRecipients[i].Variables[k] = v
-						}
+						mergedRecipients[i].Variables = domain.MergeVariables(mergedRecipients[i].Variables, csvRec.Variables)
 						break
 					}
 				}

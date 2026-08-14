@@ -219,7 +219,13 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, task WebhookDeliveryTa
 	if err := json.Unmarshal(bodyBytes, &verbs); err == nil && len(verbs) > 0 {
 		if d.verbsEngine != nil {
 			go func() {
-				execCtx := context.Background()
+				defer func() {
+					if r := recover(); r != nil {
+						slog.Error("recovered panic in verbs engine execution", "panic", r, "trace_id", task.TraceID)
+					}
+				}()
+				execCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
 				if err := d.verbsEngine.Execute(execCtx, task, verbs); err != nil {
 					slog.Error("verbs engine execution failed", "error", err, "trace_id", task.TraceID)
 				}
