@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -74,8 +75,9 @@ func TestCampaignHandler(t *testing.T) {
 		WorkspaceID:    ws.ID,
 		Name:           "WhatsApp Web",
 		Channel:        "whatsapp",
+		Slug:           "whatsapp",
 		SenderIdentity: "5511999990002",
-		Status:         "connected",
+		Status:         "active",
 		IsDefault:      true,
 	})
 	if err != nil {
@@ -980,6 +982,240 @@ func TestCampaignHandler_RateLimitValidation_Unit(t *testing.T) {
 		}
 	})
 }
+
+func TestCampaignHandler_ScheduledCampaigns(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	nc := connectNATS(t)
+	pub := queue.NewJetStreamPublisher(nc)
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	campaignRepo := repository.NewCampaignRepository(pool)
+	templateRepo := repository.NewWABATemplateRepository(pool)
+
+	kek := make([]byte, 32)
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	connectionRepo := repository.NewConnectionRepository(pool, enc)
+
+	ws, err := wsRepo.Create(ctx, "camp_sched_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() {
+		_ = wsRepo.Delete(ctx, ws.ID)
+	}()
+
+	connID := uuid.New()
+	err = connectionRepo.Create(ctx, &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    ws.ID,
+		Name:           "WhatsApp Cloud Con",
+		Channel:        "whatsapp_cloud",
+		Slug:           "wa_cloud_sched",
+		SenderIdentity: "5511999990003",
+		Status:         "active",
+		IsDefault:      true,
+	})
+	if err != nil {
+		t.Fatalf("failed to create connection: %v", err)
+	}
+
+	tagRepo := repository.NewTagRepository(pool)
+	h := admin.NewCampaignHandler(campaignRepo, templateRepo, connectionRepo, tagRepo, pub)
+	e := echo.New()
+
+	futureTime := time.Now().UTC().Add(2 * time.Hour).Truncate(time.Second)
+
+	t.Run("APICreate_With_ScheduledAt", func(t *testing.T) {
+		reqBody := map[string]any{
+			"name":            "API Scheduled Campaign",
+			"connection_slug": "wa_cloud_sched",
+			"scheduled_at":    futureTime.Format(time.RFC3339),
+			"recipients": []map[string]any{
+				{"to": "5511999991111", "variables": map[string]string{"1": "Valor"}},
+			},
+		}
+		bodyBytes, _ := json.Marshal(reqBody)
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), bytes.NewReader(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.APICreate(c); err != nil {
+			t.Fatalf("APICreate returned error: %v", err)
+		}
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected status 201 Created, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var created domain.Campaign
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatalf("failed to unmarshal response: %v", err)
+		}
+		if created.Status != domain.CampaignStatusScheduled {
+			t.Errorf("expected status 'scheduled', got %s", created.Status)
+		}
+		if created.ScheduledAt == nil || !created.ScheduledAt.Truncate(time.Second).Equal(futureTime) {
+			t.Errorf("expected scheduled_at %v, got %v", futureTime, created.ScheduledAt)
+		}
+	})
+
+	t.Run("Create_Form_With_ScheduledAt", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("name", "Form Scheduled Campaign")
+		form.Set("channel", connID.String())
+		form.Set("scheduled_at", "2026-12-25T10:30")
+		form.Set("recipients_data", `[{"to":"5511999992222","variables":{"1":"FormVal"}}]`)
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns", ws.ID), strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.Create(c); err != nil {
+			t.Fatalf("Create returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		list, err := campaignRepo.ListByWorkspace(ctx, ws.ID)
+		if err != nil {
+			t.Fatalf("failed to list campaigns: %v", err)
+		}
+		var found *domain.Campaign
+		for _, camp := range list {
+			if camp.Name == "Form Scheduled Campaign" {
+				cCopy := camp
+				found = &cCopy
+				break
+			}
+		}
+		if found == nil {
+			t.Fatalf("campaign created via form not found in DB")
+		}
+		if found.Status != domain.CampaignStatusScheduled {
+			t.Errorf("expected status 'scheduled', got %s", found.Status)
+		}
+		if found.ScheduledAt == nil {
+			t.Errorf("expected scheduled_at to be non-nil")
+		}
+	})
+
+	t.Run("APICancel_Scheduled_Campaign", func(t *testing.T) {
+		past := time.Now().UTC().Add(1 * time.Hour)
+		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "To Cancel Scheduled",
+			Status:      domain.CampaignStatusScheduled,
+			ScheduledAt: &past,
+		})
+		if err != nil {
+			t.Fatalf("failed to create campaign: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/cancel", ws.ID, camp.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/cancel")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: camp.ID.String()},
+		})
+
+		if err := h.APICancel(c); err != nil {
+			t.Fatalf("APICancel returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var cancelled domain.Campaign
+		if err := json.Unmarshal(rec.Body.Bytes(), &cancelled); err != nil {
+			t.Fatalf("failed to unmarshal cancelled campaign: %v", err)
+		}
+		if cancelled.Status != domain.CampaignStatusCancelled {
+			t.Errorf("expected status 'cancelled', got %s", cancelled.Status)
+		}
+
+		fetched, _ := campaignRepo.GetByID(ctx, camp.ID)
+		if fetched.Status != domain.CampaignStatusCancelled {
+			t.Errorf("expected DB status 'cancelled', got %s", fetched.Status)
+		}
+	})
+
+	t.Run("APICancel_Draft_Returns_400", func(t *testing.T) {
+		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Draft Camp",
+			Status:      domain.CampaignStatusDraft,
+		})
+		if err != nil {
+			t.Fatalf("failed to create campaign: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/cancel", ws.ID, camp.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/cancel")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: camp.ID.String()},
+		})
+
+		if err := h.APICancel(c); err != nil {
+			t.Fatalf("APICancel returned error: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 Bad Request when cancelling draft, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Cancel_HTMX_Scheduled_Campaign", func(t *testing.T) {
+		past := time.Now().UTC().Add(1 * time.Hour)
+		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "HTMX Cancel Scheduled",
+			Status:      domain.CampaignStatusScheduled,
+			ScheduledAt: &past,
+		})
+		if err != nil {
+			t.Fatalf("failed to create campaign: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/cancel", ws.ID, camp.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns/:id/cancel")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: camp.ID.String()},
+		})
+
+		if err := h.Cancel(c); err != nil {
+			t.Fatalf("Cancel returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		fetched, _ := campaignRepo.GetByID(ctx, camp.ID)
+		if fetched.Status != domain.CampaignStatusCancelled {
+			t.Errorf("expected DB status 'cancelled', got %s", fetched.Status)
+		}
+	})
+}
+
 
 
 

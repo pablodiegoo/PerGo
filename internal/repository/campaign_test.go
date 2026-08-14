@@ -254,4 +254,178 @@ func TestCampaignRepository_RateLimitPerMin(t *testing.T) {
 	}
 }
 
+func TestCampaignRepository_ClaimDueScheduledCampaigns(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := NewWorkspaceRepository(pool)
+	repo := NewCampaignRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "campaign_test_ws_claim_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	now := time.Now().UTC()
+	past5Min := now.Add(-5 * time.Minute)
+	past1Min := now.Add(-1 * time.Minute)
+	future1Hr := now.Add(1 * time.Hour)
+
+	// Due scheduled campaign 1
+	c1, err := repo.Create(ctx, &domain.Campaign{
+		WorkspaceID: ws.ID,
+		Name:        "Due Camp 1",
+		Status:      domain.CampaignStatusScheduled,
+		ScheduledAt: &past5Min,
+	})
+	if err != nil {
+		t.Fatalf("failed to create c1: %v", err)
+	}
+
+	// Due scheduled campaign 2
+	c2, err := repo.Create(ctx, &domain.Campaign{
+		WorkspaceID: ws.ID,
+		Name:        "Due Camp 2",
+		Status:      domain.CampaignStatusScheduled,
+		ScheduledAt: &past1Min,
+	})
+	if err != nil {
+		t.Fatalf("failed to create c2: %v", err)
+	}
+
+	// Future scheduled campaign (not due)
+	c3, err := repo.Create(ctx, &domain.Campaign{
+		WorkspaceID: ws.ID,
+		Name:        "Future Camp",
+		Status:      domain.CampaignStatusScheduled,
+		ScheduledAt: &future1Hr,
+	})
+	if err != nil {
+		t.Fatalf("failed to create c3: %v", err)
+	}
+
+	// Draft campaign with past scheduled_at (not status=scheduled)
+	c4, err := repo.Create(ctx, &domain.Campaign{
+		WorkspaceID: ws.ID,
+		Name:        "Draft Past Camp",
+		Status:      domain.CampaignStatusDraft,
+		ScheduledAt: &past5Min,
+	})
+	if err != nil {
+		t.Fatalf("failed to create c4: %v", err)
+	}
+
+	// Claim due campaigns
+	claimed, err := repo.ClaimDueScheduledCampaigns(ctx, now, 10)
+	if err != nil {
+		t.Fatalf("ClaimDueScheduledCampaigns failed: %v", err)
+	}
+
+	// Should contain c1 and c2
+	claimedIDs := make(map[uuid.UUID]bool)
+	for _, c := range claimed {
+		claimedIDs[c.ID] = true
+	}
+
+	if !claimedIDs[c1.ID] || !claimedIDs[c2.ID] {
+		t.Errorf("expected c1 and c2 to be claimed, got IDs: %v", claimedIDs)
+	}
+	if claimedIDs[c3.ID] {
+		t.Errorf("future campaign c3 was claimed unexpectedly")
+	}
+	if claimedIDs[c4.ID] {
+		t.Errorf("draft campaign c4 was claimed unexpectedly")
+	}
+
+	// Verify statuses in DB
+	c1Fetched, _ := repo.GetByID(ctx, c1.ID)
+	if c1Fetched.Status != domain.CampaignStatusSending {
+		t.Errorf("expected c1 status 'sending', got %s", c1Fetched.Status)
+	}
+	c2Fetched, _ := repo.GetByID(ctx, c2.ID)
+	if c2Fetched.Status != domain.CampaignStatusSending {
+		t.Errorf("expected c2 status 'sending', got %s", c2Fetched.Status)
+	}
+	c3Fetched, _ := repo.GetByID(ctx, c3.ID)
+	if c3Fetched.Status != domain.CampaignStatusScheduled {
+		t.Errorf("expected c3 status 'scheduled', got %s", c3Fetched.Status)
+	}
+
+	// Subsequent claim call should return 0 due campaigns for these
+	claimedSecond, err := repo.ClaimDueScheduledCampaigns(ctx, now, 10)
+	if err != nil {
+		t.Fatalf("second ClaimDueScheduledCampaigns failed: %v", err)
+	}
+	for _, c := range claimedSecond {
+		if c.ID == c1.ID || c.ID == c2.ID || c.ID == c3.ID || c.ID == c4.ID {
+			t.Errorf("campaign %v claimed twice", c.ID)
+		}
+	}
+}
+
+func TestCampaignRepository_ClaimDueScheduledCampaigns_Concurrency(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := NewWorkspaceRepository(pool)
+	repo := NewCampaignRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "campaign_test_ws_claim_concurrent_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	now := time.Now().UTC()
+	past := now.Add(-10 * time.Minute)
+
+	numCampaigns := 10
+	campaignIDs := make(map[uuid.UUID]bool)
+	for i := 0; i < numCampaigns; i++ {
+		c, err := repo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Concurrent Camp",
+			Status:      domain.CampaignStatusScheduled,
+			ScheduledAt: &past,
+		})
+		if err != nil {
+			t.Fatalf("failed to create campaign: %v", err)
+		}
+		campaignIDs[c.ID] = true
+	}
+
+	// 5 concurrent workers attempting to claim
+	numWorkers := 5
+	resultsChan := make(chan []domain.Campaign, numWorkers)
+	for i := 0; i < numWorkers; i++ {
+		go func() {
+			claimed, _ := repo.ClaimDueScheduledCampaigns(ctx, now, 10)
+			resultsChan <- claimed
+		}()
+	}
+
+	claimedMap := make(map[uuid.UUID]int)
+	for i := 0; i < numWorkers; i++ {
+		claimedList := <-resultsChan
+		for _, c := range claimedList {
+			if campaignIDs[c.ID] {
+				claimedMap[c.ID]++
+			}
+		}
+	}
+
+	if len(claimedMap) != numCampaigns {
+		t.Errorf("expected %d unique campaigns claimed, got %d", numCampaigns, len(claimedMap))
+	}
+	for id, count := range claimedMap {
+		if count > 1 {
+			t.Errorf("campaign %s was claimed %d times (race condition!)", id, count)
+		}
+	}
+}
+
+
 

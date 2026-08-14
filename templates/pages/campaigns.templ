@@ -135,6 +135,16 @@ templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
 						Enviar
 					</button>
 				}
+				if c.Status == domain.CampaignStatusScheduled {
+					<button
+						class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold"
+						hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/cancel", workspaceID, c.ID) }
+						hx-target={ fmt.Sprintf("#campaign-row-%s", c.ID) }
+						hx-swap="outerHTML"
+					>
+						Cancelar
+					</button>
+				}
 				if c.Status == domain.CampaignStatusSending || c.Status == domain.CampaignStatusRunning {
 					<button
 						class="btn btn-ghost hover:bg-amber-50 text-amber-600 btn-xs font-semibold"
@@ -292,9 +302,9 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 				</div>
 			</div>
 
-			<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
 				<div class="flex flex-col gap-1">
-					<label for="batch_size" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Tamanho do Lote (Batch Size)</label>
+					<label for="batch_size" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Tamanho do Lote</label>
 					<input type="number" id="batch_size" name="batch_size" required value="100" min="1" onchange="estimateDuration()" onkeyup="estimateDuration()" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
 				</div>
 
@@ -304,8 +314,13 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 				</div>
 
 				<div class="flex flex-col gap-1">
-					<label for="rate_limit_per_min" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Limite por Minuto (Opcional)</label>
+					<label for="rate_limit_per_min" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Limite/Min (Opcional)</label>
 					<input type="number" id="rate_limit_per_min" name="rate_limit_per_min" min="1" placeholder="Ex: 60" onchange="estimateDuration()" onkeyup="estimateDuration()" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
+				</div>
+
+				<div class="flex flex-col gap-1">
+					<label for="scheduled_at" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Agendar Para (Opcional)</label>
+					<input type="datetime-local" id="scheduled_at" name="scheduled_at" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
 				</div>
 			</div>
 

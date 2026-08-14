@@ -356,15 +356,15 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		if c.Status == domain.CampaignStatusSending || c.Status == domain.CampaignStatusRunning {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<button class=\"btn btn-ghost hover:bg-amber-50 text-amber-600 btn-xs font-semibold\" hx-post=\"")
+		if c.Status == domain.CampaignStatusScheduled {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<button class=\"btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold\" hx-post=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var16 string
-			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/pause", workspaceID, c.ID))
+			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/cancel", workspaceID, c.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 141, Col: 89}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 141, Col: 90}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 			if templ_7745c5c3_Err != nil {
@@ -383,44 +383,44 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "\" hx-swap=\"outerHTML\">Pausar</button> <button class=\"btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold\" hx-post=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "\" hx-swap=\"outerHTML\">Cancelar</button> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		if c.Status == domain.CampaignStatusSending || c.Status == domain.CampaignStatusRunning {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<button class=\"btn btn-ghost hover:bg-amber-50 text-amber-600 btn-xs font-semibold\" hx-post=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var18 string
-			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/cancel", workspaceID, c.ID))
+			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/pause", workspaceID, c.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 149, Col: 90}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 151, Col: 89}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var18)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" hx-target=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\" hx-target=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var19 string
 			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("#campaign-row-%s", c.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 150, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 152, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\" hx-swap=\"outerHTML\">Cancelar</button> ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		if c.Status == domain.CampaignStatusPaused {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<button class=\"btn btn-ghost hover:bg-emerald-50 text-emerald-600 btn-xs font-semibold\" hx-post=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "\" hx-swap=\"outerHTML\">Pausar</button> <button class=\"btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold\" hx-post=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var20 string
-			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/resume", workspaceID, c.ID))
+			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/cancel", workspaceID, c.ID))
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 159, Col: 90}
 			}
@@ -441,83 +441,115 @@ func CampaignRow(workspaceID uuid.UUID, c domain.Campaign) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" hx-swap=\"outerHTML\">Retomar</button> <button class=\"btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold\" hx-post=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" hx-swap=\"outerHTML\">Cancelar</button> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		if c.Status == domain.CampaignStatusPaused {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<button class=\"btn btn-ghost hover:bg-emerald-50 text-emerald-600 btn-xs font-semibold\" hx-post=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var22 string
-			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/cancel", workspaceID, c.ID))
+			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/resume", workspaceID, c.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 167, Col: 90}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 169, Col: 90}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\" hx-target=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\" hx-target=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("#campaign-row-%s", c.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 168, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 170, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\" hx-swap=\"outerHTML\">Cancelar</button> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "\" hx-swap=\"outerHTML\">Retomar</button> <button class=\"btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold\" hx-post=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var24 string
+			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/cancel", workspaceID, c.ID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 177, Col: 90}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\" hx-target=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var25 string
+			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("#campaign-row-%s", c.ID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 178, Col: 55}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "\" hx-swap=\"outerHTML\">Cancelar</button> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(c.SkippedRows) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<a href=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<a href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var24 templ.SafeURL
-			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/skipped/download", workspaceID, c.ID)))
+			var templ_7745c5c3_Var26 templ.SafeURL
+			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/skipped/download", workspaceID, c.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 176, Col: 112}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 186, Col: 112}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\" class=\"btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold flex items-center gap-1\" target=\"_blank\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4\"></path></svg> Rejeitados</a> ")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "\" class=\"btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold flex items-center gap-1\" target=\"_blank\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4\"></path></svg> Rejeitados</a> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<button class=\"btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold\" hx-delete=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<button class=\"btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold\" hx-delete=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var25 string
-		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s", workspaceID, c.ID))
+		var templ_7745c5c3_Var27 string
+		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s", workspaceID, c.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 186, Col: 84}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 196, Col: 84}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "\" hx-target=\"")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var27)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var26 string
-		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("#campaign-row-%s", c.ID))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 187, Col: 54}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "\" hx-target=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "\" hx-swap=\"delete\" hx-confirm=\"Tem certeza de que deseja excluir esta campanha?\">Excluir</button></div></td></tr>")
+		var templ_7745c5c3_Var28 string
+		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("#campaign-row-%s", c.ID))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 197, Col: 54}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" hx-swap=\"delete\" hx-confirm=\"Tem certeza de que deseja excluir esta campanha?\">Excluir</button></div></td></tr>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -541,278 +573,278 @@ func CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempla
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var27 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var27 == nil {
-			templ_7745c5c3_Var27 = templ.NopComponent
+		templ_7745c5c3_Var29 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var29 == nil {
+			templ_7745c5c3_Var29 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6\"><div class=\"flex justify-between items-center mb-6\"><h2 class=\"text-lg font-semibold text-zinc-900\">Nova Campanha</h2><button type=\"button\" class=\"text-zinc-400 hover:text-zinc-600\" onclick=\"this.closest('.bg-white').remove()\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" viewBox=\"0 0 20 20\" fill=\"currentColor\"><path fill-rule=\"evenodd\" d=\"M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z\" clip-rule=\"evenodd\"></path></svg></button></div><div id=\"campaign-create-alert\"></div><form hx-post=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6\"><div class=\"flex justify-between items-center mb-6\"><h2 class=\"text-lg font-semibold text-zinc-900\">Nova Campanha</h2><button type=\"button\" class=\"text-zinc-400 hover:text-zinc-600\" onclick=\"this.closest('.bg-white').remove()\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" viewBox=\"0 0 20 20\" fill=\"currentColor\"><path fill-rule=\"evenodd\" d=\"M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z\" clip-rule=\"evenodd\"></path></svg></button></div><div id=\"campaign-create-alert\"></div><form hx-post=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var28 string
-		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns", workspaceID))
+		var templ_7745c5c3_Var30 string
+		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns", workspaceID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 210, Col: 71}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 220, Col: 71}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var28)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var30)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "\" hx-swap=\"none\" hx-on::response-error=\"document.getElementById('campaign-create-alert').innerHTML = '<div class=\\'alert bg-rose-50 text-rose-800 border border-rose-200 rounded-lg p-3 text-xs mb-4 flex items-center gap-2\\'><svg xmlns=\\'http://www.w3.org/2000/svg\\' class=\\'h-4 w-4 text-rose-600 flex-shrink-0\\' viewBox=\\'0 0 20 20\\' fill=\\'currentColor\\'><path fill-rule=\\'evenodd\\' d=\\'M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z\\' clip-rule=\\'evenodd\\'/></svg><span>' + (event.detail.xhr.responseText || 'Erro ao criar campanha.') + '</span></div>'\" id=\"campaign-create-form\" class=\"space-y-4\"><div class=\"grid grid-cols-1 md:grid-cols-2 gap-6\"><div class=\"flex flex-col gap-1\"><label for=\"name\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Nome da Campanha</label> <input type=\"text\" id=\"name\" name=\"name\" required placeholder=\"Ex: Campanha de Vendas de Julho\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div><div class=\"flex flex-col gap-1\"><label for=\"channel\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Canal / Conexão</label> <select id=\"channel\" name=\"channel\" required onchange=\"handleConnectionChange(); toggleTemplateSelector();\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"><option value=\"\">-- Selecione uma conexão --</option> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\" hx-swap=\"none\" hx-on::response-error=\"document.getElementById('campaign-create-alert').innerHTML = '<div class=\\'alert bg-rose-50 text-rose-800 border border-rose-200 rounded-lg p-3 text-xs mb-4 flex items-center gap-2\\'><svg xmlns=\\'http://www.w3.org/2000/svg\\' class=\\'h-4 w-4 text-rose-600 flex-shrink-0\\' viewBox=\\'0 0 20 20\\' fill=\\'currentColor\\'><path fill-rule=\\'evenodd\\' d=\\'M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z\\' clip-rule=\\'evenodd\\'/></svg><span>' + (event.detail.xhr.responseText || 'Erro ao criar campanha.') + '</span></div>'\" id=\"campaign-create-form\" class=\"space-y-4\"><div class=\"grid grid-cols-1 md:grid-cols-2 gap-6\"><div class=\"flex flex-col gap-1\"><label for=\"name\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Nome da Campanha</label> <input type=\"text\" id=\"name\" name=\"name\" required placeholder=\"Ex: Campanha de Vendas de Julho\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div><div class=\"flex flex-col gap-1\"><label for=\"channel\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Canal / Conexão</label> <select id=\"channel\" name=\"channel\" required onchange=\"handleConnectionChange(); toggleTemplateSelector();\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"><option value=\"\">-- Selecione uma conexão --</option> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, conn := range connections {
 			if conn.Status == "active" || conn.Status == "connected" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<option value=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var29 string
-				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.ID.String())
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 228, Col: 40}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "\" data-channel=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var30 string
-				templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.Channel)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 228, Col: 70}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var30)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<option value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var31 string
-				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s [%s]", conn.Name, conn.Channel))
+				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.ID.String())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 228, Col: 122}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 238, Col: 40}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</option> ")
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<option value=\"add_new_connection\">+ Adicionar nova conexão...</option></select></div></div><div class=\"grid grid-cols-1 md:grid-cols-2 gap-6\"><div class=\"flex flex-col gap-2\"><label class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Filtrar por Tags (Opcional)</label> ")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if len(tags) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<p class=\"text-xs text-zinc-400 italic\">Nenhuma tag cadastrada</p>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<div class=\"flex flex-wrap gap-2 p-3 border border-zinc-200 rounded-md bg-zinc-50/50\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			for _, tag := range tags {
-				color := tagColorOrDefault(tag.Color)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<label class=\"cursor-pointer select-none group\"><input type=\"checkbox\" name=\"tag_ids[]\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "\" data-channel=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var32 string
-				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.ResolveAttributeValue(tag.ID.String())
+				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.Channel)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 246, Col: 72}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 238, Col: 70}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "\" class=\"sr-only peer\"> <span class=\"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border-2 transition-all duration-150 peer-checked:shadow-sm peer-checked:ring-2 peer-checked:ring-offset-1\" style=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var33 string
-				templ_7745c5c3_Var33, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(fmt.Sprintf("border-color: %s; color: %s; background-color: %s20", color, color, color))
+				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s [%s]", conn.Name, conn.Channel))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 249, Col: 105}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 238, Col: 122}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "\"><span class=\"w-2 h-2 rounded-full opacity-40 peer-checked:opacity-100 transition-opacity\" style=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</option> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<option value=\"add_new_connection\">+ Adicionar nova conexão...</option></select></div></div><div class=\"grid grid-cols-1 md:grid-cols-2 gap-6\"><div class=\"flex flex-col gap-2\"><label class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Filtrar por Tags (Opcional)</label> ")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if len(tags) == 0 {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "<p class=\"text-xs text-zinc-400 italic\">Nenhuma tag cadastrada</p>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		} else {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<div class=\"flex flex-wrap gap-2 p-3 border border-zinc-200 rounded-md bg-zinc-50/50\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			for _, tag := range tags {
+				color := tagColorOrDefault(tag.Color)
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<label class=\"cursor-pointer select-none group\"><input type=\"checkbox\" name=\"tag_ids[]\" value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var34 string
-				templ_7745c5c3_Var34, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(fmt.Sprintf("background-color: %s", color))
+				templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.ResolveAttributeValue(tag.ID.String())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 253, Col: 61}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 256, Col: 72}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var34)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\"></span> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "\" class=\"sr-only peer\"> <span class=\"inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border-2 transition-all duration-150 peer-checked:shadow-sm peer-checked:ring-2 peer-checked:ring-offset-1\" style=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var35 string
-				templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(tag.Name)
+				templ_7745c5c3_Var35, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(fmt.Sprintf("border-color: %s; color: %s; background-color: %s20", color, color, color))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 255, Col: 20}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 259, Col: 105}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</span></label>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "\"><span class=\"w-2 h-2 rounded-full opacity-40 peer-checked:opacity-100 transition-opacity\" style=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var36 string
+				templ_7745c5c3_Var36, templ_7745c5c3_Err = templruntime.SanitizeStyleAttributeValues(fmt.Sprintf("background-color: %s", color))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 263, Col: 61}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "\"></span> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var37 string
+				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(tag.Name)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 265, Col: 20}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</span></label>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</div><p class=\"text-[10px] text-zinc-400\">Selecione uma ou mais tags — contatos de todas as tags selecionadas serão incluídos (União).</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "</div><p class=\"text-[10px] text-zinc-400\">Selecione uma ou mais tags — contatos de todas as tags selecionadas serão incluídos (União).</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</div><div class=\"flex flex-col gap-1\"><label class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Mailing list (Upload CSV)</label> <input type=\"file\" id=\"csv_file\" name=\"csv_file\" accept=\".csv\" hx-encoding=\"multipart/form-data\" hx-post=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "</div><div class=\"flex flex-col gap-1\"><label class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Mailing list (Upload CSV)</label> <input type=\"file\" id=\"csv_file\" name=\"csv_file\" accept=\".csv\" hx-encoding=\"multipart/form-data\" hx-post=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var36 string
-		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/upload", workspaceID))
+		var templ_7745c5c3_Var38 string
+		templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/campaigns/upload", workspaceID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 272, Col: 81}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 282, Col: 81}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var36)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "\" hx-target=\"#csv-preview-container\" hx-swap=\"innerHTML\" class=\"form-input border border-zinc-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full cursor-pointer file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200\"></div><div class=\"flex flex-col gap-1\" id=\"template-selector-container\" style=\"display: none;\"><label for=\"template_select\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Selecione o Template WABA</label> <select id=\"template_select\" name=\"template_select\" onchange=\"renderWABAVariables()\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"><option value=\"\">-- Escolha um template --</option> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "\" hx-target=\"#csv-preview-container\" hx-swap=\"innerHTML\" class=\"form-input border border-zinc-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full cursor-pointer file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200\"></div><div class=\"flex flex-col gap-1\" id=\"template-selector-container\" style=\"display: none;\"><label for=\"template_select\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Selecione o Template WABA</label> <select id=\"template_select\" name=\"template_select\" onchange=\"renderWABAVariables()\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"><option value=\"\">-- Escolha um template --</option> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, t := range templates {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<option value=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var37 string
-			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Name)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 284, Col: 29}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\" data-connection=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var38 string
-			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.ConnectionID.String())
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 284, Col: 73}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "\" data-components=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "<option value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var39 string
-			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(t.Components))
+			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 284, Col: 114}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 294, Col: 29}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "\" data-connection=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var40 string
-			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(t.Name)
+			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.ConnectionID.String())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 284, Col: 125}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 294, Col: 73}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, " (")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "\" data-components=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var41 string
-			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(t.Language)
+			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(t.Components))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 284, Col: 141}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 294, Col: 114}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, ")</option>")
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var42 string
+			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(t.Name)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 294, Col: 125}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, " (")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var43 string
+			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(t.Language)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 294, Col: 141}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, ")</option>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "</select></div><div class=\"flex flex-col gap-1\" id=\"body-text-container\"><label for=\"body_template\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Mensagem Customizada (Plain Text)</label> <textarea id=\"body_template\" name=\"body_template\" rows=\"3\" placeholder=\"Ex: Ola nome, seu pedido foi postado!\" onkeyup=\"estimateDuration()\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full font-mono resize-y\"></textarea></div></div><div class=\"grid grid-cols-1 md:grid-cols-3 gap-6\"><div class=\"flex flex-col gap-1\"><label for=\"batch_size\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Tamanho do Lote (Batch Size)</label> <input type=\"number\" id=\"batch_size\" name=\"batch_size\" required value=\"100\" min=\"1\" onchange=\"estimateDuration()\" onkeyup=\"estimateDuration()\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div><div class=\"flex flex-col gap-1\"><label for=\"delay_seconds\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Intervalo (segundos)</label> <input type=\"number\" id=\"delay_seconds\" name=\"delay_seconds\" required value=\"5\" min=\"0\" onchange=\"estimateDuration()\" onkeyup=\"estimateDuration()\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div><div class=\"flex flex-col gap-1\"><label for=\"rate_limit_per_min\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Limite por Minuto (Opcional)</label> <input type=\"number\" id=\"rate_limit_per_min\" name=\"rate_limit_per_min\" min=\"1\" placeholder=\"Ex: 60\" onchange=\"estimateDuration()\" onkeyup=\"estimateDuration()\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div></div><!-- Live variables & Estimation area --><div class=\"grid grid-cols-1 md:grid-cols-2 gap-6\"><div id=\"variable-mapping-container\" class=\"border border-zinc-200 rounded-lg p-5 bg-slate-50\" style=\"display: none;\"><h3 class=\"text-sm font-semibold text-zinc-900 mb-3\">Mapeamento de Variáveis</h3><div id=\"waba-params-inputs\" class=\"space-y-4\"></div></div><div class=\"border border-zinc-200 rounded-lg p-5 bg-slate-50 flex flex-col justify-between\"><div><h3 class=\"text-sm font-semibold text-zinc-900 mb-3\">Estimativa de Envio</h3><div class=\"flex items-baseline gap-1 text-zinc-950\"><span id=\"estimated-duration-val\" class=\"text-3xl font-extrabold tracking-tight\">0</span> <span class=\"text-sm font-medium text-zinc-500\">segundos</span></div><p class=\"text-xs text-zinc-400 mt-2\">Duração estimada baseada no número de contatos válidos, tamanho do lote e intervalo.</p></div><div class=\"mt-4 pt-4 border-t border-zinc-200 flex items-center justify-between\"><span class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Mailing</span> <span id=\"valid-recipients-badge\" class=\"badge badge-sm bg-zinc-200 text-zinc-800 border-zinc-300 px-2 py-0.5 text-xs font-semibold\">0 válidos</span></div></div></div><!-- CSV Upload Preview Target --><div id=\"csv-preview-container\"></div><!-- Hidden inputs for validation data --><input type=\"hidden\" id=\"recipients_data\" name=\"recipients_data\" value=\"[]\"> <input type=\"hidden\" id=\"skipped_data\" name=\"skipped_data\" value=\"[]\"><div class=\"form-actions flex justify-end gap-3 border-t border-zinc-200 pt-6 mt-6\"><button type=\"button\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\" onclick=\"this.closest('.bg-white').remove()\">Cancelar</button> <button type=\"submit\" class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\">Salvar e Enviar</button></div></form></div><script>\n\t\t// Global counts\n\t\tlet globalValidCount = 0;\n\n\t\tfunction handleConnectionChange() {\n\t\t\tconst select = document.getElementById('channel');\n\t\t\tif (select.value === 'add_new_connection') {\n\t\t\t\thtmx.ajax('GET', '/admin/devices/pair-form', {target: '#modal-container', swap: 'innerHTML'});\n\t\t\t\tselect.value = '';\n\t\t\t}\n\t\t}\n\n\t\tfunction toggleTemplateSelector() {\n\t\t\tconst select = document.getElementById('channel');\n\t\t\tconst selectedOption = select.options[select.selectedIndex];\n\t\t\tconst channel = selectedOption ? selectedOption.getAttribute('data-channel') : '';\n\t\t\tconst connId = select.value;\n\n\t\t\tconst tempSelect = document.getElementById('template-selector-container');\n\t\t\tconst bodyText = document.getElementById('body-text-container');\n\t\t\tconst varContainer = document.getElementById('variable-mapping-container');\n\n\t\t\tif (channel === 'whatsapp_cloud') {\n\t\t\t\ttempSelect.style.display = 'block';\n\t\t\t\tbodyText.style.display = 'none';\n\t\t\t\tvarContainer.style.display = 'block';\n\n\t\t\t\t// Filter template options by connection\n\t\t\t\tconst templateSelect = document.getElementById('template_select');\n\t\t\t\tfor (let i = 0; i < templateSelect.options.length; i++) {\n\t\t\t\t\tconst opt = templateSelect.options[i];\n\t\t\t\t\tif (opt.value === '') {\n\t\t\t\t\t\topt.style.display = 'block';\n\t\t\t\t\t\tcontinue;\n\t\t\t\t\t}\n\t\t\t\t\tconst optConn = opt.getAttribute('data-connection');\n\t\t\t\t\tif (optConn === connId) {\n\t\t\t\t\t\topt.style.display = 'block';\n\t\t\t\t\t} else {\n\t\t\t\t\t\topt.style.display = 'none';\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\t// Reset selection\n\t\t\t\ttemplateSelect.value = '';\n\t\t\t\trenderWABAVariables();\n\t\t\t} else {\n\t\t\t\ttempSelect.style.display = 'none';\n\t\t\t\tbodyText.style.display = 'block';\n\t\t\t\tvarContainer.style.display = 'none';\n\t\t\t\testimateDuration();\n\t\t\t}\n\t\t}\n\n\t\tfunction renderWABAVariables() {\n\t\t\tconst select = document.getElementById('template_select');\n\t\t\tconst selectedOption = select.options[select.selectedIndex];\n\t\t\tconst container = document.getElementById('waba-params-inputs');\n\t\t\tconst varContainer = document.getElementById('variable-mapping-container');\n\n\t\t\tcontainer.innerHTML = '';\n\t\t\tif (!selectedOption || !selectedOption.value) {\n\t\t\t\tcontainer.innerHTML = '<p class=\"text-xs text-zinc-400\">Escolha um template para configurar as variáveis.</p>';\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tconst componentsRaw = selectedOption.getAttribute('data-components');\n\t\t\tif (!componentsRaw) return;\n\n\t\t\ttry {\n\t\t\t\tconst components = JSON.parse(componentsRaw);\n\t\t\t\tlet bodyComp = components.find(c => c.type === 'BODY');\n\t\t\t\tif (!bodyComp || !bodyComp.text) {\n\t\t\t\t\tcontainer.innerHTML = '<p class=\"text-xs text-zinc-400\">Este template não possui variáveis no corpo.</p>';\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\t// Find parameters like {{1}}, {{2}} in body text\n\t\t\t\tconst matches = bodyComp.text.match(/\\{\\{(\\d+)\\}\\}/g);\n\t\t\t\tif (!matches) {\n\t\t\t\t\tcontainer.innerHTML = '<p class=\"text-xs text-zinc-400\">Este template não possui variáveis dinâmicas (sem ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "</select></div><div class=\"flex flex-col gap-1\" id=\"body-text-container\"><label for=\"body_template\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Mensagem Customizada (Plain Text)</label> <textarea id=\"body_template\" name=\"body_template\" rows=\"3\" placeholder=\"Ex: Ola nome, seu pedido foi postado!\" onkeyup=\"estimateDuration()\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full font-mono resize-y\"></textarea></div></div><div class=\"grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4\"><div class=\"flex flex-col gap-1\"><label for=\"batch_size\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Tamanho do Lote</label> <input type=\"number\" id=\"batch_size\" name=\"batch_size\" required value=\"100\" min=\"1\" onchange=\"estimateDuration()\" onkeyup=\"estimateDuration()\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div><div class=\"flex flex-col gap-1\"><label for=\"delay_seconds\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Intervalo (segundos)</label> <input type=\"number\" id=\"delay_seconds\" name=\"delay_seconds\" required value=\"5\" min=\"0\" onchange=\"estimateDuration()\" onkeyup=\"estimateDuration()\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div><div class=\"flex flex-col gap-1\"><label for=\"rate_limit_per_min\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Limite/Min (Opcional)</label> <input type=\"number\" id=\"rate_limit_per_min\" name=\"rate_limit_per_min\" min=\"1\" placeholder=\"Ex: 60\" onchange=\"estimateDuration()\" onkeyup=\"estimateDuration()\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div><div class=\"flex flex-col gap-1\"><label for=\"scheduled_at\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Agendar Para (Opcional)</label> <input type=\"datetime-local\" id=\"scheduled_at\" name=\"scheduled_at\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div></div><!-- Live variables & Estimation area --><div class=\"grid grid-cols-1 md:grid-cols-2 gap-6\"><div id=\"variable-mapping-container\" class=\"border border-zinc-200 rounded-lg p-5 bg-slate-50\" style=\"display: none;\"><h3 class=\"text-sm font-semibold text-zinc-900 mb-3\">Mapeamento de Variáveis</h3><div id=\"waba-params-inputs\" class=\"space-y-4\"></div></div><div class=\"border border-zinc-200 rounded-lg p-5 bg-slate-50 flex flex-col justify-between\"><div><h3 class=\"text-sm font-semibold text-zinc-900 mb-3\">Estimativa de Envio</h3><div class=\"flex items-baseline gap-1 text-zinc-950\"><span id=\"estimated-duration-val\" class=\"text-3xl font-extrabold tracking-tight\">0</span> <span class=\"text-sm font-medium text-zinc-500\">segundos</span></div><p class=\"text-xs text-zinc-400 mt-2\">Duração estimada baseada no número de contatos válidos, tamanho do lote e intervalo.</p></div><div class=\"mt-4 pt-4 border-t border-zinc-200 flex items-center justify-between\"><span class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Mailing</span> <span id=\"valid-recipients-badge\" class=\"badge badge-sm bg-zinc-200 text-zinc-800 border-zinc-300 px-2 py-0.5 text-xs font-semibold\">0 válidos</span></div></div></div><!-- CSV Upload Preview Target --><div id=\"csv-preview-container\"></div><!-- Hidden inputs for validation data --><input type=\"hidden\" id=\"recipients_data\" name=\"recipients_data\" value=\"[]\"> <input type=\"hidden\" id=\"skipped_data\" name=\"skipped_data\" value=\"[]\"><div class=\"form-actions flex justify-end gap-3 border-t border-zinc-200 pt-6 mt-6\"><button type=\"button\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\" onclick=\"this.closest('.bg-white').remove()\">Cancelar</button> <button type=\"submit\" class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\">Salvar e Enviar</button></div></form></div><script>\n\t\t// Global counts\n\t\tlet globalValidCount = 0;\n\n\t\tfunction handleConnectionChange() {\n\t\t\tconst select = document.getElementById('channel');\n\t\t\tif (select.value === 'add_new_connection') {\n\t\t\t\thtmx.ajax('GET', '/admin/devices/pair-form', {target: '#modal-container', swap: 'innerHTML'});\n\t\t\t\tselect.value = '';\n\t\t\t}\n\t\t}\n\n\t\tfunction toggleTemplateSelector() {\n\t\t\tconst select = document.getElementById('channel');\n\t\t\tconst selectedOption = select.options[select.selectedIndex];\n\t\t\tconst channel = selectedOption ? selectedOption.getAttribute('data-channel') : '';\n\t\t\tconst connId = select.value;\n\n\t\t\tconst tempSelect = document.getElementById('template-selector-container');\n\t\t\tconst bodyText = document.getElementById('body-text-container');\n\t\t\tconst varContainer = document.getElementById('variable-mapping-container');\n\n\t\t\tif (channel === 'whatsapp_cloud') {\n\t\t\t\ttempSelect.style.display = 'block';\n\t\t\t\tbodyText.style.display = 'none';\n\t\t\t\tvarContainer.style.display = 'block';\n\n\t\t\t\t// Filter template options by connection\n\t\t\t\tconst templateSelect = document.getElementById('template_select');\n\t\t\t\tfor (let i = 0; i < templateSelect.options.length; i++) {\n\t\t\t\t\tconst opt = templateSelect.options[i];\n\t\t\t\t\tif (opt.value === '') {\n\t\t\t\t\t\topt.style.display = 'block';\n\t\t\t\t\t\tcontinue;\n\t\t\t\t\t}\n\t\t\t\t\tconst optConn = opt.getAttribute('data-connection');\n\t\t\t\t\tif (optConn === connId) {\n\t\t\t\t\t\topt.style.display = 'block';\n\t\t\t\t\t} else {\n\t\t\t\t\t\topt.style.display = 'none';\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\t// Reset selection\n\t\t\t\ttemplateSelect.value = '';\n\t\t\t\trenderWABAVariables();\n\t\t\t} else {\n\t\t\t\ttempSelect.style.display = 'none';\n\t\t\t\tbodyText.style.display = 'block';\n\t\t\t\tvarContainer.style.display = 'none';\n\t\t\t\testimateDuration();\n\t\t\t}\n\t\t}\n\n\t\tfunction renderWABAVariables() {\n\t\t\tconst select = document.getElementById('template_select');\n\t\t\tconst selectedOption = select.options[select.selectedIndex];\n\t\t\tconst container = document.getElementById('waba-params-inputs');\n\t\t\tconst varContainer = document.getElementById('variable-mapping-container');\n\n\t\t\tcontainer.innerHTML = '';\n\t\t\tif (!selectedOption || !selectedOption.value) {\n\t\t\t\tcontainer.innerHTML = '<p class=\"text-xs text-zinc-400\">Escolha um template para configurar as variáveis.</p>';\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tconst componentsRaw = selectedOption.getAttribute('data-components');\n\t\t\tif (!componentsRaw) return;\n\n\t\t\ttry {\n\t\t\t\tconst components = JSON.parse(componentsRaw);\n\t\t\t\tlet bodyComp = components.find(c => c.type === 'BODY');\n\t\t\t\tif (!bodyComp || !bodyComp.text) {\n\t\t\t\t\tcontainer.innerHTML = '<p class=\"text-xs text-zinc-400\">Este template não possui variáveis no corpo.</p>';\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\t// Find parameters like {{1}}, {{2}} in body text\n\t\t\t\tconst matches = bodyComp.text.match(/\\{\\{(\\d+)\\}\\}/g);\n\t\t\t\tif (!matches) {\n\t\t\t\t\tcontainer.innerHTML = '<p class=\"text-xs text-zinc-400\">Este template não possui variáveis dinâmicas (sem ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Var42, templ_7745c5c3_Err := templruntime.ScriptContentInsideStringLiteral(1)
+		templ_7745c5c3_Var44, templ_7745c5c3_Err := templruntime.ScriptContentInsideStringLiteral(1)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 436, Col: 117}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, ").</p>';\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\t// Generate an input for each variable\n\t\t\t\tconst uniqueParams = [...new Set(matches)].map(m => m.replace(/\\{\\{|\\}\\}/g, ''));\n\t\t\t\tuniqueParams.sort((a,b) => parseInt(a) - parseInt(b));\n\n\t\t\t\tuniqueParams.forEach(param => {\n\t\t\t\t\tconst div = document.createElement('div');\n\t\t\t\t\tdiv.className = 'waba-var-input-group space-y-1.5';\n\t\t\t\t\tdiv.innerHTML = `\n\t\t\t\t\t\t<label class=\"block text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Parâmetro ` + \"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Var43, templ_7745c5c3_Err := templruntime.ScriptContentInsideStringLiteral(" + param + ")
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 448, Col: 119}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var43)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "\" + `</label>\n\t\t\t\t\t\t<div class=\"flex gap-2\">\n\t\t\t\t\t\t\t<input type=\"text\" name=\"waba_param_${param}\" required placeholder=\"Ex: nome\" onkeyup=\"estimateDuration()\" class=\"waba-param-input form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full font-mono\"/>\n\t\t\t\t\t\t\t<div class=\"flex gap-1\" id=\"shortcut-buttons-${param}\"></div>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t`;\n\t\t\t\t\tcontainer.appendChild(div);\n\t\t\t\t});\n\n\t\t\t\trenderShortcutButtons();\n\t\t\t} catch (e) {\n\t\t\t\tconsole.error(e);\n\t\t\t\tcontainer.innerHTML = '<p class=\"text-xs text-red-500\">Erro ao processar as variáveis do template.</p>';\n\t\t\t}\n\t\t\testimateDuration();\n\t\t}\n\n\t\tfunction renderShortcutButtons() {\n\t\t\t// Find all header inputs from the CSV preview\n\t\t\tconst headers = Array.from(document.querySelectorAll('.csv-header-cell')).map(th => th.innerText.trim());\n\t\t\tconst varGroups = document.querySelectorAll('.waba-var-input-group');\n\n\t\t\tvarGroups.forEach(group => {\n\t\t\t\tconst input = group.querySelector('input');\n\t\t\t\tconst name = input.name;\n\t\t\t\tconst paramNum = name.replace('waba_param_', '');\n\t\t\t\tconst container = document.getElementById(`shortcut-buttons-${paramNum}`);\n\t\t\t\tif (!container) return;\n\t\t\t\tcontainer.innerHTML = '';\n\n\t\t\t\theaders.forEach(h => {\n\t\t\t\t\tconst btn = document.createElement('button');\n\t\t\t\t\tbtn.type = 'button';\n\t\t\t\t\tbtn.className = 'px-2 py-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-[10px] font-bold rounded border border-zinc-300 transition-colors';\n\t\t\t\t\tbtn.innerText = h;\n\t\t\t\t\tbtn.onclick = () => {\n\t\t\t\t\t\tinput.value = \"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Var44, templ_7745c5c3_Err := templruntime.ScriptContentInsideStringLiteral(" + h.toLowerCase() + ")
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 484, Col: 46}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 451, Col: 117}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var44)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "\";\n\t\t\t\t\t\testimateDuration();\n\t\t\t\t\t};\n\t\t\t\t\tcontainer.appendChild(btn);\n\t\t\t\t});\n\t\t\t});\n\t\t}\n\n\t\tfunction estimateDuration() {\n\t\t\tconst batchSizeInput = document.getElementById('batch_size');\n\t\t\tconst delayInput = document.getElementById('delay_seconds');\n\t\t\tconst rateLimitInput = document.getElementById('rate_limit_per_min');\n\n\t\t\tconst batchSize = parseInt(batchSizeInput.value) || 100;\n\t\t\tconst delay = parseInt(delayInput.value) || 5;\n\t\t\tconst rateLimit = rateLimitInput ? parseInt(rateLimitInput.value) : 0;\n\n\t\t\tconst badge = document.getElementById('valid-recipients-badge');\n\t\t\tbadge.innerText = `${globalValidCount} válidos`;\n\n\t\t\tif (globalValidCount <= 0) {\n\t\t\t\tdocument.getElementById('estimated-duration-val').innerText = '0';\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tif (rateLimit > 0) {\n\t\t\t\tconst duration = Math.ceil(globalValidCount * (60 / rateLimit));\n\t\t\t\tdocument.getElementById('estimated-duration-val').innerText = duration;\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tif (batchSize <= 0) {\n\t\t\t\tdocument.getElementById('estimated-duration-val').innerText = '0';\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tconst batches = Math.ceil(globalValidCount / batchSize);\n\t\t\tconst duration = batches * delay;\n\t\t\tdocument.getElementById('estimated-duration-val').innerText = duration;\n\t\t}\n\n\t\t// Update CSV values called dynamically by returned upload html segment\n\t\twindow.updateCSVMappings = function(validCount, recipients, skipped) {\n\t\t\tglobalValidCount = validCount;\n\t\t\tdocument.getElementById('recipients_data').value = JSON.stringify(recipients);\n\t\t\tdocument.getElementById('skipped_data').value = JSON.stringify(skipped);\n\t\t\testimateDuration();\n\t\t\trenderShortcutButtons();\n\t\t};\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, ").</p>';\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\t// Generate an input for each variable\n\t\t\t\tconst uniqueParams = [...new Set(matches)].map(m => m.replace(/\\{\\{|\\}\\}/g, ''));\n\t\t\t\tuniqueParams.sort((a,b) => parseInt(a) - parseInt(b));\n\n\t\t\t\tuniqueParams.forEach(param => {\n\t\t\t\t\tconst div = document.createElement('div');\n\t\t\t\t\tdiv.className = 'waba-var-input-group space-y-1.5';\n\t\t\t\t\tdiv.innerHTML = `\n\t\t\t\t\t\t<label class=\"block text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Parâmetro ` + \"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Var45, templ_7745c5c3_Err := templruntime.ScriptContentInsideStringLiteral(" + param + ")
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 463, Col: 119}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var45)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "\" + `</label>\n\t\t\t\t\t\t<div class=\"flex gap-2\">\n\t\t\t\t\t\t\t<input type=\"text\" name=\"waba_param_${param}\" required placeholder=\"Ex: nome\" onkeyup=\"estimateDuration()\" class=\"waba-param-input form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full font-mono\"/>\n\t\t\t\t\t\t\t<div class=\"flex gap-1\" id=\"shortcut-buttons-${param}\"></div>\n\t\t\t\t\t\t</div>\n\t\t\t\t\t`;\n\t\t\t\t\tcontainer.appendChild(div);\n\t\t\t\t});\n\n\t\t\t\trenderShortcutButtons();\n\t\t\t} catch (e) {\n\t\t\t\tconsole.error(e);\n\t\t\t\tcontainer.innerHTML = '<p class=\"text-xs text-red-500\">Erro ao processar as variáveis do template.</p>';\n\t\t\t}\n\t\t\testimateDuration();\n\t\t}\n\n\t\tfunction renderShortcutButtons() {\n\t\t\t// Find all header inputs from the CSV preview\n\t\t\tconst headers = Array.from(document.querySelectorAll('.csv-header-cell')).map(th => th.innerText.trim());\n\t\t\tconst varGroups = document.querySelectorAll('.waba-var-input-group');\n\n\t\t\tvarGroups.forEach(group => {\n\t\t\t\tconst input = group.querySelector('input');\n\t\t\t\tconst name = input.name;\n\t\t\t\tconst paramNum = name.replace('waba_param_', '');\n\t\t\t\tconst container = document.getElementById(`shortcut-buttons-${paramNum}`);\n\t\t\t\tif (!container) return;\n\t\t\t\tcontainer.innerHTML = '';\n\n\t\t\t\theaders.forEach(h => {\n\t\t\t\t\tconst btn = document.createElement('button');\n\t\t\t\t\tbtn.type = 'button';\n\t\t\t\t\tbtn.className = 'px-2 py-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-[10px] font-bold rounded border border-zinc-300 transition-colors';\n\t\t\t\t\tbtn.innerText = h;\n\t\t\t\t\tbtn.onclick = () => {\n\t\t\t\t\t\tinput.value = \"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Var46, templ_7745c5c3_Err := templruntime.ScriptContentInsideStringLiteral(" + h.toLowerCase() + ")
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 499, Col: 46}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var46)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "\";\n\t\t\t\t\t\testimateDuration();\n\t\t\t\t\t};\n\t\t\t\t\tcontainer.appendChild(btn);\n\t\t\t\t});\n\t\t\t});\n\t\t}\n\n\t\tfunction estimateDuration() {\n\t\t\tconst batchSizeInput = document.getElementById('batch_size');\n\t\t\tconst delayInput = document.getElementById('delay_seconds');\n\t\t\tconst rateLimitInput = document.getElementById('rate_limit_per_min');\n\n\t\t\tconst batchSize = parseInt(batchSizeInput.value) || 100;\n\t\t\tconst delay = parseInt(delayInput.value) || 5;\n\t\t\tconst rateLimit = rateLimitInput ? parseInt(rateLimitInput.value) : 0;\n\n\t\t\tconst badge = document.getElementById('valid-recipients-badge');\n\t\t\tbadge.innerText = `${globalValidCount} válidos`;\n\n\t\t\tif (globalValidCount <= 0) {\n\t\t\t\tdocument.getElementById('estimated-duration-val').innerText = '0';\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tif (rateLimit > 0) {\n\t\t\t\tconst duration = Math.ceil(globalValidCount * (60 / rateLimit));\n\t\t\t\tdocument.getElementById('estimated-duration-val').innerText = duration;\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tif (batchSize <= 0) {\n\t\t\t\tdocument.getElementById('estimated-duration-val').innerText = '0';\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tconst batches = Math.ceil(globalValidCount / batchSize);\n\t\t\tconst duration = batches * delay;\n\t\t\tdocument.getElementById('estimated-duration-val').innerText = duration;\n\t\t}\n\n\t\t// Update CSV values called dynamically by returned upload html segment\n\t\twindow.updateCSVMappings = function(validCount, recipients, skipped) {\n\t\t\tglobalValidCount = validCount;\n\t\t\tdocument.getElementById('recipients_data').value = JSON.stringify(recipients);\n\t\t\tdocument.getElementById('skipped_data').value = JSON.stringify(skipped);\n\t\t\testimateDuration();\n\t\t\trenderShortcutButtons();\n\t\t};\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -836,156 +868,156 @@ func CSVPreviewSegment(summary map[string]int, headers []string, sampleRows [][]
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var45 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var45 == nil {
-			templ_7745c5c3_Var45 = templ.NopComponent
+		templ_7745c5c3_Var47 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var47 == nil {
+			templ_7745c5c3_Var47 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "<div class=\"border border-zinc-200 rounded-lg p-5 bg-slate-50\"><h3 class=\"text-sm font-bold text-zinc-900 mb-4 flex items-center gap-2\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-zinc-700\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z\"></path></svg> Resultado da Validação</h3><div class=\"grid grid-cols-2 md:grid-cols-4 gap-4 mb-4\"><div class=\"bg-white border border-zinc-200 rounded-lg p-3 text-center shadow-sm\"><span class=\"text-[10px] uppercase font-semibold text-zinc-400\">Total</span><div class=\"text-xl font-extrabold text-zinc-950 mt-1\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var46 string
-		templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", summary["total"]))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 546, Col: 96}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "</div></div><div class=\"bg-white border border-emerald-200 rounded-lg p-3 text-center shadow-sm\"><span class=\"text-[10px] uppercase font-semibold text-emerald-600\">Válidos</span><div class=\"text-xl font-extrabold text-emerald-600 mt-1\">")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var47 string
-		templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", summary["valid"]))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 550, Col: 99}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "</div></div><div class=\"bg-white border border-amber-200 rounded-lg p-3 text-center shadow-sm\"><span class=\"text-[10px] uppercase font-semibold text-amber-600\">Duplicados</span><div class=\"text-xl font-extrabold text-amber-600 mt-1\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "<div class=\"border border-zinc-200 rounded-lg p-5 bg-slate-50\"><h3 class=\"text-sm font-bold text-zinc-900 mb-4 flex items-center gap-2\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-zinc-700\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z\"></path></svg> Resultado da Validação</h3><div class=\"grid grid-cols-2 md:grid-cols-4 gap-4 mb-4\"><div class=\"bg-white border border-zinc-200 rounded-lg p-3 text-center shadow-sm\"><span class=\"text-[10px] uppercase font-semibold text-zinc-400\">Total</span><div class=\"text-xl font-extrabold text-zinc-950 mt-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var48 string
-		templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", summary["duplicate"]))
+		templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", summary["total"]))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 554, Col: 101}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 561, Col: 96}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "</div></div><div class=\"bg-white border border-rose-200 rounded-lg p-3 text-center shadow-sm\"><span class=\"text-[10px] uppercase font-semibold text-rose-600\">Inválidos</span><div class=\"text-xl font-extrabold text-rose-600 mt-1\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "</div></div><div class=\"bg-white border border-emerald-200 rounded-lg p-3 text-center shadow-sm\"><span class=\"text-[10px] uppercase font-semibold text-emerald-600\">Válidos</span><div class=\"text-xl font-extrabold text-emerald-600 mt-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var49 string
-		templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", summary["invalid"]))
+		templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", summary["valid"]))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 558, Col: 98}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 565, Col: 99}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "</div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "</div></div><div class=\"bg-white border border-amber-200 rounded-lg p-3 text-center shadow-sm\"><span class=\"text-[10px] uppercase font-semibold text-amber-600\">Duplicados</span><div class=\"text-xl font-extrabold text-amber-600 mt-1\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var50 string
+		templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", summary["duplicate"]))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 569, Col: 101}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "</div></div><div class=\"bg-white border border-rose-200 rounded-lg p-3 text-center shadow-sm\"><span class=\"text-[10px] uppercase font-semibold text-rose-600\">Inválidos</span><div class=\"text-xl font-extrabold text-rose-600 mt-1\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var51 string
+		templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", summary["invalid"]))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 573, Col: 98}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "</div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if len(sampleRows) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<div class=\"overflow-x-auto border border-zinc-200 rounded-lg shadow-sm bg-white mb-2\"><table class=\"table min-w-full divide-y divide-zinc-200 text-left text-xs\"><thead class=\"bg-zinc-50 text-zinc-500 font-bold uppercase tracking-wider border-b border-zinc-200\"><tr>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "<div class=\"overflow-x-auto border border-zinc-200 rounded-lg shadow-sm bg-white mb-2\"><table class=\"table min-w-full divide-y divide-zinc-200 text-left text-xs\"><thead class=\"bg-zinc-50 text-zinc-500 font-bold uppercase tracking-wider border-b border-zinc-200\"><tr>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, h := range headers {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "<th class=\"px-4 py-2.5 csv-header-cell\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "<th class=\"px-4 py-2.5 csv-header-cell\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var50 string
-				templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(h)
+				var templ_7745c5c3_Var52 string
+				templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(h)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 568, Col: 51}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 583, Col: 51}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "</th>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "</th>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "</tr></thead> <tbody class=\"divide-y divide-zinc-200 text-zinc-700\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "</tr></thead> <tbody class=\"divide-y divide-zinc-200 text-zinc-700\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, r := range sampleRows {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "<tr class=\"hover:bg-zinc-50/50 transition-colors\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "<tr class=\"hover:bg-zinc-50/50 transition-colors\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for _, cell := range r {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "<td class=\"px-4 py-2 font-medium\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "<td class=\"px-4 py-2 font-medium\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var51 string
-					templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(cell)
+					var templ_7745c5c3_Var53 string
+					templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(cell)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 576, Col: 49}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 591, Col: 49}
 					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "</td>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "</td>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "</tr>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "</tr>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "</tbody></table></div><p class=\"text-[11px] text-zinc-400 mb-2\">Exibindo as primeiras ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "</tbody></table></div><p class=\"text-[11px] text-zinc-400 mb-2\">Exibindo as primeiras ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var52 string
-			templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(sampleRows)))
+			var templ_7745c5c3_Var54 string
+			templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d", len(sampleRows)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 583, Col: 103}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 598, Col: 103}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, " linhas da planilha.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, " linhas da planilha.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "<input type=\"hidden\" id=\"hidden_valid_count\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "<input type=\"hidden\" id=\"hidden_valid_count\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var53 string
-		templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%d", summary["valid"]))
+		var templ_7745c5c3_Var55 string
+		templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%d", summary["valid"]))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 586, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/campaigns.templ`, Line: 601, Col: 90}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var53)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var55)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "\"><script>\n\t\t\t(function() {\n\t\t\t\tconst rec = JSON.parse(document.getElementById('hidden_recipients').textContent);\n\t\t\t\tconst skip = JSON.parse(document.getElementById('hidden_skipped').textContent);\n\t\t\t\tconst count = parseInt(document.getElementById('hidden_valid_count').value) || 0;\n\t\t\t\tupdateCSVMappings(count, rec, skip);\n\t\t\t})();\n\t\t</script><script id=\"hidden_recipients\" type=\"application/json\">\n\t\t\t{ templ.JSONString(recipients) }\n\t\t</script><script id=\"hidden_skipped\" type=\"application/json\">\n\t\t\t{ templ.JSONString(skipped) }\n\t\t</script></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 92, "\"><script>\n\t\t\t(function() {\n\t\t\t\tconst rec = JSON.parse(document.getElementById('hidden_recipients').textContent);\n\t\t\t\tconst skip = JSON.parse(document.getElementById('hidden_skipped').textContent);\n\t\t\t\tconst count = parseInt(document.getElementById('hidden_valid_count').value) || 0;\n\t\t\t\tupdateCSVMappings(count, rec, skip);\n\t\t\t})();\n\t\t</script><script id=\"hidden_recipients\" type=\"application/json\">\n\t\t\t{ templ.JSONString(recipients) }\n\t\t</script><script id=\"hidden_skipped\" type=\"application/json\">\n\t\t\t{ templ.JSONString(skipped) }\n\t\t</script></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

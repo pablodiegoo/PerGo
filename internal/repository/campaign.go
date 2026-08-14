@@ -28,15 +28,19 @@ func NewCampaignRepository(pool *pgxpool.Pool) *CampaignRepository {
 func (r *CampaignRepository) Create(ctx context.Context, c *domain.Campaign) (*domain.Campaign, error) {
 	recipientsJSON, err := json.Marshal(c.Recipients)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal recipients: %w", err)
 	}
 	skippedJSON, err := json.Marshal(c.SkippedRows)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal skipped rows: %w", err)
 	}
 
 	if c.Status == "" {
-		c.Status = domain.CampaignStatusDraft
+		if c.ScheduledAt != nil && !c.ScheduledAt.IsZero() {
+			c.Status = domain.CampaignStatusScheduled
+		} else {
+			c.Status = domain.CampaignStatusDraft
+		}
 	}
 	if c.BatchSize <= 0 {
 		c.BatchSize = 100
@@ -65,14 +69,14 @@ func (r *CampaignRepository) Create(ctx context.Context, c *domain.Campaign) (*d
 		&recipientsJSON, &skippedJSON, &dbCampaign.ScheduledAt, &dbCampaign.TagIDs, &dbCampaign.RateLimitPerMin, &dbCampaign.CreatedAt, &dbCampaign.UpdatedAt,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("insert campaign: %w", err)
 	}
 
 	if err := json.Unmarshal(recipientsJSON, &dbCampaign.Recipients); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal recipients: %w", err)
 	}
 	if err := json.Unmarshal(skippedJSON, &dbCampaign.SkippedRows); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal skipped rows: %w", err)
 	}
 
 	return &dbCampaign, nil
@@ -98,14 +102,14 @@ func (r *CampaignRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrCampaignNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("query campaign by id: %w", err)
 	}
 
 	if err := json.Unmarshal(recipientsJSON, &c.Recipients); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal recipients: %w", err)
 	}
 	if err := json.Unmarshal(skippedJSON, &c.SkippedRows); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal skipped rows: %w", err)
 	}
 
 	return &c, nil
@@ -116,24 +120,30 @@ func (r *CampaignRepository) UpdateStatus(ctx context.Context, id uuid.UUID, sta
 		`UPDATE campaigns SET status = $1, updated_at = now() WHERE id = $2`,
 		status, id,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("update campaign status: %w", err)
+	}
+	return nil
 }
 
 func (r *CampaignRepository) UpdateRecipients(ctx context.Context, id uuid.UUID, recipients []domain.CampaignRecipient, skipped []domain.SkippedRow) error {
 	recipientsJSON, err := json.Marshal(recipients)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal recipients: %w", err)
 	}
 	skippedJSON, err := json.Marshal(skipped)
 	if err != nil {
-		return err
+		return fmt.Errorf("marshal skipped rows: %w", err)
 	}
 
 	_, err = r.pool.Exec(ctx,
 		`UPDATE campaigns SET recipients = $1, skipped_rows = $2, updated_at = now() WHERE id = $3`,
 		recipientsJSON, skippedJSON, id,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("update campaign recipients: %w", err)
+	}
+	return nil
 }
 
 func (r *CampaignRepository) UpdateCounters(ctx context.Context, campaignID uuid.UUID, sentInc, failedInc int) error {
@@ -145,7 +155,10 @@ func (r *CampaignRepository) UpdateCounters(ctx context.Context, campaignID uuid
 		 WHERE id = $3`,
 		sentInc, failedInc, campaignID,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("update campaign counters: %w", err)
+	}
+	return nil
 }
 
 func (r *CampaignRepository) AddRecipients(ctx context.Context, campaignID uuid.UUID, recipients []domain.CampaignRecipientRecord) error {
@@ -214,7 +227,7 @@ func (r *CampaignRepository) ListRecipients(ctx context.Context, campaignID uuid
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query campaign recipients: %w", err)
 	}
 	defer rows.Close()
 
@@ -227,7 +240,7 @@ func (r *CampaignRepository) ListRecipients(ctx context.Context, campaignID uuid
 			&rec.Status, &rec.ErrorMessage, &rec.SentAt, &rec.CreatedAt,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan campaign recipient: %w", err)
 		}
 		if err := json.Unmarshal(varsJSON, &rec.Variables); err != nil {
 			rec.Variables = make(map[string]string)
@@ -249,7 +262,10 @@ func (r *CampaignRepository) UpdateRecipientStatus(ctx context.Context, id uuid.
 		`UPDATE campaign_recipients SET status = $1, error_message = $2, sent_at = $3 WHERE id = $4`,
 		status, errorMsg, sentAt, id,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("update recipient status: %w", err)
+	}
+	return nil
 }
 
 func (r *CampaignRepository) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]domain.Campaign, error) {
@@ -261,7 +277,7 @@ func (r *CampaignRepository) ListByWorkspace(ctx context.Context, workspaceID uu
 		workspaceID,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list campaigns by workspace: %w", err)
 	}
 	defer rows.Close()
 
@@ -276,13 +292,13 @@ func (r *CampaignRepository) ListByWorkspace(ctx context.Context, workspaceID uu
 			&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.TagIDs, &c.RateLimitPerMin, &c.CreatedAt, &c.UpdatedAt,
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan campaign: %w", err)
 		}
 		if err := json.Unmarshal(recipientsJSON, &c.Recipients); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("unmarshal recipients: %w", err)
 		}
 		if err := json.Unmarshal(skippedJSON, &c.SkippedRows); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("unmarshal skipped rows: %w", err)
 		}
 		campaigns = append(campaigns, c)
 	}
@@ -292,5 +308,79 @@ func (r *CampaignRepository) ListByWorkspace(ctx context.Context, workspaceID uu
 
 func (r *CampaignRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM campaigns WHERE id = $1`, id)
-	return err
+	if err != nil {
+		return fmt.Errorf("delete campaign: %w", err)
+	}
+	return nil
 }
+
+// ClaimDueScheduledCampaigns atomically selects due scheduled campaigns (status = 'scheduled' AND scheduled_at <= now),
+// transitions them to 'sending', and returns them. Uses FOR UPDATE SKIP LOCKED to prevent race conditions
+// across multiple concurrent scheduler worker instances.
+func (r *CampaignRepository) ClaimDueScheduledCampaigns(ctx context.Context, now time.Time, limit int) ([]domain.Campaign, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	query := `WITH due_campaigns AS (
+		SELECT id
+		FROM campaigns
+		WHERE status = 'scheduled' AND scheduled_at <= $1
+		ORDER BY scheduled_at ASC
+		LIMIT $2
+		FOR UPDATE SKIP LOCKED
+	)
+	UPDATE campaigns c
+	SET status = 'sending',
+	    updated_at = now()
+	FROM due_campaigns
+	WHERE c.id = due_campaigns.id
+	RETURNING c.id, c.workspace_id, c.connection_id, c.connection_slug, c.name, c.status, 
+	          c.batch_size, c.delay_seconds, c.template_name, c.message_body, c.channel, c.tag_id, 
+	          c.total_recipients, c.sent_recipients, c.failed_recipients, 
+	          c.recipients, c.skipped_rows, c.scheduled_at, c.tag_ids, c.rate_limit_per_min, 
+	          c.created_at, c.updated_at`
+
+	rows, err := r.pool.Query(ctx, query, now, limit)
+	if err != nil {
+		return nil, fmt.Errorf("claim due scheduled campaigns: %w", err)
+	}
+	defer rows.Close()
+
+	var campaigns []domain.Campaign
+	for rows.Next() {
+		var c domain.Campaign
+		var recipientsJSON, skippedJSON []byte
+		err := rows.Scan(
+			&c.ID, &c.WorkspaceID, &c.ConnectionID, &c.ConnectionSlug, &c.Name, &c.Status,
+			&c.BatchSize, &c.DelaySeconds, &c.TemplateName, &c.MessageBody, &c.Channel, &c.TagID,
+			&c.TotalRecipients, &c.SentRecipients, &c.FailedRecipients,
+			&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.TagIDs, &c.RateLimitPerMin, &c.CreatedAt, &c.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan claimed campaign: %w", err)
+		}
+		if err := json.Unmarshal(recipientsJSON, &c.Recipients); err != nil {
+			return nil, fmt.Errorf("unmarshal recipients: %w", err)
+		}
+		if err := json.Unmarshal(skippedJSON, &c.SkippedRows); err != nil {
+			return nil, fmt.Errorf("unmarshal skipped rows: %w", err)
+		}
+		campaigns = append(campaigns, c)
+	}
+
+	return campaigns, rows.Err()
+}
+
+// RollbackClaim transitions a campaign back to 'scheduled' if publishing its start task failed.
+func (r *CampaignRepository) RollbackClaim(ctx context.Context, id uuid.UUID) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE campaigns SET status = $1, updated_at = now() WHERE id = $2 AND status = $3`,
+		domain.CampaignStatusScheduled, id, domain.CampaignStatusSending,
+	)
+	if err != nil {
+		return fmt.Errorf("rollback claimed campaign: %w", err)
+	}
+	return nil
+}
+

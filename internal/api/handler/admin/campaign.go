@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -261,6 +262,30 @@ func (h *CampaignHandler) UploadCSV(c *echo.Context) error {
 	return mw.Render(c, http.StatusOK, pages.CSVPreviewSegment(summary, rawHeaders, sampleRows, recipients, skipped))
 }
 
+func parseScheduledAt(s string) (*time.Time, error) {
+	if s == "" {
+		return nil, nil
+	}
+	formats := []string{
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+		time.RFC3339,
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+	}
+	for _, layout := range formats {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			utc := t.UTC()
+			return &utc, nil
+		}
+		if t, err := time.Parse(layout, s); err == nil {
+			utc := t.UTC()
+			return &utc, nil
+		}
+	}
+	return nil, fmt.Errorf("invalid scheduled_at format")
+}
+
 func (h *CampaignHandler) Create(c *echo.Context) error {
 	rateLimitStr := strings.TrimSpace(c.FormValue("rate_limit_per_min"))
 	var rateLimitPerMin *int
@@ -270,6 +295,16 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 			return c.String(http.StatusBadRequest, "rate_limit_per_min must be greater than 0")
 		}
 		rateLimitPerMin = &rl
+	}
+
+	scheduledAtStr := strings.TrimSpace(c.FormValue("scheduled_at"))
+	var scheduledAt *time.Time
+	if scheduledAtStr != "" {
+		parsed, err := parseScheduledAt(scheduledAtStr)
+		if err != nil {
+			return c.String(http.StatusBadRequest, "formato invalido para agendamento")
+		}
+		scheduledAt = parsed
 	}
 
 	workspaceID, err := h.resolveWorkspaceID(c)
@@ -389,16 +424,22 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		primaryTagID = &formTagIDs[0]
 	}
 
+	status := domain.CampaignStatusDraft
+	if scheduledAt != nil && !scheduledAt.IsZero() {
+		status = domain.CampaignStatusScheduled
+	}
+
 	connSlug := conn.Slug
 	camp := &domain.Campaign{
 		WorkspaceID:     workspaceID,
 		ConnectionID:    &connectionID,
 		ConnectionSlug:  &connSlug,
 		Name:            name,
-		Status:          domain.CampaignStatusDraft,
+		Status:          status,
 		BatchSize:       batchSize,
 		DelaySeconds:    delaySeconds,
 		RateLimitPerMin: rateLimitPerMin,
+		ScheduledAt:     scheduledAt,
 		TemplateName:    templateName,
 		Channel:         &channel,
 		TagID:           primaryTagID,
@@ -628,6 +669,8 @@ type CreateCampaignRequest struct {
 	BatchSize       int                        `json:"batch_size,omitempty"`
 	DelaySeconds    int                        `json:"delay_seconds,omitempty"`
 	RateLimitPerMin *int                       `json:"rate_limit_per_min,omitempty"`
+	ScheduledAt     *time.Time                 `json:"scheduled_at,omitempty"`
+	Status          *domain.CampaignStatus     `json:"status,omitempty"`
 	Recipients      []domain.CampaignRecipient `json:"recipients,omitempty"`
 }
 
@@ -701,15 +744,21 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 		primaryTagID = &targetTagIDs[0]
 	}
 
+	status := domain.CampaignStatusDraft
+	if req.ScheduledAt != nil && !req.ScheduledAt.IsZero() {
+		status = domain.CampaignStatusScheduled
+	}
+
 	camp := &domain.Campaign{
 		WorkspaceID:     workspaceID,
 		ConnectionID:    &connID,
 		ConnectionSlug:  &connSlug,
 		Name:            req.Name,
-		Status:          domain.CampaignStatusDraft,
+		Status:          status,
 		BatchSize:       batchSize,
 		DelaySeconds:    delaySeconds,
 		RateLimitPerMin: req.RateLimitPerMin,
+		ScheduledAt:     req.ScheduledAt,
 		TemplateName:    req.TemplateName,
 		MessageBody:     req.MessageBody,
 		Channel:         &channel,
@@ -852,3 +901,36 @@ func (h *CampaignHandler) APIResume(c *echo.Context) error {
 
 	return c.JSON(http.StatusOK, camp)
 }
+
+// APICancel cancels an active, paused, or scheduled campaign via REST API.
+func (h *CampaignHandler) APICancel(c *echo.Context) error {
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
+	}
+
+	ctx := c.Request().Context()
+	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+	}
+
+	if camp.Status != domain.CampaignStatusSending &&
+		camp.Status != domain.CampaignStatusScheduled &&
+		camp.Status != domain.CampaignStatusRunning &&
+		camp.Status != domain.CampaignStatusPaused {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "only active, paused or scheduled campaigns can be cancelled"})
+	}
+
+	if err := h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusCancelled); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to cancel campaign"})
+	}
+	camp.Status = domain.CampaignStatusCancelled
+
+	return c.JSON(http.StatusOK, camp)
+}
+

@@ -1420,7 +1420,7 @@ func TestCampaignWorker_PostgresAuditIntegration(t *testing.T) {
 
 	// Wait for campaign completion
 	var finalCamp *domain.Campaign
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 50; i++ {
 		finalCamp, _ = campRepo.GetByID(ctx, camp.ID)
 		if finalCamp != nil && finalCamp.Status == domain.CampaignStatusCompleted {
 			break

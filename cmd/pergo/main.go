@@ -256,6 +256,11 @@ func main() {
 	campaignWorker := queue.NewCampaignWorker(ctx, campConsumer, campaignRepo, connectionRepo, dispatchRepo, publisher, auditWriter, tagRepo)
 	slog.Info("campaign worker started", "consumer", "campaign-worker-1")
 
+	// --- Campaign Scheduler Daemon ---
+	campaignScheduler := queue.NewCampaignScheduler(campaignRepo, publisher, auditWriter)
+	go campaignScheduler.Run(ctx)
+	slog.Info("campaign scheduler started", "interval", "5s")
+
 	// --- Webhook Worker ---
 	webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, encryptor)
 	webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
@@ -708,12 +713,14 @@ func main() {
 	v1Group.POST("/campaigns/:id/start", campaignHandler.APIStart)
 	v1Group.POST("/campaigns/:id/pause", campaignHandler.APIPause)
 	v1Group.POST("/campaigns/:id/resume", campaignHandler.APIResume)
+	v1Group.POST("/campaigns/:id/cancel", campaignHandler.APICancel)
 	v1Group.POST("/workspaces/:workspace_id/campaigns", campaignHandler.APICreate)
 	v1Group.GET("/workspaces/:workspace_id/campaigns", campaignHandler.APIList)
 	v1Group.GET("/workspaces/:workspace_id/campaigns/:id", campaignHandler.APIGet)
 	v1Group.POST("/workspaces/:workspace_id/campaigns/:id/start", campaignHandler.APIStart)
 	v1Group.POST("/workspaces/:workspace_id/campaigns/:id/pause", campaignHandler.APIPause)
 	v1Group.POST("/workspaces/:workspace_id/campaigns/:id/resume", campaignHandler.APIResume)
+	v1Group.POST("/workspaces/:workspace_id/campaigns/:id/cancel", campaignHandler.APICancel)
 
 	// Tag & Contact API routes (v1)
 	v1Group.GET("/workspaces/:workspace_id/tags", tagAdminHandler.ListTags)
