@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go/jetstream"
+	"golang.org/x/time/rate"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -1478,4 +1479,161 @@ func TestCampaignWorker_PostgresAuditIntegration(t *testing.T) {
 		t.Errorf("expected payload trace_id '%s', got %v", expectedTrace, payload["trace_id"])
 	}
 }
+
+func TestCampaignWorker_PrecisionRateLimiting(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	campRepo := repository.NewCampaignRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "camp_ratelimit_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	_, _ = EnsureCampaignStream(ctx, nc)
+	_, _ = EnsureStream(ctx, nc)
+
+	js, _ := jetstream.New(nc)
+	campStream, _ := js.Stream(ctx, "CAMPAIGNS")
+	consumerName := "test-ratelimit-consumer-" + uuid.New().String()
+	consumer, _ := EnsureCampaignConsumer(ctx, campStream, consumerName)
+
+	// 600 msgs/min = 10 msgs/sec = 100ms per message
+	rateLimit := 600
+	channel := "whatsapp"
+	camp := &domain.Campaign{
+		WorkspaceID:     ws.ID,
+		Name:            "Precision Rate Limit Camp",
+		Status:          domain.CampaignStatusSending,
+		BatchSize:       10,
+		DelaySeconds:    0,
+		RateLimitPerMin: &rateLimit,
+		Channel:         &channel,
+		Recipients: []domain.CampaignRecipient{
+			{To: "5511999991111", Variables: map[string]string{}},
+			{To: "5511999992222", Variables: map[string]string{}},
+			{To: "5511999993333", Variables: map[string]string{}},
+		},
+	}
+	camp, err = campRepo.Create(ctx, camp)
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
+
+	publisher := NewJetStreamPublisher(nc)
+	task := CampaignBatchTask{
+		CampaignID:      camp.ID,
+		WorkspaceID:     ws.ID,
+		BatchIndex:      1,
+		TotalBatches:    1,
+		Recipients:      camp.Recipients,
+		DelaySeconds:    0,
+		RateLimitPerMin: &rateLimit,
+	}
+	taskBytes, _ := json.Marshal(task)
+
+	start := time.Now()
+	_ = publisher.Publish(ctx, "campaigns.batches", taskBytes, uuid.New().String())
+
+	mockAudit := &fakeAuditWriter{}
+	worker := NewCampaignWorker(ctx, consumer, campRepo, connRepo, dispatchRepo, publisher, mockAudit, nil)
+	defer worker.Stop()
+
+	// Wait for campaign completion
+	var finalCamp *domain.Campaign
+	for i := 0; i < 30; i++ {
+		finalCamp, _ = campRepo.GetByID(ctx, camp.ID)
+		if finalCamp != nil && finalCamp.Status == domain.CampaignStatusCompleted {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	elapsed := time.Since(start)
+
+	if finalCamp == nil || finalCamp.Status != domain.CampaignStatusCompleted {
+		t.Fatalf("expected campaign to be completed, got status: %v", finalCamp)
+	}
+
+	// 3 recipients paced at 100ms interval:
+	// First is instant (burst 1), 2nd waits 100ms, 3rd waits 100ms -> at least ~200ms
+	if elapsed < 150*time.Millisecond {
+		t.Errorf("expected pacing to take at least 150ms for 3 recipients at 600 msgs/min, took %v", elapsed)
+	}
+}
+
+func TestCreateRateLimiter(t *testing.T) {
+	rate60 := 60
+	rate120 := 120
+	rate0 := 0
+	rateNegative := -5
+
+	tests := []struct {
+		name            string
+		rateLimitPerMin *int
+		delaySeconds    int
+		expectedLimit   rate.Limit
+	}{
+		{
+			name:            "precision rate 60 msgs/min -> 1 msg/sec",
+			rateLimitPerMin: &rate60,
+			delaySeconds:    10,
+			expectedLimit:   rate.Every(1 * time.Second),
+		},
+		{
+			name:            "precision rate 120 msgs/min -> 2 msgs/sec",
+			rateLimitPerMin: &rate120,
+			delaySeconds:    5,
+			expectedLimit:   rate.Every(500 * time.Millisecond),
+		},
+		{
+			name:            "nil rate limit with delay_seconds 5 -> 0.2 msgs/sec",
+			rateLimitPerMin: nil,
+			delaySeconds:    5,
+			expectedLimit:   rate.Every(5 * time.Second),
+		},
+		{
+			name:            "nil rate limit with delay_seconds <= 0 -> default 1s",
+			rateLimitPerMin: nil,
+			delaySeconds:    0,
+			expectedLimit:   rate.Every(1 * time.Second),
+		},
+		{
+			name:            "zero rate limit falls back to delay_seconds",
+			rateLimitPerMin: &rate0,
+			delaySeconds:    3,
+			expectedLimit:   rate.Every(3 * time.Second),
+		},
+		{
+			name:            "negative rate limit falls back to default 1s",
+			rateLimitPerMin: &rateNegative,
+			delaySeconds:    0,
+			expectedLimit:   rate.Every(1 * time.Second),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			lim := createRateLimiter(tt.rateLimitPerMin, tt.delaySeconds)
+			if lim == nil {
+				t.Fatalf("expected non-nil limiter")
+			}
+			if lim.Limit() != tt.expectedLimit {
+				t.Errorf("expected limit %v, got %v", tt.expectedLimit, lim.Limit())
+			}
+			if lim.Burst() != 1 {
+				t.Errorf("expected burst 1, got %d", lim.Burst())
+			}
+		})
+	}
+}
+
+
 

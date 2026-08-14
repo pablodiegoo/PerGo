@@ -262,6 +262,16 @@ func (h *CampaignHandler) UploadCSV(c *echo.Context) error {
 }
 
 func (h *CampaignHandler) Create(c *echo.Context) error {
+	rateLimitStr := strings.TrimSpace(c.FormValue("rate_limit_per_min"))
+	var rateLimitPerMin *int
+	if rateLimitStr != "" {
+		rl, err := strconv.Atoi(rateLimitStr)
+		if err != nil || rl <= 0 {
+			return c.String(http.StatusBadRequest, "rate_limit_per_min must be greater than 0")
+		}
+		rateLimitPerMin = &rl
+	}
+
 	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
@@ -388,6 +398,7 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		Status:          domain.CampaignStatusDraft,
 		BatchSize:       batchSize,
 		DelaySeconds:    delaySeconds,
+		RateLimitPerMin: rateLimitPerMin,
 		TemplateName:    templateName,
 		Channel:         &channel,
 		TagID:           primaryTagID,
@@ -608,15 +619,16 @@ func (h *CampaignHandler) GetRow(c *echo.Context) error {
 // REST API Handlers
 
 type CreateCampaignRequest struct {
-	Name           string                     `json:"name"`
-	ConnectionSlug string                     `json:"connection_slug"`
-	TemplateName   *string                    `json:"template_name,omitempty"`
-	MessageBody    *string                    `json:"message_body,omitempty"`
-	TagID          *uuid.UUID                 `json:"tag_id,omitempty"`
-	TagIDs         []uuid.UUID                `json:"tag_ids,omitempty"`
-	BatchSize      int                        `json:"batch_size,omitempty"`
-	DelaySeconds   int                        `json:"delay_seconds,omitempty"`
-	Recipients     []domain.CampaignRecipient `json:"recipients,omitempty"`
+	Name            string                     `json:"name"`
+	ConnectionSlug  string                     `json:"connection_slug"`
+	TemplateName    *string                    `json:"template_name,omitempty"`
+	MessageBody     *string                    `json:"message_body,omitempty"`
+	TagID           *uuid.UUID                 `json:"tag_id,omitempty"`
+	TagIDs          []uuid.UUID                `json:"tag_ids,omitempty"`
+	BatchSize       int                        `json:"batch_size,omitempty"`
+	DelaySeconds    int                        `json:"delay_seconds,omitempty"`
+	RateLimitPerMin *int                       `json:"rate_limit_per_min,omitempty"`
+	Recipients      []domain.CampaignRecipient `json:"recipients,omitempty"`
 }
 
 // APICreate handles campaign creation via JSON REST API with pre-flight validation.
@@ -633,6 +645,10 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 
 	if req.Name == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "campaign name is required"})
+	}
+
+	if req.RateLimitPerMin != nil && *req.RateLimitPerMin <= 0 {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "rate_limit_per_min must be greater than 0"})
 	}
 
 	// 1. Pre-flight Connection Validation
@@ -693,6 +709,7 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 		Status:          domain.CampaignStatusDraft,
 		BatchSize:       batchSize,
 		DelaySeconds:    delaySeconds,
+		RateLimitPerMin: req.RateLimitPerMin,
 		TemplateName:    req.TemplateName,
 		MessageBody:     req.MessageBody,
 		Channel:         &channel,

@@ -788,5 +788,198 @@ func TestCampaignHandler(t *testing.T) {
 			t.Errorf("expected status 400 for malformed recipients_data, got %d", rec.Code)
 		}
 	})
+
+	t.Run("Create_RateLimitPerMin_Validation", func(t *testing.T) {
+		// Valid form rate_limit_per_min
+		recipientsJSON := `[{"to":"5511999998888","variables":{"name":"Valid"}}]`
+		form := url.Values{}
+		form.Set("name", "Rate Limited Form Campaign")
+		form.Set("channel", "whatsapp")
+		form.Set("batch_size", "50")
+		form.Set("delay_seconds", "3")
+		form.Set("rate_limit_per_min", "60")
+		form.Set("recipients_data", recipientsJSON)
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns", ws.ID), strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.Create(c); err != nil {
+			t.Fatalf("Create failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200 for valid form create, got %d", rec.Code)
+		}
+
+		// Invalid form rate_limit_per_min <= 0
+		formInvalid := url.Values{}
+		formInvalid.Set("name", "Invalid Rate Limit Form Campaign")
+		formInvalid.Set("channel", "whatsapp")
+		formInvalid.Set("rate_limit_per_min", "0")
+		formInvalid.Set("recipients_data", recipientsJSON)
+
+		reqInv := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns", ws.ID), strings.NewReader(formInvalid.Encode()))
+		reqInv.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		recInv := httptest.NewRecorder()
+		cInv := e.NewContext(reqInv, recInv)
+		cInv.SetPath("/admin/workspaces/:workspace_id/campaigns")
+		cInv.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.Create(cInv); err != nil {
+			t.Fatalf("Create failed: %v", err)
+		}
+		if recInv.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400 for rate_limit_per_min <= 0, got %d", recInv.Code)
+		}
+	})
+
+	t.Run("APICreate_RateLimitPerMin_Validation", func(t *testing.T) {
+		connSlug := "whatsapp"
+		// 1. Valid rate_limit_per_min in APICreate
+		validJSON := fmt.Sprintf(`{
+			"name": "API Rate Limited Promo",
+			"connection_slug": "%s",
+			"rate_limit_per_min": 120,
+			"recipients": [
+				{"to": "5511999998888", "variables": {"name": "Carlos"}}
+			]
+		}`, connSlug)
+
+		reqValid := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), strings.NewReader(validJSON))
+		reqValid.Header.Set("Content-Type", "application/json")
+		recValid := httptest.NewRecorder()
+		cValid := e.NewContext(reqValid, recValid)
+		cValid.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		cValid.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.APICreate(cValid); err != nil {
+			t.Fatalf("APICreate valid failed: %v", err)
+		}
+		if recValid.Code != http.StatusCreated {
+			t.Fatalf("expected status 201 Created, got %d: %s", recValid.Code, recValid.Body.String())
+		}
+
+		var createdCamp domain.Campaign
+		if err := json.Unmarshal(recValid.Body.Bytes(), &createdCamp); err != nil {
+			t.Fatalf("failed to unmarshal created campaign: %v", err)
+		}
+		if createdCamp.RateLimitPerMin == nil || *createdCamp.RateLimitPerMin != 120 {
+			t.Errorf("expected RateLimitPerMin 120, got %v", createdCamp.RateLimitPerMin)
+		}
+
+		// 2. Invalid rate_limit_per_min <= 0 in APICreate
+		invalidJSON := fmt.Sprintf(`{
+			"name": "Invalid API Rate Limit Promo",
+			"connection_slug": "%s",
+			"rate_limit_per_min": 0,
+			"recipients": [
+				{"to": "5511999998888", "variables": {"name": "Carlos"}}
+			]
+		}`, connSlug)
+
+		reqInvalid := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), strings.NewReader(invalidJSON))
+		reqInvalid.Header.Set("Content-Type", "application/json")
+		recInvalid := httptest.NewRecorder()
+		cInvalid := e.NewContext(reqInvalid, recInvalid)
+		cInvalid.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		cInvalid.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.APICreate(cInvalid); err != nil {
+			t.Fatalf("APICreate failed: %v", err)
+		}
+		if recInvalid.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400 for rate_limit_per_min <= 0, got %d", recInvalid.Code)
+		}
+	})
 }
+
+func TestCampaignHandler_RateLimitValidation_Unit(t *testing.T) {
+	e := echo.New()
+	wsID := uuid.New()
+	h := admin.NewCampaignHandler(nil, nil, nil, nil, nil)
+
+	t.Run("APICreate_RateLimit_Zero_Returns_400", func(t *testing.T) {
+		payload := `{"name":"Test","connection_slug":"wa","rate_limit_per_min":0,"recipients":[{"to":"5511999998888"}]}`
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", wsID), strings.NewReader(payload))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: wsID.String()}})
+
+		if err := h.APICreate(c); err != nil {
+			t.Fatalf("APICreate returned unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 Bad Request, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "rate_limit_per_min must be greater than 0") {
+			t.Errorf("expected validation error message, got: %s", rec.Body.String())
+		}
+	})
+
+	t.Run("APICreate_RateLimit_Negative_Returns_400", func(t *testing.T) {
+		payload := `{"name":"Test","connection_slug":"wa","rate_limit_per_min":-10,"recipients":[{"to":"5511999998888"}]}`
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", wsID), strings.NewReader(payload))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: wsID.String()}})
+
+		if err := h.APICreate(c); err != nil {
+			t.Fatalf("APICreate returned unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 Bad Request, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Create_Form_RateLimit_Zero_Returns_400", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("name", "Form Test")
+		form.Set("channel", "whatsapp")
+		form.Set("rate_limit_per_min", "0")
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns", wsID), strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: wsID.String()}})
+
+		if err := h.Create(c); err != nil {
+			t.Fatalf("Create returned unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 Bad Request, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Create_Form_RateLimit_NonNumeric_Returns_400", func(t *testing.T) {
+		form := url.Values{}
+		form.Set("name", "Form Test")
+		form.Set("channel", "whatsapp")
+		form.Set("rate_limit_per_min", "invalid_number")
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns", wsID), strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: wsID.String()}})
+
+		if err := h.Create(c); err != nil {
+			t.Fatalf("Create returned unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 Bad Request, got %d", rec.Code)
+		}
+	})
+}
+
+
 

@@ -104,6 +104,36 @@ func TestCalculateDuration(t *testing.T) {
 	}
 }
 
+func TestCalculateEstimatedDuration(t *testing.T) {
+	rate60 := 60
+	rate120 := 120
+	rate0 := 0
+
+	tests := []struct {
+		name            string
+		totalValid      int
+		batchSize       int
+		delaySeconds    int
+		rateLimitPerMin *int
+		expected        int
+	}{
+		{"exact division with rate limit 60", 60, 50, 5, &rate60, 60},
+		{"with rate limit 120 (2 msgs/sec)", 100, 50, 5, &rate120, 50},
+		{"rate limit with remainder", 61, 50, 5, &rate60, 61},
+		{"zero valid with rate limit", 0, 50, 5, &rate60, 0},
+		{"nil rate limit falls back to batch calculation", 100, 50, 5, nil, 10},
+		{"zero rate limit falls back to batch calculation", 100, 50, 5, &rate0, 10},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := CalculateEstimatedDuration(tt.totalValid, tt.batchSize, tt.delaySeconds, tt.rateLimitPerMin); got != tt.expected {
+				t.Errorf("CalculateEstimatedDuration() = %d, want %d", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestDeduplicateUUIDs(t *testing.T) {
 	id1 := uuid.New()
 	id2 := uuid.New()

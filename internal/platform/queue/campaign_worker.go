@@ -19,12 +19,13 @@ import (
 
 // CampaignBatchTask represents the payload for a campaign batch message.
 type CampaignBatchTask struct {
-	CampaignID   uuid.UUID                  `json:"campaign_id"`
-	WorkspaceID  uuid.UUID                  `json:"workspace_id"`
-	BatchIndex   int                        `json:"batch_index"`
-	TotalBatches int                        `json:"total_batches"`
-	Recipients   []domain.CampaignRecipient `json:"recipients"`
-	DelaySeconds int                        `json:"delay_seconds"`
+	CampaignID      uuid.UUID                  `json:"campaign_id"`
+	WorkspaceID     uuid.UUID                  `json:"workspace_id"`
+	BatchIndex      int                        `json:"batch_index"`
+	TotalBatches    int                        `json:"total_batches"`
+	Recipients      []domain.CampaignRecipient `json:"recipients"`
+	DelaySeconds    int                        `json:"delay_seconds"`
+	RateLimitPerMin *int                       `json:"rate_limit_per_min,omitempty"`
 }
 
 // CampaignWorker consumes campaign start and batch messages sequentially.
@@ -277,12 +278,13 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 	totalBatches := len(batches)
 	for idx, batch := range batches {
 		batchTask := CampaignBatchTask{
-			CampaignID:   task.CampaignID,
-			WorkspaceID:  campaign.WorkspaceID,
-			BatchIndex:   idx + 1,
-			TotalBatches: totalBatches,
-			Recipients:   batch,
-			DelaySeconds: campaign.DelaySeconds,
+			CampaignID:      task.CampaignID,
+			WorkspaceID:     campaign.WorkspaceID,
+			BatchIndex:      idx + 1,
+			TotalBatches:    totalBatches,
+			Recipients:      batch,
+			DelaySeconds:    campaign.DelaySeconds,
+			RateLimitPerMin: campaign.RateLimitPerMin,
 		}
 		payload, err := json.Marshal(batchTask)
 		if err != nil {
@@ -305,6 +307,19 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 		"total_batches", totalBatches,
 	)
 	_ = msg.Ack()
+}
+
+// createRateLimiter returns a token-bucket rate limiter configured from rateLimitPerMin (if > 0)
+// or falls back to delaySeconds (defaulting to 1s if <= 0).
+func createRateLimiter(rateLimitPerMin *int, delaySeconds int) *rate.Limiter {
+	if rateLimitPerMin != nil && *rateLimitPerMin > 0 {
+		interval := time.Minute / time.Duration(*rateLimitPerMin)
+		return rate.NewLimiter(rate.Every(interval), 1)
+	}
+	if delaySeconds <= 0 {
+		delaySeconds = 1
+	}
+	return rate.NewLimiter(rate.Every(time.Duration(delaySeconds)*time.Second), 1)
 }
 
 func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
@@ -344,12 +359,12 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 		}
 	}
 
-	// Token-bucket rate limiter per batch (staggered dispatch rate)
-	delaySec := task.DelaySeconds
-	if delaySec <= 0 {
-		delaySec = 1
+	// Token-bucket rate limiter per batch (staggered dispatch rate or precision rate limit per minute)
+	rateLimit := task.RateLimitPerMin
+	if campaign.RateLimitPerMin != nil && *campaign.RateLimitPerMin > 0 {
+		rateLimit = campaign.RateLimitPerMin
 	}
-	limiter := rate.NewLimiter(rate.Every(time.Duration(delaySec)*time.Second), 1)
+	limiter := createRateLimiter(rateLimit, task.DelaySeconds)
 
 	for _, recipient := range task.Recipients {
 		// 1. Enforce rate limit wait

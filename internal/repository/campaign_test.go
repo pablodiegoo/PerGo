@@ -204,3 +204,54 @@ func TestCampaignRepository_AddRecipients_Idempotent(t *testing.T) {
 	}
 }
 
+func TestCampaignRepository_RateLimitPerMin(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := NewWorkspaceRepository(pool)
+	repo := NewCampaignRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "campaign_test_ws_ratelimit_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	rateLimit := 60
+	c := &domain.Campaign{
+		WorkspaceID:     ws.ID,
+		Name:            "Rate Limited Camp",
+		Status:          domain.CampaignStatusDraft,
+		BatchSize:       100,
+		DelaySeconds:    5,
+		RateLimitPerMin: &rateLimit,
+	}
+
+	created, err := repo.Create(ctx, c)
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
+
+	if created.RateLimitPerMin == nil || *created.RateLimitPerMin != 60 {
+		t.Fatalf("expected created RateLimitPerMin 60, got %v", created.RateLimitPerMin)
+	}
+
+	fetched, err := repo.GetByID(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("failed to fetch campaign by ID: %v", err)
+	}
+	if fetched.RateLimitPerMin == nil || *fetched.RateLimitPerMin != 60 {
+		t.Fatalf("expected fetched RateLimitPerMin 60, got %v", fetched.RateLimitPerMin)
+	}
+
+	list, err := repo.ListByWorkspace(ctx, ws.ID)
+	if err != nil {
+		t.Fatalf("failed to list campaigns: %v", err)
+	}
+	if len(list) != 1 || list[0].RateLimitPerMin == nil || *list[0].RateLimitPerMin != 60 {
+		t.Fatalf("expected listed campaign RateLimitPerMin 60, got %+v", list)
+	}
+}
+
+

@@ -292,7 +292,7 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 				</div>
 			</div>
 
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
 				<div class="flex flex-col gap-1">
 					<label for="batch_size" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Tamanho do Lote (Batch Size)</label>
 					<input type="number" id="batch_size" name="batch_size" required value="100" min="1" onchange="estimateDuration()" onkeyup="estimateDuration()" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
@@ -301,6 +301,11 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 				<div class="flex flex-col gap-1">
 					<label for="delay_seconds" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Intervalo (segundos)</label>
 					<input type="number" id="delay_seconds" name="delay_seconds" required value="5" min="0" onchange="estimateDuration()" onkeyup="estimateDuration()" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
+				</div>
+
+				<div class="flex flex-col gap-1">
+					<label for="rate_limit_per_min" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Limite por Minuto (Opcional)</label>
+					<input type="number" id="rate_limit_per_min" name="rate_limit_per_min" min="1" placeholder="Ex: 60" onchange="estimateDuration()" onkeyup="estimateDuration()" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
 				</div>
 			</div>
 
@@ -487,14 +492,27 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 		function estimateDuration() {
 			const batchSizeInput = document.getElementById('batch_size');
 			const delayInput = document.getElementById('delay_seconds');
+			const rateLimitInput = document.getElementById('rate_limit_per_min');
 
 			const batchSize = parseInt(batchSizeInput.value) || 100;
 			const delay = parseInt(delayInput.value) || 5;
+			const rateLimit = rateLimitInput ? parseInt(rateLimitInput.value) : 0;
 
 			const badge = document.getElementById('valid-recipients-badge');
 			badge.innerText = `${globalValidCount} válidos`;
 
-			if (globalValidCount <= 0 || batchSize <= 0) {
+			if (globalValidCount <= 0) {
+				document.getElementById('estimated-duration-val').innerText = '0';
+				return;
+			}
+
+			if (rateLimit > 0) {
+				const duration = Math.ceil(globalValidCount * (60 / rateLimit));
+				document.getElementById('estimated-duration-val').innerText = duration;
+				return;
+			}
+
+			if (batchSize <= 0) {
 				document.getElementById('estimated-duration-val').innerText = '0';
 				return;
 			}

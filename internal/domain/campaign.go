@@ -72,6 +72,7 @@ type Campaign struct {
 	Status           CampaignStatus      `json:"status"`
 	BatchSize        int                 `json:"batch_size"`
 	DelaySeconds     int                 `json:"delay_seconds"`
+	RateLimitPerMin  *int                `json:"rate_limit_per_min,omitempty"`
 	TemplateName     *string             `json:"template_name,omitempty"`
 	MessageBody      *string             `json:"message_body,omitempty"`
 	Channel          *string             `json:"channel,omitempty"`
@@ -168,6 +169,22 @@ func CalculateDuration(totalValid, batchSize, delaySeconds int) int {
 		batches++
 	}
 	return batches * delaySeconds
+}
+
+// CalculateEstimatedDuration calculates estimated campaign dispatch duration in seconds,
+// taking into account precision rate limiting if configured (> 0).
+func CalculateEstimatedDuration(totalValid, batchSize, delaySeconds int, rateLimitPerMin *int) int {
+	if totalValid <= 0 {
+		return 0
+	}
+	if rateLimitPerMin != nil && *rateLimitPerMin > 0 {
+		secs := (totalValid * 60) / *rateLimitPerMin
+		if (totalValid*60)%*rateLimitPerMin != 0 {
+			secs++
+		}
+		return secs
+	}
+	return CalculateDuration(totalValid, batchSize, delaySeconds)
 }
 
 // TagContactLister defines the interface for querying contacts associated with a specific tag.
