@@ -22,6 +22,18 @@ func getTestPoolWithMigrations(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("failed to wrap pool: %v", err)
 	}
 	defer db.Close()
+
+	var hasAttrCol bool
+	_ = pool.QueryRow(context.Background(), `
+		SELECT EXISTS (
+			SELECT 1 FROM information_schema.columns 
+			WHERE table_name = 'contacts' AND column_name = 'attributes'
+		)
+	`).Scan(&hasAttrCol)
+	if !hasAttrCol {
+		_, _ = pool.Exec(context.Background(), "DELETE FROM goose_db_version WHERE version_id = 43")
+	}
+
 	if err := postgres.RunMigrations(db); err != nil {
 		pool.Close()
 		t.Fatalf("failed to run migrations: %v", err)

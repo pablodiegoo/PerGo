@@ -76,6 +76,8 @@ func TestTagRepository(t *testing.T) {
 
 		vipTag := tags[1] // VIP
 
+		_ = contactRepo.UpdateAttributes(ctx, wsID, contact.ID, map[string]string{"plan": "Premium"})
+
 		err = tagRepo.AddTagToContact(ctx, wsID, contact.ID, vipTag.ID)
 		if err != nil {
 			t.Fatalf("failed to add tag to contact: %v", err)
@@ -95,6 +97,9 @@ func TestTagRepository(t *testing.T) {
 		}
 		if len(contactsByTag) != 1 || contactsByTag[0].ID != contact.ID {
 			t.Errorf("expected 1 contact by VIP tag, got %+v", contactsByTag)
+		}
+		if contactsByTag[0].Attributes["plan"] != "Premium" {
+			t.Errorf("expected contact attributes plan='Premium', got %v", contactsByTag[0].Attributes)
 		}
 
 		// Remove tag

@@ -132,7 +132,7 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
+		adapter := NewTelegramAdapter(connectionsRepo, server.Client(), nil)
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -155,7 +155,7 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
+		adapter := NewTelegramAdapter(connectionsRepo, server.Client(), nil)
 		adapter.SetBaseURL(server.URL)
 
 		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
@@ -179,7 +179,7 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
+		adapter := NewTelegramAdapter(connectionsRepo, server.Client(), nil)
 		adapter.SetBaseURL(server.URL)
 
 		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
@@ -203,7 +203,7 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
+		adapter := NewTelegramAdapter(connectionsRepo, server.Client(), nil)
 		adapter.SetBaseURL(server.URL)
 
 		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
@@ -274,7 +274,7 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(connectionsRepo, nil, s3Client)
+		adapter := NewTelegramAdapter(connectionsRepo, server.Client(), s3Client)
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -324,7 +324,7 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
+		adapter := NewTelegramAdapter(connectionsRepo, server.Client(), nil)
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -366,7 +366,7 @@ func TestTelegramDispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
+		adapter := NewTelegramAdapter(connectionsRepo, server.Client(), nil)
 		adapter.SetBaseURL(server.URL)
 
 		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{

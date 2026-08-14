@@ -359,4 +359,135 @@ func TestContactRepository(t *testing.T) {
 			t.Errorf("expected bot_paused_at to be nil after reactivation, got %v", updated2.BotPausedAt)
 		}
 	})
+
+	t.Run("CustomAttributes_CRUD", func(t *testing.T) {
+		email := "carlos@example.com"
+		initialAttrs := map[string]string{
+			"plan": "Pro",
+			"city": "Belo Horizonte",
+		}
+
+		// 1. Create contact with attributes
+		created, err := repo.CreateContact(ctx, ws.ID, "Carlos Attributes", &email, initialAttrs)
+		if err != nil {
+			t.Fatalf("failed to create contact: %v", err)
+		}
+		if created.Attributes["plan"] != "Pro" || created.Attributes["city"] != "Belo Horizonte" {
+			t.Errorf("unexpected created attributes: %v", created.Attributes)
+		}
+
+		// 2. GetByID should return attributes
+		loaded, err := repo.GetByID(ctx, ws.ID, created.ID)
+		if err != nil {
+			t.Fatalf("failed to get contact by ID: %v", err)
+		}
+		if loaded.Attributes["plan"] != "Pro" || loaded.Attributes["city"] != "Belo Horizonte" {
+			t.Errorf("unexpected loaded attributes: %v", loaded.Attributes)
+		}
+
+		// 3. UpdateAttributes
+		updatedAttrs := map[string]string{
+			"plan":    "Enterprise",
+			"city":    "Belo Horizonte",
+			"country": "Brazil",
+		}
+		err = repo.UpdateAttributes(ctx, ws.ID, created.ID, updatedAttrs)
+		if err != nil {
+			t.Fatalf("failed to update attributes: %v", err)
+		}
+
+		loadedAfterUpdate, err := repo.GetByID(ctx, ws.ID, created.ID)
+		if err != nil {
+			t.Fatalf("failed to get contact after update: %v", err)
+		}
+		if loadedAfterUpdate.Attributes["plan"] != "Enterprise" || loadedAfterUpdate.Attributes["country"] != "Brazil" {
+			t.Errorf("unexpected attributes after update: %v", loadedAfterUpdate.Attributes)
+		}
+
+		// 4. UpdateContact
+		newName := "Carlos Renamed"
+		loadedAfterUpdate.Name = newName
+		loadedAfterUpdate.Attributes["vip"] = "true"
+		err = repo.UpdateContact(ctx, ws.ID, loadedAfterUpdate)
+		if err != nil {
+			t.Fatalf("failed to update contact: %v", err)
+		}
+
+		loadedAfterFullUpdate, err := repo.GetByID(ctx, ws.ID, created.ID)
+		if err != nil {
+			t.Fatalf("failed to get contact after full update: %v", err)
+		}
+		if loadedAfterFullUpdate.Name != newName || loadedAfterFullUpdate.Attributes["vip"] != "true" {
+			t.Errorf("unexpected contact after full update: %+v", loadedAfterFullUpdate)
+		}
+
+		// 5. SearchContacts should include attributes
+		searchRes, err := repo.SearchContacts(ctx, ws.ID, "Carlos", uuid.Nil, 10)
+		if err != nil {
+			t.Fatalf("failed to search contacts: %v", err)
+		}
+		if len(searchRes) == 0 || searchRes[0].Attributes["plan"] != "Enterprise" {
+			t.Errorf("expected search result with attributes, got %v", searchRes)
+		}
+
+		// 6. DeleteContact
+		err = repo.DeleteContact(ctx, ws.ID, created.ID)
+		if err != nil {
+			t.Fatalf("failed to delete contact: %v", err)
+		}
+		_, err = repo.GetByID(ctx, ws.ID, created.ID)
+		if err == nil || err != repository.ErrContactNotFound {
+			t.Errorf("expected ErrContactNotFound after deletion, got %v", err)
+		}
+	})
+
+	t.Run("MergeContacts_Attributes", func(t *testing.T) {
+		pEmail := "prim@example.com"
+		sEmail := "sec@example.com"
+		primary, err := repo.CreateContact(ctx, ws.ID, "Primary Merge", &pEmail, map[string]string{
+			"city":   "SP",
+			"tier":   "Gold",
+			"shared": "from_primary",
+		})
+		if err != nil {
+			t.Fatalf("failed to create primary: %v", err)
+		}
+
+		secondary, err := repo.CreateContact(ctx, ws.ID, "Secondary Merge", &sEmail, map[string]string{
+			"city":     "RJ",
+			"country":  "Brazil",
+			"shared":   "from_secondary",
+			"discount": "10%",
+		})
+		if err != nil {
+			t.Fatalf("failed to create secondary: %v", err)
+		}
+
+		err = repo.MergeContacts(ctx, ws.ID, primary.ID, secondary.ID)
+		if err != nil {
+			t.Fatalf("failed to merge contacts: %v", err)
+		}
+
+		mergedPrimary, err := repo.GetByID(ctx, ws.ID, primary.ID)
+		if err != nil {
+			t.Fatalf("failed to get merged primary: %v", err)
+		}
+
+		// Primary values should take precedence, secondary unique keys should be merged in
+		if mergedPrimary.Attributes["city"] != "SP" {
+			t.Errorf("expected primary 'city' to remain 'SP', got %s", mergedPrimary.Attributes["city"])
+		}
+		if mergedPrimary.Attributes["shared"] != "from_primary" {
+			t.Errorf("expected primary 'shared' to remain 'from_primary', got %s", mergedPrimary.Attributes["shared"])
+		}
+		if mergedPrimary.Attributes["tier"] != "Gold" {
+			t.Errorf("expected primary 'tier' to be 'Gold', got %s", mergedPrimary.Attributes["tier"])
+		}
+		if mergedPrimary.Attributes["country"] != "Brazil" {
+			t.Errorf("expected merged 'country' to be 'Brazil', got %s", mergedPrimary.Attributes["country"])
+		}
+		if mergedPrimary.Attributes["discount"] != "10%" {
+			t.Errorf("expected merged 'discount' to be '10%%', got %s", mergedPrimary.Attributes["discount"])
+		}
+	})
 }

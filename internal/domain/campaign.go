@@ -241,21 +241,36 @@ func ResolveTagRecipients(
 
 			contactID := contact.ID
 
+			vars := make(map[string]string, len(contact.Attributes)+1)
+			for k, v := range contact.Attributes {
+				vars[k] = v
+			}
+			vars["name"] = contact.Name
+
 			if phone != "" {
 				if seenPhones[phone] {
 					continue
 				}
 				seenPhones[phone] = true
 
+				recVars := make(map[string]string, len(vars))
+				for k, v := range vars {
+					recVars[k] = v
+				}
+				recipVars := make(map[string]string, len(vars))
+				for k, v := range vars {
+					recipVars[k] = v
+				}
+
 				records = append(records, CampaignRecipientRecord{
 					ContactID: &contactID,
 					Phone:     phone,
 					Status:    RecipientStatusPending,
-					Variables: map[string]string{"name": contact.Name},
+					Variables: copyVariables(vars),
 				})
 				recipients = append(recipients, CampaignRecipient{
 					To:        phone,
-					Variables: map[string]string{"name": contact.Name},
+					Variables: copyVariables(vars),
 				})
 			} else {
 				// Contact lacked matching identity for the channel -> mark as skipped
@@ -286,7 +301,7 @@ func ResolveTagRecipients(
 					ContactID: &contactID,
 					Phone:     skippedIdentity,
 					Status:    RecipientStatusSkipped,
-					Variables: map[string]string{"name": contact.Name},
+					Variables: copyVariables(vars),
 				})
 			}
 		}
@@ -297,4 +312,16 @@ func ResolveTagRecipients(
 		Recipients: recipients,
 		SeenPhones: seenPhones,
 	}, nil
+}
+
+// copyVariables creates a shallow copy of a string map.
+func copyVariables(v map[string]string) map[string]string {
+	if v == nil {
+		return make(map[string]string)
+	}
+	cp := make(map[string]string, len(v))
+	for k, val := range v {
+		cp[k] = val
+	}
+	return cp
 }

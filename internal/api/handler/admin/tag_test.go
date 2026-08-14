@@ -144,7 +144,7 @@ func TestTagAdminHandler(t *testing.T) {
 	t.Run("ImportContactsCSV_Success", func(t *testing.T) {
 		e := echo.New()
 
-		csvData := "name,phone,channel,email,tags\nBob CSV,5511911112222,whatsapp,bob@example.com,Lead,High-Value\n"
+		csvData := "name,phone,channel,email,city,plan,tags\nBob CSV,5511911112222,whatsapp,bob@example.com,Belo Horizonte,Enterprise,Lead,High-Value\n"
 		body := &bytes.Buffer{}
 		writer := multipart.NewWriter(body)
 		part, err := writer.CreateFormFile("file", "contacts.csv")
@@ -177,6 +177,15 @@ func TestTagAdminHandler(t *testing.T) {
 		}
 		if res.Imported != 1 || res.Errors != 0 {
 			t.Errorf("unexpected import result: %+v", res)
+		}
+
+		// Verify contact custom attributes
+		searched, err := contactRepo.SearchContacts(context.Background(), ws.ID, "Bob CSV", uuid.Nil, 10)
+		if err != nil || len(searched) == 0 {
+			t.Fatalf("failed to find imported contact: %v", err)
+		}
+		if searched[0].Attributes["city"] != "Belo Horizonte" || searched[0].Attributes["plan"] != "Enterprise" {
+			t.Errorf("expected imported custom attributes city=Belo Horizonte, plan=Enterprise, got %v", searched[0].Attributes)
 		}
 	})
 

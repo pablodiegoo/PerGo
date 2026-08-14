@@ -1075,11 +1075,15 @@ func TestCampaignWorker_StartTask_TagOverridesCSV(t *testing.T) {
 		t.Fatalf("failed to create tag: %v", err)
 	}
 
-	// Tag contact with canonical name and database ID
+	// Tag contact with canonical name, custom attributes, and database ID
 	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "5511999998888", "Canonical Alice From Tag", "", "5511999998888")
 	if err != nil {
 		t.Fatalf("failed to create contact: %v", err)
 	}
+	_ = contactRepo.UpdateAttributes(ctx, ws.ID, contact.ID, map[string]string{
+		"tier": "Gold",
+		"city": "São Paulo",
+	})
 	_ = tagRepo.AddTagToContact(ctx, ws.ID, contact.ID, tag.ID)
 
 	_, _ = EnsureCampaignStream(ctx, nc)
@@ -1103,7 +1107,14 @@ func TestCampaignWorker_StartTask_TagOverridesCSV(t *testing.T) {
 		Channel:      &channel,
 		TagIDs:       []uuid.UUID{tag.ID},
 		Recipients: []domain.CampaignRecipient{
-			{To: "5511999998888", Variables: map[string]string{"name": "Dirty Alice From CSV"}},
+			{
+				To: "5511999998888",
+				Variables: map[string]string{
+					"name":     "Alice Override From CSV",
+					"city":     "Campinas",
+					"discount": "20%",
+				},
+			},
 			{To: "5511988887777", Variables: map[string]string{"name": "Unique Bob From CSV"}},
 		},
 	}
@@ -1152,11 +1163,32 @@ func TestCampaignWorker_StartTask_TagOverridesCSV(t *testing.T) {
 
 	for _, rec := range allRecs {
 		if rec.Phone == "5511999998888" {
-			if rec.Variables["name"] != "Canonical Alice From Tag" {
-				t.Errorf("expected tag variable 'Canonical Alice From Tag', got %s", rec.Variables["name"])
-			}
+			// Tag contact identity wins (ContactID set)
 			if rec.ContactID == nil || *rec.ContactID != contact.ID {
 				t.Errorf("expected tag contact ID %s, got %v", contact.ID, rec.ContactID)
+			}
+			// CSV variable overrides name and city
+			if rec.Variables["name"] != "Alice Override From CSV" {
+				t.Errorf("expected CSV overridden name 'Alice Override From CSV', got %q", rec.Variables["name"])
+			}
+			if rec.Variables["city"] != "Campinas" {
+				t.Errorf("expected CSV overridden city 'Campinas', got %q", rec.Variables["city"])
+			}
+			// CSV variable supplements discount
+			if rec.Variables["discount"] != "20%" {
+				t.Errorf("expected CSV variable discount '20%%', got %q", rec.Variables["discount"])
+			}
+			// Contact attribute tier is preserved
+			if rec.Variables["tier"] != "Gold" {
+				t.Errorf("expected preserved contact attribute tier 'Gold', got %q", rec.Variables["tier"])
+			}
+		}
+		if rec.Phone == "5511988887777" {
+			if rec.ContactID != nil {
+				t.Errorf("expected nil ContactID for static CSV recipient, got %v", rec.ContactID)
+			}
+			if rec.Variables["name"] != "Unique Bob From CSV" {
+				t.Errorf("expected name 'Unique Bob From CSV', got %q", rec.Variables["name"])
 			}
 		}
 	}

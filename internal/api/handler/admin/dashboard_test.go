@@ -2,6 +2,7 @@ package admin_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -47,7 +48,7 @@ func TestDashboardHandler_Index_Onboarding(t *testing.T) {
 	connRepo := repository.NewConnectionRepository(pool, nil) // nil encryptor for test is fine if not saving keys
 
 	// Create workspace
-	ws, err := wsRepo.Create(ctx, "Dashboard Test Workspace")
+	ws, err := wsRepo.Create(ctx, fmt.Sprintf("Dashboard Test Workspace %s", uuid.New().String()))
 	if err != nil {
 		t.Fatalf("failed to create workspace: %v", err)
 	}
@@ -248,7 +249,7 @@ func TestDashboardHandler_SimulateWebhook(t *testing.T) {
 	}
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
-	ws, err := wsRepo.Create(ctx, "Webhook Simulation Test")
+	ws, err := wsRepo.Create(ctx, fmt.Sprintf("Webhook Simulation Test %s", uuid.New().String()))
 	if err != nil {
 		t.Fatalf("failed to create workspace: %v", err)
 	}

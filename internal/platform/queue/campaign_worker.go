@@ -208,17 +208,39 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 			// Tag contact identity wins (ADR-0010), but CSV variables
 			// merge on top so campaign-specific data (e.g. {{discount_code}})
 			// supplements the contact's stored attributes.
-			if len(csvRec.Variables) > 0 {
-				for i, rec := range allRecords {
-					if rec.Phone == phone && rec.Status == domain.RecipientStatusPending {
+			foundPending := false
+			for i, rec := range allRecords {
+				if rec.Phone == phone {
+					if rec.Status == domain.RecipientStatusPending {
+						foundPending = true
+						if allRecords[i].Variables == nil {
+							allRecords[i].Variables = make(map[string]string)
+						}
 						for k, v := range csvRec.Variables {
 							allRecords[i].Variables[k] = v
 						}
-						break
+					} else if rec.Status == domain.RecipientStatusSkipped {
+						allRecords[i].Status = domain.RecipientStatusPending
+						if allRecords[i].Variables == nil {
+							allRecords[i].Variables = make(map[string]string)
+						}
+						for k, v := range csvRec.Variables {
+							allRecords[i].Variables[k] = v
+						}
+						mergedRecipients = append(mergedRecipients, domain.CampaignRecipient{
+							To:        phone,
+							Variables: allRecords[i].Variables,
+						})
 					}
+					break
 				}
+			}
+			if foundPending {
 				for i, mr := range mergedRecipients {
 					if mr.To == phone {
+						if mergedRecipients[i].Variables == nil {
+							mergedRecipients[i].Variables = make(map[string]string)
+						}
 						for k, v := range csvRec.Variables {
 							mergedRecipients[i].Variables[k] = v
 						}

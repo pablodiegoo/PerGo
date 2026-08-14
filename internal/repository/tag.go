@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -186,7 +187,7 @@ func (r *TagRepository) GetContactTags(ctx context.Context, workspaceID, contact
 // ListContactsByTag retrieves all contacts matching a given tag ID.
 func (r *TagRepository) ListContactsByTag(ctx context.Context, workspaceID, tagID uuid.UUID) ([]domain.Contact, error) {
 	rows, err := r.pool.Query(ctx, `
-		SELECT c.id, c.workspace_id, c.name, c.email, c.tags, c.closed_at, c.created_at, c.updated_at, c.bot_active, c.bot_paused_at
+		SELECT c.id, c.workspace_id, c.name, c.email, c.attributes, c.tags, c.closed_at, c.created_at, c.updated_at, c.bot_active, c.bot_paused_at
 		FROM contacts c
 		JOIN contact_tags ct ON ct.contact_id = c.id
 		WHERE c.workspace_id = $1 AND ct.tag_id = $2
@@ -202,12 +203,19 @@ func (r *TagRepository) ListContactsByTag(ctx context.Context, workspaceID, tagI
 	for rows.Next() {
 		var c domain.Contact
 		var email *string
+		var attrsRaw []byte
 		var tags []string
 		var closedAt, botPausedAt *time.Time
-		if err := rows.Scan(&c.ID, &c.WorkspaceID, &c.Name, &email, &tags, &closedAt, &c.CreatedAt, &c.UpdatedAt, &c.BotActive, &botPausedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.WorkspaceID, &c.Name, &email, &attrsRaw, &tags, &closedAt, &c.CreatedAt, &c.UpdatedAt, &c.BotActive, &botPausedAt); err != nil {
 			return nil, err
 		}
 		c.Email = email
+		if len(attrsRaw) > 0 {
+			_ = json.Unmarshal(attrsRaw, &c.Attributes)
+		}
+		if c.Attributes == nil {
+			c.Attributes = make(map[string]string)
+		}
 		c.Tags = tags
 		c.ClosedAt = closedAt
 		c.BotPausedAt = botPausedAt

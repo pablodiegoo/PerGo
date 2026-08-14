@@ -15,6 +15,7 @@ type Contact struct {
 	WorkspaceID uuid.UUID         `json:"workspace_id"`
 	Name        string            `json:"name"`
 	Email       *string           `json:"email,omitempty"`
+	Attributes  map[string]string `json:"attributes"`
 	Tags        []string          `json:"tags"`
 	ClosedAt    *time.Time        `json:"closed_at,omitempty"`
 	CreatedAt   time.Time         `json:"created_at"`

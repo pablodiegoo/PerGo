@@ -357,6 +357,24 @@ func (h *TagAdminHandler) ImportContactsCSV(c *echo.Context) error {
 			}
 		}
 
+		// Collect custom attributes from unmapped columns (excluding standard fields and tags)
+		attrs := make(map[string]string)
+		for i, h := range headers {
+			if i == nameIdx || i == phoneIdx || i == channelIdx || i == emailIdx || (tagsIdx != -1 && i >= tagsIdx) {
+				continue
+			}
+			if i < len(record) {
+				val := strings.TrimSpace(record[i])
+				if val != "" {
+					key := strings.ToLower(strings.TrimSpace(h))
+					attrs[key] = val
+				}
+			}
+		}
+		if len(attrs) > 0 {
+			_ = h.contactRepo.UpdateAttributes(c.Request().Context(), workspaceID, contact.ID, attrs)
+		}
+
 		result.Imported++
 	}
 

@@ -311,3 +311,80 @@ func TestResolveTagRecipients_SkippedNoIdentities(t *testing.T) {
 		t.Errorf("expected seenPhones to contain carol@example.com")
 	}
 }
+
+func TestResolveTagRecipients_CustomAttributes(t *testing.T) {
+	ctx := context.Background()
+	wsID := uuid.New()
+	tag1 := uuid.New()
+
+	c1ID := uuid.New()
+	c2ID := uuid.New()
+
+	mock := &mockTagLister{
+		contacts: map[uuid.UUID][]Contact{
+			tag1: {
+				{
+					ID:   c1ID,
+					Name: "Alice",
+					Attributes: map[string]string{
+						"city":     "São Paulo",
+						"tier":     "VIP",
+						"discount": "20%",
+					},
+					Identities: []ContactIdentity{
+						{Channel: "whatsapp", SenderIdentity: "+5511999998888"},
+					},
+				},
+				{
+					ID:   c2ID,
+					Name: "Bob",
+					Attributes: map[string]string{
+						"plan": "Enterprise",
+					},
+					Identities: nil, // Skipped
+				},
+			},
+		},
+	}
+
+	res, err := ResolveTagRecipients(ctx, mock, wsID, []uuid.UUID{tag1}, "whatsapp")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(res.Records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(res.Records))
+	}
+	if len(res.Recipients) != 1 {
+		t.Fatalf("expected 1 recipient, got %d", len(res.Recipients))
+	}
+
+	// Verify Alice (pending) variables merge name and attributes
+	aliceRecord := res.Records[0]
+	if aliceRecord.Variables["name"] != "Alice" {
+		t.Errorf("expected variable name 'Alice', got %q", aliceRecord.Variables["name"])
+	}
+	if aliceRecord.Variables["city"] != "São Paulo" {
+		t.Errorf("expected variable city 'São Paulo', got %q", aliceRecord.Variables["city"])
+	}
+	if aliceRecord.Variables["tier"] != "VIP" {
+		t.Errorf("expected variable tier 'VIP', got %q", aliceRecord.Variables["tier"])
+	}
+	if aliceRecord.Variables["discount"] != "20%" {
+		t.Errorf("expected variable discount '20%%', got %q", aliceRecord.Variables["discount"])
+	}
+
+	aliceRecipient := res.Recipients[0]
+	if aliceRecipient.Variables["name"] != "Alice" || aliceRecipient.Variables["city"] != "São Paulo" {
+		t.Errorf("expected alice recipient variables to have name and city, got %v", aliceRecipient.Variables)
+	}
+
+	// Verify Bob (skipped) variables also merge name and attributes
+	bobRecord := res.Records[1]
+	if bobRecord.Variables["name"] != "Bob" {
+		t.Errorf("expected variable name 'Bob', got %q", bobRecord.Variables["name"])
+	}
+	if bobRecord.Variables["plan"] != "Enterprise" {
+		t.Errorf("expected variable plan 'Enterprise', got %q", bobRecord.Variables["plan"])
+	}
+}

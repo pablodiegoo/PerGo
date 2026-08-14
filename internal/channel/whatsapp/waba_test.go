@@ -139,7 +139,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -183,7 +183,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -232,7 +232,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -264,7 +264,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
@@ -288,7 +288,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
@@ -312,7 +312,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
@@ -358,7 +358,7 @@ func TestWABADispatch(t *testing.T) {
 		defer server.Close()
 
 		mockChecker := &mockWABAWindowChecker{open: true}
-		adapter := NewWABAAdapter(connectionsRepo, nil, mockChecker, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), mockChecker, "")
 		adapter.SetBaseURL(server.URL)
 
 		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
@@ -409,7 +409,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -469,7 +469,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -507,7 +507,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{

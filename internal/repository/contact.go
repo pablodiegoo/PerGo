@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -26,15 +27,23 @@ func NewContactRepository(pool *pgxpool.Pool) *ContactRepository {
 // GetByID loads a contact and all its associated identities.
 func (r *ContactRepository) GetByID(ctx context.Context, workspaceID, contactID uuid.UUID) (*domain.Contact, error) {
 	var c domain.Contact
+	var attrsRaw []byte
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, workspace_id, name, email, tags, closed_at, created_at, updated_at, bot_active, bot_paused_at
+		SELECT id, workspace_id, name, email, attributes, tags, closed_at, created_at, updated_at, bot_active, bot_paused_at
 		FROM contacts WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, contactID).Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt, &c.BotActive, &c.BotPausedAt)
+	`, workspaceID, contactID).Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt, &c.BotActive, &c.BotPausedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrContactNotFound
 		}
 		return nil, err
+	}
+
+	if len(attrsRaw) > 0 {
+		_ = json.Unmarshal(attrsRaw, &c.Attributes)
+	}
+	if c.Attributes == nil {
+		c.Attributes = make(map[string]string)
 	}
 
 	rows, err := r.pool.Query(ctx, `
@@ -184,6 +193,104 @@ func (r *ContactRepository) ResolveContact(
 	return r.GetByID(ctx, workspaceID, contactID)
 }
 
+func marshalAttributes(attributes map[string]string) ([]byte, error) {
+	if attributes == nil {
+		attributes = make(map[string]string)
+	}
+	return json.Marshal(attributes)
+}
+
+// CreateContact creates a new contact profile with optional email and custom attributes.
+func (r *ContactRepository) CreateContact(
+	ctx context.Context,
+	workspaceID uuid.UUID,
+	name string,
+	email *string,
+	attributes map[string]string,
+) (*domain.Contact, error) {
+	if strings.TrimSpace(name) == "" {
+		return nil, errors.New("contact name cannot be empty")
+	}
+	attrsJSON, err := marshalAttributes(attributes)
+	if err != nil {
+		return nil, fmt.Errorf("marshal contact attributes: %w", err)
+	}
+
+	contactID := uuid.New()
+	_, err = r.pool.Exec(ctx, `
+		INSERT INTO contacts (id, workspace_id, name, email, attributes, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+	`, contactID, workspaceID, name, email, attrsJSON)
+	if err != nil {
+		return nil, fmt.Errorf("create contact: %w", err)
+	}
+
+	return r.GetByID(ctx, workspaceID, contactID)
+}
+
+// UpdateAttributes replaces or updates the custom attributes JSON for a contact.
+func (r *ContactRepository) UpdateAttributes(
+	ctx context.Context,
+	workspaceID, contactID uuid.UUID,
+	attributes map[string]string,
+) error {
+	attrsJSON, err := marshalAttributes(attributes)
+	if err != nil {
+		return fmt.Errorf("marshal contact attributes: %w", err)
+	}
+
+	res, err := r.pool.Exec(ctx, `
+		UPDATE contacts
+		SET attributes = $3, updated_at = NOW()
+		WHERE workspace_id = $1 AND id = $2
+	`, workspaceID, contactID, attrsJSON)
+	if err != nil {
+		return fmt.Errorf("update contact attributes: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return ErrContactNotFound
+	}
+	return nil
+}
+
+// UpdateContact updates a contact's profile data (name, email, attributes).
+func (r *ContactRepository) UpdateContact(ctx context.Context, workspaceID uuid.UUID, contact *domain.Contact) error {
+	if contact == nil {
+		return errors.New("nil contact")
+	}
+	attrsJSON, err := marshalAttributes(contact.Attributes)
+	if err != nil {
+		return fmt.Errorf("marshal contact attributes: %w", err)
+	}
+
+	res, err := r.pool.Exec(ctx, `
+		UPDATE contacts
+		SET name = $3, email = $4, attributes = $5, updated_at = NOW()
+		WHERE workspace_id = $1 AND id = $2
+	`, workspaceID, contact.ID, contact.Name, contact.Email, attrsJSON)
+	if err != nil {
+		return fmt.Errorf("update contact: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return ErrContactNotFound
+	}
+	return nil
+}
+
+// DeleteContact deletes a contact by ID within a workspace.
+func (r *ContactRepository) DeleteContact(ctx context.Context, workspaceID, contactID uuid.UUID) error {
+	res, err := r.pool.Exec(ctx, `
+		DELETE FROM contacts WHERE workspace_id = $1 AND id = $2
+	`, workspaceID, contactID)
+	if err != nil {
+		return fmt.Errorf("delete contact: %w", err)
+	}
+	if res.RowsAffected() == 0 {
+		return ErrContactNotFound
+	}
+	return nil
+}
+
 // MergeContacts unifies the identities of a secondary contact into the primary contact, deleting the secondary.
 func (r *ContactRepository) MergeContacts(ctx context.Context, workspaceID uuid.UUID, primaryID, secondaryID uuid.UUID) error {
 	if primaryID == secondaryID {
@@ -238,7 +345,19 @@ func (r *ContactRepository) MergeContacts(ctx context.Context, workspaceID uuid.
 		return fmt.Errorf("rebind identities: %w", err)
 	}
 
-	// 3. Delete secondary contact profile
+	// 3. Merge custom attributes: secondary's attributes are merged into primary's attributes
+	// In jsonb concatenation (left || right), right-hand keys take precedence, so primary keys are preserved.
+	_, err = tx.Exec(ctx, `
+		UPDATE contacts
+		SET attributes = COALESCE((SELECT attributes FROM contacts WHERE id = $2), '{}'::jsonb) || contacts.attributes,
+		    updated_at = NOW()
+		WHERE id = $1 AND workspace_id = $3
+	`, primaryID, secondaryID, workspaceID)
+	if err != nil {
+		return fmt.Errorf("merge contact attributes: %w", err)
+	}
+
+	// 4. Delete secondary contact profile
 	_, err = tx.Exec(ctx, "DELETE FROM contacts WHERE id = $1 AND workspace_id = $2", secondaryID, workspaceID)
 	if err != nil {
 		return fmt.Errorf("delete secondary contact profile: %w", err)
@@ -251,7 +370,7 @@ func (r *ContactRepository) MergeContacts(ctx context.Context, workspaceID uuid.
 func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid.UUID, query string, excludeID uuid.UUID, limit int) ([]domain.Contact, error) {
 	q := "%" + strings.ToLower(query) + "%"
 	rows, err := r.pool.Query(ctx, `
-		SELECT DISTINCT c.id, c.name, c.email, c.tags, c.closed_at, c.created_at, c.updated_at, c.bot_active, c.bot_paused_at
+		SELECT DISTINCT c.id, c.name, c.email, c.attributes, c.tags, c.closed_at, c.created_at, c.updated_at, c.bot_active, c.bot_paused_at
 		FROM contacts c
 		LEFT JOIN contact_identities ci ON ci.contact_id = c.id
 		WHERE c.workspace_id = $1
@@ -267,8 +386,15 @@ func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid
 	var list []domain.Contact
 	for rows.Next() {
 		var c domain.Contact
-		if err := rows.Scan(&c.ID, &c.Name, &c.Email, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt, &c.BotActive, &c.BotPausedAt); err != nil {
+		var attrsRaw []byte
+		if err := rows.Scan(&c.ID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt, &c.BotActive, &c.BotPausedAt); err != nil {
 			return nil, err
+		}
+		if len(attrsRaw) > 0 {
+			_ = json.Unmarshal(attrsRaw, &c.Attributes)
+		}
+		if c.Attributes == nil {
+			c.Attributes = make(map[string]string)
 		}
 		list = append(list, c)
 	}
