@@ -509,6 +509,46 @@ func TestCampaignHandler(t *testing.T) {
 		if recGet.Code != http.StatusOK {
 			t.Errorf("expected status 200 for APIGet, got %d", recGet.Code)
 		}
+
+		// 7. APIPause & APIResume
+		reqPause := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/pause", ws.ID, createdCamp.ID), nil)
+		recPause := httptest.NewRecorder()
+		cPause := e.NewContext(reqPause, recPause)
+		cPause.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/pause")
+		cPause.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: createdCamp.ID.String()},
+		})
+
+		if err := h.APIPause(cPause); err != nil {
+			t.Fatalf("APIPause failed: %v", err)
+		}
+		if recPause.Code != http.StatusOK {
+			t.Errorf("expected status 200 for APIPause, got %d", recPause.Code)
+		}
+
+		reqResume := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/resume", ws.ID, createdCamp.ID), nil)
+		recResume := httptest.NewRecorder()
+		cResume := e.NewContext(reqResume, recResume)
+		cResume.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/resume")
+		cResume.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: createdCamp.ID.String()},
+		})
+
+		if err := h.APIResume(cResume); err != nil {
+			t.Fatalf("APIResume failed: %v", err)
+		}
+		if recResume.Code != http.StatusOK {
+			t.Errorf("expected status 200 for APIResume, got %d", recResume.Code)
+		}
+		var resumedCamp domain.Campaign
+		if err := json.Unmarshal(recResume.Body.Bytes(), &resumedCamp); err != nil {
+			t.Fatalf("failed to unmarshal resumed campaign: %v", err)
+		}
+		if resumedCamp.Status != domain.CampaignStatusSending {
+			t.Errorf("expected resumed campaign status %s, got %s", domain.CampaignStatusSending, resumedCamp.Status)
+		}
 	})
 
 	t.Run("Tag Filtering and Selector", func(t *testing.T) {

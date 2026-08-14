@@ -59,11 +59,7 @@ func (h *CampaignHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error)
 }
 
 func (h *CampaignHandler) List(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -90,11 +86,7 @@ func (h *CampaignHandler) List(c *echo.Context) error {
 }
 
 func (h *CampaignHandler) NewForm(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -270,11 +262,7 @@ func (h *CampaignHandler) UploadCSV(c *echo.Context) error {
 }
 
 func (h *CampaignHandler) Create(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -415,7 +403,7 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 	}
 
 	// Redirect back to campaigns list page
-	c.Response().Header().Set("HX-Redirect", fmt.Sprintf("/admin/workspaces/%s/campaigns", workspaceIDStr))
+	c.Response().Header().Set("HX-Redirect", fmt.Sprintf("/admin/workspaces/%s/campaigns", workspaceID.String()))
 	return c.String(http.StatusOK, "")
 }
 
@@ -840,10 +828,10 @@ func (h *CampaignHandler) APIResume(c *echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
 	}
 
-	if err := h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusRunning); err != nil {
+	if err := h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusSending); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to resume campaign"})
 	}
-	camp.Status = domain.CampaignStatusRunning
+	camp.Status = domain.CampaignStatusSending
 
 	return c.JSON(http.StatusOK, camp)
 }

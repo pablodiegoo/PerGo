@@ -189,11 +189,11 @@ func DeduplicateUUIDs(ids []uuid.UUID) []uuid.UUID {
 }
 
 // TagResolutionResult bundles the resolved recipient records (including pending and skipped),
-// valid outbound recipients to be dispatched, and the set of seen recipient phones/identities.
+// valid outbound recipients to be dispatched, and the set of seen recipient identities.
 type TagResolutionResult struct {
-	Records    []CampaignRecipientRecord
-	Recipients []CampaignRecipient
-	SeenPhones map[string]bool
+	Records        []CampaignRecipientRecord
+	Recipients     []CampaignRecipient
+	SeenIdentities map[string]bool
 }
 
 // ResolveTagRecipients resolves contacts from specified tag IDs into campaign recipient records and recipients.
@@ -206,7 +206,7 @@ func ResolveTagRecipients(
 	tagIDs []uuid.UUID,
 	channelFilter string,
 ) (TagResolutionResult, error) {
-	seenPhones := make(map[string]bool)
+	seenIdentities := make(map[string]bool)
 	seenContactIDs := make(map[uuid.UUID]bool)
 	var records []CampaignRecipientRecord
 	var recipients []CampaignRecipient
@@ -214,9 +214,9 @@ func ResolveTagRecipients(
 	uniqueIDs := DeduplicateUUIDs(tagIDs)
 	if lister == nil || len(uniqueIDs) == 0 {
 		return TagResolutionResult{
-			Records:    records,
-			Recipients: recipients,
-			SeenPhones: seenPhones,
+			Records:        records,
+			Recipients:     recipients,
+			SeenIdentities: seenIdentities,
 		}, nil
 	}
 
@@ -259,11 +259,10 @@ func ResolveTagRecipients(
 			vars["name"] = contact.Name
 
 			if phone != "" {
-				if seenPhones[phone] {
+				if seenIdentities[phone] {
 					continue
 				}
-				seenPhones[phone] = true
-
+				seenIdentities[phone] = true
 
 				records = append(records, CampaignRecipientRecord{
 					ContactID: &contactID,
@@ -295,10 +294,10 @@ func ResolveTagRecipients(
 					skippedIdentity = contact.ID.String()
 				}
 
-				if seenPhones[skippedIdentity] {
+				if seenIdentities[skippedIdentity] {
 					continue
 				}
-				seenPhones[skippedIdentity] = true
+				seenIdentities[skippedIdentity] = true
 
 				records = append(records, CampaignRecipientRecord{
 					ContactID: &contactID,
@@ -311,10 +310,73 @@ func ResolveTagRecipients(
 	}
 
 	return TagResolutionResult{
-		Records:    records,
-		Recipients: recipients,
-		SeenPhones: seenPhones,
+		Records:        records,
+		Recipients:     recipients,
+		SeenIdentities: seenIdentities,
 	}, nil
+}
+
+// MergeTagAndCSVRecipients reconciles dynamic tag resolution results with static CSV recipients.
+// Tag contact identity wins (ADR-0010), but CSV variables merge on top so campaign-specific data
+// supplements the contact's stored attributes.
+func MergeTagAndCSVRecipients(tagRes TagResolutionResult, csvRecipients []CampaignRecipient) ([]CampaignRecipientRecord, []CampaignRecipient) {
+	allRecords := make([]CampaignRecipientRecord, 0, len(tagRes.Records)+len(csvRecipients))
+	allRecords = append(allRecords, tagRes.Records...)
+
+	mergedRecipients := make([]CampaignRecipient, 0, len(tagRes.Recipients)+len(csvRecipients))
+	mergedRecipients = append(mergedRecipients, tagRes.Recipients...)
+
+	seenIdentities := make(map[string]bool, len(tagRes.SeenIdentities))
+	for k, v := range tagRes.SeenIdentities {
+		seenIdentities[k] = v
+	}
+
+	for _, csvRec := range csvRecipients {
+		phone := csvRec.To
+		if clean, valid := SanitizePhone(phone); valid {
+			phone = clean
+		}
+		if seenIdentities[phone] {
+			foundPending := false
+			for i, rec := range allRecords {
+				if rec.Phone == phone {
+					if rec.Status == RecipientStatusPending {
+						foundPending = true
+						allRecords[i].Variables = MergeVariables(allRecords[i].Variables, csvRec.Variables)
+					} else if rec.Status == RecipientStatusSkipped {
+						allRecords[i].Status = RecipientStatusPending
+						allRecords[i].Variables = MergeVariables(allRecords[i].Variables, csvRec.Variables)
+						mergedRecipients = append(mergedRecipients, CampaignRecipient{
+							To:        phone,
+							Variables: allRecords[i].Variables,
+						})
+					}
+					break
+				}
+			}
+			if foundPending {
+				for i, mr := range mergedRecipients {
+					if mr.To == phone {
+						mergedRecipients[i].Variables = MergeVariables(mergedRecipients[i].Variables, csvRec.Variables)
+						break
+					}
+				}
+			}
+			continue
+		}
+		seenIdentities[phone] = true
+		allRecords = append(allRecords, CampaignRecipientRecord{
+			Phone:     phone,
+			Status:    RecipientStatusPending,
+			Variables: csvRec.Variables,
+		})
+		mergedRecipients = append(mergedRecipients, CampaignRecipient{
+			To:        phone,
+			Variables: csvRec.Variables,
+		})
+	}
+
+	return allRecords, mergedRecipients
 }
 
 // copyVariables creates a shallow copy of a string map.

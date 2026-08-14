@@ -196,59 +196,7 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 	}
 
 	// 2. Merge with static CSV recipients (stored in campaign.Recipients at creation time)
-	allRecords := make([]domain.CampaignRecipientRecord, 0, len(tagRes.Records)+len(campaign.Recipients))
-	allRecords = append(allRecords, tagRes.Records...)
-
-	mergedRecipients := make([]domain.CampaignRecipient, 0, len(tagRes.Recipients)+len(campaign.Recipients))
-	mergedRecipients = append(mergedRecipients, tagRes.Recipients...)
-
-	for _, csvRec := range campaign.Recipients {
-		phone := csvRec.To
-		if clean, valid := domain.SanitizePhone(phone); valid {
-			phone = clean
-		}
-		if tagRes.SeenPhones[phone] {
-			// Tag contact identity wins (ADR-0010), but CSV variables
-			// merge on top so campaign-specific data (e.g. {{discount_code}})
-			// supplements the contact's stored attributes.
-			foundPending := false
-			for i, rec := range allRecords {
-				if rec.Phone == phone {
-					if rec.Status == domain.RecipientStatusPending {
-						foundPending = true
-						allRecords[i].Variables = domain.MergeVariables(allRecords[i].Variables, csvRec.Variables)
-					} else if rec.Status == domain.RecipientStatusSkipped {
-						allRecords[i].Status = domain.RecipientStatusPending
-						allRecords[i].Variables = domain.MergeVariables(allRecords[i].Variables, csvRec.Variables)
-						mergedRecipients = append(mergedRecipients, domain.CampaignRecipient{
-							To:        phone,
-							Variables: allRecords[i].Variables,
-						})
-					}
-					break
-				}
-			}
-			if foundPending {
-				for i, mr := range mergedRecipients {
-					if mr.To == phone {
-						mergedRecipients[i].Variables = domain.MergeVariables(mergedRecipients[i].Variables, csvRec.Variables)
-						break
-					}
-				}
-			}
-			continue
-		}
-		tagRes.SeenPhones[phone] = true
-		allRecords = append(allRecords, domain.CampaignRecipientRecord{
-			Phone:     phone,
-			Status:    domain.RecipientStatusPending,
-			Variables: csvRec.Variables,
-		})
-		mergedRecipients = append(mergedRecipients, domain.CampaignRecipient{
-			To:        phone,
-			Variables: csvRec.Variables,
-		})
-	}
+	allRecords, mergedRecipients := domain.MergeTagAndCSVRecipients(tagRes, campaign.Recipients)
 
 	// 3. Handle zero recipients (no records at all)
 	if len(allRecords) == 0 {

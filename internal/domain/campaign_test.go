@@ -193,8 +193,8 @@ func TestResolveTagRecipients(t *testing.T) {
 	if res.Records[1].Status != RecipientStatusSkipped {
 		t.Errorf("expected c2 to be skipped, got status %s", res.Records[1].Status)
 	}
-	if !res.SeenPhones["5511999998888"] {
-		t.Errorf("expected seenPhones['5511999998888'] to be true")
+	if !res.SeenIdentities["5511999998888"] {
+		t.Errorf("expected seenIdentities['5511999998888'] to be true")
 	}
 }
 
@@ -252,8 +252,8 @@ func TestResolveTagRecipients_ChannelFilter(t *testing.T) {
 	if res.Recipients[0].To != "5511999998888" {
 		t.Errorf("expected recipient Alice, got %s", res.Recipients[0].To)
 	}
-	if !res.SeenPhones["5511999998888"] || !res.SeenPhones["5521988887777"] {
-		t.Errorf("expected seenPhones to contain both Alice and Bob's identities")
+	if !res.SeenIdentities["5511999998888"] || !res.SeenIdentities["5521988887777"] {
+		t.Errorf("expected seenIdentities to contain both Alice and Bob's identities")
 	}
 
 	// Empty filter — both should match as pending if they have valid phones
@@ -307,8 +307,8 @@ func TestResolveTagRecipients_SkippedNoIdentities(t *testing.T) {
 	if len(res.Recipients) != 0 {
 		t.Errorf("expected 0 recipients, got %d", len(res.Recipients))
 	}
-	if !res.SeenPhones["carol@example.com"] {
-		t.Errorf("expected seenPhones to contain carol@example.com")
+	if !res.SeenIdentities["carol@example.com"] {
+		t.Errorf("expected seenIdentities to contain carol@example.com")
 	}
 }
 
@@ -386,5 +386,74 @@ func TestResolveTagRecipients_CustomAttributes(t *testing.T) {
 	}
 	if bobRecord.Variables["plan"] != "Enterprise" {
 		t.Errorf("expected variable plan 'Enterprise', got %q", bobRecord.Variables["plan"])
+	}
+}
+
+func TestMergeTagAndCSVRecipients(t *testing.T) {
+	tagRes := TagResolutionResult{
+		Records: []CampaignRecipientRecord{
+			{
+				Phone:     "5511999998888",
+				Status:    RecipientStatusPending,
+				Variables: map[string]string{"name": "Alice", "city": "SP"},
+			},
+			{
+				Phone:     "5511977776666",
+				Status:    RecipientStatusSkipped,
+				Variables: map[string]string{"name": "Bob"},
+			},
+		},
+		Recipients: []CampaignRecipient{
+			{
+				To:        "5511999998888",
+				Variables: map[string]string{"name": "Alice", "city": "SP"},
+			},
+		},
+		SeenIdentities: map[string]bool{
+			"5511999998888": true,
+			"5511977776666": true,
+		},
+	}
+
+	csvRecipients := []CampaignRecipient{
+		// CSV overrides Alice's discount variable
+		{
+			To:        "5511999998888",
+			Variables: map[string]string{"discount": "30%"},
+		},
+		// CSV provides valid phone for skipped Bob
+		{
+			To:        "5511977776666",
+			Variables: map[string]string{"coupon": "WELCOME"},
+		},
+		// CSV introduces new recipient Carol
+		{
+			To:        "+55 (11) 95555-4444",
+			Variables: map[string]string{"name": "Carol"},
+		},
+	}
+
+	allRecords, mergedRecipients := MergeTagAndCSVRecipients(tagRes, csvRecipients)
+
+	if len(allRecords) != 3 {
+		t.Fatalf("expected 3 total records, got %d", len(allRecords))
+	}
+	if len(mergedRecipients) != 3 {
+		t.Fatalf("expected 3 merged active recipients, got %d", len(mergedRecipients))
+	}
+
+	// Alice: variables merged
+	if allRecords[0].Variables["discount"] != "30%" || allRecords[0].Variables["city"] != "SP" {
+		t.Errorf("Alice variables not merged properly: %v", allRecords[0].Variables)
+	}
+
+	// Bob: status changed from Skipped to Pending
+	if allRecords[1].Status != RecipientStatusPending || allRecords[1].Variables["coupon"] != "WELCOME" {
+		t.Errorf("Bob status or variables not updated properly: %v, status: %s", allRecords[1].Variables, allRecords[1].Status)
+	}
+
+	// Carol: added as pending
+	if allRecords[2].Phone != "5511955554444" || allRecords[2].Status != RecipientStatusPending {
+		t.Errorf("Carol not added as sanitized pending recipient: %v", allRecords[2])
 	}
 }
