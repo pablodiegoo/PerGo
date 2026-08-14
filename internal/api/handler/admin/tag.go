@@ -418,12 +418,6 @@ func (h *TagAdminHandler) ExportContactsCSV(c *echo.Context) error {
 	c.Response().Header().Set("Content-Type", "text/csv")
 	c.Response().Header().Set("Content-Disposition", "attachment; filename=contacts.csv")
 
-	return domain.WriteContactsCSV(c.Response(), contacts, func(contactID uuid.UUID) []string {
-		tags, _ := h.tagRepo.GetContactTags(c.Request().Context(), workspaceID, contactID)
-		var tagNames []string
-		for _, t := range tags {
-			tagNames = append(tagNames, t.Name)
-		}
-		return tagNames
-	})
+	return domain.WriteContactsCSV(c.Response(), contacts)
 }
+

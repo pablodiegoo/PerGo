@@ -3,6 +3,7 @@ package domain
 import (
 	"encoding/csv"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -35,12 +36,28 @@ type ContactIdentity struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-// WriteContactsCSV serializes contacts with their tag names into CSV format.
-// fetchTagNames is a callback that returns tag names for a given contact ID,
-// allowing the caller to supply the data source (database, cache, etc.).
-func WriteContactsCSV(w io.Writer, contacts []Contact, fetchTagNames func(contactID uuid.UUID) []string) error {
+// WriteContactsCSV serializes contacts into CSV format without database dependencies.
+// Custom attributes (if present) are dynamically appended as trailing columns sorted alphabetically.
+func WriteContactsCSV(w io.Writer, contacts []Contact) error {
 	writer := csv.NewWriter(w)
-	if err := writer.Write([]string{"id", "name", "email", "channel", "sender_identity", "tags", "created_at"}); err != nil {
+
+	// Collect unique custom attribute keys across all contacts
+	attrKeyMap := make(map[string]struct{})
+	for _, c := range contacts {
+		for k := range c.Attributes {
+			attrKeyMap[k] = struct{}{}
+		}
+	}
+
+	var attrKeys []string
+	for k := range attrKeyMap {
+		attrKeys = append(attrKeys, k)
+	}
+	sort.Strings(attrKeys)
+
+	headers := []string{"id", "name", "email", "channel", "sender_identity", "tags", "created_at"}
+	headers = append(headers, attrKeys...)
+	if err := writer.Write(headers); err != nil {
 		return err
 	}
 
@@ -51,23 +68,39 @@ func WriteContactsCSV(w io.Writer, contacts []Contact, fetchTagNames func(contac
 			channelStr = contact.Identities[0].Channel
 			identityStr = contact.Identities[0].SenderIdentity
 		}
-		tagNames := fetchTagNames(contact.ID)
 		email := ""
 		if contact.Email != nil {
 			email = *contact.Email
 		}
-		if err := writer.Write([]string{
+		tagStr := strings.Join(contact.Tags, ",")
+		var createdAtStr string
+		if !contact.CreatedAt.IsZero() {
+			createdAtStr = contact.CreatedAt.Format(time.RFC3339)
+		}
+
+		row := []string{
 			contact.ID.String(),
 			contact.Name,
 			email,
 			channelStr,
 			identityStr,
-			strings.Join(tagNames, ","),
-			contact.CreatedAt.Format(time.RFC3339),
-		}); err != nil {
+			tagStr,
+			createdAtStr,
+		}
+
+		for _, k := range attrKeys {
+			val := ""
+			if contact.Attributes != nil {
+				val = contact.Attributes[k]
+			}
+			row = append(row, val)
+		}
+
+		if err := writer.Write(row); err != nil {
 			return err
 		}
 	}
 	writer.Flush()
 	return writer.Error()
 }
+
