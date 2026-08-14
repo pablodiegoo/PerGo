@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -195,12 +196,18 @@ func (h *WorkspaceHandler) GenerateWebhookSecret(c *echo.Context) error {
 	if req.WebhookSecret != "" {
 		secret = req.WebhookSecret
 		if err := h.Repo.SetWebhookSecret(c.Request().Context(), id, secret); err != nil {
+			if errors.Is(err, repository.ErrWorkspaceNotFound) {
+				return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+			}
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to set webhook secret"})
 		}
 	} else {
 		var genErr error
 		secret, genErr = h.Repo.GenerateWebhookSecret(c.Request().Context(), id)
 		if genErr != nil {
+			if errors.Is(genErr, repository.ErrWorkspaceNotFound) {
+				return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+			}
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate webhook secret"})
 		}
 	}

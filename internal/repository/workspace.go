@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"time"
 
@@ -58,13 +59,23 @@ func (r *WorkspaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*Works
 	return &ws, nil
 }
 
+var (
+	ErrWorkspaceNotFound = errors.New("workspace not found")
+)
+
 // SetWebhookSecret sets or updates a workspace's webhook secret key.
 func (r *WorkspaceRepository) SetWebhookSecret(ctx context.Context, id uuid.UUID, secret string) error {
-	_, err := r.pool.Exec(ctx,
+	tag, err := r.pool.Exec(ctx,
 		`UPDATE workspaces SET webhook_secret = $2, updated_at = NOW() WHERE id = $1`,
 		id, secret,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to set webhook secret: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("workspace %s: %w", id, ErrWorkspaceNotFound)
+	}
+	return nil
 }
 
 // GenerateWebhookSecret generates a new 32-byte hex-encoded secret for a workspace.
