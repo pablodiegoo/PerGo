@@ -164,11 +164,68 @@ func TestCampaignHandler(t *testing.T) {
 		if err := h.Create(c); err != nil {
 			t.Fatalf("Create failed: %v", err)
 		}
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("expected status 400, got %d", rec.Code)
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Errorf("expected status 422, got %d", rec.Code)
 		}
 		if !strings.Contains(rec.Body.String(), "A campanha precisa de pelo menos um destinatário. Selecione uma tag ou envie um CSV.") {
 			t.Errorf("expected validation error, got: %s", rec.Body.String())
+		}
+	})
+
+	t.Run("Create Campaign Form - Multiple Tags tag_ids[]", func(t *testing.T) {
+		tag1, err := tagRepo.CreateTag(ctx, ws.ID, "Tag Form 1", "#112233")
+		if err != nil {
+			t.Fatalf("failed to create tag1: %v", err)
+		}
+		tag2, err := tagRepo.CreateTag(ctx, ws.ID, "Tag Form 2", "#445566")
+		if err != nil {
+			t.Fatalf("failed to create tag2: %v", err)
+		}
+
+		form := url.Values{}
+		form.Set("name", "Multi Tag Campaign Form")
+		form.Set("channel", "whatsapp")
+		form.Set("batch_size", "50")
+		form.Set("delay_seconds", "3")
+		form.Set("body_template", "Hello {{name}}")
+		form.Add("tag_ids[]", tag1.ID.String())
+		form.Add("tag_ids[]", tag2.ID.String())
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns", ws.ID), strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+		})
+
+		if err := h.Create(c); err != nil {
+			t.Fatalf("Create failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200 OK, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		camps, err := campaignRepo.ListByWorkspace(ctx, ws.ID)
+		if err != nil {
+			t.Fatalf("ListByWorkspace failed: %v", err)
+		}
+		var found *domain.Campaign
+		for i := range camps {
+			if camps[i].Name == "Multi Tag Campaign Form" {
+				found = &camps[i]
+				break
+			}
+		}
+		if found == nil {
+			t.Fatalf("Multi Tag Campaign Form not found in DB")
+		}
+		defer func() {
+			_ = campaignRepo.Delete(ctx, found.ID)
+		}()
+		if len(found.TagIDs) != 2 {
+			t.Fatalf("expected 2 tag_ids on campaign, got %d: %v", len(found.TagIDs), found.TagIDs)
 		}
 	})
 
@@ -381,8 +438,8 @@ func TestCampaignHandler(t *testing.T) {
 		if err := h.APICreate(cFail2); err != nil {
 			t.Fatalf("APICreate failed: %v", err)
 		}
-		if recFail2.Code != http.StatusBadRequest {
-			t.Errorf("expected status 400 for missing recipients, got %d", recFail2.Code)
+		if recFail2.Code != http.StatusUnprocessableEntity {
+			t.Errorf("expected status 422 for missing recipients, got %d", recFail2.Code)
 		}
 
 		// 4. Valid Creation
@@ -637,7 +694,7 @@ func TestCampaignHandler(t *testing.T) {
 			t.Errorf("expected 0 campaign_recipients for tags-only campaign, got: %d", len(tagsOnlyRecords))
 		}
 
-		// 6. Test: create campaign with neither tags nor CSV → HTTP 400
+		// 6. Test: create campaign with neither tags nor CSV → HTTP 422
 		noSourceJSON := `{"name":"Empty Sources","connection_slug":"waba-rest-test"}`
 		reqNoSource := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), strings.NewReader(noSourceJSON))
 		reqNoSource.Header.Set("Content-Type", "application/json")
@@ -649,8 +706,8 @@ func TestCampaignHandler(t *testing.T) {
 		if err := h.APICreate(cNoSource); err != nil {
 			t.Fatalf("APICreate no-source failed: %v", err)
 		}
-		if recNoSource.Code != http.StatusBadRequest {
-			t.Errorf("expected status 400 for no recipients and no tags, got %d", recNoSource.Code)
+		if recNoSource.Code != http.StatusUnprocessableEntity {
+			t.Errorf("expected status 422 for no recipients and no tags, got %d", recNoSource.Code)
 		}
 	})
 }

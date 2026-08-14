@@ -204,9 +204,12 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 			</button>
 		</div>
 
+		<div id="campaign-create-alert"></div>
+
 		<form
 			hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns", workspaceID) }
 			hx-swap="none"
+			hx-on::response-error="document.getElementById('campaign-create-alert').innerHTML = '<div class=\'alert bg-rose-50 text-rose-800 border border-rose-200 rounded-lg p-3 text-xs mb-4 flex items-center gap-2\'><svg xmlns=\'http://www.w3.org/2000/svg\' class=\'h-4 w-4 text-rose-600 flex-shrink-0\' viewBox=\'0 0 20 20\' fill=\'currentColor\'><path fill-rule=\'evenodd\' d=\'M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z\' clip-rule=\'evenodd\'/></svg><span>' + (event.detail.xhr.responseText || 'Erro ao criar campanha.') + '</span></div>'"
 			id="campaign-create-form"
 			class="space-y-4"
 		>
@@ -238,15 +241,16 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 					} else {
 						<div class="flex flex-wrap gap-2 p-3 border border-zinc-200 rounded-md bg-zinc-50/50">
 							for _, tag := range tags {
+								{{ color := tagColorOrDefault(tag.Color) }}
 								<label class="cursor-pointer select-none group">
 									<input type="checkbox" name="tag_ids[]" value={ tag.ID.String() } class="sr-only peer"/>
 									<span
-										class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border-2 transition-all duration-150 peer-checked:shadow-sm"
-										style={ fmt.Sprintf("border-color: %s; color: %s; background-color: %s20", tagColorOrDefault(tag.Color), tagColorOrDefault(tag.Color), tagColorOrDefault(tag.Color)) }
+										class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border-2 transition-all duration-150 peer-checked:shadow-sm peer-checked:ring-2 peer-checked:ring-offset-1"
+										style={ fmt.Sprintf("border-color: %s; color: %s; background-color: %s20", color, color, color) }
 									>
 										<span
-											class="w-2 h-2 rounded-full opacity-30 peer-checked:opacity-100 transition-opacity"
-											style={ fmt.Sprintf("background-color: %s", tagColorOrDefault(tag.Color)) }
+											class="w-2 h-2 rounded-full opacity-40 peer-checked:opacity-100 transition-opacity"
+											style={ fmt.Sprintf("background-color: %s", color) }
 										></span>
 										{ tag.Name }
 									</span>

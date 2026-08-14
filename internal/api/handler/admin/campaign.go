@@ -319,10 +319,12 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		}
 	}
 	_ = c.Request().ParseForm()
-	if tagIDsVals, ok := c.Request().Form["tag_ids"]; ok {
-		for _, tidStr := range tagIDsVals {
-			if parsedID, err := uuid.Parse(tidStr); err == nil {
-				formTagIDs = append(formTagIDs, parsedID)
+	for _, key := range []string{"tag_ids", "tag_ids[]"} {
+		if tagIDStrings, ok := c.Request().Form[key]; ok {
+			for _, tagIDStr := range tagIDStrings {
+				if parsedID, err := uuid.Parse(tagIDStr); err == nil {
+					formTagIDs = append(formTagIDs, parsedID)
+				}
 			}
 		}
 	}
@@ -343,7 +345,7 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 
 	// Validation: campaign requires at least one source of recipients (tags or CSV)
 	if len(formTagIDs) == 0 && len(recipients) == 0 {
-		return c.String(http.StatusBadRequest, "A campanha precisa de pelo menos um destinatário. Selecione uma tag ou envie um CSV.")
+		return c.String(http.StatusUnprocessableEntity, "A campanha precisa de pelo menos um destinatário. Selecione uma tag ou envie um CSV.")
 	}
 
 	// Resolve template parameters from form if WABA template selected
@@ -656,7 +658,7 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 
 	// 2. Pre-flight Recipient Validation
 	if len(req.Recipients) == 0 && len(targetTagIDs) == 0 {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "campaign requires at least one recipient or a valid tag_id/tag_ids"})
+		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "campaign requires at least one recipient or a valid tag_id/tag_ids"})
 	}
 
 	batchSize := req.BatchSize
