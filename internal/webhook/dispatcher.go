@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -12,11 +13,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/platform/breaker"
+	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -170,16 +173,17 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, task WebhookDeliveryTa
 		}
 	}
 
-	timestamp := fmt.Sprintf("%d", time.Now().Unix())
-	signature := SignPayload(payloadBytes, secret, timestamp)
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, sub.URL, bytes.NewReader(payloadBytes))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-PerGo-Signature", signature)
+	if len(secret) > 0 {
+		timestamp := fmt.Sprintf("%d", time.Now().Unix())
+		signature := SignPayload(payloadBytes, secret, timestamp)
+		req.Header.Set("X-PerGo-Signature", signature)
+	}
 	if task.TraceID != "" {
 		req.Header.Set("X-Trace-ID", task.TraceID)
 	}
@@ -265,3 +269,59 @@ func SignPayload(payload []byte, secret []byte, timestamp string) string {
 	signature := hex.EncodeToString(mac.Sum(nil))
 	return fmt.Sprintf("t=%s,v1=%s", timestamp, signature)
 }
+
+// VerifyPerGoSignature validates a webhook HMAC-SHA256 signature header against raw payload bytes and a secret.
+// It verifies that the signature header is well-formed (t=<ts>,v1=<sig>), checks replay tolerance (5-minute window),
+// and performs constant-time comparison of the computed HMAC with the expected HMAC.
+func VerifyPerGoSignature(rawBody []byte, signatureHeader string, secret string) bool {
+	return VerifySignatureWithTolerance(rawBody, signatureHeader, []byte(secret), 5*time.Minute)
+}
+
+// VerifySignatureWithTolerance checks the webhook HMAC signature with custom replay tolerance.
+func VerifySignatureWithTolerance(rawBody []byte, signatureHeader string, secret []byte, tolerance time.Duration) bool {
+	if signatureHeader == "" || len(secret) == 0 {
+		return false
+	}
+
+	var timestamp, expectedSig string
+	parts := strings.Split(signatureHeader, ",")
+	for _, part := range parts {
+		kv := strings.SplitN(part, "=", 2)
+		if len(kv) == 2 {
+			switch strings.TrimSpace(kv[0]) {
+			case "t":
+				timestamp = strings.TrimSpace(kv[1])
+			case "v1":
+				expectedSig = strings.TrimSpace(kv[1])
+			}
+		}
+	}
+
+	if timestamp == "" || expectedSig == "" {
+		return false
+	}
+
+	ts, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		return false
+	}
+
+	if tolerance > 0 {
+		diff := time.Now().Unix() - ts
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > int64(tolerance.Seconds()) {
+			return false // Replay attack protection
+		}
+	}
+
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte(timestamp))
+	mac.Write([]byte("."))
+	mac.Write(rawBody)
+	computedSig := hex.EncodeToString(mac.Sum(nil))
+
+	return subtle.ConstantTimeCompare([]byte(computedSig), []byte(expectedSig)) == 1
+}
+

@@ -8,6 +8,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -17,6 +18,23 @@ type WorkspaceHandler struct {
 	Repo        *repository.WorkspaceRepository
 	APIKeys     *repository.APIKeyRepository
 	ExternalURL string
+}
+
+func (h *WorkspaceHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
+	if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
+		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
+			return id, nil
+		}
+	}
+	if idStr, err := echo.PathParam[string](c, "id"); err == nil && idStr != "" {
+		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
+			return id, nil
+		}
+	}
+	if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
+		return wsID, nil
+	}
+	return uuid.Nil, fmt.Errorf("invalid or missing workspace ID")
 }
 
 // ActiveWorkspace redirects to the detail page of the active workspace.
@@ -140,12 +158,8 @@ func (h *WorkspaceHandler) Delete(c *echo.Context) error {
 
 // GetWebhookSecret returns the workspace's webhook secret key.
 func (h *WorkspaceHandler) GetWebhookSecret(c *echo.Context) error {
-	idStr, err := echo.PathParam[string](c, "id")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
-	}
-	id, err := uuid.Parse(idStr)
-	if err != nil {
+	id, err := h.resolveWorkspaceID(c)
+	if err != nil || id == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
 
@@ -167,18 +181,28 @@ func (h *WorkspaceHandler) GetWebhookSecret(c *echo.Context) error {
 
 // GenerateWebhookSecret generates or regenerates a workspace's webhook secret key.
 func (h *WorkspaceHandler) GenerateWebhookSecret(c *echo.Context) error {
-	idStr, err := echo.PathParam[string](c, "id")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
-	}
-	id, err := uuid.Parse(idStr)
-	if err != nil {
+	id, err := h.resolveWorkspaceID(c)
+	if err != nil || id == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
 
-	secret, err := h.Repo.GenerateWebhookSecret(c.Request().Context(), id)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate webhook secret"})
+	var req struct {
+		WebhookSecret string `json:"webhook_secret"`
+	}
+	_ = c.Bind(&req)
+
+	var secret string
+	if req.WebhookSecret != "" {
+		secret = req.WebhookSecret
+		if err := h.Repo.SetWebhookSecret(c.Request().Context(), id, secret); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to set webhook secret"})
+		}
+	} else {
+		var genErr error
+		secret, genErr = h.Repo.GenerateWebhookSecret(c.Request().Context(), id)
+		if genErr != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to generate webhook secret"})
+		}
 	}
 
 	return c.JSON(http.StatusOK, map[string]string{
@@ -186,4 +210,5 @@ func (h *WorkspaceHandler) GenerateWebhookSecret(c *echo.Context) error {
 		"webhook_secret": secret,
 	})
 }
+
 

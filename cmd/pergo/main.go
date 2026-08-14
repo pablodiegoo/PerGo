@@ -532,6 +532,8 @@ func main() {
 	adminGroup.GET("/workspace/:id", workspaceHandler.Detail)
 	adminGroup.GET("/workspaces/:id/confirm-delete", workspaceHandler.ConfirmDelete)
 	adminGroup.DELETE("/workspaces/:id", workspaceHandler.Delete)
+	adminGroup.GET("/workspaces/:id/webhook-secret", workspaceHandler.GetWebhookSecret)
+	adminGroup.POST("/workspaces/:id/webhook-secret", workspaceHandler.GenerateWebhookSecret)
 
 	// API key management routes
 	apiKeyHandler := &admin.APIKeyHandler{Repo: apiKeyRepo, Workspaces: wsRepo}
@@ -715,6 +717,12 @@ func main() {
 	v1Group.DELETE("/workspaces/:workspace_id/contacts/:contact_id/tags/:tag_id", tagAdminHandler.RemoveContactTag)
 	v1Group.POST("/workspaces/:workspace_id/contacts/import", tagAdminHandler.ImportContactsCSV)
 	v1Group.GET("/workspaces/:workspace_id/contacts/export", tagAdminHandler.ExportContactsCSV)
+
+	// Webhook Secret API routes (v1)
+	v1Group.POST("/workspaces/webhook-secret", workspaceHandler.GenerateWebhookSecret)
+	v1Group.POST("/workspaces/:workspace_id/webhook-secret", workspaceHandler.GenerateWebhookSecret)
+	v1Group.GET("/workspaces/webhook-secret", workspaceHandler.GetWebhookSecret)
+	v1Group.GET("/workspaces/:workspace_id/webhook-secret", workspaceHandler.GetWebhookSecret)
 
 	// Static files
 	e.Static("/static", "static")
