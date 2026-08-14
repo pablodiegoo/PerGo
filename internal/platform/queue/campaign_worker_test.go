@@ -93,13 +93,14 @@ func TestCampaignWorker_Success(t *testing.T) {
 	tmplName := "Ola {{nome}}!"
 	channel := "whatsapp"
 	camp := &domain.Campaign{
-		WorkspaceID:  ws.ID,
-		Name:         "Success Camp",
-		Status:       domain.CampaignStatusSending,
-		BatchSize:    1,
-		DelaySeconds: 1,
-		TemplateName: &tmplName,
-		Channel:      &channel,
+		WorkspaceID:      ws.ID,
+		Name:             "Success Camp",
+		Status:           domain.CampaignStatusSending,
+		BatchSize:        1,
+		DelaySeconds:     1,
+		TemplateName:     &tmplName,
+		Channel:          &channel,
+		FallbackChannels: []string{"whatsapp_cloud", "telegram"},
 		Recipients: []domain.CampaignRecipient{
 			{To: "5511999998888", Variables: map[string]string{"nome": "Maria"}},
 		},
@@ -118,12 +119,13 @@ func TestCampaignWorker_Success(t *testing.T) {
 	// Publish batch task
 	publisher := NewJetStreamPublisher(nc)
 	task := CampaignBatchTask{
-		CampaignID:   camp.ID,
-		WorkspaceID:  ws.ID,
-		BatchIndex:   1,
-		TotalBatches: 1,
-		Recipients:   camp.Recipients,
-		DelaySeconds: 0, // no delay for test speed
+		CampaignID:       camp.ID,
+		WorkspaceID:      ws.ID,
+		BatchIndex:       1,
+		TotalBatches:     1,
+		Recipients:       camp.Recipients,
+		DelaySeconds:     0, // no delay for test speed
+		FallbackChannels: camp.FallbackChannels,
 	}
 	taskBytes, _ := json.Marshal(task)
 	err = publisher.Publish(ctx, "campaigns.batches", taskBytes, uuid.New().String())
@@ -178,6 +180,9 @@ func TestCampaignWorker_Success(t *testing.T) {
 	}
 	if qMsg.Body != "Ola Maria!" {
 		t.Errorf("expected QueueMessage.Body 'Ola Maria!', got %s", qMsg.Body)
+	}
+	if len(qMsg.FallbackChannels) != 2 || qMsg.FallbackChannels[0] != "whatsapp_cloud" || qMsg.FallbackChannels[1] != "telegram" {
+		t.Errorf("expected QueueMessage.FallbackChannels [whatsapp_cloud, telegram], got %v", qMsg.FallbackChannels)
 	}
 	_ = msg.Ack()
 }

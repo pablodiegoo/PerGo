@@ -49,24 +49,29 @@ func (r *CampaignRepository) Create(ctx context.Context, c *domain.Campaign) (*d
 		c.DelaySeconds = 5
 	}
 
+	fallbackChannels := c.FallbackChannels
+	if fallbackChannels == nil {
+		fallbackChannels = []string{}
+	}
+
 	var dbCampaign domain.Campaign
 	err = r.pool.QueryRow(ctx,
 		`INSERT INTO campaigns (
 			workspace_id, connection_id, connection_slug, name, status, batch_size, delay_seconds, 
 			template_name, message_body, channel, tag_id, total_recipients, sent_recipients, failed_recipients, 
-			recipients, skipped_rows, scheduled_at, tag_ids, rate_limit_per_min
-		 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+			recipients, skipped_rows, scheduled_at, tag_ids, rate_limit_per_min, fallback_channels
+		 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 		 RETURNING id, workspace_id, connection_id, connection_slug, name, status, batch_size, delay_seconds, 
 		           template_name, message_body, channel, tag_id, total_recipients, sent_recipients, failed_recipients, 
-		           recipients, skipped_rows, scheduled_at, tag_ids, rate_limit_per_min, created_at, updated_at`,
+		           recipients, skipped_rows, scheduled_at, tag_ids, rate_limit_per_min, fallback_channels, created_at, updated_at`,
 		c.WorkspaceID, c.ConnectionID, c.ConnectionSlug, c.Name, c.Status, c.BatchSize, c.DelaySeconds,
 		c.TemplateName, c.MessageBody, c.Channel, c.TagID, c.TotalRecipients, c.SentRecipients, c.FailedRecipients,
-		recipientsJSON, skippedJSON, c.ScheduledAt, c.TagIDs, c.RateLimitPerMin,
+		recipientsJSON, skippedJSON, c.ScheduledAt, c.TagIDs, c.RateLimitPerMin, fallbackChannels,
 	).Scan(
 		&dbCampaign.ID, &dbCampaign.WorkspaceID, &dbCampaign.ConnectionID, &dbCampaign.ConnectionSlug, &dbCampaign.Name, &dbCampaign.Status,
 		&dbCampaign.BatchSize, &dbCampaign.DelaySeconds, &dbCampaign.TemplateName, &dbCampaign.MessageBody, &dbCampaign.Channel, &dbCampaign.TagID,
 		&dbCampaign.TotalRecipients, &dbCampaign.SentRecipients, &dbCampaign.FailedRecipients,
-		&recipientsJSON, &skippedJSON, &dbCampaign.ScheduledAt, &dbCampaign.TagIDs, &dbCampaign.RateLimitPerMin, &dbCampaign.CreatedAt, &dbCampaign.UpdatedAt,
+		&recipientsJSON, &skippedJSON, &dbCampaign.ScheduledAt, &dbCampaign.TagIDs, &dbCampaign.RateLimitPerMin, &dbCampaign.FallbackChannels, &dbCampaign.CreatedAt, &dbCampaign.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("insert campaign: %w", err)
@@ -89,14 +94,14 @@ func (r *CampaignRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, workspace_id, connection_id, connection_slug, name, status, batch_size, delay_seconds, 
 		        template_name, message_body, channel, tag_id, total_recipients, sent_recipients, failed_recipients, 
-		        recipients, skipped_rows, scheduled_at, tag_ids, rate_limit_per_min, created_at, updated_at
+		        recipients, skipped_rows, scheduled_at, tag_ids, rate_limit_per_min, fallback_channels, created_at, updated_at
 		 FROM campaigns WHERE id = $1`,
 		id,
 	).Scan(
 		&c.ID, &c.WorkspaceID, &c.ConnectionID, &c.ConnectionSlug, &c.Name, &c.Status,
 		&c.BatchSize, &c.DelaySeconds, &c.TemplateName, &c.MessageBody, &c.Channel, &c.TagID,
 		&c.TotalRecipients, &c.SentRecipients, &c.FailedRecipients,
-		&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.TagIDs, &c.RateLimitPerMin, &c.CreatedAt, &c.UpdatedAt,
+		&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.TagIDs, &c.RateLimitPerMin, &c.FallbackChannels, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -272,7 +277,7 @@ func (r *CampaignRepository) ListByWorkspace(ctx context.Context, workspaceID uu
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, workspace_id, connection_id, connection_slug, name, status, batch_size, delay_seconds, 
 		        template_name, message_body, channel, tag_id, total_recipients, sent_recipients, failed_recipients, 
-		        recipients, skipped_rows, scheduled_at, tag_ids, rate_limit_per_min, created_at, updated_at
+		        recipients, skipped_rows, scheduled_at, tag_ids, rate_limit_per_min, fallback_channels, created_at, updated_at
 		 FROM campaigns WHERE workspace_id = $1 ORDER BY created_at DESC`,
 		workspaceID,
 	)
@@ -289,7 +294,7 @@ func (r *CampaignRepository) ListByWorkspace(ctx context.Context, workspaceID uu
 			&c.ID, &c.WorkspaceID, &c.ConnectionID, &c.ConnectionSlug, &c.Name, &c.Status,
 			&c.BatchSize, &c.DelaySeconds, &c.TemplateName, &c.MessageBody, &c.Channel, &c.TagID,
 			&c.TotalRecipients, &c.SentRecipients, &c.FailedRecipients,
-			&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.TagIDs, &c.RateLimitPerMin, &c.CreatedAt, &c.UpdatedAt,
+			&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.TagIDs, &c.RateLimitPerMin, &c.FallbackChannels, &c.CreatedAt, &c.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan campaign: %w", err)
@@ -339,7 +344,7 @@ func (r *CampaignRepository) ClaimDueScheduledCampaigns(ctx context.Context, now
 	          c.batch_size, c.delay_seconds, c.template_name, c.message_body, c.channel, c.tag_id, 
 	          c.total_recipients, c.sent_recipients, c.failed_recipients, 
 	          c.recipients, c.skipped_rows, c.scheduled_at, c.tag_ids, c.rate_limit_per_min, 
-	          c.created_at, c.updated_at`
+	          c.fallback_channels, c.created_at, c.updated_at`
 
 	rows, err := r.pool.Query(ctx, query, now, limit)
 	if err != nil {
@@ -355,7 +360,8 @@ func (r *CampaignRepository) ClaimDueScheduledCampaigns(ctx context.Context, now
 			&c.ID, &c.WorkspaceID, &c.ConnectionID, &c.ConnectionSlug, &c.Name, &c.Status,
 			&c.BatchSize, &c.DelaySeconds, &c.TemplateName, &c.MessageBody, &c.Channel, &c.TagID,
 			&c.TotalRecipients, &c.SentRecipients, &c.FailedRecipients,
-			&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.TagIDs, &c.RateLimitPerMin, &c.CreatedAt, &c.UpdatedAt,
+			&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.TagIDs, &c.RateLimitPerMin, 
+			&c.FallbackChannels, &c.CreatedAt, &c.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan claimed campaign: %w", err)

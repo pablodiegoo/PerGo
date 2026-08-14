@@ -419,6 +419,27 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		}
 	}
 
+	var formFallbackChannels []string
+	if fcStr := c.FormValue("fallback_channels"); fcStr != "" {
+		for _, part := range strings.Split(fcStr, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				formFallbackChannels = append(formFallbackChannels, part)
+			}
+		}
+	}
+	for _, key := range []string{"fallback_channels", "fallback_channels[]"} {
+		if fcSlice, ok := c.Request().Form[key]; ok {
+			for _, ch := range fcSlice {
+				ch = strings.TrimSpace(ch)
+				if ch != "" {
+					formFallbackChannels = append(formFallbackChannels, ch)
+				}
+			}
+		}
+	}
+	formFallbackChannels = domain.DeduplicateStrings(formFallbackChannels)
+
 	var primaryTagID *uuid.UUID
 	if len(formTagIDs) > 0 {
 		primaryTagID = &formTagIDs[0]
@@ -431,22 +452,23 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 
 	connSlug := conn.Slug
 	camp := &domain.Campaign{
-		WorkspaceID:     workspaceID,
-		ConnectionID:    &connectionID,
-		ConnectionSlug:  &connSlug,
-		Name:            name,
-		Status:          status,
-		BatchSize:       batchSize,
-		DelaySeconds:    delaySeconds,
-		RateLimitPerMin: rateLimitPerMin,
-		ScheduledAt:     scheduledAt,
-		TemplateName:    templateName,
-		Channel:         &channel,
-		TagID:           primaryTagID,
-		TagIDs:          formTagIDs,
-		TotalRecipients: len(recipients),
-		Recipients:      recipients,
-		SkippedRows:     skipped,
+		WorkspaceID:      workspaceID,
+		ConnectionID:     &connectionID,
+		ConnectionSlug:   &connSlug,
+		Name:             name,
+		Status:           status,
+		BatchSize:        batchSize,
+		DelaySeconds:     delaySeconds,
+		RateLimitPerMin:  rateLimitPerMin,
+		ScheduledAt:      scheduledAt,
+		TemplateName:     templateName,
+		Channel:          &channel,
+		FallbackChannels: formFallbackChannels,
+		TagID:            primaryTagID,
+		TagIDs:           formTagIDs,
+		TotalRecipients:  len(recipients),
+		Recipients:       recipients,
+		SkippedRows:      skipped,
 	}
 
 	_, err = h.CampaignRepo.Create(c.Request().Context(), camp)

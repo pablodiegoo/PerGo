@@ -252,6 +252,8 @@ func TestCampaignHandler(t *testing.T) {
 		form.Set("body_template", "Ola {{name}}!")
 		form.Set("recipients_data", string(recipientsJSON))
 		form.Set("skipped_data", string(skippedJSON))
+		form.Add("fallback_channels[]", "whatsapp_cloud")
+		form.Add("fallback_channels[]", "telegram")
 
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns", ws.ID), strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -284,6 +286,9 @@ func TestCampaignHandler(t *testing.T) {
 		}
 		if len(camps[0].SkippedRows) != 1 {
 			t.Errorf("expected 1 skipped row in DB, got %d", len(camps[0].SkippedRows))
+		}
+		if len(camps[0].FallbackChannels) != 2 || camps[0].FallbackChannels[0] != "whatsapp_cloud" || camps[0].FallbackChannels[1] != "telegram" {
+			t.Errorf("expected fallback channels [whatsapp_cloud, telegram], got %v", camps[0].FallbackChannels)
 		}
 
 		campaignID := camps[0].ID

@@ -515,3 +515,127 @@ func (r *ContactRepository) UpdateBotState(ctx context.Context, workspaceID, con
 	`, workspaceID, contactID, botActive, pausedAt)
 	return err
 }
+
+// FindIdentityForChannel finds an eligible target identity on targetChannel for the given recipient,
+// inspecting direct formatting or querying cross-channel contact identities in the workspace.
+func (r *ContactRepository) FindIdentityForChannel(ctx context.Context, workspaceID uuid.UUID, recipient string, targetChannel string) (string, bool, error) {
+	clean := strings.TrimSpace(recipient)
+	if clean == "" {
+		return "", false, nil
+	}
+
+	// 1. Target: Email or email variants
+	if targetChannel == "email" || targetChannel == "email_ses" || targetChannel == "email_smtp" || targetChannel == "email_mautic" {
+		if strings.Contains(clean, "@") {
+			return clean, true, nil
+		}
+		var email string
+		err := r.pool.QueryRow(ctx, `
+			SELECT COALESCE(NULLIF(c.email, ''), ci_email.sender_identity)
+			FROM contacts c
+			LEFT JOIN contact_identities ci_lookup ON ci_lookup.contact_id = c.id AND ci_lookup.workspace_id = c.workspace_id
+			LEFT JOIN contact_identities ci_email ON ci_email.contact_id = c.id AND ci_email.workspace_id = c.workspace_id AND ci_email.channel IN ('email', 'email_ses', 'email_smtp', 'email_mautic')
+			WHERE c.workspace_id = $1
+			  AND (
+			      c.id::text = $2
+			      OR c.email = $2
+			      OR ci_lookup.sender_identity = $2
+			      OR (ci_lookup.channel = 'telegram_username' AND LOWER(ci_lookup.sender_identity) = LOWER($2))
+			  )
+			  AND ((c.email IS NOT NULL AND c.email <> '') OR ci_email.sender_identity IS NOT NULL)
+			LIMIT 1
+		`, workspaceID, clean).Scan(&email)
+		if err == nil && email != "" {
+			return email, true, nil
+		}
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return "", false, fmt.Errorf("find identity for channel %s: %w", targetChannel, err)
+		}
+		return "", false, nil
+	}
+
+	// 2. Target: WhatsApp or WhatsApp Cloud
+	if targetChannel == "whatsapp" || targetChannel == "whatsapp_cloud" {
+		if sanitized, ok := domain.SanitizePhone(clean); ok {
+			return sanitized, true, nil
+		}
+		var phone string
+		err := r.pool.QueryRow(ctx, `
+			SELECT ci_target.sender_identity
+			FROM contact_identities ci_target
+			JOIN contacts c ON c.id = ci_target.contact_id AND c.workspace_id = ci_target.workspace_id
+			LEFT JOIN contact_identities ci_lookup ON ci_lookup.contact_id = c.id AND ci_lookup.workspace_id = c.workspace_id
+			WHERE ci_target.workspace_id = $1
+			  AND ci_target.channel IN ('whatsapp', 'whatsapp_cloud', 'phone')
+			  AND (
+			      c.id::text = $2
+			      OR c.email = $2
+			      OR ci_lookup.sender_identity = $2
+			      OR (ci_lookup.channel = 'telegram_username' AND LOWER(ci_lookup.sender_identity) = LOWER($2))
+			  )
+			LIMIT 1
+		`, workspaceID, clean).Scan(&phone)
+		if err == nil && phone != "" {
+			return phone, true, nil
+		}
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return "", false, fmt.Errorf("find identity for channel %s: %w", targetChannel, err)
+		}
+		return "", false, nil
+	}
+
+	// 3. Target: Telegram
+	if targetChannel == "telegram" {
+		if chatID, err := r.ResolveTelegramChatID(ctx, workspaceID, clean); err == nil && chatID != "" {
+			return chatID, true, nil
+		}
+		var tgID string
+		err := r.pool.QueryRow(ctx, `
+			SELECT ci_target.sender_identity
+			FROM contact_identities ci_target
+			JOIN contacts c ON c.id = ci_target.contact_id AND c.workspace_id = ci_target.workspace_id
+			LEFT JOIN contact_identities ci_lookup ON ci_lookup.contact_id = c.id AND ci_lookup.workspace_id = c.workspace_id
+			WHERE ci_target.workspace_id = $1
+			  AND ci_target.channel = 'telegram'
+			  AND (
+			      c.id::text = $2
+			      OR c.email = $2
+			      OR ci_lookup.sender_identity = $2
+			  )
+			LIMIT 1
+		`, workspaceID, clean).Scan(&tgID)
+		if err == nil && tgID != "" {
+			return tgID, true, nil
+		}
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return "", false, fmt.Errorf("find identity for channel %s: %w", targetChannel, err)
+		}
+		return "", false, nil
+	}
+
+	// 4. Other channels
+	var identity string
+	err := r.pool.QueryRow(ctx, `
+		SELECT ci_target.sender_identity
+		FROM contact_identities ci_target
+		JOIN contacts c ON c.id = ci_target.contact_id AND c.workspace_id = ci_target.workspace_id
+		LEFT JOIN contact_identities ci_lookup ON ci_lookup.contact_id = c.id AND ci_lookup.workspace_id = c.workspace_id
+		WHERE ci_target.workspace_id = $1
+		  AND ci_target.channel = $2
+		  AND (
+		      c.id::text = $3
+		      OR c.email = $3
+		      OR ci_lookup.sender_identity = $3
+		  )
+		LIMIT 1
+	`, workspaceID, targetChannel, clean).Scan(&identity)
+	if err == nil && identity != "" {
+		return identity, true, nil
+	}
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return "", false, fmt.Errorf("find identity for channel %s: %w", targetChannel, err)
+	}
+
+	return "", false, nil
+}
+

@@ -76,6 +76,7 @@ type Campaign struct {
 	TemplateName     *string             `json:"template_name,omitempty"`
 	MessageBody      *string             `json:"message_body,omitempty"`
 	Channel          *string             `json:"channel,omitempty"`
+	FallbackChannels []string            `json:"fallback_channels,omitempty"`
 	TagID            *uuid.UUID          `json:"tag_id,omitempty"`
 	TagIDs           []uuid.UUID         `json:"tag_ids,omitempty"`
 	TotalRecipients  int                 `json:"total_recipients"`
@@ -200,6 +201,20 @@ func DeduplicateUUIDs(ids []uuid.UUID) []uuid.UUID {
 		if id != uuid.Nil && !seen[id] {
 			seen[id] = true
 			result = append(result, id)
+		}
+	}
+	return result
+}
+
+// DeduplicateStrings returns a slice of unique non-empty strings preserving input order.
+func DeduplicateStrings(items []string) []string {
+	seen := make(map[string]bool, len(items))
+	result := make([]string, 0, len(items))
+	for _, s := range items {
+		s = strings.TrimSpace(s)
+		if s != "" && !seen[s] {
+			seen[s] = true
+			result = append(result, s)
 		}
 	}
 	return result

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -151,6 +152,8 @@ func (o *DispatchOrchestrator) Process(
 	}
 
 	var finalErr error
+	var lastAttemptedChannel string
+	var lastAttemptedIndex int = startIndex
 	var lastChannel string
 	currentIndex := startIndex
 
@@ -158,6 +161,50 @@ func (o *DispatchOrchestrator) Process(
 		channelName := allChannels[i]
 		lastChannel = channelName
 		currentIndex = i
+
+		// Verify that recipient contact has a valid identity on the target channel
+		resolvedTo, ok := o.resolveRecipientForChannel(ctx, workspaceID, qMsg.To, channelName)
+		if !ok {
+			slog.Warn("orchestrator: recipient contact lacks valid identity on channel, skipping to next fallback",
+				"channel", channelName, "trace_id", traceID, "recipient", qMsg.To, "index", i)
+
+			if o.auditWriter != nil {
+				auditPayload := map[string]any{
+					"trace_id":       traceID,
+					"workspace_id":   workspaceID,
+					"channel":        channelName,
+					"status":         "skipped_no_identity",
+					"recipient":      qMsg.To,
+					"fallback_index": i,
+				}
+				payloadBytes, _ := json.Marshal(auditPayload)
+				_ = o.auditWriter.Write(audit.NewEvent(workspaceID, traceID, "outbound_fallback_transition", payloadBytes))
+			}
+			finalErr = fmt.Errorf("recipient %s has no valid identity for channel %s", qMsg.To, channelName)
+			continue
+		}
+
+		// If transitioning to a fallback channel (i > startIndex), record fallback transition audit event
+		if i > startIndex && o.auditWriter != nil {
+			fromChan := lastAttemptedChannel
+			if fromChan == "" && i > 0 {
+				fromChan = allChannels[i-1]
+			}
+			auditPayload := map[string]any{
+				"trace_id":        traceID,
+				"workspace_id":    workspaceID,
+				"from_channel":    fromChan,
+				"to_channel":      channelName,
+				"target_identity": resolvedTo,
+				"status":          "fallback_transition",
+				"fallback_index":  i,
+			}
+			payloadBytes, _ := json.Marshal(auditPayload)
+			_ = o.auditWriter.Write(audit.NewEvent(workspaceID, traceID, "outbound_fallback_transition", payloadBytes))
+		}
+
+		lastAttemptedChannel = channelName
+		lastAttemptedIndex = i
 
 		if o.dispatchRepo != nil && dispatch != nil {
 			err := o.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "sending", channelName, i, nil)
@@ -169,8 +216,12 @@ func (o *DispatchOrchestrator) Process(
 			o.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "sending", channelName, nil)
 		}
 
-		slog.Info("orchestrator: attempting dispatch", "channel", channelName, "trace_id", traceID, "index", i, "attempt", attempt)
-		respStr, err := o.dispatchToChannel(ctx, channelName, qMsg)
+		qMsgForChannel := *qMsg
+		qMsgForChannel.To = resolvedTo
+		qMsgForChannel.Channel = channelName
+
+		slog.Info("orchestrator: attempting dispatch", "channel", channelName, "trace_id", traceID, "index", i, "attempt", attempt, "to", resolvedTo)
+		respStr, err := o.dispatchToChannel(ctx, channelName, &qMsgForChannel)
 		if err == nil {
 			if o.dispatchRepo != nil && dispatch != nil {
 				_ = o.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "sent", channelName, i, nil)
@@ -185,9 +236,10 @@ func (o *DispatchOrchestrator) Process(
 
 			if o.auditWriter != nil {
 				auditPayload := map[string]any{
-					"request":  qMsg,
+					"request":  qMsgForChannel,
 					"response": respStr,
 					"status":   "sent",
+					"channel":  channelName,
 				}
 				payloadBytes, _ := json.Marshal(auditPayload)
 				_ = o.auditWriter.Write(audit.NewEvent(workspaceID, traceID, "outbound_message", payloadBytes))
@@ -203,10 +255,11 @@ func (o *DispatchOrchestrator) Process(
 
 			if o.auditWriter != nil {
 				auditPayload := map[string]any{
-					"request":  qMsg,
+					"request":  qMsgForChannel,
 					"response": respStr,
 					"status":   "failed",
 					"error":    err.Error(),
+					"channel":  channelName,
 				}
 				payloadBytes, _ := json.Marshal(auditPayload)
 				_ = o.auditWriter.Write(audit.NewEvent(workspaceID, traceID, "outbound_message", payloadBytes))
@@ -224,10 +277,11 @@ func (o *DispatchOrchestrator) Process(
 
 		if o.auditWriter != nil {
 			auditPayload := map[string]any{
-				"request":  qMsg,
+				"request":  qMsgForChannel,
 				"response": respStr,
 				"status":   "failed_transient",
 				"error":    err.Error(),
+				"channel":  channelName,
 			}
 			payloadBytes, _ := json.Marshal(auditPayload)
 			_ = o.auditWriter.Write(audit.NewEvent(workspaceID, traceID, "outbound_message", payloadBytes))
@@ -238,14 +292,86 @@ func (o *DispatchOrchestrator) Process(
 	}
 
 	// All channels exhausted terminally
-	errMsg := "all channels failed: " + finalErr.Error()
+	errMsg := "all channels failed"
+	if finalErr != nil {
+		errMsg += ": " + finalErr.Error()
+	}
+	failedChannel := lastAttemptedChannel
+	failedIndex := lastAttemptedIndex
+	if failedChannel == "" {
+		failedChannel = lastChannel
+		failedIndex = currentIndex
+	}
 	if o.dispatchRepo != nil && dispatch != nil {
-		_ = o.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "failed", lastChannel, currentIndex, &errMsg)
-		o.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "failed", lastChannel, &errMsg)
+		_ = o.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "failed", failedChannel, failedIndex, &errMsg)
+		o.publishWebhookEvent(ctx, workspaceID, traceID, dispatch.ID, "failed", failedChannel, &errMsg)
 	}
 	slog.Error("orchestrator: all fallback channels exhausted (terminal failure)", "error", finalErr, "trace_id", traceID)
 	o.ack(msg, workspaceID)
 	return finalErr
+}
+
+// resolveRecipientForChannel checks whether the recipient contact has a valid identity on the target channel,
+// returning the resolved recipient address and true, or empty and false if ineligible.
+func (o *DispatchOrchestrator) resolveRecipientForChannel(ctx context.Context, workspaceID uuid.UUID, originalTo string, targetChannel string) (string, bool) {
+	if o.contactRepo != nil && workspaceID != uuid.Nil {
+		resolved, ok, err := o.contactRepo.FindIdentityForChannel(ctx, workspaceID, originalTo, targetChannel)
+		if err == nil && ok && resolved != "" {
+			return resolved, true
+		}
+	}
+
+	clean := strings.TrimSpace(originalTo)
+	if clean == "" {
+		return "", false
+	}
+
+	switch targetChannel {
+	case "whatsapp", "whatsapp_cloud":
+		if sanitized, ok := domain.SanitizePhone(clean); ok {
+			return sanitized, true
+		}
+		if o.contactRepo == nil && len(clean) > 0 && !strings.Contains(clean, "@") {
+			return clean, true
+		}
+		return "", false
+	case "telegram":
+		if isNumericIdentifier(clean) {
+			return clean, true
+		}
+		if o.contactRepo != nil && workspaceID != uuid.Nil {
+			if chatID, err := o.contactRepo.ResolveTelegramChatID(ctx, workspaceID, clean); err == nil && chatID != "" {
+				return chatID, true
+			}
+		}
+		if o.contactRepo == nil && len(clean) > 0 {
+			return clean, true
+		}
+		return "", false
+	case "email", "email_ses", "email_smtp", "email_mautic":
+		if strings.Contains(clean, "@") {
+			return clean, true
+		}
+		return "", false
+	default:
+		return clean, true
+	}
+}
+
+func isNumericIdentifier(s string) bool {
+	check := s
+	if strings.HasPrefix(check, "-") {
+		check = check[1:]
+	}
+	if check == "" {
+		return false
+	}
+	for _, c := range check {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // SetContactRepository registers the Contact repository.

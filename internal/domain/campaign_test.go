@@ -153,6 +153,21 @@ func TestDeduplicateUUIDs(t *testing.T) {
 	}
 }
 
+func TestDeduplicateStrings(t *testing.T) {
+	input := []string{"whatsapp", "telegram", "", "whatsapp", "  email ", "telegram", "   "}
+	expected := []string{"whatsapp", "telegram", "email"}
+
+	result := DeduplicateStrings(input)
+	if len(result) != len(expected) {
+		t.Fatalf("expected length %d, got %d", len(expected), len(result))
+	}
+	for i := range expected {
+		if result[i] != expected[i] {
+			t.Errorf("at index %d: expected %s, got %s", i, expected[i], result[i])
+		}
+	}
+}
+
 type mockTagLister struct {
 	contacts map[uuid.UUID][]Contact
 	err      error

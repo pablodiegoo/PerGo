@@ -491,3 +491,82 @@ func TestContactRepository(t *testing.T) {
 		}
 	})
 }
+
+func TestFindIdentityForChannel(t *testing.T) {
+	pool := getTestPoolWithMigrations(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	repo := repository.NewContactRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "find_id_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() {
+		_ = wsRepo.Delete(ctx, ws.ID)
+	}()
+
+	t.Run("Direct Format Detection", func(t *testing.T) {
+		// WhatsApp valid phone
+		id, ok, err := repo.FindIdentityForChannel(ctx, ws.ID, "+5511999998888", "whatsapp")
+		if err != nil || !ok || id != "5511999998888" {
+			t.Errorf("expected phone 5511999998888, got %s (ok=%v, err=%v)", id, ok, err)
+		}
+
+		// Email address
+		id, ok, err = repo.FindIdentityForChannel(ctx, ws.ID, "test@example.com", "email")
+		if err != nil || !ok || id != "test@example.com" {
+			t.Errorf("expected email test@example.com, got %s (ok=%v, err=%v)", id, ok, err)
+		}
+
+		// Telegram numeric chat ID
+		id, ok, err = repo.FindIdentityForChannel(ctx, ws.ID, "987654321", "telegram")
+		if err != nil || !ok || id != "987654321" {
+			t.Errorf("expected chat ID 987654321, got %s (ok=%v, err=%v)", id, ok, err)
+		}
+	})
+
+	t.Run("Cross-Channel Resolution", func(t *testing.T) {
+		email := "omni@example.com"
+		contact, err := repo.CreateContact(ctx, ws.ID, "Omni Contact", &email, nil)
+		if err != nil {
+			t.Fatalf("failed to create contact: %v", err)
+		}
+
+		// Link WhatsApp and Telegram identities to this contact
+		_, err = pool.Exec(ctx, `
+			INSERT INTO contact_identities (contact_id, workspace_id, channel, sender_identity)
+			VALUES ($1, $2, 'whatsapp', '5511998887766'),
+			       ($1, $2, 'telegram', 'tg_omni_chat_42')
+		`, contact.ID, ws.ID)
+		if err != nil {
+			t.Fatalf("failed to link identities: %v", err)
+		}
+
+		// 1. From WhatsApp phone -> Email
+		target, ok, err := repo.FindIdentityForChannel(ctx, ws.ID, "5511998887766", "email")
+		if err != nil || !ok || target != "omni@example.com" {
+			t.Errorf("expected email omni@example.com, got %s (ok=%v, err=%v)", target, ok, err)
+		}
+
+		// 2. From WhatsApp phone -> Telegram
+		target, ok, err = repo.FindIdentityForChannel(ctx, ws.ID, "5511998887766", "telegram")
+		if err != nil || !ok || target != "tg_omni_chat_42" {
+			t.Errorf("expected telegram chat tg_omni_chat_42, got %s (ok=%v, err=%v)", target, ok, err)
+		}
+
+		// 3. From Email -> WhatsApp
+		target, ok, err = repo.FindIdentityForChannel(ctx, ws.ID, "omni@example.com", "whatsapp_cloud")
+		if err != nil || !ok || target != "5511998887766" {
+			t.Errorf("expected whatsapp 5511998887766, got %s (ok=%v, err=%v)", target, ok, err)
+		}
+
+		// 4. Missing channel identity returns false without error
+		target, ok, err = repo.FindIdentityForChannel(ctx, ws.ID, "5511998887766", "instagram")
+		if err != nil || ok || target != "" {
+			t.Errorf("expected missing identity for instagram, got %s (ok=%v, err=%v)", target, ok, err)
+		}
+	})
+}

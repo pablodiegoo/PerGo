@@ -19,13 +19,14 @@ import (
 
 // CampaignBatchTask represents the payload for a campaign batch message.
 type CampaignBatchTask struct {
-	CampaignID      uuid.UUID                  `json:"campaign_id"`
-	WorkspaceID     uuid.UUID                  `json:"workspace_id"`
-	BatchIndex      int                        `json:"batch_index"`
-	TotalBatches    int                        `json:"total_batches"`
-	Recipients      []domain.CampaignRecipient `json:"recipients"`
-	DelaySeconds    int                        `json:"delay_seconds"`
-	RateLimitPerMin *int                       `json:"rate_limit_per_min,omitempty"`
+	CampaignID       uuid.UUID                  `json:"campaign_id"`
+	WorkspaceID      uuid.UUID                  `json:"workspace_id"`
+	BatchIndex       int                        `json:"batch_index"`
+	TotalBatches     int                        `json:"total_batches"`
+	Recipients       []domain.CampaignRecipient `json:"recipients"`
+	DelaySeconds     int                        `json:"delay_seconds"`
+	RateLimitPerMin  *int                       `json:"rate_limit_per_min,omitempty"`
+	FallbackChannels []string                   `json:"fallback_channels,omitempty"`
 }
 
 // CampaignWorker consumes campaign start and batch messages sequentially.
@@ -278,13 +279,14 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 	totalBatches := len(batches)
 	for idx, batch := range batches {
 		batchTask := CampaignBatchTask{
-			CampaignID:      task.CampaignID,
-			WorkspaceID:     campaign.WorkspaceID,
-			BatchIndex:      idx + 1,
-			TotalBatches:    totalBatches,
-			Recipients:      batch,
-			DelaySeconds:    campaign.DelaySeconds,
-			RateLimitPerMin: campaign.RateLimitPerMin,
+			CampaignID:       task.CampaignID,
+			WorkspaceID:      campaign.WorkspaceID,
+			BatchIndex:       idx + 1,
+			TotalBatches:     totalBatches,
+			Recipients:       batch,
+			DelaySeconds:     campaign.DelaySeconds,
+			RateLimitPerMin:  campaign.RateLimitPerMin,
+			FallbackChannels: campaign.FallbackChannels,
 		}
 		payload, err := json.Marshal(batchTask)
 		if err != nil {
@@ -402,16 +404,22 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 		var templateName *string
 		var variablesJSON map[string]string = recipient.Variables
 
+		fallbackChannels := task.FallbackChannels
+		if len(fallbackChannels) == 0 && campaign != nil {
+			fallbackChannels = campaign.FallbackChannels
+		}
+
 		qMsg := domain.QueueMessage{
-			WorkspaceID:    task.WorkspaceID,
-			ConnectionID:   connID,
-			SenderIdentity: senderIdentity,
-			TraceID:        traceID,
-			To:             recipient.To,
-			Channel:        channel,
-			QueuedAt:       time.Now(),
-			CampaignID:     &task.CampaignID,
-			VariablesJSON:  variablesJSON,
+			WorkspaceID:      task.WorkspaceID,
+			ConnectionID:     connID,
+			SenderIdentity:   senderIdentity,
+			TraceID:          traceID,
+			To:               recipient.To,
+			Channel:          channel,
+			QueuedAt:         time.Now(),
+			FallbackChannels: fallbackChannels,
+			CampaignID:       &task.CampaignID,
+			VariablesJSON:    variablesJSON,
 		}
 
 		if channel == "whatsapp_cloud" {
@@ -440,10 +448,12 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 					}
 				}
 			}
-		} else {
-			if campaign.TemplateName != nil {
-				qMsg.Body = domain.ResolveVariables(*campaign.TemplateName, recipient.Variables)
-			}
+		}
+
+		if campaign.MessageBody != nil {
+			qMsg.Body = domain.ResolveVariables(*campaign.MessageBody, recipient.Variables)
+		} else if campaign.TemplateName != nil {
+			qMsg.Body = domain.ResolveVariables(*campaign.TemplateName, recipient.Variables)
 		}
 
 		// Create database dispatch record

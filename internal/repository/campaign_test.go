@@ -31,13 +31,14 @@ func TestCampaignRepository(t *testing.T) {
 
 	// 1. Create
 	c := &domain.Campaign{
-		WorkspaceID:  ws.ID,
-		Name:         "Promo Camp",
-		Status:       domain.CampaignStatusDraft,
-		BatchSize:    50,
-		DelaySeconds: 2,
-		TemplateName: &tmplName,
-		Channel:      &channel,
+		WorkspaceID:      ws.ID,
+		Name:             "Promo Camp",
+		Status:           domain.CampaignStatusDraft,
+		BatchSize:        50,
+		DelaySeconds:     2,
+		TemplateName:     &tmplName,
+		Channel:          &channel,
+		FallbackChannels: []string{"telegram", "email"},
 		Recipients: []domain.CampaignRecipient{
 			{To: "5511999998888", Variables: map[string]string{"nome": "João"}},
 			{To: "5511999997777", Variables: map[string]string{"nome": "Maria"}},
@@ -64,6 +65,9 @@ func TestCampaignRepository(t *testing.T) {
 	if len(created.SkippedRows) != 1 {
 		t.Errorf("expected 1 skipped row, got %d", len(created.SkippedRows))
 	}
+	if len(created.FallbackChannels) != 2 || created.FallbackChannels[0] != "telegram" || created.FallbackChannels[1] != "email" {
+		t.Errorf("expected fallback channels [telegram, email], got %v", created.FallbackChannels)
+	}
 
 	// 2. GetByID
 	fetched, err := repo.GetByID(ctx, created.ID)
@@ -72,6 +76,9 @@ func TestCampaignRepository(t *testing.T) {
 	}
 	if fetched.Name != c.Name {
 		t.Errorf("expected Name %s, got %s", c.Name, fetched.Name)
+	}
+	if len(fetched.FallbackChannels) != 2 || fetched.FallbackChannels[0] != "telegram" || fetched.FallbackChannels[1] != "email" {
+		t.Errorf("expected fetched fallback channels [telegram, email], got %v", fetched.FallbackChannels)
 	}
 
 	// 3. UpdateStatus
