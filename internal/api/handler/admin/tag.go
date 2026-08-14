@@ -15,7 +15,6 @@ import (
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
-	"time"
 )
 
 type TagAdminHandler struct {
@@ -364,39 +363,7 @@ func (h *TagAdminHandler) ImportContactsCSV(c *echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-func writeContactsCSV(w io.Writer, contacts []domain.Contact, fetchTagNames func(contactID uuid.UUID) []string) error {
-	writer := csv.NewWriter(w)
-	if err := writer.Write([]string{"id", "name", "email", "channel", "sender_identity", "tags", "created_at"}); err != nil {
-		return err
-	}
 
-	for _, contact := range contacts {
-		var identityStr string
-		var channelStr string
-		if len(contact.Identities) > 0 {
-			channelStr = contact.Identities[0].Channel
-			identityStr = contact.Identities[0].SenderIdentity
-		}
-		tagNames := fetchTagNames(contact.ID)
-		email := ""
-		if contact.Email != nil {
-			email = *contact.Email
-		}
-		if err := writer.Write([]string{
-			contact.ID.String(),
-			contact.Name,
-			email,
-			channelStr,
-			identityStr,
-			strings.Join(tagNames, ","),
-			contact.CreatedAt.Format(time.RFC3339),
-		}); err != nil {
-			return err
-		}
-	}
-	writer.Flush()
-	return writer.Error()
-}
 
 // ExportContactsCSV handles GET /api/v1/workspaces/:workspace_id/contacts/export
 func (h *TagAdminHandler) ExportContactsCSV(c *echo.Context) error {
@@ -433,7 +400,7 @@ func (h *TagAdminHandler) ExportContactsCSV(c *echo.Context) error {
 	c.Response().Header().Set("Content-Type", "text/csv")
 	c.Response().Header().Set("Content-Disposition", "attachment; filename=contacts.csv")
 
-	return writeContactsCSV(c.Response(), contacts, func(contactID uuid.UUID) []string {
+	return domain.WriteContactsCSV(c.Response(), contacts, func(contactID uuid.UUID) []string {
 		tags, _ := h.tagRepo.GetContactTags(c.Request().Context(), workspaceID, contactID)
 		var tagNames []string
 		for _, t := range tags {

@@ -8,6 +8,14 @@ import (
 	"github.com/pablojhp.pergo/templates/layout"
 )
 
+// tagColorOrDefault returns the tag's color or a neutral default if empty.
+func tagColorOrDefault(color string) string {
+	if color == "" {
+		return "#71717a" // zinc-500
+	}
+	return color
+}
+
 templ CampaignsPage(workspaceID uuid.UUID, campaigns []domain.Campaign, templates []repository.WABATemplate, connections []*repository.Connection) {
 	@layout.Base("Campanhas", CampaignsContent(workspaceID, campaigns, templates, connections))
 }
@@ -223,14 +231,30 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 			</div>
 
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-				<div class="flex flex-col gap-1">
-					<label for="tag_id" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Filtrar por Tag (Opcional)</label>
-					<select id="tag_id" name="tag_id" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full">
-						<option value="">-- Selecione uma Tag --</option>
-						for _, tag := range tags {
-							<option value={ tag.ID.String() }>{ tag.Name }</option>
-						}
-					</select>
+				<div class="flex flex-col gap-2">
+					<label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Filtrar por Tags (Opcional)</label>
+					if len(tags) == 0 {
+						<p class="text-xs text-zinc-400 italic">Nenhuma tag cadastrada</p>
+					} else {
+						<div class="flex flex-wrap gap-2 p-3 border border-zinc-200 rounded-md bg-zinc-50/50">
+							for _, tag := range tags {
+								<label class="cursor-pointer select-none group">
+									<input type="checkbox" name="tag_ids[]" value={ tag.ID.String() } class="sr-only peer"/>
+									<span
+										class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border-2 transition-all duration-150 peer-checked:shadow-sm"
+										style={ fmt.Sprintf("border-color: %s; color: %s; background-color: %s20", tagColorOrDefault(tag.Color), tagColorOrDefault(tag.Color), tagColorOrDefault(tag.Color)) }
+									>
+										<span
+											class="w-2 h-2 rounded-full opacity-30 peer-checked:opacity-100 transition-opacity"
+											style={ fmt.Sprintf("background-color: %s", tagColorOrDefault(tag.Color)) }
+										></span>
+										{ tag.Name }
+									</span>
+								</label>
+							}
+						</div>
+						<p class="text-[10px] text-zinc-400">Selecione uma ou mais tags — contatos de todas as tags selecionadas serão incluídos (União).</p>
+					}
 				</div>
 
 				<div class="flex flex-col gap-1">

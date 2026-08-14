@@ -94,7 +94,7 @@ func TestWriteAuditLogsCSV_EdgeCases(t *testing.T) {
 func TestWriteContactsCSV_EdgeCases(t *testing.T) {
 	t.Run("Empty Contacts", func(t *testing.T) {
 		var buf bytes.Buffer
-		err := writeContactsCSV(&buf, []domain.Contact{}, func(contactID uuid.UUID) []string {
+		err := domain.WriteContactsCSV(&buf, []domain.Contact{}, func(contactID uuid.UUID) []string {
 			return nil
 		})
 		if err != nil {
@@ -127,7 +127,7 @@ func TestWriteContactsCSV_EdgeCases(t *testing.T) {
 		}
 
 		var buf bytes.Buffer
-		err := writeContactsCSV(&buf, contacts, func(contactID uuid.UUID) []string {
+		err := domain.WriteContactsCSV(&buf, contacts, func(contactID uuid.UUID) []string {
 			return []string{"VIP, Priority", "Lead"}
 		})
 		if err != nil {

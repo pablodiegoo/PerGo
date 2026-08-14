@@ -205,7 +205,28 @@ func (w *CampaignWorker) processStart(ctx context.Context, msg jetstream.Msg) {
 			phone = clean
 		}
 		if tagRes.SeenPhones[phone] {
-			continue // deduplicate against tag-resolved recipients (tag wins)
+			// Tag contact identity wins (ADR-0010), but CSV variables
+			// merge on top so campaign-specific data (e.g. {{discount_code}})
+			// supplements the contact's stored attributes.
+			if len(csvRec.Variables) > 0 {
+				for i, rec := range allRecords {
+					if rec.Phone == phone && rec.Status == domain.RecipientStatusPending {
+						for k, v := range csvRec.Variables {
+							allRecords[i].Variables[k] = v
+						}
+						break
+					}
+				}
+				for i, mr := range mergedRecipients {
+					if mr.To == phone {
+						for k, v := range csvRec.Variables {
+							mergedRecipients[i].Variables[k] = v
+						}
+						break
+					}
+				}
+			}
+			continue
 		}
 		tagRes.SeenPhones[phone] = true
 		allRecords = append(allRecords, domain.CampaignRecipientRecord{

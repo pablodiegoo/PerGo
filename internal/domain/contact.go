@@ -1,6 +1,9 @@
 package domain
 
 import (
+	"encoding/csv"
+	"io"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -29,4 +32,41 @@ type ContactIdentity struct {
 	Channel        string    `json:"channel"`
 	SenderIdentity string    `json:"sender_identity"`
 	CreatedAt      time.Time `json:"created_at"`
+}
+
+// WriteContactsCSV serializes contacts with their tag names into CSV format.
+// fetchTagNames is a callback that returns tag names for a given contact ID,
+// allowing the caller to supply the data source (database, cache, etc.).
+func WriteContactsCSV(w io.Writer, contacts []Contact, fetchTagNames func(contactID uuid.UUID) []string) error {
+	writer := csv.NewWriter(w)
+	if err := writer.Write([]string{"id", "name", "email", "channel", "sender_identity", "tags", "created_at"}); err != nil {
+		return err
+	}
+
+	for _, contact := range contacts {
+		var identityStr string
+		var channelStr string
+		if len(contact.Identities) > 0 {
+			channelStr = contact.Identities[0].Channel
+			identityStr = contact.Identities[0].SenderIdentity
+		}
+		tagNames := fetchTagNames(contact.ID)
+		email := ""
+		if contact.Email != nil {
+			email = *contact.Email
+		}
+		if err := writer.Write([]string{
+			contact.ID.String(),
+			contact.Name,
+			email,
+			channelStr,
+			identityStr,
+			strings.Join(tagNames, ","),
+			contact.CreatedAt.Format(time.RFC3339),
+		}); err != nil {
+			return err
+		}
+	}
+	writer.Flush()
+	return writer.Error()
 }

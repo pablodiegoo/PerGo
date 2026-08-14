@@ -49,7 +49,7 @@ An adapter satisfying the `IntegrationHandler` seam that syncs or forwards unifi
 _Avoid_: Syncer adapter, integration forwarder plugin
 
 **Campaign**:
-A scheduled or immediate bulk message dispatch targeting a defined contact segment (via union of Tags) or static CSV through a specific connection slug. Recipients are dynamically evaluated at execution time. Contacts lacking an identity for the campaign's channel are explicitly recorded as `skipped` for transparency. In conflicts between Tag contacts and CSV contacts, the Tag (database) contact takes precedence. Empty dispatches are considered valid and logged.
+A scheduled or immediate bulk message dispatch targeting a defined contact segment (via union of Tags) or static CSV through a specific connection slug. Recipients are dynamically evaluated at execution time. Contacts lacking an identity for the campaign's channel are explicitly recorded as `skipped` for transparency. In conflicts between Tag contacts and CSV contacts, the Tag (database) contact takes precedence for identity deduplication, while CSV variables merge on top of contact attributes. Empty dispatches are considered valid and recorded as `campaign.dispatch.completed_empty`.
 _Avoid_: Broadcast job, bulk blast, mass message batch
 
 **Tag**:
@@ -57,11 +57,11 @@ A workspace-scoped label attached to a contact for categorization and segment fi
 _Avoid_: Contact label, group tag, list category
 
 **Contact**:
-A single person or entity within a workspace, possessing one or more Identities (e.g. WhatsApp, Email).
+A single person or entity within a workspace, possessing one or more Identities (e.g. WhatsApp, Email) and arbitrary key-value custom Attributes for campaign template variable resolution.
 _Avoid_: User, lead, audience member
 
 **Identity**:
-A channel-specific address (like a phone number or email) belonging to a Contact. Campaigns only target the primary identity matching the campaign's channel.
+A channel-specific address (like a phone number or email) belonging to a Contact. Campaigns target the primary/deterministic identity matching the campaign's channel.
 _Avoid_: Contact point, address, phone number
 
 **Broadcaster Engine**:
