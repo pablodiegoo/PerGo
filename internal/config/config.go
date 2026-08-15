@@ -15,6 +15,8 @@ type Config struct {
 	KEKBase64      string
 	KEKBytes       []byte // decoded from KEKBase64
 	AdminPassword  string
+	MasterKey      string
+	SessionSecret  string
 	S3Endpoint     string
 	S3Bucket       string
 	S3AccessKey    string
@@ -33,6 +35,8 @@ func Load() *Config {
 		DebugPort:      envOrDefault("PERGO_DEBUG_PORT", "6060"),
 		KEKBase64:      os.Getenv("PERGO_KEK_BASE64"),
 		AdminPassword:  envOrDefault("PERGO_ADMIN_PASSWORD", "pergo-dev-2026"),
+		MasterKey:      os.Getenv("PERGO_MASTER_KEY"),
+		SessionSecret:  os.Getenv("PERGO_SESSION_SECRET"),
 		S3Endpoint:     envOrDefault("PERGO_S3_ENDPOINT", envOrDefault("S3_ENDPOINT", "")),
 		S3Bucket:       envOrDefault("PERGO_S3_BUCKET", envOrDefault("S3_BUCKET", "")),
 		S3AccessKey:    envOrDefault("PERGO_S3_ACCESS_KEY", envOrDefault("S3_ACCESS_KEY", "")),

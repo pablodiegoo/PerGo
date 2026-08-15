@@ -108,3 +108,21 @@ Para iniciar conversas com clientes (fora da janela de 24 horas) via WhatsApp Cl
 Para escutar as mensagens recebidas de volta dos seus clientes ou atualizações de status de entrega (enviado, entregue, lido), configure seu servidor de escuta no dashboard do PerGo sob a aba **Webhooks**.
 
 O PerGo irá disparar requisições `POST` contendo os dados do evento sempre que houver novidades.
+
+---
+
+## 3. APIs Headless & Integrações Programáticas
+
+O PerGo suporta operações 100% headless para plataformas externas, CRMs e ERPs:
+
+* **Provisionamento de Workspaces:** `POST /api/v1/workspaces` (sob `PERGO_MASTER_KEY`)
+* **Pareamento de Conexões WhatsApp via QR:** `POST /api/v1/connections/pair`
+* **Polling de QR Code:** `GET /api/v1/connections/:id/qr`
+* **Stream de QR Code em Tempo Real (SSE):** `GET /api/v1/connections/:id/qr/stream`
+* **Listagem e Status de Conexões:** `GET /api/v1/connections`
+* **Desconexão de Sessões:** `DELETE /api/v1/connections/:id`
+* **Gerenciamento Programático de Webhooks:** `POST /api/v1/webhooks/subscriptions` (CRUD)
+* **Single Sign-On (SSO) Hand-off:** `GET /admin/sso`
+
+Para detalhes de payloads, códigos de retorno e exemplos de integração, consulte [docs/HEADLESS_API.md](file:///home/pablo/Coding/Ecoar/PerGo/docs/HEADLESS_API.md).
+

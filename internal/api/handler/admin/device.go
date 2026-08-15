@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/coder/websocket"
@@ -37,21 +36,6 @@ type DeviceHandler struct {
 	TemplatesRepo *repository.WABATemplateRepository
 	ExternalURL   string
 }
-
-// pairingState holds the current QR pairing state for a phone number.
-type pairingState struct {
-	code    string       // raw QR code string (empty if not yet received)
-	status  string       // "pending", "paired", "error"
-	message string       // human-readable message
-	expires time.Time    // when the current QR code expires
-	mu      sync.RWMutex // protects fields
-}
-
-// pairingSessions holds in-memory pairing state keyed by phone number.
-var (
-	pairingSessions   = make(map[string]*pairingState)
-	pairingSessionsMu sync.Mutex
-)
 
 // List renders the unified connection management page or HTMX fragment.
 func (h *DeviceHandler) List(c *echo.Context) error {
@@ -97,55 +81,15 @@ func (h *DeviceHandler) StartPairing(c *echo.Context) error {
 
 	wsID := resolveWorkspaceID(c)
 
-	// Initialize pairing state.
-	ps := &pairingState{status: "pending", message: "Waiting for QR code..."}
-	pairingSessionsMu.Lock()
-	pairingSessions[phone] = ps
-	pairingSessionsMu.Unlock()
-
-	// Start pairing in background.
-	ch, err := h.Manager.StartPairing(c.Request().Context(), wsID, phone, existingConnID, proxyURL)
+	_, err := h.Manager.StartPairingSession(c.Request().Context(), wsID, phone, existingConnID, proxyURL)
 	if err != nil {
-		ps.mu.Lock()
-		ps.status = "error"
-		ps.message = err.Error()
-		ps.mu.Unlock()
 		if errors.Is(err, session.ErrMaxConnectionsExceeded) {
-			return mw.Render(c, http.StatusUnprocessableEntity, pages.QRFragment("", phone, "error", err.Error()))
+			return mw.Render(c, http.StatusUnprocessableEntity, pages.QRFragment("", "", phone, "error", err.Error()))
 		}
-		return mw.Render(c, http.StatusInternalServerError, pages.QRFragment("", phone, "error", err.Error()))
+		return mw.Render(c, http.StatusInternalServerError, pages.QRFragment("", "", phone, "error", err.Error()))
 	}
 
-	// Process QR events in background goroutine.
-	go func() {
-		for evt := range ch {
-			ps.mu.Lock()
-			switch evt.Type {
-			case session.QREventCode:
-				ps.code = string(evt.Data)
-				ps.status = "pending"
-				ps.message = evt.Message
-				ps.expires = time.Now().Add(25 * time.Second)
-			case session.QREventPaired:
-				ps.code = ""
-				ps.status = "paired"
-				ps.message = evt.Message
-			case session.QREventError:
-				ps.code = ""
-				ps.status = "error"
-				ps.message = evt.Message
-			}
-			ps.mu.Unlock()
-		}
-		// Channel closed — cleanup after a delay.
-		time.AfterFunc(30*time.Second, func() {
-			pairingSessionsMu.Lock()
-			delete(pairingSessions, phone)
-			pairingSessionsMu.Unlock()
-		})
-	}()
-
-	return mw.Render(c, http.StatusOK, pages.QRFragment("", phone, "pending", "Scan the QR code below to pair your device"))
+	return mw.Render(c, http.StatusOK, pages.QRFragment("", "", phone, "pending", "Aponte o WhatsApp do seu celular para escanear o QR Code"))
 }
 
 // GetQR returns the current QR code state as an HTMX fragment.
@@ -156,19 +100,12 @@ func (h *DeviceHandler) GetQR(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "phone is required")
 	}
 
-	pairingSessionsMu.Lock()
-	ps, ok := pairingSessions[phone]
-	pairingSessionsMu.Unlock()
-
+	evt, ok := h.Manager.GetPairingState(phone)
 	if !ok {
-		return mw.Render(c, http.StatusOK, pages.QRFragment("", phone, "error", "No active pairing session for this phone"))
+		return mw.Render(c, http.StatusOK, pages.QRFragment("", "", phone, "error", "Nenhuma sessão de pareamento ativa para este número"))
 	}
 
-	ps.mu.RLock()
-	code, status, message := ps.code, ps.status, ps.message
-	ps.mu.RUnlock()
-
-	return mw.Render(c, http.StatusOK, pages.QRFragment(code, phone, status, message))
+	return mw.Render(c, http.StatusOK, pages.QRFragment(evt.Code, evt.QRDataURL, phone, evt.Status, evt.Message))
 }
 
 // Disconnect deletes a connection from the database and stops its active session if it is WhatsApp Web.

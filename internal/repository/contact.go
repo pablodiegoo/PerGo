@@ -586,9 +586,6 @@ func (r *ContactRepository) FindIdentityForChannel(ctx context.Context, workspac
 
 	// 3. Target: Telegram
 	if targetChannel == "telegram" {
-		if chatID, err := r.ResolveTelegramChatID(ctx, workspaceID, clean); err == nil && chatID != "" {
-			return chatID, true, nil
-		}
 		var tgID string
 		err := r.pool.QueryRow(ctx, `
 			SELECT ci_target.sender_identity
@@ -601,6 +598,7 @@ func (r *ContactRepository) FindIdentityForChannel(ctx context.Context, workspac
 			      c.id::text = $2
 			      OR c.email = $2
 			      OR ci_lookup.sender_identity = $2
+			      OR (ci_lookup.channel = 'telegram_username' AND LOWER(ci_lookup.sender_identity) = LOWER($2))
 			  )
 			LIMIT 1
 		`, workspaceID, clean).Scan(&tgID)
@@ -609,6 +607,29 @@ func (r *ContactRepository) FindIdentityForChannel(ctx context.Context, workspac
 		}
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return "", false, fmt.Errorf("find identity for channel %s: %w", targetChannel, err)
+		}
+
+		var contactExists bool
+		_ = r.pool.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM contacts c
+				LEFT JOIN contact_identities ci_lookup ON ci_lookup.contact_id = c.id AND ci_lookup.workspace_id = c.workspace_id
+				WHERE c.workspace_id = $1
+				  AND (
+				      c.id::text = $2
+				      OR c.email = $2
+				      OR ci_lookup.sender_identity = $2
+				  )
+			)
+		`, workspaceID, clean).Scan(&contactExists)
+		if contactExists {
+			return "", false, nil
+		}
+
+		if strings.HasPrefix(clean, "@") {
+			if chatID, err := r.ResolveTelegramChatID(ctx, workspaceID, clean); err == nil && chatID != "" {
+				return chatID, true, nil
+			}
 		}
 		return "", false, nil
 	}

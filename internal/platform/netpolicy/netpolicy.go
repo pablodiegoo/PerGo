@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -151,4 +153,53 @@ func NewPublicHTTPClient(opts ...Option) *http.Client {
 		Transport: transport,
 		Timeout:   options.Timeout,
 	}
+}
+
+// ValidateURL validates a URL against SSRF policy rules.
+// It checks scheme (http/https), host presence, and validates that IP addresses or hostnames
+// do not resolve to loopback, private, link-local, or restricted IP ranges unless allowlisted.
+func ValidateURL(rawURL string, allowlist ...string) error {
+	u, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return errors.New("URL scheme must be http or https")
+	}
+	hostname := u.Hostname()
+	if hostname == "" {
+		return errors.New("URL host cannot be empty")
+	}
+
+	checker := NewRestrictedIPChecker(allowlist)
+
+	// If hostname is directly an IP literal
+	if addr, err := netip.ParseAddr(hostname); err == nil {
+		return checker.ValidateAddr(addr)
+	}
+
+	lowerHost := strings.ToLower(hostname)
+	if lowerHost == "localhost" || strings.HasSuffix(lowerHost, ".local") || strings.HasSuffix(lowerHost, ".internal") {
+		// Check if localhost/local is allowlisted
+		for _, allowed := range allowlist {
+			if strings.EqualFold(allowed, lowerHost) || allowed == "127.0.0.1" {
+				return nil
+			}
+		}
+		return ErrRestrictedIP
+	}
+
+	// Attempt DNS resolution to verify destination IP addresses
+	ips, err := net.LookupIP(hostname)
+	if err == nil {
+		for _, ip := range ips {
+			if addr, ok := netip.AddrFromSlice(ip); ok {
+				if err := checker.ValidateAddr(addr); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
 }

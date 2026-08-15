@@ -65,6 +65,13 @@ func main() {
 		}
 		defer pool.Close()
 
+		db, err := postgres.NewSQLDB(pool)
+		if err != nil {
+			slog.Error("failed to create sql.DB", "error", err)
+			os.Exit(1)
+		}
+		defer db.Close()
+
 		kek := cfg.KEKBytes
 		if len(kek) != 32 {
 			kek = make([]byte, 32)
@@ -88,9 +95,33 @@ func main() {
 		connectionRepo := repository.NewConnectionRepository(pool, encryptor)
 		contactRepo := repository.NewContactRepository(pool)
 		auditRepo := repository.NewAuditRepository(pool)
+		apiKeyRepo := repository.NewAPIKeyRepository(pool)
+		webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, encryptor)
+		webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
+		userActionLogRepo := repository.NewUserActionLogRepository(pool)
+
+		verbsEngine := webhook.NewVerbsEngine(publisher, contactRepo, userActionLogRepo, connectionRepo)
+		webhookDispatcher := webhook.NewDefaultDispatcher(webhookSubRepo, webhookDLQRepo, wsRepo, nil, verbsEngine)
+
+		sessionRegistry := session.NewActiveSession()
+		dispatcherRegistry := channel.NewRegistry(nil)
+		sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", nil)
+		sessionManager.SetPublisher(publisher)
 
 		ingestor := outbound.NewProcessor(nil, nil, connectionRepo, publisher)
-		mcpServer := mcp.NewServer(wsRepo, connectionRepo, contactRepo, auditRepo, ingestor)
+		mcpServer := mcp.NewServer(
+			wsRepo,
+			connectionRepo,
+			contactRepo,
+			auditRepo,
+			ingestor,
+			apiKeyRepo,
+			webhookSubRepo,
+			sessionManager,
+			webhookDispatcher,
+			[]byte(cfg.SessionSecret),
+			cfg.ExternalURL,
+		)
 
 		stdServer := mcpserver.NewStdioServer(mcpServer.MCPServer)
 		slog.Info("starting MCP server in stdio mode")
@@ -235,6 +266,7 @@ func main() {
 
 	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo, contactRepo, dispatchRepo, inboundRouter)
 	sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", inboundProcessor)
+	sessionManager.SetPublisher(publisher)
 	orchestrator := queue.NewDispatchOrchestrator(dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter, contactRepo, 5, 60*time.Second)
 	orchestrator.SetContactRepository(contactRepo)
 	worker := queue.NewWorker(ctx, consumer, orchestrator)
@@ -365,6 +397,7 @@ func main() {
 	userLogsHandler := admin.NewUserLogsHandler(userActionLogRepo)
 	chatwootAdminHandler := admin.NewChatwootAdminHandler(integrationRepo)
 	typebotAdminHandler := admin.NewTypebotSettingsHandler(integrationRepo, connectionRepo)
+	headlessAdminHandler := admin.NewHeadlessAdminHandler(wsRepo, apiKeyRepo, []byte(cfg.SessionSecret), cfg.ExternalURL)
 
 	// --- Echo HTTP server ---
 	e := echosrv.New()
@@ -401,7 +434,19 @@ func main() {
 	messageHandler.RegisterRoutes(e, middleware.RateLimiterMiddleware(rateLimiter))
 
 	// --- MCP Server (Model Context Protocol) ---
-	mcpServer := mcp.NewServer(wsRepo, connectionRepo, contactRepo, auditRepo, outboundProcessor)
+	mcpServer := mcp.NewServer(
+		wsRepo,
+		connectionRepo,
+		contactRepo,
+		auditRepo,
+		outboundProcessor,
+		apiKeyRepo,
+		webhookSubRepo,
+		sessionManager,
+		webhookDispatcher,
+		[]byte(cfg.SessionSecret),
+		cfg.ExternalURL,
+	)
 	e.Any("/api/mcp/*", echo.WrapHandler(mcpServer.SSEServer))
 
 	// --- Media proxy handler (GET /media/:workspace_id/:hash) ---
@@ -418,10 +463,22 @@ func main() {
 	e.GET("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandleGet)
 	e.POST("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandlePost)
 
+	// --- Workspace REST API handler ---
+	workspaceAPIHandler := apipkg.NewWorkspaceAPIHandler(wsRepo, apiKeyRepo)
+	workspaceAPIHandler.RegisterRoutes(e, middleware.MasterAuth(cfg))
+
+	// --- Connection & Device REST API handler ---
+	connectionAPIHandler := apipkg.NewConnectionAPIHandler(connectionRepo, sessionManager, sessionRegistry)
+	connectionAPIHandler.RegisterRoutes(e)
+
 	// --- WABA Template REST API handler ---
 	wabaMetaClient := client.NewWABAMetaClient(nil, "")
 	wabaTemplateAPIHandler := apipkg.NewWABATemplateAPIHandler(wabaTemplateRepo, connectionRepo, wabaMetaClient)
 	wabaTemplateAPIHandler.RegisterRoutes(e)
+
+	// --- Webhook Subscription REST API handler ---
+	webhookSubscriptionAPIHandler := apipkg.NewWebhookSubscriptionAPIHandler(webhookSubRepo)
+	webhookSubscriptionAPIHandler.RegisterRoutes(e)
 
 	// --- WABA Meta Flows Data Exchange endpoint ---
 	flowDataExchangeHandler := handler.NewFlowDataExchangeHandler(connectionRepo)
@@ -451,6 +508,8 @@ func main() {
 	auditQuerier := audit.NewQuerier(pool)
 
 	// Public admin routes (no session auth required)
+	ssoHandler := admin.NewSSOHandler(wsRepo, []byte(cfg.SessionSecret))
+
 	adminPublic := e.Group("/admin")
 	adminPublic.GET("/login", func(c *echo.Context) error {
 		return admin.LoginPage(c, false)
@@ -466,6 +525,12 @@ func main() {
 	})
 	adminPublic.POST("/logout", func(c *echo.Context) error {
 		return admin.Logout(c)
+	})
+	adminPublic.GET("/sso", func(c *echo.Context) error {
+		return ssoHandler.HandleSSO(c)
+	})
+	adminPublic.GET("/sso/", func(c *echo.Context) error {
+		return ssoHandler.HandleSSO(c)
 	})
 
 	// Protected admin routes (session auth required)
@@ -635,6 +700,29 @@ func main() {
 	adminGroup.DELETE("/workspaces/:workspace_id/templates/:template_id", wabaTemplateHandler.Delete)
 	adminGroup.POST("/templates/preview", wabaTemplateHandler.Preview)
 
+	// Headless CPaaS & Developer Integration routes
+	adminGroup.GET("/integrations", func(c *echo.Context) error {
+		ctx := c.Request().Context()
+		cookie, err := c.Cookie("pergo-active-workspace")
+		var wsID uuid.UUID
+		if err == nil && cookie != nil && cookie.Value != "" {
+			wsID, _ = uuid.Parse(cookie.Value)
+		}
+		if wsID == uuid.Nil {
+			list, err := wsRepo.List(ctx, 1)
+			if err == nil && len(list) > 0 {
+				wsID = list[0].ID
+			}
+		}
+		if wsID == uuid.Nil {
+			return c.String(http.StatusBadRequest, "nenhum workspace encontrado. Crie um workspace primeiro.")
+		}
+		return c.Redirect(http.StatusFound, fmt.Sprintf("/admin/workspaces/%s/integrations/headless", wsID.String()))
+	})
+	adminGroup.GET("/workspaces/:workspace_id/integrations", headlessAdminHandler.GetPortal)
+	adminGroup.GET("/workspaces/:workspace_id/integrations/headless", headlessAdminHandler.GetPortal)
+	adminGroup.POST("/workspaces/:workspace_id/integrations/headless/sso-generate", headlessAdminHandler.GenerateSSO)
+
 	// Chatwoot integration routes
 	adminGroup.GET("/workspaces/:workspace_id/integrations/chatwoot", chatwootAdminHandler.GetSettings)
 	adminGroup.POST("/workspaces/:workspace_id/integrations/chatwoot", chatwootAdminHandler.PostSettings)
@@ -658,8 +746,11 @@ func main() {
 	adminGroup.GET("/workspaces/:workspace_id/webhooks", webhookHandler.Page)
 	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/new", webhookHandler.GetSubscriptionNewForm)
 	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/edit", webhookHandler.GetSubscriptionEditForm)
+	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/rotate-form", webhookHandler.GetRotateSecretForm)
 	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions", webhookHandler.CreateSubscription)
 	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id", webhookHandler.UpdateSubscription)
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/rotate", webhookHandler.RotateSubscriptionSecret)
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/ping", webhookHandler.PingSubscription)
 	adminGroup.DELETE("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id", webhookHandler.DeleteSubscription)
 	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/test-form", webhookHandler.GetSubscriptionTestForm)
 	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/test", webhookHandler.TestSubscription)

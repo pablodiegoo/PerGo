@@ -206,3 +206,205 @@ func TestChatwootAdminHandler(t *testing.T) {
 		}
 	})
 }
+
+func TestHeadlessAdminHandler(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	apiKeyRepo := repository.NewAPIKeyRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "headless_admin_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() {
+		_ = wsRepo.Delete(ctx, ws.ID)
+	}()
+
+	// Generate an API key for the workspace
+	_, _, err = apiKeyRepo.Create(ctx, ws.ID, "Production CRM API Key")
+	if err != nil {
+		t.Fatalf("failed to create test api key: %v", err)
+	}
+
+	sessionSecret := []byte("headless-test-secret-32bytes-123456")
+	externalURL := "https://pergo.production.local"
+
+	h := admin.NewHeadlessAdminHandler(wsRepo, apiKeyRepo, sessionSecret, externalURL)
+
+	t.Run("GetPortal_Success", func(t *testing.T) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/workspaces/%s/integrations/headless", ws.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/integrations/headless")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+		})
+
+		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
+		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		c.SetRequest(req.WithContext(reqCtx))
+
+		err := h.GetPortal(c)
+		if err != nil {
+			t.Fatalf("GetPortal returned error: %v", err)
+		}
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d. Body: %s", http.StatusOK, rec.Code, rec.Body.String())
+		}
+
+		body := rec.Body.String()
+		if !strings.Contains(body, ws.ID.String()) {
+			t.Errorf("expected body to contain workspace ID %s", ws.ID.String())
+		}
+		if !strings.Contains(body, externalURL) {
+			t.Errorf("expected body to contain external URL %s", externalURL)
+		}
+		if !strings.Contains(body, "Headless API &amp; SSO") && !strings.Contains(body, "Headless API & SSO") {
+			t.Error("expected body to contain Headless API & SSO heading/tab")
+		}
+		if !strings.Contains(body, "Production CRM API Key") {
+			t.Error("expected body to contain active API key name")
+		}
+		if !strings.Contains(body, "docs/HEADLESS_API.md") {
+			t.Error("expected body to contain link to docs/HEADLESS_API.md")
+		}
+		if !strings.Contains(body, "/messages") {
+			t.Error("expected body to contain curl snippet for /messages")
+		}
+		if !strings.Contains(body, "/api/v1/connections/pair") {
+			t.Error("expected body to contain curl snippet for /api/v1/connections/pair")
+		}
+	})
+
+	t.Run("GetPortal_HTMXFragment", func(t *testing.T) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/workspaces/%s/integrations/headless", ws.ID), nil)
+		req.Header.Set("HX-Request", "true")
+		req.Header.Set("HX-Target", "main-content")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/integrations/headless")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+		})
+
+		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
+		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		c.SetRequest(req.WithContext(reqCtx))
+
+		err := h.GetPortal(c)
+		if err != nil {
+			t.Fatalf("GetPortal returned error: %v", err)
+		}
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+		}
+
+		body := rec.Body.String()
+		if strings.Contains(body, "<!DOCTYPE html>") {
+			t.Error("expected HTMX fragment without full DOCTYPE html layout")
+		}
+		if !strings.Contains(body, ws.ID.String()) {
+			t.Errorf("expected fragment to contain workspace ID %s", ws.ID.String())
+		}
+	})
+
+	t.Run("GetPortal_NotFound", func(t *testing.T) {
+		e := echo.New()
+		nonExistentID := uuid.New()
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/workspaces/%s/integrations/headless", nonExistentID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/integrations/headless")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: nonExistentID.String()},
+		})
+
+		err := h.GetPortal(c)
+		if err != nil {
+			t.Fatalf("GetPortal returned error: %v", err)
+		}
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected status 404, got %d", rec.Code)
+		}
+	})
+
+	t.Run("GenerateSSO_SuccessAndVerification", func(t *testing.T) {
+		e := echo.New()
+		form := url.Values{}
+		form.Set("sub", "crm-admin@example.com")
+		form.Set("redirect", "/admin/inbox")
+		form.Set("ttl_seconds", "90")
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/integrations/headless/sso-generate", ws.ID), strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/integrations/headless/sso-generate")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+		})
+
+		err := h.GenerateSSO(c)
+		if err != nil {
+			t.Fatalf("GenerateSSO returned error: %v", err)
+		}
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+
+		body := rec.Body.String()
+		if !strings.Contains(body, "Token Gerado com Sucesso") {
+			t.Errorf("expected success badge, got: %s", body)
+		}
+		if !strings.Contains(body, "https://pergo.production.local/admin/sso?token=") {
+			t.Errorf("expected SSO URL with correct base domain, got: %s", body)
+		}
+		if !strings.Contains(body, "%2Fadmin%2Finbox") && !strings.Contains(body, "/admin/inbox") {
+			t.Errorf("expected redirect path to /admin/inbox, got: %s", body)
+		}
+	})
+
+	t.Run("GenerateSSO_SanitizedRedirectOpenRedirectProtection", func(t *testing.T) {
+		e := echo.New()
+		form := url.Values{}
+		form.Set("sub", "attacker@evil.com")
+		form.Set("redirect", "https://malicious-site.com/steal-cookie")
+		form.Set("ttl_seconds", "60")
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/integrations/headless/sso-generate", ws.ID), strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/integrations/headless/sso-generate")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+		})
+
+		err := h.GenerateSSO(c)
+		if err != nil {
+			t.Fatalf("GenerateSSO returned error: %v", err)
+		}
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", rec.Code)
+		}
+
+		body := rec.Body.String()
+		if strings.Contains(body, "malicious-site.com") {
+			t.Error("expected open redirect target to be sanitized to /admin/")
+		}
+		if !strings.Contains(body, "redirect=%2Fadmin%2F") && !strings.Contains(body, "redirect=/admin/") {
+			t.Error("expected sanitized redirect to /admin/")
+		}
+	})
+}
+

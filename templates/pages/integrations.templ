@@ -2,7 +2,9 @@ package pages
 
 import (
 	"fmt"
+
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/layout"
 )
 
@@ -13,17 +15,547 @@ type ChatwootConfig struct {
 	AccountID   int64  `json:"account_id"`
 }
 
-templ ChatwootSettingsPage(workspaceID uuid.UUID, cfg ChatwootConfig, active bool, successMsg string, errorMsg string) {
-	@layout.Base("Chatwoot Integration", ChatwootSettingsContent(workspaceID, cfg, active, successMsg, errorMsg))
+type HeadlessPortalData struct {
+	Workspace       repository.Workspace
+	APIKeys         []repository.APIKey
+	BaseURL         string
+	SSOInitialURL   string
+	SSOInitialToken string
+	ErrorMessage    string
+	SuccessMessage  string
 }
 
-templ ChatwootSettingsContent(workspaceID uuid.UUID, cfg ChatwootConfig, active bool, successMsg string, errorMsg string) {
-	<div class="border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end">
+type SSOGeneratorResultData struct {
+	Token       string
+	FullURL     string
+	Subject     string
+	Redirect    string
+	ExpiresAt   string
+	TTLSeconds  int
+	CurlCommand string
+}
+
+templ IntegrationTabs(workspaceID uuid.UUID, activeTab string) {
+	<div class="flex border-b border-zinc-200 mb-8 space-x-8">
+		<a
+			href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/headless", workspaceID.String())) }
+			class={ "pb-4 text-sm font-semibold transition-colors border-b-2 flex items-center gap-2", 
+				templ.KV("border-zinc-950 text-zinc-950", activeTab == "headless"), 
+				templ.KV("border-transparent text-zinc-500 hover:text-zinc-800 hover:border-zinc-300", activeTab != "headless") }
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+			</svg>
+			<span>Headless API & SSO</span>
+		</a>
+		<a
+			href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/chatwoot", workspaceID.String())) }
+			class={ "pb-4 text-sm font-semibold transition-colors border-b-2 flex items-center gap-2", 
+				templ.KV("border-zinc-950 text-zinc-950", activeTab == "chatwoot"), 
+				templ.KV("border-transparent text-zinc-500 hover:text-zinc-800 hover:border-zinc-300", activeTab != "chatwoot") }
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+			</svg>
+			<span>Chatwoot</span>
+		</a>
+		<a
+			href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/typebot", workspaceID.String())) }
+			class={ "pb-4 text-sm font-semibold transition-colors border-b-2 flex items-center gap-2", 
+				templ.KV("border-zinc-950 text-zinc-950", activeTab == "typebot"), 
+				templ.KV("border-transparent text-zinc-500 hover:text-zinc-800 hover:border-zinc-300", activeTab != "typebot") }
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+			</svg>
+			<span>Typebot</span>
+		</a>
+	</div>
+}
+
+// HeadlessIntegrationPage renders the full headless integration page with layout.
+templ HeadlessIntegrationPage(data HeadlessPortalData) {
+	@layout.Base(fmt.Sprintf("%s - Headless API & SSO", data.Workspace.Name), HeadlessIntegrationContent(data))
+}
+
+// HeadlessIntegrationContent renders the developer portal content.
+templ HeadlessIntegrationContent(data HeadlessPortalData) {
+	<div class="border-b border-zinc-200 pb-5 mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
 		<div>
-			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Integração Chatwoot</h1>
+			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Integrações: { data.Workspace.Name }</h1>
+			<p class="text-zinc-500 text-sm mt-1">Conecte CRMs, ERPs e fluxos externos usando APIs REST headless, streaming de QR Code em tempo real e SSO assinado.</p>
+		</div>
+		<div class="flex items-center gap-2">
+			<a
+				href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", data.Workspace.ID)) }
+				class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center"
+			>
+				Configurações do Workspace
+			</a>
+		</div>
+	</div>
+
+	@IntegrationTabs(data.Workspace.ID, "headless")
+
+	if data.ErrorMessage != "" {
+		<div class="alert bg-rose-50 text-rose-800 border border-rose-200 rounded-lg p-4 mb-6 flex flex-col items-start gap-1">
+			<h3 class="text-sm font-bold">Erro</h3>
+			<p class="text-xs text-rose-700">{ data.ErrorMessage }</p>
+		</div>
+	}
+	if data.SuccessMessage != "" {
+		<div class="alert bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg p-4 mb-6 flex flex-col items-start gap-1">
+			<h3 class="text-sm font-bold">Sucesso</h3>
+			<p class="text-xs text-emerald-700">{ data.SuccessMessage }</p>
+		</div>
+	}
+
+	<!-- Quick Info & Credentials Grid -->
+	<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+		<!-- Workspace Credentials Card -->
+		<div class="lg:col-span-2 bg-white border border-zinc-200 rounded-lg p-6 shadow-sm flex flex-col justify-between">
+			<div>
+				<div class="flex items-center justify-between pb-4 mb-4 border-b border-zinc-100">
+					<div class="flex items-center gap-2">
+						<div class="p-2 rounded-md bg-zinc-900 text-white">
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+							</svg>
+						</div>
+						<div>
+							<h2 class="text-base font-bold text-zinc-900">Identidade do Tenant & Endpoints</h2>
+							<p class="text-xs text-zinc-500">Parâmetros essenciais para autenticação de clientes externos.</p>
+						</div>
+					</div>
+					<span class="badge badge-sm bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold px-2 py-0.5 text-xs">Ativo</span>
+				</div>
+
+				<div class="space-y-4 text-sm">
+					<div>
+						<label class="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Workspace ID</label>
+						<div class="flex items-center gap-2 bg-zinc-50 border border-zinc-200 rounded-md p-2">
+							<code id="workspace-id-val" class="text-xs font-mono text-zinc-800 font-medium flex-1 truncate">{ data.Workspace.ID.String() }</code>
+							<button
+								type="button"
+								class="btn btn-xs bg-zinc-900 hover:bg-zinc-800 text-white border-none rounded px-2.5 py-1 text-xs font-medium cursor-pointer transition"
+								onclick="navigator.clipboard.writeText(document.getElementById('workspace-id-val').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })"
+							>
+								Copiar
+							</button>
+						</div>
+					</div>
+
+					<div>
+						<label class="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">API Base URL</label>
+						<div class="flex items-center gap-2 bg-zinc-50 border border-zinc-200 rounded-md p-2">
+							<code id="base-url-val" class="text-xs font-mono text-zinc-800 font-medium flex-1 truncate">{ data.BaseURL }</code>
+							<button
+								type="button"
+								class="btn btn-xs bg-zinc-900 hover:bg-zinc-800 text-white border-none rounded px-2.5 py-1 text-xs font-medium cursor-pointer transition"
+								onclick="navigator.clipboard.writeText(document.getElementById('base-url-val').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })"
+							>
+								Copiar
+							</button>
+						</div>
+					</div>
+
+					<div>
+						<label class="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Webhook Signing Secret (HMAC-SHA256)</label>
+						<div class="flex items-center gap-2 bg-zinc-50 border border-zinc-200 rounded-md p-2">
+							if data.Workspace.WebhookSecret != nil && *data.Workspace.WebhookSecret != "" {
+								<code id="webhook-sec-val" class="text-xs font-mono text-zinc-800 font-medium flex-1 truncate">{ *data.Workspace.WebhookSecret }</code>
+								<button
+									type="button"
+									class="btn btn-xs bg-zinc-900 hover:bg-zinc-800 text-white border-none rounded px-2.5 py-1 text-xs font-medium cursor-pointer transition"
+									onclick="navigator.clipboard.writeText(document.getElementById('webhook-sec-val').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })"
+								>
+									Copiar
+								</button>
+							} else {
+								<span class="text-xs text-zinc-400 italic flex-1">Nenhum segredo configurado</span>
+								<a
+									href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/webhooks", data.Workspace.ID)) }
+									class="btn btn-xs btn-outline border-zinc-300 text-zinc-700 hover:bg-zinc-100 rounded px-2.5 py-1 text-xs font-medium"
+								>
+									Configurar
+								</a>
+							}
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="mt-6 pt-4 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-500">
+				<span>Autenticação unificada por Bearer Token no cabeçalho <code class="font-mono bg-zinc-100 px-1 py-0.5 rounded text-zinc-800">Authorization: Bearer &lt;API_KEY&gt;</code></span>
+			</div>
+		</div>
+
+		<!-- API Keys Summary Card -->
+		<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm flex flex-col justify-between">
+			<div>
+				<div class="flex items-center justify-between pb-4 mb-4 border-b border-zinc-100">
+					<div class="flex items-center gap-2">
+						<div class="p-2 rounded-md bg-zinc-100 text-zinc-800">
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+							</svg>
+						</div>
+						<h2 class="text-base font-bold text-zinc-900">Chaves de API</h2>
+					</div>
+					<span class="text-xs font-semibold text-zinc-500">{ fmt.Sprintf("%d ativa(s)", len(data.APIKeys)) }</span>
+				</div>
+
+				<p class="text-xs text-zinc-600 mb-4">
+					Utilize chaves com hash SHA-256 para isolamento de chamadas por workspace.
+				</p>
+
+				<div class="space-y-2 mb-4 max-h-48 overflow-y-auto">
+					for _, key := range data.APIKeys {
+						<div class="flex items-center justify-between p-2 rounded bg-zinc-50 border border-zinc-200 text-xs">
+							<div>
+								<div class="font-semibold text-zinc-900">{ key.Name }</div>
+								<div class="font-mono text-zinc-500 text-[11px]"><code>{ key.KeyPrefix }...</code></div>
+							</div>
+							if key.RevokedAt != nil {
+								<span class="badge badge-xs bg-rose-50 text-rose-700 border-rose-200">Revogada</span>
+							} else {
+								<span class="badge badge-xs bg-emerald-50 text-emerald-700 border-emerald-200">Ativa</span>
+							}
+						</div>
+					}
+					if len(data.APIKeys) == 0 {
+						<div class="text-center py-6 text-xs text-zinc-400">
+							Nenhuma chave cadastrada.
+						</div>
+					}
+				</div>
+			</div>
+
+			<div class="pt-4 border-t border-zinc-100 flex items-center justify-between">
+				<a
+					href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", data.Workspace.ID)) }
+					class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-xs font-semibold px-3 py-1.5 rounded transition w-full text-center flex items-center justify-center gap-1.5"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+					</svg>
+					<span>Gerenciar Chaves de API</span>
+				</a>
+			</div>
+		</div>
+	</div>
+
+	<!-- Interactive HMAC-SHA256 SSO URL Generator Tool -->
+	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8">
+		<div class="border-b border-zinc-100 pb-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+			<div>
+				<div class="flex items-center gap-2">
+					<span class="p-1.5 rounded bg-amber-100 text-amber-900">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+						</svg>
+					</span>
+					<h2 class="text-lg font-bold text-zinc-900">Gerador de Links de Single Sign-On (SSO)</h2>
+				</div>
+				<p class="text-xs text-zinc-500 mt-1">
+					Gere e teste URLs assinadas com HMAC-SHA256 para embutir o console nativo do PerGo de forma segura e transparente no seu CRM/ERP.
+				</p>
+			</div>
+			<div class="flex items-center gap-2 text-xs font-medium text-amber-700 bg-amber-50 px-3 py-1.5 rounded-md border border-amber-200">
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+				</svg>
+				<span>TTL máximo: 120 segundos (com proteção contra replay)</span>
+			</div>
+		</div>
+
+		<form
+			hx-post={ fmt.Sprintf("/admin/workspaces/%s/integrations/headless/sso-generate", data.Workspace.ID.String()) }
+			hx-target="#sso-result-area"
+			hx-swap="innerHTML"
+			class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6"
+		>
+			<div class="flex flex-col gap-1.5 md:col-span-2">
+				<label for="sso-sub" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Identificador do Operador (sub/email)</label>
+				<input
+					type="text"
+					id="sso-sub"
+					name="sub"
+					value="operador@crm.local"
+					required
+					placeholder="ex: operador@empresa.com ou user_123"
+					class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 bg-white w-full"
+				/>
+			</div>
+
+			<div class="flex flex-col gap-1.5">
+				<label for="sso-redirect" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Página de Destino</label>
+				<select
+					id="sso-redirect"
+					name="redirect"
+					class="select select-bordered select-sm w-full font-medium text-zinc-800 bg-white border-zinc-300 focus:ring-zinc-950 h-9 rounded-md"
+				>
+					<option value="/admin/connections" selected>Conexões (/admin/connections)</option>
+					<option value="/admin/inbox">Live Inbox (/admin/inbox)</option>
+					<option value="/admin/campaigns">Campanhas (/admin/campaigns)</option>
+					<option value={ fmt.Sprintf("/admin/workspaces/%s/webhooks", data.Workspace.ID.String()) }>Webhooks (/admin/webhooks)</option>
+					<option value={ fmt.Sprintf("/admin/workspaces/%s", data.Workspace.ID.String()) }>Configurações do Workspace</option>
+					<option value="/admin/">Visão Geral (/admin/)</option>
+				</select>
+			</div>
+
+			<div class="flex flex-col gap-1.5">
+				<label for="sso-ttl" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Expiração / TTL (Segundos)</label>
+				<div class="flex gap-2">
+					<input
+						type="number"
+						id="sso-ttl"
+						name="ttl_seconds"
+						value="60"
+						min="5"
+						max="120"
+						required
+						class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 bg-white w-24"
+					/>
+					<button
+						type="submit"
+						class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex-1 flex items-center justify-center gap-1.5 cursor-pointer"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+						</svg>
+						<span>Gerar Link SSO</span>
+					</button>
+				</div>
+			</div>
+		</form>
+
+		<!-- Generated SSO Result Area -->
+		<div id="sso-result-area">
+			if data.SSOInitialURL != "" {
+				@SSOGeneratorResult(SSOGeneratorResultData{
+					Token:       data.SSOInitialToken,
+					FullURL:     data.SSOInitialURL,
+					Subject:     "operador@crm.local",
+					Redirect:    "/admin/connections",
+					ExpiresAt:   "em 60 segundos",
+					TTLSeconds:  60,
+					CurlCommand: fmt.Sprintf(`curl -i -L "%s"`, data.SSOInitialURL),
+				})
+			}
+		</div>
+	</div>
+
+	<!-- Developer Quick-Start & cURL Snippets -->
+	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8">
+		<div class="flex items-center justify-between pb-4 mb-6 border-b border-zinc-100">
+			<div>
+				<h2 class="text-lg font-bold text-zinc-900">Guia Rápido de APIs REST (Headless)</h2>
+				<p class="text-xs text-zinc-500 mt-1">Exemplos prontos para consumo imediato no terminal ou backend do seu sistema.</p>
+			</div>
+			<div class="text-xs font-mono text-zinc-500 bg-zinc-100 px-2.5 py-1 rounded">
+				REST API v1
+			</div>
+		</div>
+
+		<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+			<!-- Snippet 1: Send Unified Message -->
+			<div class="border border-zinc-200 rounded-lg p-4 bg-zinc-50/50">
+				<div class="flex items-center justify-between mb-2">
+					<div class="flex items-center gap-2">
+						<span class="badge badge-sm bg-blue-600 text-white font-bold text-[10px] px-1.5 py-0.5 rounded">POST</span>
+						<span class="text-xs font-bold text-zinc-900">/messages (Disparo Unificado)</span>
+					</div>
+					<button
+						type="button"
+						class="text-xs font-medium text-zinc-600 hover:text-zinc-900 bg-white border border-zinc-200 rounded px-2 py-0.5 shadow-2xs transition"
+						onclick="navigator.clipboard.writeText(this.closest('.border').querySelector('pre').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })"
+					>
+						Copiar
+					</button>
+				</div>
+				<pre class="bg-zinc-900 text-zinc-100 p-3 rounded-md text-xs font-mono overflow-x-auto whitespace-pre leading-relaxed">{ fmt.Sprintf(`curl -X POST "%s/messages" \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "5511999998888",
+    "channel": "whatsapp",
+    "type": "text",
+    "content": "Olá! Seu pedido foi confirmado com sucesso."
+  }'`, data.BaseURL) }</pre>
+			</div>
+
+			<!-- Snippet 2: Pair WhatsApp Web Device -->
+			<div class="border border-zinc-200 rounded-lg p-4 bg-zinc-50/50">
+				<div class="flex items-center justify-between mb-2">
+					<div class="flex items-center gap-2">
+						<span class="badge badge-sm bg-emerald-600 text-white font-bold text-[10px] px-1.5 py-0.5 rounded">POST</span>
+						<span class="text-xs font-bold text-zinc-900">/api/v1/connections/pair (Iniciar Pareamento)</span>
+					</div>
+					<button
+						type="button"
+						class="text-xs font-medium text-zinc-600 hover:text-zinc-900 bg-white border border-zinc-200 rounded px-2 py-0.5 shadow-2xs transition"
+						onclick="navigator.clipboard.writeText(this.closest('.border').querySelector('pre').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })"
+					>
+						Copiar
+					</button>
+				</div>
+				<pre class="bg-zinc-900 text-zinc-100 p-3 rounded-md text-xs font-mono overflow-x-auto whitespace-pre leading-relaxed">{ fmt.Sprintf(`curl -X POST "%s/api/v1/connections/pair" \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "channel": "whatsapp",
+    "phone": "5511999998888",
+    "name": "WhatsApp Atendimento"
+  }'`, data.BaseURL) }</pre>
+			</div>
+
+			<!-- Snippet 3: Real-Time QR SSE Stream -->
+			<div class="border border-zinc-200 rounded-lg p-4 bg-zinc-50/50">
+				<div class="flex items-center justify-between mb-2">
+					<div class="flex items-center gap-2">
+						<span class="badge badge-sm bg-purple-600 text-white font-bold text-[10px] px-1.5 py-0.5 rounded">GET</span>
+						<span class="text-xs font-bold text-zinc-900">/api/v1/connections/:id/qr/stream (SSE Stream)</span>
+					</div>
+					<button
+						type="button"
+						class="text-xs font-medium text-zinc-600 hover:text-zinc-900 bg-white border border-zinc-200 rounded px-2 py-0.5 shadow-2xs transition"
+						onclick="navigator.clipboard.writeText(this.closest('.border').querySelector('pre').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })"
+					>
+						Copiar
+					</button>
+				</div>
+				<pre class="bg-zinc-900 text-zinc-100 p-3 rounded-md text-xs font-mono overflow-x-auto whitespace-pre leading-relaxed">{ fmt.Sprintf(`curl -N -H "Accept: text/event-stream" \
+  -H "Authorization: Bearer <API_KEY>" \
+  "%s/api/v1/connections/<CONNECTION_ID>/qr/stream"`, data.BaseURL) }</pre>
+			</div>
+
+			<!-- Snippet 4: Webhook Subscriptions -->
+			<div class="border border-zinc-200 rounded-lg p-4 bg-zinc-50/50">
+				<div class="flex items-center justify-between mb-2">
+					<div class="flex items-center gap-2">
+						<span class="badge badge-sm bg-blue-600 text-white font-bold text-[10px] px-1.5 py-0.5 rounded">POST</span>
+						<span class="text-xs font-bold text-zinc-900">/api/v1/webhooks/subscriptions (Criar Webhook)</span>
+					</div>
+					<button
+						type="button"
+						class="text-xs font-medium text-zinc-600 hover:text-zinc-900 bg-white border border-zinc-200 rounded px-2 py-0.5 shadow-2xs transition"
+						onclick="navigator.clipboard.writeText(this.closest('.border').querySelector('pre').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })"
+					>
+						Copiar
+					</button>
+				</div>
+				<pre class="bg-zinc-900 text-zinc-100 p-3 rounded-md text-xs font-mono overflow-x-auto whitespace-pre leading-relaxed">{ fmt.Sprintf(`curl -X POST "%s/api/v1/webhooks/subscriptions" \
+  -H "Authorization: Bearer <API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://seu-crm.com/api/webhooks/pergo",
+    "events": ["message.received", "message.delivered", "connection.status"]
+  }'`, data.BaseURL) }</pre>
+			</div>
+		</div>
+	</div>
+
+	<!-- Documentation Resources Footer Box -->
+	<div class="bg-zinc-900 text-zinc-100 border border-zinc-800 rounded-lg p-6 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+		<div class="space-y-1">
+			<div class="flex items-center gap-2">
+				<span class="text-emerald-400">●</span>
+				<h3 class="text-sm font-bold text-white">Especificação e Documentação Completa da API</h3>
+			</div>
+			<p class="text-xs text-zinc-400">Consulte os endpoints de provisionamento de workspace sob Master Key, ciclo de conexões, Webhook DLQ e verificação HMAC.</p>
+		</div>
+		<div class="flex items-center gap-3">
+			<a
+				href="https://github.com/pablodiegoo/PerGo/blob/main/docs/HEADLESS_API.md"
+				target="_blank"
+				rel="noopener noreferrer"
+				class="btn btn-sm bg-white text-zinc-900 hover:bg-zinc-100 border-none font-semibold px-4 py-2 rounded-md transition"
+			>
+				docs/HEADLESS_API.md ↗
+			</a>
+			<a
+				href="https://github.com/pablodiegoo/PerGo/blob/main/docs/WEBHOOK_SIGNATURES.md"
+				target="_blank"
+				rel="noopener noreferrer"
+				class="btn btn-sm btn-outline border-zinc-700 text-zinc-200 hover:bg-zinc-800 hover:border-zinc-600 font-semibold px-4 py-2 rounded-md transition"
+			>
+				Assinaturas HMAC ↗
+			</a>
+		</div>
+	</div>
+}
+
+// SSOGeneratorResult renders the generated SSO token, full URL, and copy actions.
+templ SSOGeneratorResult(result SSOGeneratorResultData) {
+	<div class="border border-zinc-200 bg-zinc-50 rounded-lg p-5 space-y-4 animate-fadeIn">
+		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-zinc-200 pb-3">
+			<div class="flex items-center gap-2">
+				<span class="badge badge-sm bg-emerald-100 text-emerald-800 border-emerald-300 font-bold px-2 py-0.5">Token Gerado com Sucesso</span>
+				<span class="text-xs text-zinc-500">Expira: <strong class="text-zinc-800">{ result.ExpiresAt }</strong> ({ fmt.Sprintf("%ds", result.TTLSeconds) })</span>
+			</div>
+			<div class="flex items-center gap-2">
+				<a
+					href={ templ.SafeURL(result.FullURL) }
+					target="_blank"
+					rel="noopener noreferrer"
+					class="btn btn-xs bg-emerald-600 hover:bg-emerald-700 text-white border-none font-semibold px-3 py-1 rounded transition flex items-center gap-1"
+				>
+					<span>Testar Link SSO ↗</span>
+				</a>
+			</div>
+		</div>
+
+		<div>
+			<label class="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">URL Completa de Acesso SSO</label>
+			<div class="flex items-center gap-2 bg-white border border-zinc-300 rounded-md p-2 shadow-2xs">
+				<code id="sso-full-url" class="text-xs font-mono text-zinc-900 select-all flex-1 break-all">{ result.FullURL }</code>
+				<button
+					type="button"
+					class="btn btn-xs bg-zinc-900 hover:bg-zinc-800 text-white border-none rounded px-3 py-1 text-xs font-semibold cursor-pointer transition shrink-0"
+					onclick="navigator.clipboard.writeText(document.getElementById('sso-full-url').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })"
+				>
+					Copiar
+				</button>
+			</div>
+		</div>
+
+		<div>
+			<label class="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Token Assinado HMAC-SHA256 (base64url)</label>
+			<div class="flex items-center gap-2 bg-white border border-zinc-300 rounded-md p-2 shadow-2xs">
+				<code id="sso-token-val" class="text-xs font-mono text-zinc-700 select-all flex-1 truncate">{ result.Token }</code>
+				<button
+					type="button"
+					class="btn btn-xs bg-zinc-200 hover:bg-zinc-300 text-zinc-800 border-none rounded px-2.5 py-1 text-xs font-medium cursor-pointer transition shrink-0"
+					onclick="navigator.clipboard.writeText(document.getElementById('sso-token-val').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })"
+				>
+					Copiar
+				</button>
+			</div>
+		</div>
+
+		<div class="pt-2">
+			<label class="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Comando cURL de Validação</label>
+			<pre class="bg-zinc-900 text-zinc-100 p-3 rounded text-xs font-mono overflow-x-auto whitespace-pre leading-relaxed">{ result.CurlCommand }</pre>
+		</div>
+	</div>
+}
+
+// ChatwootSettingsPage renders Chatwoot page with layout.
+templ ChatwootSettingsPage(workspaceID uuid.UUID, cfg ChatwootConfig, active bool, successMsg string, errorMsg string) {
+	@layout.Base("Integração Chatwoot", ChatwootSettingsContent(workspaceID, cfg, active, successMsg, errorMsg))
+}
+
+// ChatwootSettingsContent renders Chatwoot settings with integration tabs.
+templ ChatwootSettingsContent(workspaceID uuid.UUID, cfg ChatwootConfig, active bool, successMsg string, errorMsg string) {
+	<div class="border-b border-zinc-200 pb-5 mb-6 flex justify-between items-end">
+		<div>
+			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Integrações: Chatwoot</h1>
 			<p class="text-zinc-500 text-sm mt-1">Conecte o PerGo ao Chatwoot para sincronizar mensagens com agentes humanos.</p>
 		</div>
 	</div>
+
+	@IntegrationTabs(workspaceID, "chatwoot")
 
 	if successMsg != "" {
 		<div class="alert bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg p-4 mb-6 flex flex-col items-start gap-1">
@@ -125,7 +657,7 @@ templ ChatwootSettingsContent(workspaceID uuid.UUID, cfg ChatwootConfig, active 
 					Salvar Configurações
 				</button>
 				<a 
-					href="/admin/" 
+					href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/headless", workspaceID.String())) } 
 					class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-5 py-2 rounded-md transition h-9 flex items-center justify-center"
 				>
 					Cancelar

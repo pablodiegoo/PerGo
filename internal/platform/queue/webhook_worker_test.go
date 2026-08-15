@@ -431,3 +431,153 @@ func TestWebhookWorker_Inbound(t *testing.T) {
 
 	worker.Stop()
 }
+
+func TestWebhookWorker_ConnectionStatusDelivery(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Delete streams to ensure clean test state
+	js, err := jetstream.New(nc)
+	if err == nil {
+		_ = js.DeleteStream(ctx, "WEBHOOKS")
+		_ = js.DeleteStream(ctx, "WEBHOOK_DELIVERIES")
+	}
+
+	// 1. Setup repository
+	kek := make([]byte, 32)
+	for i := range kek {
+		kek[i] = byte(i)
+	}
+	enc, _ := crypto.NewEncryptor(kek)
+	dlqRepo := repository.NewWebhookDLQRepository(pool, enc)
+	wsRepo := repository.NewWorkspaceRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "conn_status_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	// 2. Setup mock webhook receiver
+	var receivedPayload []byte
+	var receivedHeaders http.Header
+	var mu sync.Mutex
+	received := make(chan struct{}, 1)
+
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		receivedPayload, _ = io.ReadAll(r.Body)
+		receivedHeaders = r.Header.Clone()
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+		select {
+		case received <- struct{}{}:
+		default:
+		}
+	}))
+	defer testServer.Close()
+
+	// 3. Create subscription listening specifically for "connection.status"
+	subRepo := repository.NewWebhookSubscriptionRepository(pool, enc)
+	webhookSecret := []byte("secret-conn-status-key")
+	_, err = subRepo.Create(ctx, ws.ID, testServer.URL, []string{"connection.status"}, webhookSecret)
+	if err != nil {
+		t.Fatalf("failed to create subscription: %v", err)
+	}
+
+	// 4. Start WebhookWorker
+	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, testServer.Client(), nil)
+	worker, err := NewWebhookWorker(ctx, nc, dispatcher, subRepo)
+	if err != nil {
+		t.Fatalf("failed to start worker: %v", err)
+	}
+	worker.SetWorkspaceRepository(wsRepo)
+	defer worker.Stop()
+
+	// 5. Publish connection.status event to webhooks.events
+	traceID := "trace-conn-status-123"
+	connID := uuid.New()
+	event := struct {
+		Event          string `json:"event"`
+		TraceID        string `json:"trace_id"`
+		WorkspaceID    string `json:"workspace_id"`
+		ConnectionID   string `json:"connection_id"`
+		Channel        string `json:"channel"`
+		SenderIdentity string `json:"sender_identity"`
+		Status         string `json:"status"`
+		Timestamp      string `json:"timestamp"`
+	}{
+		Event:          "connection.status",
+		TraceID:        traceID,
+		WorkspaceID:    ws.ID.String(),
+		ConnectionID:   connID.String(),
+		Channel:        "whatsapp",
+		SenderIdentity: "+5511999998888",
+		Status:         "connected",
+		Timestamp:      time.Now().UTC().Format(time.RFC3339),
+	}
+
+	eventData, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("failed to marshal event: %v", err)
+	}
+
+	publisher := NewJetStreamPublisher(nc)
+	err = publisher.Publish(ctx, "webhooks.events", eventData, traceID)
+	if err != nil {
+		t.Fatalf("publish error: %v", err)
+	}
+
+	// 6. Wait for delivery
+	select {
+	case <-received:
+	case <-time.After(15 * time.Second):
+		t.Fatal("connection.status webhook was not delivered")
+	}
+
+	mu.Lock()
+	payload := receivedPayload
+	headers := receivedHeaders
+	mu.Unlock()
+
+	// 7. Verify delivered payload structure and signature
+	if headers.Get("X-PerGo-Signature") == "" {
+		t.Error("expected X-PerGo-Signature header on delivered webhook")
+	}
+	if headers.Get("X-Trace-ID") != traceID {
+		t.Errorf("expected X-Trace-ID %q, got %q", traceID, headers.Get("X-Trace-ID"))
+	}
+
+	var delivered struct {
+		Event          string `json:"event"`
+		TraceID        string `json:"trace_id"`
+		WorkspaceID    string `json:"workspace_id"`
+		ConnectionID   string `json:"connection_id"`
+		Channel        string `json:"channel"`
+		SenderIdentity string `json:"sender_identity"`
+		Status         string `json:"status"`
+		Timestamp      string `json:"timestamp"`
+	}
+	if err := json.Unmarshal(payload, &delivered); err != nil {
+		t.Fatalf("failed to unmarshal delivered payload: %v", err)
+	}
+
+	if delivered.Event != "connection.status" {
+		t.Errorf("expected event 'connection.status', got %q", delivered.Event)
+	}
+	if delivered.ConnectionID != connID.String() {
+		t.Errorf("expected connection_id %q, got %q", connID.String(), delivered.ConnectionID)
+	}
+	if delivered.Channel != "whatsapp" {
+		t.Errorf("expected channel 'whatsapp', got %q", delivered.Channel)
+	}
+	if delivered.SenderIdentity != "+5511999998888" {
+		t.Errorf("expected sender_identity '+5511999998888', got %q", delivered.SenderIdentity)
+	}
+	if delivered.Status != "connected" {
+		t.Errorf("expected status 'connected', got %q", delivered.Status)
+	}
+}

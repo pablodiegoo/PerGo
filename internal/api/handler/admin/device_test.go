@@ -19,6 +19,7 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
+	"github.com/pablojhp.pergo/templates/pages"
 )
 
 // TestDeviceHandler_Construction verifies fields are correct.
@@ -265,6 +266,51 @@ func TestDeviceHandler_WS_RequiresAuth(t *testing.T) {
 	location := rec.Header().Get("Location")
 	if location != "/admin/login" {
 		t.Errorf("expected redirect to /admin/login, got %q", location)
+	}
+}
+
+// TestDeviceHandler_QRFragment_Rendering verifies that the templ QRFragment renders properly.
+func TestDeviceHandler_QRFragment_Rendering(t *testing.T) {
+	// 1. Pending state with QR PNG
+	var buf strings.Builder
+	comp := pages.QRFragment("raw-qr-data", "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "5511999999999", "pending", "Aponte a camera")
+	if err := comp.Render(context.Background(), &buf); err != nil {
+		t.Fatalf("failed to render QRFragment pending: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "data:image/png;base64,") {
+		t.Errorf("expected rendered HTML to contain base64 image data URL, got: %s", out)
+	}
+	if !strings.Contains(out, "hx-get=\"/admin/devices/qr?phone=5511999999999\"") {
+		t.Errorf("expected rendered HTML to contain hx-get trigger for phone, got: %s", out)
+	}
+
+	// 2. Paired state
+	buf.Reset()
+	compPaired := pages.QRFragment("", "", "5511999999999", "paired", "")
+	if err := compPaired.Render(context.Background(), &buf); err != nil {
+		t.Fatalf("failed to render QRFragment paired: %v", err)
+	}
+	outPaired := buf.String()
+	if !strings.Contains(outPaired, "Dispositivo Pareado com Sucesso!") {
+		t.Errorf("expected rendered HTML to contain paired header, got: %s", outPaired)
+	}
+	if !strings.Contains(outPaired, "5511999999999") {
+		t.Errorf("expected rendered HTML to contain phone number, got: %s", outPaired)
+	}
+
+	// 3. Error state
+	buf.Reset()
+	compError := pages.QRFragment("", "", "5511999999999", "error", "Limite de conexões excedido")
+	if err := compError.Render(context.Background(), &buf); err != nil {
+		t.Fatalf("failed to render QRFragment error: %v", err)
+	}
+	outError := buf.String()
+	if !strings.Contains(outError, "Falha no Pareamento") {
+		t.Errorf("expected rendered HTML to contain error header, got: %s", outError)
+	}
+	if !strings.Contains(outError, "Limite de conexões excedido") {
+		t.Errorf("expected rendered HTML to contain error message, got: %s", outError)
 	}
 }
 

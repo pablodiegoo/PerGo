@@ -299,41 +299,59 @@ templ PairForm() {
 }
 
 // QRFragment renders the current QR code state as an HTMX-refreshable fragment.
-templ QRFragment(code string, phone string, status string, message string) {
+templ QRFragment(code string, qrPNG string, phone string, status string, message string) {
 	<div class="qr-fragment" id="qr-area">
 		@components.BanWarning()
-		<p class="qr-status mb-2 text-sm text-zinc-600">{ message }</p>
+		if message != "" {
+			<p class="qr-status mb-3 text-xs text-zinc-500 font-medium text-center">{ message }</p>
+		}
 		switch status {
 			case "pending":
-				if code != "" {
-					<div class="qr-container bg-zinc-50 border border-zinc-200 rounded p-4 flex flex-col items-center">
-						<p class="qr-hint text-xs text-zinc-500 mb-2">Escaneie o código abaixo com o WhatsApp do seu celular:</p>
-						<div
-							class="qr-code-raw bg-white p-2 border border-zinc-300 rounded font-mono text-xs select-all break-all"
-							data-qr={ code }
-							aria-label="QR Code"
-						>
+				if qrPNG != "" {
+					<div class="qr-container bg-white border border-zinc-200 rounded-xl p-5 shadow-sm flex flex-col items-center max-w-xs mx-auto">
+						<div class="qr-image-wrapper bg-white p-2 rounded-lg border border-zinc-100 shadow-inner mb-3">
+							<img
+								src={ templ.SafeURL(qrPNG) }
+								alt="WhatsApp QR Code"
+								class="w-56 h-56 object-contain block mx-auto select-none"
+							/>
+						</div>
+						<div class="flex items-center gap-2 text-xs text-zinc-500 font-medium">
+							<div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+							<span>Aguardando leitura no WhatsApp...</span>
+						</div>
+					</div>
+				} else if code != "" {
+					<div class="qr-container bg-white border border-zinc-200 rounded-xl p-5 shadow-sm flex flex-col items-center max-w-xs mx-auto">
+						<div class="qr-code-raw bg-zinc-50 p-3 border border-zinc-200 rounded font-mono text-xs select-all break-all text-zinc-700 mb-3" data-qr={ code }>
 							<code>{ code }</code>
+						</div>
+						<div class="flex items-center gap-2 text-xs text-zinc-500 font-medium">
+							<div class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
+							<span>Gerando imagem do QR code...</span>
 						</div>
 					</div>
 				} else {
-					<div class="qr-loading flex flex-col items-center py-4">
-						<div class="spinner border-2 border-zinc-900 border-t-transparent rounded-full w-6 h-6 animate-spin mb-2"></div>
-						<p class="text-xs text-zinc-500">Gerando QR code...</p>
+					<div class="qr-loading flex flex-col items-center py-8">
+						<div class="spinner border-2 border-zinc-950 border-t-transparent rounded-full w-8 h-8 animate-spin mb-3"></div>
+						<p class="text-xs text-zinc-500 font-medium">Inicializando sessão WhatsApp Web...</p>
 					</div>
 				}
 				<div
 					hx-get={ "/admin/devices/qr?phone=" + phone }
-					hx-trigger="every 5s"
+					hx-trigger="every 2s"
 					hx-target="#qr-area"
 					hx-swap="innerHTML"
 				></div>
 			case "paired":
-				<div class="qr-success text-center py-4">
-					<p class="success-icon text-2xl mb-1">✅</p>
-					<p class="text-sm font-semibold text-zinc-950">Dispositivo pareado com sucesso!</p>
+				<div class="qr-success text-center py-6 bg-emerald-50/50 border border-emerald-100 rounded-xl p-5 max-w-sm mx-auto">
+					<div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold">
+						✓
+					</div>
+					<h3 class="text-base font-bold text-zinc-900 mb-1">Dispositivo Pareado com Sucesso!</h3>
+					<p class="text-xs text-zinc-500 mb-4 font-mono">{ phone }</p>
 					<button
-						class="btn btn-black mt-3 bg-zinc-950 hover:bg-zinc-900 text-white px-4 py-2 rounded-md font-semibold border-none"
+						class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white px-5 py-2 rounded-md font-semibold text-xs border-none shadow-sm transition"
 						onclick="
 							const table = document.getElementById('connections-table-container');
 							const form = document.getElementById('campaign-create-form');
@@ -349,11 +367,14 @@ templ QRFragment(code string, phone string, status string, message string) {
 					</button>
 				</div>
 			case "error":
-				<div class="qr-error text-center py-4">
-					<p class="error-icon text-2xl mb-1">❌</p>
-					<p class="text-sm font-semibold text-zinc-950">Falha no pareamento. Tente novamente.</p>
+				<div class="qr-error text-center py-6 bg-rose-50/50 border border-rose-100 rounded-xl p-5 max-w-sm mx-auto">
+					<div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl font-bold">
+						✕
+					</div>
+					<h3 class="text-base font-bold text-zinc-900 mb-1">Falha no Pareamento</h3>
+					<p class="text-xs text-rose-600 mb-4 font-medium">{ message }</p>
 					<button
-						class="btn btn-secondary mt-3 px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-medium"
+						class="btn btn-secondary px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-semibold text-xs transition"
 						onclick="
 							const modalContainer = document.getElementById('modal-container');
 							if (modalContainer) {

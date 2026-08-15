@@ -336,15 +336,13 @@ func (o *DispatchOrchestrator) resolveRecipientForChannel(ctx context.Context, w
 		}
 		return "", false
 	case "telegram":
+		if o.contactRepo != nil && workspaceID != uuid.Nil {
+			return "", false
+		}
 		if isNumericIdentifier(clean) {
 			return clean, true
 		}
-		if o.contactRepo != nil && workspaceID != uuid.Nil {
-			if chatID, err := o.contactRepo.ResolveTelegramChatID(ctx, workspaceID, clean); err == nil && chatID != "" {
-				return chatID, true
-			}
-		}
-		if o.contactRepo == nil && len(clean) > 0 {
+		if len(clean) > 0 {
 			return clean, true
 		}
 		return "", false

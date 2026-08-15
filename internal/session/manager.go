@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
 	waEvents "go.mau.fi/whatsmeow/types/events"
 
@@ -19,6 +21,18 @@ import (
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/repository"
 )
+
+// ConnectionStatusEvent represents a standardized connection lifecycle event emitted to webhooks.
+type ConnectionStatusEvent struct {
+	Event          string    `json:"event"`
+	TraceID        string    `json:"trace_id,omitempty"`
+	WorkspaceID    uuid.UUID `json:"workspace_id"`
+	ConnectionID   uuid.UUID `json:"connection_id"`
+	Channel        string    `json:"channel"`
+	SenderIdentity string    `json:"sender_identity"`
+	Status         string    `json:"status"`
+	Timestamp      string    `json:"timestamp"`
+}
 
 type SessionState string
 
@@ -40,7 +54,11 @@ type SessionHealthInfo struct {
 
 type WhatsAppClientInterface interface {
 	SetJID(jid types.JID)
+	JID() types.JID
 	Run(ctx context.Context) error
+	Connect() error
+	Disconnect()
+	GetQRChannel(ctx context.Context) (<-chan whatsmeow.QRChannelItem, error)
 }
 
 type ClientFactory interface {
@@ -52,7 +70,6 @@ type defaultClientFactory struct{}
 func (f *defaultClientFactory) CreateClient(cfg whatsapp.ClientConfig) (WhatsAppClientInterface, error) {
 	return whatsapp.NewWhatsAppClient(cfg)
 }
-
 
 const (
 	// maxConcurrentReconnect limits how many devices reconnect simultaneously
@@ -76,9 +93,11 @@ type Manager struct {
 	waVersion        string
 	inboundProcessor *inbound.InboundProcessor
 	clientFactory    ClientFactory
+	publisher        Publisher
 	qrTimeout        time.Duration
 	pairingCancels   map[uuid.UUID]context.CancelFunc
 	healthMap        map[uuid.UUID]*SessionHealthInfo
+	pairingSessions  map[string]*PairingSession
 	mu               sync.Mutex
 }
 
@@ -90,10 +109,61 @@ func (m *Manager) SetClientFactory(f ClientFactory) {
 	m.clientFactory = f
 }
 
+func (m *Manager) SetPublisher(p Publisher) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.publisher = p
+}
+
 func (m *Manager) SetQRTimeout(d time.Duration) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.qrTimeout = d
+}
+
+// EmitStatusEvent updates session health and publishes a connection.status event to JetStream if publisher is configured.
+func (m *Manager) EmitStatusEvent(ctx context.Context, wsID uuid.UUID, connID uuid.UUID, channelName, senderIdentity, status string) error {
+	m.mu.Lock()
+	if m.healthMap == nil {
+		m.healthMap = make(map[uuid.UUID]*SessionHealthInfo)
+	}
+	m.healthMap[connID] = &SessionHealthInfo{
+		ConnectionID: connID,
+		State:        SessionState(status),
+		LastSeen:     time.Now().UTC(),
+	}
+	pub := m.publisher
+	m.mu.Unlock()
+
+	if pub == nil {
+		return nil
+	}
+
+	traceID := uuid.New().String()
+	evt := ConnectionStatusEvent{
+		Event:          "connection.status",
+		TraceID:        traceID,
+		WorkspaceID:    wsID,
+		ConnectionID:   connID,
+		Channel:        channelName,
+		SenderIdentity: senderIdentity,
+		Status:         status,
+		Timestamp:      time.Now().UTC().Format(time.RFC3339),
+	}
+
+	data, err := json.Marshal(evt)
+	if err != nil {
+		slog.Error("session manager: failed to marshal connection.status event", "error", err, "connection_id", connID)
+		return err
+	}
+
+	if err := pub.Publish(ctx, "webhooks.events", data, traceID); err != nil {
+		slog.Error("session manager: failed to publish connection.status event", "error", err, "connection_id", connID, "trace_id", traceID)
+		return err
+	}
+
+	slog.Info("session manager: published connection.status event", "connection_id", connID, "status", status, "trace_id", traceID)
+	return nil
 }
 
 func (m *Manager) SessionHealth(connectionID uuid.UUID) (*SessionHealthInfo, error) {
@@ -119,12 +189,58 @@ func (m *Manager) ListSessions() []*SessionHealthInfo {
 	return list
 }
 
+func (m *Manager) SubscribeQR(key string) (<-chan QREvent, func()) {
+	m.mu.Lock()
+	ps, ok := m.pairingSessions[key]
+	m.mu.Unlock()
+
+	if !ok {
+		ch := make(chan QREvent, 1)
+		ch <- QREvent{
+			Status:  "error",
+			Message: "No active pairing session",
+		}
+		close(ch)
+		return ch, func() {}
+	}
+	return ps.Subscribe()
+}
+
+func (m *Manager) GetPairingState(key string) (*QREvent, bool) {
+	m.mu.Lock()
+	ps, ok := m.pairingSessions[key]
+	m.mu.Unlock()
+
+	if !ok {
+		return nil, false
+	}
+	ps.mu.RLock()
+	evt := ps.latestEvent
+	ps.mu.RUnlock()
+	return &evt, true
+}
+
 func (m *Manager) CancelPairing(connectionID uuid.UUID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if cancel, ok := m.pairingCancels[connectionID]; ok {
 		cancel()
 		delete(m.pairingCancels, connectionID)
+	}
+	if ps, ok := m.pairingSessions[connectionID.String()]; ok {
+		delete(m.pairingSessions, connectionID.String())
+		delete(m.pairingSessions, ps.phone)
+	}
+}
+
+func (m *Manager) CancelPairingByPhone(phone string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if ps, ok := m.pairingSessions[phone]; ok {
+		ps.cancel()
+		delete(m.pairingCancels, ps.connectionID)
+		delete(m.pairingSessions, phone)
+		delete(m.pairingSessions, ps.connectionID.String())
 	}
 }
 
@@ -147,6 +263,7 @@ func NewManager(
 		qrTimeout:        120 * time.Second,
 		pairingCancels:   make(map[uuid.UUID]context.CancelFunc),
 		healthMap:        make(map[uuid.UUID]*SessionHealthInfo),
+		pairingSessions:  make(map[string]*PairingSession),
 	}
 }
 
@@ -222,6 +339,7 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection)
 		"jid", *d.JID,
 		"device_id", d.ID,
 	)
+	_ = m.EmitStatusEvent(ctx, d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateReconnecting))
 
 	cfg := whatsapp.ClientConfig{
 		DB:        m.db,
@@ -233,12 +351,14 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection)
 
 	wc, err := whatsapp.NewWhatsAppClient(cfg)
 	if err != nil {
+		_ = m.EmitStatusEvent(ctx, d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateDisconnected))
 		return fmt.Errorf("create whatsapp client: %w", err)
 	}
 
 	// Set the JID from the persisted device record
 	jid, err := parseJID(*d.JID)
 	if err != nil {
+		_ = m.EmitStatusEvent(ctx, d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateDisconnected))
 		return fmt.Errorf("parse JID: %w", err)
 	}
 	wc.SetJID(jid)
@@ -262,6 +382,7 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection)
 		case *waEvents.LoggedOut:
 			slog.Warn("session manager: whatsmeow logged out event received, marking device terminal", "device_id", d.ID)
 			_ = m.repo.UpdateStatus(context.Background(), d.ID, string(DeviceStatusTerminal))
+			_ = m.EmitStatusEvent(context.Background(), d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, "degraded")
 			cancel()
 		case *waEvents.Message:
 			if v.Info.IsFromMe {
@@ -383,11 +504,16 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection)
 		}
 		// Update status when goroutine exits
 		_ = m.repo.UpdateStatus(context.Background(), d.ID, string(DeviceStatusDisconnected))
+		_ = m.EmitStatusEvent(context.Background(), d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateDisconnected))
 		m.registry.Remove(jid)
 	}()
 
 	// Update status to connected
-	return m.repo.UpdateStatus(ctx, d.ID, string(DeviceStatusConnected))
+	if err := m.repo.UpdateStatus(ctx, d.ID, string(DeviceStatusConnected)); err != nil {
+		return err
+	}
+	_ = m.EmitStatusEvent(ctx, d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateConnected))
+	return nil
 }
 
 // parseJID is a helper that parses a JID string.

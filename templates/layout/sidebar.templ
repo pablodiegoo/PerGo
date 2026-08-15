@@ -41,6 +41,7 @@ func isSettingsActive(activePath string) bool {
 		"/admin/workspaces",
 		"/admin/webhooks",
 		"/admin/telemetry",
+		"/admin/integrations",
 	}
 	for _, p := range prefixes {
 		if strings.HasPrefix(activePath, p) {
@@ -54,6 +55,13 @@ func isSubmenuActive(activePath, target string) bool {
 	if strings.Contains(target, "/integrations/chatwoot") {
 		return strings.Contains(activePath, "/integrations/chatwoot")
 	}
+	if strings.Contains(target, "/integrations/typebot") {
+		return strings.Contains(activePath, "/integrations/typebot")
+	}
+	if strings.Contains(target, "/integrations/headless") || target == "/admin/integrations" {
+		return strings.Contains(activePath, "/integrations/headless") ||
+			(strings.Contains(activePath, "/integrations") && !strings.Contains(activePath, "/chatwoot") && !strings.Contains(activePath, "/typebot"))
+	}
 	if target == "/admin/connections" {
 		return strings.HasPrefix(activePath, "/admin/connections") || strings.HasPrefix(activePath, "/admin/devices")
 	}
@@ -64,7 +72,9 @@ func isSubmenuActive(activePath, target string) bool {
 		return (strings.HasPrefix(activePath, "/admin/workspace") || strings.HasPrefix(activePath, "/admin/workspaces")) &&
 			!strings.Contains(activePath, "/webhooks") &&
 			!strings.Contains(activePath, "/campaigns") &&
-			!strings.Contains(activePath, "/integrations")
+			!strings.Contains(activePath, "/integrations") &&
+			!strings.Contains(activePath, "/templates") &&
+			!strings.Contains(activePath, "/tags")
 	}
 	if target == "/admin/webhooks" {
 		return strings.HasPrefix(activePath, "/admin/webhooks") || strings.Contains(activePath, "/webhooks")
@@ -147,6 +157,9 @@ templ Sidebar() {
 						<a href="/admin/telemetry" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/telemetry")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/telemetry")) }>Telemetry</a>
 					</li>
 					if ws := getActiveWorkspace(ctx); ws != nil {
+						<li>
+							<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/headless", ws.ID.String())) } class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/headless")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/headless")) }>Headless API & SSO</a>
+						</li>
 						<li>
 							<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/chatwoot", ws.ID.String())) } class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")) }>Chatwoot</a>
 						</li>

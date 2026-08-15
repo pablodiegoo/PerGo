@@ -169,3 +169,35 @@ func TestNewPublicHTTPClient_AllowlistOverride(t *testing.T) {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
 	}
 }
+
+func TestValidateURL(t *testing.T) {
+	tests := []struct {
+		name      string
+		rawURL    string
+		allowlist []string
+		wantErr   bool
+	}{
+		{"valid https URL", "https://api.example.com/webhook", nil, false},
+		{"valid http URL", "http://example.com/webhook", nil, false},
+		{"invalid scheme ftp", "ftp://example.com/webhook", nil, true},
+		{"missing scheme", "example.com/webhook", nil, true},
+		{"loopback IP 127.0.0.1", "http://127.0.0.1:8080/hook", nil, true},
+		{"loopback IPv6 ::1", "http://[::1]:8080/hook", nil, true},
+		{"private IP 10.0.0.1", "http://10.0.0.1/hook", nil, true},
+		{"private IP 192.168.1.10", "http://192.168.1.10/hook", nil, true},
+		{"private IP 172.16.0.5", "http://172.16.0.5/hook", nil, true},
+		{"localhost blocked", "http://localhost:3000/hook", nil, true},
+		{"local suffix blocked", "http://myservice.local/hook", nil, true},
+		{"internal suffix blocked", "http://service.internal/hook", nil, true},
+		{"allowlisted loopback", "http://127.0.0.1:8080/hook", []string{"127.0.0.1"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := netpolicy.ValidateURL(tt.rawURL, tt.allowlist...)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ValidateURL(%q) err = %v, wantErr = %v", tt.rawURL, err, tt.wantErr)
+			}
+		})
+	}
+}

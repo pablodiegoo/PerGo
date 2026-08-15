@@ -127,6 +127,7 @@ func TestWABAStatusReceiptsEndToEnd(t *testing.T) {
 
 	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, publisher, auditWriter, sessRepo, contactRepo, dispatchRepo, nil)
 	h := handler.NewWABAWebhookHandler(connRepo, inboundProcessor, nil)
+	h.SetVerifySignature(false)
 
 	e := echo.New()
 

@@ -29,13 +29,14 @@ templ TypebotSettingsPage(workspaceID uuid.UUID, cfg TypebotConfig, connections 
 }
 
 templ TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connections []ConnectionOption, active bool, successMsg string, errorMsg string) {
-	<div class="px-4 sm:px-6 lg:px-8 py-8">
-			<div class="sm:flex sm:items-center">
-				<div class="sm:flex-auto">
-					<h1 class="text-base font-semibold leading-6 text-gray-900">Typebot Integration</h1>
-					<p class="mt-2 text-sm text-gray-700">Configure Typebot chat automation for this workspace.</p>
-				</div>
-			</div>
+	<div class="border-b border-zinc-200 pb-5 mb-6 flex justify-between items-end">
+		<div>
+			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Integrações: Typebot</h1>
+			<p class="text-zinc-500 text-sm mt-1">Configure fluxos de automação e chatbots do Typebot para este workspace.</p>
+		</div>
+	</div>
+
+	@IntegrationTabs(workspaceID, "typebot")
 
 			if successMsg != "" {
 				<div class="rounded-md bg-green-50 p-4 mt-4">
@@ -173,5 +174,4 @@ templ TypebotSettingsContent(workspaceID uuid.UUID, cfg TypebotConfig, connectio
 					</div>
 				</form>
 			</div>
-		</div>
 }

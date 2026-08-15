@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -20,6 +23,7 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/webhook"
 )
 
 func connectNATS(t *testing.T) *nats.Conn {
@@ -95,8 +99,11 @@ func setupWebhookRoutes(t *testing.T) (*echo.Echo, *repository.WebhookDLQReposit
 	adminGroup.GET("/workspaces/:workspace_id/webhooks", whHandler.Page)
 	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/new", whHandler.GetSubscriptionNewForm)
 	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/edit", whHandler.GetSubscriptionEditForm)
+	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/rotate-form", whHandler.GetRotateSecretForm)
 	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions", whHandler.CreateSubscription)
 	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id", whHandler.UpdateSubscription)
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/rotate", whHandler.RotateSubscriptionSecret)
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/ping", whHandler.PingSubscription)
 	adminGroup.DELETE("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id", whHandler.DeleteSubscription)
 	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/test-form", whHandler.GetSubscriptionTestForm)
 	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/test", whHandler.TestSubscription)
@@ -129,7 +136,7 @@ func TestAdminWebhookDLQHandlers(t *testing.T) {
 		t.Error("expected config section in body")
 	}
 
-	// 2. POST /admin/workspaces/:workspace_id/webhooks/subscriptions
+	// 2. POST /admin/workspaces/:workspace_id/webhooks/subscriptions (with explicit secret -> reveals modal)
 	formData := url.Values{}
 	formData.Set("url", "https://example.com/webhook-endpoint")
 	formData.Set("secret", "supersecret123")
@@ -143,8 +150,11 @@ func TestAdminWebhookDLQHandlers(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200 OK, got %d", rec.Code)
 	}
-	if rec.Header().Get("HX-Refresh") != "true" {
-		t.Error("expected HX-Refresh header to refresh page")
+	if !strings.Contains(rec.Body.String(), "Webhook Endpoint Created Successfully") {
+		t.Error("expected secret reveal modal title in response")
+	}
+	if !strings.Contains(rec.Body.String(), "supersecret123") {
+		t.Error("expected secret plaintext to be revealed in one-time banner/modal")
 	}
 
 	// Verify subscription is saved in DB
@@ -271,5 +281,258 @@ func TestAdminWebhookDLQHandlers(t *testing.T) {
 	_, err = subRepo.Get(ctx, sub.ID)
 	if !errors.Is(err, repository.ErrWebhookSubscriptionNotFound) {
 		t.Errorf("expected subscription not found error, got %v", err)
+	}
+}
+
+func TestAdminWebhookSecretAutoGenerationAndSSRFFilter(t *testing.T) {
+	e, _, subRepo, wsRepo, _ := setupWebhookRoutes(t)
+
+	ctx := context.Background()
+	ws, err := wsRepo.Create(ctx, "wh_auto_sec_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	cookie := loginAndGetCookie(t, e)
+
+	// 1. Test SSRF blocked endpoint
+	ssrfForm := url.Values{}
+	ssrfForm.Set("url", "http://127.0.0.1:8080/internal/webhook")
+	req := httptest.NewRequest(http.MethodPost, "/admin/workspaces/"+ws.ID.String()+"/webhooks/subscriptions", strings.NewReader(ssrfForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected 422 Unprocessable Entity for SSRF blocked URL, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "SSRF netpolicy") {
+		t.Errorf("expected SSRF error message, got: %s", rec.Body.String())
+	}
+
+	// 2. Test auto-generation of secret when left blank
+	autoForm := url.Values{}
+	autoForm.Set("url", "https://api.external.com/webhooks")
+	autoForm.Set("secret", "") // left blank
+	autoForm.Add("event_types", "connection.status")
+	autoForm.Add("event_types", "message.delivered")
+
+	req = httptest.NewRequest(http.MethodPost, "/admin/workspaces/"+ws.ID.String()+"/webhooks/subscriptions", strings.NewReader(autoForm.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 OK on create with auto secret, got %d", rec.Code)
+	}
+	bodyStr := rec.Body.String()
+	if !strings.Contains(bodyStr, "Webhook Endpoint Created Successfully") {
+		t.Error("expected reveal modal in response")
+	}
+
+	// Verify secret in DB has length 64 (32 hex bytes)
+	subs, err := subRepo.ListByWorkspace(ctx, ws.ID)
+	if err != nil || len(subs) != 1 {
+		t.Fatalf("expected 1 sub in DB, got err=%v, count=%d", err, len(subs))
+	}
+	if len(subs[0].Secret) != 64 {
+		t.Errorf("expected auto-generated 64-char hex secret, got length %d (%s)", len(subs[0].Secret), string(subs[0].Secret))
+	}
+}
+
+func TestAdminWebhookSecretRotation(t *testing.T) {
+	e, _, subRepo, wsRepo, _ := setupWebhookRoutes(t)
+
+	ctx := context.Background()
+	ws, err := wsRepo.Create(ctx, "wh_rotate_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	cookie := loginAndGetCookie(t, e)
+
+	// Create initial subscription
+	sub, err := subRepo.Create(ctx, ws.ID, "https://api.crm.com/webhooks", []string{"*"}, []byte("initial_secret_123"))
+	if err != nil {
+		t.Fatalf("failed to create initial sub: %v", err)
+	}
+
+	// 1. GET rotate-form
+	req := httptest.NewRequest(http.MethodGet, "/admin/workspaces/"+ws.ID.String()+"/webhooks/subscriptions/"+sub.ID.String()+"/rotate-form", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 OK for rotate form, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Rotate Signing Secret") {
+		t.Error("expected rotate modal title in body")
+	}
+
+	// 2. POST rotate with blank secret -> auto-generates 64-char secret
+	rotateForm := url.Values{}
+	rotateForm.Set("secret", "")
+	req = httptest.NewRequest(
+		http.MethodPost,
+		"/admin/workspaces/"+ws.ID.String()+"/webhooks/subscriptions/"+sub.ID.String()+"/rotate",
+		strings.NewReader(rotateForm.Encode()),
+	)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 OK for rotate action, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Webhook Secret Rotated Successfully") {
+		t.Error("expected rotated modal title in response")
+	}
+
+	// Verify rotated secret in DB
+	rotatedSub, err := subRepo.Get(ctx, sub.ID)
+	if err != nil {
+		t.Fatalf("failed to retrieve rotated sub: %v", err)
+	}
+	if string(rotatedSub.Secret) == "initial_secret_123" || len(rotatedSub.Secret) != 64 {
+		t.Errorf("expected secret to be changed to 64-char random hex, got %s", string(rotatedSub.Secret))
+	}
+}
+
+func TestAdminWebhookPing(t *testing.T) {
+	e, _, subRepo, wsRepo, _ := setupWebhookRoutes(t)
+
+	ctx := context.Background()
+	ws, err := wsRepo.Create(ctx, "wh_ping_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	cookie := loginAndGetCookie(t, e)
+
+	var mu sync.Mutex
+	var receivedSig string
+	var receivedPayload []byte
+
+	// Mock receiver server
+	mockReceiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		receivedSig = r.Header.Get("X-PerGo-Signature")
+		receivedPayload, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"pong"}`))
+	}))
+	defer mockReceiver.Close()
+
+	signingSecret := "ping_test_secret_key_456"
+	sub, err := subRepo.Create(ctx, ws.ID, mockReceiver.URL, []string{"*"}, []byte(signingSecret))
+	if err != nil {
+		t.Fatalf("failed to create subscription with mock receiver URL: %v", err)
+	}
+
+	// POST /admin/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/ping
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/admin/workspaces/"+ws.ID.String()+"/webhooks/subscriptions/"+sub.ID.String()+"/ping",
+		nil,
+	)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200 OK on ping, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "200 OK") {
+		t.Errorf("expected 200 OK ping badge, got: %s", rec.Body.String())
+	}
+
+	// Validate received signature and payload
+	mu.Lock()
+	defer mu.Unlock()
+
+	if receivedSig == "" {
+		t.Fatal("expected X-PerGo-Signature header on ping request, got empty")
+	}
+
+	valid := webhook.VerifyPerGoSignature(receivedPayload, receivedSig, signingSecret)
+	if !valid {
+		t.Errorf("signature verification failed for ping payload: sig=%s", receivedSig)
+	}
+
+	var pingData map[string]any
+	if err := json.Unmarshal(receivedPayload, &pingData); err != nil {
+		t.Fatalf("failed to parse ping payload: %v", err)
+	}
+	if pingData["event"] != "ping" {
+		t.Errorf("expected event 'ping', got %v", pingData["event"])
+	}
+}
+
+func TestAdminWebhookDomainEventsSelection(t *testing.T) {
+	e, _, subRepo, wsRepo, _ := setupWebhookRoutes(t)
+
+	ctx := context.Background()
+	ws, err := wsRepo.Create(ctx, "wh_events_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	cookie := loginAndGetCookie(t, e)
+
+	allDomainEvents := []string{
+		"connection.status",
+		"message.received",
+		"message.delivered",
+		"message.read",
+		"message.failed",
+		"message.sent",
+	}
+
+	formData := url.Values{}
+	formData.Set("url", "https://events.receiver.io/inbox")
+	formData.Set("secret", "event_secret_123")
+	for _, evt := range allDomainEvents {
+		formData.Add("event_types", evt)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/workspaces/"+ws.ID.String()+"/webhooks/subscriptions", strings.NewReader(formData.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec.Code)
+	}
+
+	subs, err := subRepo.ListByWorkspace(ctx, ws.ID)
+	if err != nil || len(subs) != 1 {
+		t.Fatalf("expected 1 sub in DB, got err=%v, count=%d", err, len(subs))
+	}
+
+	sub := subs[0]
+	if len(sub.EventTypes) != len(allDomainEvents) {
+		t.Errorf("expected %d event types, got %d: %v", len(allDomainEvents), len(sub.EventTypes), sub.EventTypes)
+	}
+	for _, evt := range allDomainEvents {
+		found := false
+		for _, subEvt := range sub.EventTypes {
+			if subEvt == evt {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected event %q to be present in subscription event types", evt)
+		}
 	}
 }

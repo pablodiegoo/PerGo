@@ -134,6 +134,7 @@ templ WorkspaceDetailContent(ws repository.Workspace, keys []repository.APIKey) 
 			<p class="text-zinc-500 text-sm mt-1">Gerencie chaves de API e configurações desta área de trabalho.</p>
 		</div>
 		<div class="flex flex-wrap gap-2">
+			<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/headless", ws.ID)) } class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">Headless API & SSO</a>
 			<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/templates", ws.ID)) } class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">WABA Templates</a>
 			<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/webhooks", ws.ID)) } class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">Webhooks</a>
 			<a href="/admin/" class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">Dashboard</a>
