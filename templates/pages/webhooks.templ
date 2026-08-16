@@ -187,8 +187,6 @@ templ WorkspaceWebhooksContent(ws repository.Workspace, subs []*repository.Webho
 		<h2 class="text-lg font-semibold text-zinc-900 mb-4">Workspace Dead-Letter Queue (DLQ)</h2>
 		@DLQTable(dlqItems, false)
 	</div>
-
-	<div id="modal-container"></div>
 }
 
 templ EventBadge(evt string) {

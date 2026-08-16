@@ -7,8 +7,8 @@ import (
 
 // NewChatModal renders the "Novo Chat" modal and "Enviar Template" modal.
 templ NewChatModal(templates []repository.WABATemplate, fromContact string, isTemplateOnly bool, channel, to string) {
-	<div id="modal" class="modal fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-opacity duration-200">
-		<div class="bg-white rounded-xl shadow-lg border border-zinc-200 w-full max-w-md overflow-hidden flex flex-col mx-4">
+	<div id="modal" class="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-opacity duration-200" onclick="if(event.target===this) closeModal()">
+		<div class="bg-white rounded-xl shadow-lg border border-zinc-200 w-full max-w-md overflow-hidden flex flex-col mx-4" onclick="event.stopPropagation()">
 			<!-- Header -->
 			<div class="px-6 py-4 border-b border-zinc-200 flex justify-between items-center bg-zinc-50">
 				if isTemplateOnly {
@@ -16,7 +16,7 @@ templ NewChatModal(templates []repository.WABATemplate, fromContact string, isTe
 				} else {
 					<h3 class="font-bold text-zinc-950 text-base">Iniciar Nova Conversa</h3>
 				}
-				<button onclick="closeModal()" class="text-zinc-400 hover:text-zinc-600 text-2xl font-semibold leading-none">&times;</button>
+				<button type="button" onclick="closeModal()" class="text-zinc-400 hover:text-zinc-600 text-2xl font-semibold leading-none">&times;</button>
 			</div>
 			<!-- Form -->
 			<form
@@ -30,6 +30,7 @@ templ NewChatModal(templates []repository.WABATemplate, fromContact string, isTe
 					<input type="hidden" name="channel" value="whatsapp_cloud"/>
 					<input type="hidden" name="is_template" value="true"/>
 					<input type="hidden" name="recipient_identity" value={ to }/>
+					<input type="hidden" name="language" id="template-language" value=""/>
 					
 					<div>
 						<label class="block text-xs font-bold text-zinc-500 uppercase mb-2">Destinatário</label>
@@ -38,33 +39,27 @@ templ NewChatModal(templates []repository.WABATemplate, fromContact string, isTe
 
 					<div>
 						<label class="block text-xs font-bold text-zinc-500 uppercase mb-2">Selecione o Template</label>
-						<select name="template_name" class="w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-white text-zinc-800" onchange="showTemplatePreview(this.value)">
+						<select name="template_name" id="inbox-template-select" class="w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-white text-zinc-800" onchange="handleTemplateSelectChange(this, 'template-vars', 'template-language')">
 							<option value="">Selecione um template...</option>
 							for _, t := range templates {
-								<option value={ t.Name }>{ fmt.Sprintf("%s (%s)", t.Name, t.Language) }</option>
+								<option
+									value={ t.Name }
+									data-language={ t.Language }
+									data-components={ string(t.Components) }
+								>
+									{ fmt.Sprintf("%s (%s)", t.Name, t.Language) }
+								</option>
 							}
 						</select>
 					</div>
 
 					<div id="template-vars" class="flex flex-col gap-3 bg-zinc-50 p-3 rounded-lg border border-zinc-200 hidden">
 						<p class="text-xs font-bold text-zinc-600">Variáveis do Template</p>
-						<div class="flex flex-col gap-2">
-							<div class="flex items-center gap-2">
-								<span class="text-xs text-zinc-400 font-semibold w-16">{"{{1}}"}</span>
-								<input type="text" name="param_1" placeholder="Variável 1" class="flex-1 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800" />
-							</div>
-							<div class="flex items-center gap-2">
-								<span class="text-xs text-zinc-400 font-semibold w-16">{"{{2}}"}</span>
-								<input type="text" name="param_2" placeholder="Variável 2 (Opcional)" class="flex-1 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800" />
-							</div>
-							<div class="flex items-center gap-2">
-								<span class="text-xs text-zinc-400 font-semibold w-16">{"{{3}}"}</span>
-								<input type="text" name="param_3" placeholder="Variável 3 (Opcional)" class="flex-1 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800" />
-							</div>
-						</div>
+						<div id="template-vars-content" class="flex flex-col gap-2"></div>
 					</div>
 				} else {
 					<input type="hidden" name="is_template" value={ fmt.Sprintf("%t", channel == "whatsapp_cloud") } id="new-chat-is-template" />
+					<input type="hidden" name="language" id="new-chat-language" value=""/>
 					<div>
 						<label class="block text-xs font-bold text-zinc-500 uppercase mb-2">Destinatário (Telefone ou Username)</label>
 						<input type="text" name="to" required value={ to } placeholder="Ex: +5511999990002 ou @usuario" class="w-full rounded-lg border border-zinc-200 p-2.5 text-sm text-zinc-800" />
@@ -86,23 +81,22 @@ templ NewChatModal(templates []repository.WABATemplate, fromContact string, isTe
 					<div id="new-chat-waba-input" class={ "flex-col gap-3", templ.KV("hidden", channel != "whatsapp_cloud"), templ.KV("flex", channel == "whatsapp_cloud") }>
 						<div>
 							<label class="block text-xs font-bold text-zinc-500 uppercase mb-2">Template</label>
-							<select name="template_name" class="w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-white text-zinc-800" onchange="showTemplatePreview(this.value)">
+							<select name="template_name" id="new-chat-template-select" class="w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-white text-zinc-800" onchange="handleTemplateSelectChange(this, 'new-chat-template-vars', 'new-chat-language')">
 								<option value="">Selecione um template...</option>
 								for _, t := range templates {
-									<option value={ t.Name }>{ fmt.Sprintf("%s (%s)", t.Name, t.Language) }</option>
+									<option
+										value={ t.Name }
+										data-language={ t.Language }
+										data-components={ string(t.Components) }
+									>
+										{ fmt.Sprintf("%s (%s)", t.Name, t.Language) }
+									</option>
 								}
 							</select>
 						</div>
-						<div id="new-chat-template-vars" class="flex flex-col gap-2 bg-zinc-50 p-3 rounded-lg border border-zinc-200">
+						<div id="new-chat-template-vars" class="flex flex-col gap-2 bg-zinc-50 p-3 rounded-lg border border-zinc-200 hidden">
 							<p class="text-xs font-bold text-zinc-600">Variáveis do Template</p>
-							<div class="flex items-center gap-2">
-								<span class="text-xs text-zinc-400 font-semibold w-16">{"{{1}}"}</span>
-								<input type="text" name="param_1" placeholder="Variável 1" class="flex-1 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800" />
-							</div>
-							<div class="flex items-center gap-2">
-								<span class="text-xs text-zinc-400 font-semibold w-16">{"{{2}}"}</span>
-								<input type="text" name="param_2" placeholder="Variável 2 (Opcional)" class="flex-1 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800" />
-							</div>
+							<div id="new-chat-template-vars-content" class="flex flex-col gap-2"></div>
 						</div>
 					</div>
 				}
@@ -117,13 +111,92 @@ templ NewChatModal(templates []repository.WABATemplate, fromContact string, isTe
 	</div>
 
 	<script>
-		function showTemplatePreview(val) {
-			var container = document.getElementById('template-vars') || document.getElementById('new-chat-template-vars');
+		function closeModal() {
+			const modal = document.getElementById('modal') || document.querySelector('.modal-backdrop');
+			if (modal) {
+				modal.remove();
+			}
+			const container = document.getElementById('modal-container');
 			if (container) {
-				if (val) {
-					container.classList.remove('hidden');
-				} else {
-					container.classList.add('hidden');
+				container.innerHTML = '';
+			}
+		}
+
+		function openModal() {
+			const modal = document.getElementById('modal');
+			if (modal) {
+				modal.classList.remove('hidden');
+			}
+		}
+
+		function handleTemplateSelectChange(selectEl, containerId, langInputId) {
+			const container = document.getElementById(containerId);
+			const contentContainer = document.getElementById(containerId + '-content') || (container ? container.querySelector('div:last-child') : null);
+			const langInput = document.getElementById(langInputId);
+			const selectedOption = selectEl.options[selectEl.selectedIndex];
+
+			if (!selectedOption || !selectedOption.value) {
+				if (container) container.classList.add('hidden');
+				if (contentContainer) contentContainer.innerHTML = '';
+				if (langInput) langInput.value = '';
+				return;
+			}
+
+			const lang = selectedOption.getAttribute('data-language') || 'pt_BR';
+			if (langInput) langInput.value = lang;
+
+			if (container) container.classList.remove('hidden');
+
+			const componentsRaw = selectedOption.getAttribute('data-components');
+			if (!componentsRaw) {
+				if (contentContainer) {
+					contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200">ℹ️ Este template é estático e não requer variáveis.</p>';
+				}
+				return;
+			}
+
+			try {
+				const components = JSON.parse(componentsRaw);
+				let matches = [];
+				if (Array.isArray(components)) {
+					for (let c of components) {
+						const cType = (c.type || '').toUpperCase();
+						if ((cType === 'BODY' || cType === 'HEADER') && c.text) {
+							const found = c.text.match(/\{\{(\d+)\}\}/g);
+							if (found) matches.push(...found);
+						}
+					}
+				}
+
+				if (matches.length === 0) {
+					if (contentContainer) {
+						contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200">ℹ️ Este template é estático e não requer variáveis.</p>';
+					}
+					return;
+				}
+
+				const uniqueParams = Array.from(new Set(matches)).sort((a, b) => {
+					const numA = parseInt(a.replace(/[{}]/g, ''));
+					const numB = parseInt(b.replace(/[{}]/g, ''));
+					return numA - numB;
+				});
+
+				let html = '';
+				for (let i = 0; i < uniqueParams.length; i++) {
+					const param = uniqueParams[i];
+					const paramNum = parseInt(param.replace(/[{}]/g, ''));
+					html += '<div class="flex items-center gap-2">' +
+						'<span class="text-xs text-zinc-500 font-mono font-semibold w-12 text-center bg-zinc-200 py-1.5 rounded">' + param + '</span>' +
+						'<input type="text" name="param_' + paramNum + '" required placeholder="Valor para ' + param + '" class="flex-1 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:ring-1 focus:ring-indigo-500" />' +
+					'</div>';
+				}
+				if (contentContainer) {
+					contentContainer.innerHTML = html;
+				}
+			} catch (e) {
+				console.error("Failed to parse template components:", e);
+				if (contentContainer) {
+					contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200">ℹ️ Este template é estático e não requer variáveis.</p>';
 				}
 			}
 		}

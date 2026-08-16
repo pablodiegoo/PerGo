@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -13,11 +14,15 @@ import (
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
-	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/components"
 	"github.com/pablojhp.pergo/templates/pages"
 )
+
+// MessagePublisher defines the outbound publisher interface used by InboxHandler.
+type MessagePublisher interface {
+	Publish(ctx context.Context, subject string, data []byte, traceID string) error
+}
 
 // InboxHandler holds dependencies for the conversational inbox.
 type InboxHandler struct {
@@ -25,7 +30,7 @@ type InboxHandler struct {
 	Sessions         *repository.RecipientSessionRepository
 	Workspaces       *repository.WorkspaceRepository
 	Connections      *repository.ConnectionRepository
-	Publisher        *queue.JetStreamPublisher
+	Publisher        MessagePublisher
 	Templates        *repository.WABATemplateRepository
 	ContactRepo      *repository.ContactRepository
 	UserActionLogs   *repository.UserActionLogRepository
@@ -409,7 +414,7 @@ func (h *InboxHandler) NewMessageModal(c *echo.Context) error {
 			}
 		}
 		if err != nil {
-			// Non-blocking log
+			slog.WarnContext(ctx, "failed to list waba templates for modal", "workspace_id", workspaceID, "error", err)
 		}
 	}
 
@@ -431,37 +436,8 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 
 	var body string
 	var templateName string
+	var language string
 	var componentsList []domain.TemplateComponent
-
-	if isTemplate {
-		templateName = c.FormValue("template_name")
-		if templateName == "" {
-			return c.String(http.StatusBadRequest, "template_name is required")
-		}
-		// Read params
-		var params []domain.TemplateParameter
-		for i := 1; i <= 3; i++ {
-			val := c.FormValue(fmt.Sprintf("param_%d", i))
-			if val != "" {
-				params = append(params, domain.TemplateParameter{
-					Type: "text",
-					Text: val,
-				})
-			}
-		}
-		componentsList = []domain.TemplateComponent{
-			{
-				Type:       "body",
-				Parameters: params,
-			},
-		}
-		body = fmt.Sprintf("[Template: %s] Params: %v", templateName, params)
-	} else {
-		body = strings.TrimSpace(c.FormValue("body"))
-		if body == "" {
-			return c.String(http.StatusBadRequest, "body cannot be empty")
-		}
-	}
 
 	// Resolve connection via sender identity/channel
 	var connectionID uuid.UUID
@@ -488,6 +464,63 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 		}
 	}
 
+	if isTemplate {
+		templateName = c.FormValue("template_name")
+		if templateName == "" {
+			return c.String(http.StatusBadRequest, "template_name is required")
+		}
+
+		language = c.FormValue("language")
+		if language == "" && h.Templates != nil {
+			// Try to resolve language from registered templates
+			var tmpls []repository.WABATemplate
+			if connectionID != uuid.Nil {
+				tmpls, _ = h.Templates.ListByConnection(ctx, connectionID)
+			}
+			if len(tmpls) == 0 {
+				tmpls, _ = h.Templates.ListByWorkspace(ctx, workspaceID)
+			}
+			for _, t := range tmpls {
+				if t.Name == templateName && t.Language != "" {
+					language = t.Language
+					break
+				}
+			}
+		}
+		if language == "" {
+			language = "pt_BR"
+		}
+
+		// Read dynamic parameters
+		var params []domain.TemplateParameter
+		for i := 1; i <= 50; i++ {
+			val := c.FormValue(fmt.Sprintf("param_%d", i))
+			if val != "" {
+				params = append(params, domain.TemplateParameter{
+					Type: "text",
+					Text: val,
+				})
+			}
+		}
+
+		if len(params) > 0 {
+			componentsList = []domain.TemplateComponent{
+				{
+					Type:       "body",
+					Parameters: params,
+				},
+			}
+			body = fmt.Sprintf("[Template: %s] Params: %v", templateName, params)
+		} else {
+			body = fmt.Sprintf("[Template: %s]", templateName)
+		}
+	} else {
+		body = strings.TrimSpace(c.FormValue("body"))
+		if body == "" {
+			return c.String(http.StatusBadRequest, "body cannot be empty")
+		}
+	}
+
 	// Upsert contact profile immediately
 	if h.ContactRepo != nil {
 		_, _ = h.ContactRepo.ResolveContact(ctx, workspaceID, channel, to, to, "", "")
@@ -509,7 +542,7 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 
 	if isTemplate {
 		qMsg.TemplateName = templateName
-		qMsg.Language = "pt_BR" // Default language
+		qMsg.Language = language
 		qMsg.Components = componentsList
 	}
 

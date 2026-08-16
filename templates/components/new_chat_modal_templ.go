@@ -35,7 +35,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"modal\" class=\"modal fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-opacity duration-200\"><div class=\"bg-white rounded-xl shadow-lg border border-zinc-200 w-full max-w-md overflow-hidden flex flex-col mx-4\"><!-- Header --><div class=\"px-6 py-4 border-b border-zinc-200 flex justify-between items-center bg-zinc-50\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div id=\"modal\" class=\"modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/50 transition-opacity duration-200\" onclick=\"if(event.target===this) closeModal()\"><div class=\"bg-white rounded-xl shadow-lg border border-zinc-200 w-full max-w-md overflow-hidden flex flex-col mx-4\" onclick=\"event.stopPropagation()\"><!-- Header --><div class=\"px-6 py-4 border-b border-zinc-200 flex justify-between items-center bg-zinc-50\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -50,7 +50,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<button onclick=\"closeModal()\" class=\"text-zinc-400 hover:text-zinc-600 text-2xl font-semibold leading-none\">&times;</button></div><!-- Form --><form hx-post=\"/admin/inbox/new-message-send\" hx-swap=\"none\" hx-on::after-request=\"if(event.detail.successful){closeModal();}\" class=\"p-6 flex flex-col gap-4 bg-white\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<button type=\"button\" onclick=\"closeModal()\" class=\"text-zinc-400 hover:text-zinc-600 text-2xl font-semibold leading-none\">&times;</button></div><!-- Form --><form hx-post=\"/admin/inbox/new-message-send\" hx-swap=\"none\" hx-on::after-request=\"if(event.detail.successful){closeModal();}\" class=\"p-6 flex flex-col gap-4 bg-white\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -81,20 +81,20 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\"><div><label class=\"block text-xs font-bold text-zinc-500 uppercase mb-2\">Destinatário</label> <input type=\"text\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\"> <input type=\"hidden\" name=\"language\" id=\"template-language\" value=\"\"><div><label class=\"block text-xs font-bold text-zinc-500 uppercase mb-2\">Destinatário</label> <input type=\"text\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(fromContact)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 36, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 37, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" class=\"w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-zinc-100 text-zinc-600\" readonly></div><div><label class=\"block text-xs font-bold text-zinc-500 uppercase mb-2\">Selecione o Template</label> <select name=\"template_name\" class=\"w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-white text-zinc-800\" onchange=\"showTemplatePreview(this.value)\"><option value=\"\">Selecione um template...</option> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "\" class=\"w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-zinc-100 text-zinc-600\" readonly></div><div><label class=\"block text-xs font-bold text-zinc-500 uppercase mb-2\">Selecione o Template</label> <select name=\"template_name\" id=\"inbox-template-select\" class=\"w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-white text-zinc-800\" onchange=\"handleTemplateSelectChange(this, 'template-vars', 'template-language')\"><option value=\"\">Selecione um template...</option> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -106,242 +106,229 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 44, Col: 30}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 46, Col: 23}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "\" data-language=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var6 string
-				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s (%s)", t.Name, t.Language))
+				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Language)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 44, Col: 77}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 47, Col: 35}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</option>")
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\" data-components=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var7 string
+				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(t.Components))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 48, Col: 47}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var8 string
+				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s (%s)", t.Name, t.Language))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 50, Col: 53}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</option>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</select></div><div id=\"template-vars\" class=\"flex flex-col gap-3 bg-zinc-50 p-3 rounded-lg border border-zinc-200 hidden\"><p class=\"text-xs font-bold text-zinc-600\">Variáveis do Template</p><div class=\"flex flex-col gap-2\"><div class=\"flex items-center gap-2\"><span class=\"text-xs text-zinc-400 font-semibold w-16\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var7 string
-			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs("{{1}}")
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 53, Col: 71}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</span> <input type=\"text\" name=\"param_1\" placeholder=\"Variável 1\" class=\"flex-1 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800\"></div><div class=\"flex items-center gap-2\"><span class=\"text-xs text-zinc-400 font-semibold w-16\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var8 string
-			templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs("{{2}}")
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 57, Col: 71}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</span> <input type=\"text\" name=\"param_2\" placeholder=\"Variável 2 (Opcional)\" class=\"flex-1 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800\"></div><div class=\"flex items-center gap-2\"><span class=\"text-xs text-zinc-400 font-semibold w-16\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var9 string
-			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs("{{3}}")
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 61, Col: 71}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</span> <input type=\"text\" name=\"param_3\" placeholder=\"Variável 3 (Opcional)\" class=\"flex-1 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800\"></div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</select></div><div id=\"template-vars\" class=\"flex flex-col gap-3 bg-zinc-50 p-3 rounded-lg border border-zinc-200 hidden\"><p class=\"text-xs font-bold text-zinc-600\">Variáveis do Template</p><div id=\"template-vars-content\" class=\"flex flex-col gap-2\"></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<input type=\"hidden\" name=\"is_template\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<input type=\"hidden\" name=\"is_template\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var9 string
+			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%t", channel == "whatsapp_cloud"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 61, Col: 99}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\" id=\"new-chat-is-template\"> <input type=\"hidden\" name=\"language\" id=\"new-chat-language\" value=\"\"><div><label class=\"block text-xs font-bold text-zinc-500 uppercase mb-2\">Destinatário (Telefone ou Username)</label> <input type=\"text\" name=\"to\" required value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var10 string
-			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("%t", channel == "whatsapp_cloud"))
+			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(to)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 67, Col: 99}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 65, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\" id=\"new-chat-is-template\"><div><label class=\"block text-xs font-bold text-zinc-500 uppercase mb-2\">Destinatário (Telefone ou Username)</label> <input type=\"text\" name=\"to\" required value=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var11 string
-			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(to)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 70, Col: 54}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" placeholder=\"Ex: +5511999990002 ou @usuario\" class=\"w-full rounded-lg border border-zinc-200 p-2.5 text-sm text-zinc-800\"></div><div><label class=\"block text-xs font-bold text-zinc-500 uppercase mb-2\">Canal de Disparo</label> <select name=\"channel\" class=\"w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-white text-zinc-800\" onchange=\"toggleNewChatFields(this.value)\"><option value=\"whatsapp\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\" placeholder=\"Ex: +5511999990002 ou @usuario\" class=\"w-full rounded-lg border border-zinc-200 p-2.5 text-sm text-zinc-800\"></div><div><label class=\"block text-xs font-bold text-zinc-500 uppercase mb-2\">Canal de Disparo</label> <select name=\"channel\" class=\"w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-white text-zinc-800\" onchange=\"toggleNewChatFields(this.value)\"><option value=\"whatsapp\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if channel == "whatsapp" || channel == "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, " selected")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, ">WhatsApp Web</option> <option value=\"telegram\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, ">WhatsApp Web</option> <option value=\"telegram\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if channel == "telegram" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, " selected")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, ">Telegram Bot</option> <option value=\"whatsapp_cloud\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, ">Telegram Bot</option> <option value=\"whatsapp_cloud\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if channel == "whatsapp_cloud" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, " selected")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, " selected")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, ">WABA Cloud (API Oficial - Requer Template)</option></select></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, ">WABA Cloud (API Oficial - Requer Template)</option></select></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var12 = []any{templ.KV("hidden", channel == "whatsapp_cloud")}
-			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var12...)
+			var templ_7745c5c3_Var11 = []any{templ.KV("hidden", channel == "whatsapp_cloud")}
+			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var11...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<div id=\"new-chat-message-input\" class=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<div id=\"new-chat-message-input\" class=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var13 string
-			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var12).String())
+			var templ_7745c5c3_Var12 string
+			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var11).String())
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 1, Col: 0}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\"><label class=\"block text-xs font-bold text-zinc-500 uppercase mb-2\">Mensagem Inicial</label> <textarea name=\"body\" placeholder=\"Digite sua mensagem inicial...\" class=\"w-full rounded-lg border border-zinc-200 p-2.5 text-sm h-20 resize-none text-zinc-800\"></textarea></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "\"><label class=\"block text-xs font-bold text-zinc-500 uppercase mb-2\">Mensagem Inicial</label> <textarea name=\"body\" placeholder=\"Digite sua mensagem inicial...\" class=\"w-full rounded-lg border border-zinc-200 p-2.5 text-sm h-20 resize-none text-zinc-800\"></textarea></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var14 = []any{"flex-col gap-3", templ.KV("hidden", channel != "whatsapp_cloud"), templ.KV("flex", channel == "whatsapp_cloud")}
-			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var14...)
+			var templ_7745c5c3_Var13 = []any{"flex-col gap-3", templ.KV("hidden", channel != "whatsapp_cloud"), templ.KV("flex", channel == "whatsapp_cloud")}
+			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var13...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<div id=\"new-chat-waba-input\" class=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<div id=\"new-chat-waba-input\" class=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var15 string
-			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var14).String())
+			var templ_7745c5c3_Var14 string
+			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var13).String())
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 1, Col: 0}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "\"><div><label class=\"block text-xs font-bold text-zinc-500 uppercase mb-2\">Template</label> <select name=\"template_name\" class=\"w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-white text-zinc-800\" onchange=\"showTemplatePreview(this.value)\"><option value=\"\">Selecione um template...</option> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\"><div><label class=\"block text-xs font-bold text-zinc-500 uppercase mb-2\">Template</label> <select name=\"template_name\" id=\"new-chat-template-select\" class=\"w-full rounded-lg border border-zinc-200 p-2.5 text-sm bg-white text-zinc-800\" onchange=\"handleTemplateSelectChange(this, 'new-chat-template-vars', 'new-chat-language')\"><option value=\"\">Selecione um template...</option> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, t := range templates {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<option value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<option value=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var15 string
+				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Name)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 88, Col: 24}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "\" data-language=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var16 string
-				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Name)
+				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Language)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 92, Col: 31}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 89, Col: 36}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\" data-components=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var17 string
-				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s (%s)", t.Name, t.Language))
+				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(t.Components))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 92, Col: 78}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 90, Col: 48}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</option>")
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var17)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var18 string
+				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s (%s)", t.Name, t.Language))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 92, Col: 54}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</option>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</select></div><div id=\"new-chat-template-vars\" class=\"flex flex-col gap-2 bg-zinc-50 p-3 rounded-lg border border-zinc-200\"><p class=\"text-xs font-bold text-zinc-600\">Variáveis do Template</p><div class=\"flex items-center gap-2\"><span class=\"text-xs text-zinc-400 font-semibold w-16\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var18 string
-			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs("{{1}}")
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 99, Col: 71}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</span> <input type=\"text\" name=\"param_1\" placeholder=\"Variável 1\" class=\"flex-1 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800\"></div><div class=\"flex items-center gap-2\"><span class=\"text-xs text-zinc-400 font-semibold w-16\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var19 string
-			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs("{{2}}")
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/new_chat_modal.templ`, Line: 103, Col: 71}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</span> <input type=\"text\" name=\"param_2\" placeholder=\"Variável 2 (Opcional)\" class=\"flex-1 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800\"></div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</select></div><div id=\"new-chat-template-vars\" class=\"flex flex-col gap-2 bg-zinc-50 p-3 rounded-lg border border-zinc-200 hidden\"><p class=\"text-xs font-bold text-zinc-600\">Variáveis do Template</p><div id=\"new-chat-template-vars-content\" class=\"flex flex-col gap-2\"></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<!-- Footer Actions --><div class=\"flex justify-end gap-2 mt-4 border-t border-zinc-100 pt-4\"><button type=\"button\" onclick=\"closeModal()\" class=\"px-4 py-2 border border-zinc-200 rounded-lg text-sm font-semibold text-zinc-700 bg-white hover:bg-zinc-50\">Cancelar</button> <button type=\"submit\" class=\"px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold\">Enviar</button></div></form></div></div><script>\n\t\tfunction showTemplatePreview(val) {\n\t\t\tvar container = document.getElementById('template-vars') || document.getElementById('new-chat-template-vars');\n\t\t\tif (container) {\n\t\t\t\tif (val) {\n\t\t\t\t\tcontainer.classList.remove('hidden');\n\t\t\t\t} else {\n\t\t\t\t\tcontainer.classList.add('hidden');\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\n\t\tfunction toggleNewChatFields(val) {\n\t\t\tvar msgInput = document.getElementById('new-chat-message-input');\n\t\t\tvar wabaInput = document.getElementById('new-chat-waba-input');\n\t\t\tvar isTmpl = document.getElementById('new-chat-is-template');\n\t\t\t\n\t\t\tif (val === 'whatsapp_cloud') {\n\t\t\t\tmsgInput.classList.add('hidden');\n\t\t\t\twabaInput.classList.remove('hidden');\n\t\t\t\twabaInput.classList.add('flex');\n\t\t\t\tif (isTmpl) isTmpl.value = 'true';\n\t\t\t} else {\n\t\t\t\tmsgInput.classList.remove('hidden');\n\t\t\t\twabaInput.classList.add('hidden');\n\t\t\t\twabaInput.classList.remove('flex');\n\t\t\t\tif (isTmpl) isTmpl.value = 'false';\n\t\t\t}\n\t\t}\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<!-- Footer Actions --><div class=\"flex justify-end gap-2 mt-4 border-t border-zinc-100 pt-4\"><button type=\"button\" onclick=\"closeModal()\" class=\"px-4 py-2 border border-zinc-200 rounded-lg text-sm font-semibold text-zinc-700 bg-white hover:bg-zinc-50\">Cancelar</button> <button type=\"submit\" class=\"px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold\">Enviar</button></div></form></div></div><script>\n\t\tfunction closeModal() {\n\t\t\tconst modal = document.getElementById('modal') || document.querySelector('.modal-backdrop');\n\t\t\tif (modal) {\n\t\t\t\tmodal.remove();\n\t\t\t}\n\t\t\tconst container = document.getElementById('modal-container');\n\t\t\tif (container) {\n\t\t\t\tcontainer.innerHTML = '';\n\t\t\t}\n\t\t}\n\n\t\tfunction openModal() {\n\t\t\tconst modal = document.getElementById('modal');\n\t\t\tif (modal) {\n\t\t\t\tmodal.classList.remove('hidden');\n\t\t\t}\n\t\t}\n\n\t\tfunction handleTemplateSelectChange(selectEl, containerId, langInputId) {\n\t\t\tconst container = document.getElementById(containerId);\n\t\t\tconst contentContainer = document.getElementById(containerId + '-content') || (container ? container.querySelector('div:last-child') : null);\n\t\t\tconst langInput = document.getElementById(langInputId);\n\t\t\tconst selectedOption = selectEl.options[selectEl.selectedIndex];\n\n\t\t\tif (!selectedOption || !selectedOption.value) {\n\t\t\t\tif (container) container.classList.add('hidden');\n\t\t\t\tif (contentContainer) contentContainer.innerHTML = '';\n\t\t\t\tif (langInput) langInput.value = '';\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tconst lang = selectedOption.getAttribute('data-language') || 'pt_BR';\n\t\t\tif (langInput) langInput.value = lang;\n\n\t\t\tif (container) container.classList.remove('hidden');\n\n\t\t\tconst componentsRaw = selectedOption.getAttribute('data-components');\n\t\t\tif (!componentsRaw) {\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200\">ℹ️ Este template é estático e não requer variáveis.</p>';\n\t\t\t\t}\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\ttry {\n\t\t\t\tconst components = JSON.parse(componentsRaw);\n\t\t\t\tlet matches = [];\n\t\t\t\tif (Array.isArray(components)) {\n\t\t\t\t\tfor (let c of components) {\n\t\t\t\t\t\tconst cType = (c.type || '').toUpperCase();\n\t\t\t\t\t\tif ((cType === 'BODY' || cType === 'HEADER') && c.text) {\n\t\t\t\t\t\t\tconst found = c.text.match(/\\{\\{(\\d+)\\}\\}/g);\n\t\t\t\t\t\t\tif (found) matches.push(...found);\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\n\t\t\t\tif (matches.length === 0) {\n\t\t\t\t\tif (contentContainer) {\n\t\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200\">ℹ️ Este template é estático e não requer variáveis.</p>';\n\t\t\t\t\t}\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tconst uniqueParams = Array.from(new Set(matches)).sort((a, b) => {\n\t\t\t\t\tconst numA = parseInt(a.replace(/[{}]/g, ''));\n\t\t\t\t\tconst numB = parseInt(b.replace(/[{}]/g, ''));\n\t\t\t\t\treturn numA - numB;\n\t\t\t\t});\n\n\t\t\t\tlet html = '';\n\t\t\t\tfor (let i = 0; i < uniqueParams.length; i++) {\n\t\t\t\t\tconst param = uniqueParams[i];\n\t\t\t\t\tconst paramNum = parseInt(param.replace(/[{}]/g, ''));\n\t\t\t\t\thtml += '<div class=\"flex items-center gap-2\">' +\n\t\t\t\t\t\t'<span class=\"text-xs text-zinc-500 font-mono font-semibold w-12 text-center bg-zinc-200 py-1.5 rounded\">' + param + '</span>' +\n\t\t\t\t\t\t'<input type=\"text\" name=\"param_' + paramNum + '\" required placeholder=\"Valor para ' + param + '\" class=\"flex-1 rounded-lg border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:ring-1 focus:ring-indigo-500\" />' +\n\t\t\t\t\t'</div>';\n\t\t\t\t}\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = html;\n\t\t\t\t}\n\t\t\t} catch (e) {\n\t\t\t\tconsole.error(\"Failed to parse template components:\", e);\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200\">ℹ️ Este template é estático e não requer variáveis.</p>';\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\n\t\tfunction toggleNewChatFields(val) {\n\t\t\tvar msgInput = document.getElementById('new-chat-message-input');\n\t\t\tvar wabaInput = document.getElementById('new-chat-waba-input');\n\t\t\tvar isTmpl = document.getElementById('new-chat-is-template');\n\t\t\t\n\t\t\tif (val === 'whatsapp_cloud') {\n\t\t\t\tmsgInput.classList.add('hidden');\n\t\t\t\twabaInput.classList.remove('hidden');\n\t\t\t\twabaInput.classList.add('flex');\n\t\t\t\tif (isTmpl) isTmpl.value = 'true';\n\t\t\t} else {\n\t\t\t\tmsgInput.classList.remove('hidden');\n\t\t\t\twabaInput.classList.add('hidden');\n\t\t\t\twabaInput.classList.remove('flex');\n\t\t\t\tif (isTmpl) isTmpl.value = 'false';\n\t\t\t}\n\t\t}\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -19,6 +19,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -1146,6 +1147,152 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 			t.Errorf("expected banner to be shown for expired session, but was not found in HTML: %s", body)
 		}
 	})
+}
+
+type testMessagePublisher struct {
+	lastSubject string
+	lastData    []byte
+	lastTraceID string
+	lastMessage domain.QueueMessage
+}
+
+func (p *testMessagePublisher) Publish(ctx context.Context, subject string, data []byte, traceID string) error {
+	p.lastSubject = subject
+	p.lastData = data
+	p.lastTraceID = traceID
+	_ = json.Unmarshal(data, &p.lastMessage)
+	return nil
+}
+
+func TestInboxHandler_NewMessageSend_TransmitsLanguageAndParams(t *testing.T) {
+	wsID := uuid.New()
+	pub := &testMessagePublisher{}
+	h := &admin.InboxHandler{
+		Publisher: pub,
+	}
+
+	fv := url.Values{}
+	fv.Set("to", "+5511999990001")
+	fv.Set("channel", "whatsapp_cloud")
+	fv.Set("is_template", "true")
+	fv.Set("template_name", "order_notice")
+	fv.Set("language", "en_US")
+	fv.Set("param_1", "Order #1024")
+	fv.Set("param_2", "Shipped")
+	fv.Set("param_3", "FedEx")
+	fv.Set("param_4", "TRACK123")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/admin/inbox/new-message-send", strings.NewReader(fv.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: wsID.String()})
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := h.NewMessageSend(c)
+	if err != nil {
+		t.Fatalf("NewMessageSend error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	qMsg := pub.lastMessage
+	if qMsg.TemplateName != "order_notice" {
+		t.Errorf("expected TemplateName 'order_notice', got %q", qMsg.TemplateName)
+	}
+	if qMsg.Language != "en_US" {
+		t.Errorf("expected Language 'en_US', got %q", qMsg.Language)
+	}
+	if len(qMsg.Components) != 1 {
+		t.Fatalf("expected 1 component, got %d", len(qMsg.Components))
+	}
+	bodyComp := qMsg.Components[0]
+	normParams, err := outbound.NormalizeTemplateParams(bodyComp.Parameters)
+	if err != nil {
+		t.Fatalf("failed to normalize params: %v", err)
+	}
+	if len(normParams) != 4 {
+		t.Errorf("expected 4 parameters extracted dynamically, got %d: %v", len(normParams), normParams)
+	} else {
+		if normParams[0].Text != "Order #1024" || normParams[3].Text != "TRACK123" {
+			t.Errorf("unexpected parameters: %v", normParams)
+		}
+	}
+}
+
+func TestInboxHandler_NewMessageSend_StaticTemplate(t *testing.T) {
+	wsID := uuid.New()
+	pub := &testMessagePublisher{}
+	h := &admin.InboxHandler{
+		Publisher: pub,
+	}
+
+	fv := url.Values{}
+	fv.Set("to", "+5511999990001")
+	fv.Set("channel", "whatsapp_cloud")
+	fv.Set("is_template", "true")
+	fv.Set("template_name", "static_welcome")
+	fv.Set("language", "es_ES")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/admin/inbox/new-message-send", strings.NewReader(fv.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: wsID.String()})
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := h.NewMessageSend(c)
+	if err != nil {
+		t.Fatalf("NewMessageSend error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	qMsg := pub.lastMessage
+	if qMsg.TemplateName != "static_welcome" {
+		t.Errorf("expected TemplateName 'static_welcome', got %q", qMsg.TemplateName)
+	}
+	if qMsg.Language != "es_ES" {
+		t.Errorf("expected Language 'es_ES', got %q", qMsg.Language)
+	}
+	if len(qMsg.Components) > 0 {
+		normParams, _ := outbound.NormalizeTemplateParams(qMsg.Components[0].Parameters)
+		if len(normParams) > 0 {
+			t.Errorf("expected 0 parameters for static template, got %v", normParams)
+		}
+	}
+}
+
+func TestInboxHandler_NewMessageModal_Renders(t *testing.T) {
+	wsID := uuid.New()
+	h := &admin.InboxHandler{}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/admin/inbox/new-message-modal?type=template_only&from=+5511999990001&channel=whatsapp_cloud&to=+5511999990000", nil)
+	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: wsID.String()})
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := h.NewMessageModal(c)
+	if err != nil {
+		t.Fatalf("NewMessageModal error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "Enviar Template Meta (WABA)") {
+		t.Errorf("expected body to contain template modal header, got: %s", body)
+	}
+	if !strings.Contains(body, "hx-post=\"/admin/inbox/new-message-send\"") {
+		t.Errorf("expected body to contain form action /admin/inbox/new-message-send, got: %s", body)
+	}
 }
 
 
