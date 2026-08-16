@@ -122,3 +122,22 @@ func TestPerGoProviderContract_InboundEventPayload_Serialization(t *testing.T) {
 
 	assertJSONMatch(t, "inbound_event_message.json", actualJSON)
 }
+
+func TestPerGoProviderContract_SessionWindowExpiredError_Serialization(t *testing.T) {
+	errResp := map[string]any{
+		"code":    "SESSION_WINDOW_EXPIRED",
+		"message": "Customer service window expired for recipient",
+		"details": map[string]string{
+			"window_expired_at": "2026-08-02T12:00:00Z",
+			"window_duration":   "24h0m0s",
+			"hint":              "Use type: template to reach this contact",
+			"source":            "ingestion",
+		},
+	}
+
+	actualJSON, err := json.MarshalIndent(errResp, "", "  ")
+	require.NoError(t, err)
+
+	assertJSONMatch(t, "session_window_expired_error.json", actualJSON)
+}
+

@@ -1,0 +1,10 @@
+{
+  "code": "SESSION_WINDOW_EXPIRED",
+  "message": "Customer service window expired for recipient",
+  "details": {
+    "hint": "Use type: template to reach this contact",
+    "source": "ingestion",
+    "window_duration": "24h0m0s",
+    "window_expired_at": "2026-08-02T12:00:00Z"
+  }
+}

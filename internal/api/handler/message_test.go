@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -16,6 +17,7 @@ import (
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/session"
 )
 
 type mockConnectionRepo struct {
@@ -782,4 +784,258 @@ func TestMessageHandler_ProductValidation(t *testing.T) {
 		}
 	})
 }
+
+type mockSessionReaderForHandler struct {
+	sess *repository.RecipientSession
+	err  error
+}
+
+func (m *mockSessionReaderForHandler) Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	if m.sess != nil {
+		return m.sess, nil
+	}
+	return nil, repository.ErrSessionNotFound
+}
+
+func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
+	traceID := uuid.New().String()
+	wsID := uuid.New()
+	senderIdentity := "+5511888880000"
+	contactPhone := "+5511999990000"
+
+	wabaConn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    wsID,
+		Name:           "WABA Main",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: senderIdentity,
+		Status:         "active",
+		IsDefault:      true,
+	}
+
+	waWebConn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    wsID,
+		Name:           "WhatsApp Web Main",
+		Channel:        "whatsapp",
+		SenderIdentity: "+5511777770000",
+		Status:         "active",
+		IsDefault:      true,
+	}
+
+	telegramConn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    wsID,
+		Name:           "Telegram Bot",
+		Channel:        "telegram",
+		SenderIdentity: "@my_bot",
+		Status:         "active",
+		IsDefault:      true,
+	}
+
+	mockRepo := &mockConnectionRepo{
+		GetDefaultChannelConnectionFunc: func(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error) {
+			switch channel {
+			case "whatsapp_cloud":
+				return wabaConn, nil
+			case "whatsapp", "whatsapp_web":
+				return waWebConn, nil
+			case "telegram":
+				return telegramConn, nil
+			default:
+				return nil, repository.ErrConnectionNotFound
+			}
+		},
+		GetBySenderIdentityFunc: func(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error) {
+			if senderIdentity == wabaConn.SenderIdentity {
+				return wabaConn, nil
+			}
+			if senderIdentity == waWebConn.SenderIdentity {
+				return waWebConn, nil
+			}
+			if senderIdentity == telegramConn.SenderIdentity {
+				return telegramConn, nil
+			}
+			return nil, repository.ErrConnectionNotFound
+		},
+	}
+
+	t.Run("WABA freeform within 24h standard session returns 202", func(t *testing.T) {
+		e := echo.New()
+		sessReader := &mockSessionReaderForHandler{
+			sess: &repository.RecipientSession{
+				WorkspaceID:       wsID,
+				RecipientPhone:    contactPhone,
+				Channel:           "whatsapp_cloud",
+				RecipientIdentity: senderIdentity,
+				LastInboundAt:     time.Now().Add(-2 * time.Hour),
+				EntryPointType:    "standard",
+			},
+		}
+		h := &MessageHandler{
+			ConnectionRepo: mockRepo,
+			WindowChecker:  session.NewWindowChecker(sessReader),
+		}
+		h.RegisterRoutes(e)
+
+		body := `{"to":"` + contactPhone + `","channel":"whatsapp_cloud","body":"Valid freeform reply"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(testContext(traceID, wsID))
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("WABA freeform within 72h CTWA session returns 202", func(t *testing.T) {
+		e := echo.New()
+		sessReader := &mockSessionReaderForHandler{
+			sess: &repository.RecipientSession{
+				WorkspaceID:       wsID,
+				RecipientPhone:    contactPhone,
+				Channel:           "whatsapp_cloud",
+				RecipientIdentity: senderIdentity,
+				LastInboundAt:     time.Now().Add(-48 * time.Hour),
+				EntryPointType:    "ctwa",
+			},
+		}
+		h := &MessageHandler{
+			ConnectionRepo: mockRepo,
+			WindowChecker:  session.NewWindowChecker(sessReader),
+		}
+		h.RegisterRoutes(e)
+
+		body := `{"to":"` + contactPhone + `","channel":"whatsapp_cloud","body":"Valid CTWA reply within 72h"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(testContext(traceID, wsID))
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("WABA freeform outside window returns 422 SESSION_WINDOW_EXPIRED with schema compliance", func(t *testing.T) {
+		e := echo.New()
+		lastInbound := time.Now().Add(-26 * time.Hour)
+		sessReader := &mockSessionReaderForHandler{
+			sess: &repository.RecipientSession{
+				WorkspaceID:       wsID,
+				RecipientPhone:    contactPhone,
+				Channel:           "whatsapp_cloud",
+				RecipientIdentity: senderIdentity,
+				LastInboundAt:     lastInbound,
+				EntryPointType:    "standard",
+			},
+		}
+		h := &MessageHandler{
+			ConnectionRepo: mockRepo,
+			WindowChecker:  session.NewWindowChecker(sessReader),
+		}
+		h.RegisterRoutes(e)
+
+		body := `{"to":"` + contactPhone + `","channel":"whatsapp_cloud","body":"Blocked outside window"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(testContext(traceID, wsID))
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("expected 422, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var resp struct {
+			Code    string            `json:"code"`
+			Message string            `json:"message"`
+			Details map[string]string `json:"details"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to parse SESSION_WINDOW_EXPIRED response: %v", err)
+		}
+
+		if resp.Code != "SESSION_WINDOW_EXPIRED" {
+			t.Errorf("code = %q, want %q", resp.Code, "SESSION_WINDOW_EXPIRED")
+		}
+		if resp.Message != "Customer service window expired for recipient" {
+			t.Errorf("message = %q, want %q", resp.Message, "Customer service window expired for recipient")
+		}
+		if resp.Details == nil {
+			t.Fatalf("details map is nil")
+		}
+		if resp.Details["hint"] != "Use type: template to reach this contact" {
+			t.Errorf("details.hint = %q, want %q", resp.Details["hint"], "Use type: template to reach this contact")
+		}
+		if resp.Details["source"] != "ingestion" {
+			t.Errorf("details.source = %q, want %q", resp.Details["source"], "ingestion")
+		}
+		if resp.Details["window_duration"] != "24h0m0s" {
+			t.Errorf("details.window_duration = %q, want %q", resp.Details["window_duration"], "24h0m0s")
+		}
+		expectedExpiredAt := lastInbound.Add(24 * time.Hour).Format(time.RFC3339)
+		if resp.Details["window_expired_at"] != expectedExpiredAt {
+			t.Errorf("details.window_expired_at = %q, want %q", resp.Details["window_expired_at"], expectedExpiredAt)
+		}
+	})
+
+	t.Run("WhatsApp Web (whatsmeow) ignores window restrictions and returns 202", func(t *testing.T) {
+		e := echo.New()
+		sessReader := &mockSessionReaderForHandler{
+			sess: nil, // no session at all
+		}
+		h := &MessageHandler{
+			ConnectionRepo: mockRepo,
+			WindowChecker:  session.NewWindowChecker(sessReader),
+		}
+		h.RegisterRoutes(e)
+
+		body := `{"to":"` + contactPhone + `","channel":"whatsapp","body":"WhatsApp Web bypasses window"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(testContext(traceID, wsID))
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("expected 202 for WhatsApp Web, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("Telegram ignores window restrictions and returns 202", func(t *testing.T) {
+		e := echo.New()
+		sessReader := &mockSessionReaderForHandler{
+			sess: nil, // no session at all
+		}
+		h := &MessageHandler{
+			ConnectionRepo: mockRepo,
+			WindowChecker:  session.NewWindowChecker(sessReader),
+		}
+		h.RegisterRoutes(e)
+
+		body := `{"to":"123456789","channel":"telegram","body":"Telegram bypasses window"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(testContext(traceID, wsID))
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("expected 202 for Telegram, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+}
+
 

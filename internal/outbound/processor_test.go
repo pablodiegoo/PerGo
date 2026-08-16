@@ -649,6 +649,122 @@ func TestProcessor_WhatsAppCloudWindowIngestion(t *testing.T) {
 			t.Fatalf("expected error to be *session.SessionWindowError, got %T: %v", err, err)
 		}
 	})
+
+	t.Run("WABA freeform falls back to default template when window expired", func(t *testing.T) {
+		creds, _ := json.Marshal(map[string]string{
+			"default_template_name":     "reengagement_prompt",
+			"default_template_language": "pt_BR",
+		})
+		fallbackConn := &repository.Connection{
+			ID:             connID,
+			WorkspaceID:    wsID,
+			Name:           "WABA Fallback Conn",
+			Channel:        "whatsapp_cloud",
+			SenderIdentity: senderIdentity,
+			Credentials:    creds,
+			Status:         "connected",
+		}
+		sessionReader := &fakeSessionReader{
+			sess: &repository.RecipientSession{
+				WorkspaceID:       wsID,
+				RecipientPhone:    contactPhone,
+				Channel:           "whatsapp_cloud",
+				RecipientIdentity: senderIdentity,
+				LastInboundAt:     time.Now().Add(-30 * time.Hour),
+				EntryPointType:    "standard",
+			},
+		}
+		p := outbound.NewProcessor(nil, nil, &fakeRouteResolver{conn: fallbackConn}, publisher)
+		p.SetWindowChecker(session.NewWindowChecker(sessionReader))
+
+		req := &domain.CreateMessageRequest{
+			To:      contactPhone,
+			Channel: "whatsapp_cloud",
+			Body:    "Message converted to template",
+		}
+
+		qMsg, err := p.Ingest(context.Background(), wsID, "trace-window-fallback", req)
+		if err != nil {
+			t.Fatalf("expected successful ingestion with template fallback, got: %v", err)
+		}
+		if qMsg.TemplateName != "reengagement_prompt" {
+			t.Errorf("got TemplateName %q, want 'reengagement_prompt'", qMsg.TemplateName)
+		}
+		if qMsg.Language != "pt_BR" {
+			t.Errorf("got Language %q, want 'pt_BR'", qMsg.Language)
+		}
+		if len(qMsg.Components) != 1 {
+			t.Fatalf("expected 1 body component, got: %+v", qMsg.Components)
+		}
+		params, ok := qMsg.Components[0].Parameters.([]domain.TemplateParameter)
+		if !ok || len(params) != 1 {
+			t.Fatalf("expected 1 parameter of type []domain.TemplateParameter, got: %+v", qMsg.Components[0].Parameters)
+		}
+		if params[0].Text != "Message converted to template" {
+			t.Errorf("got parameter text %q, want %q", params[0].Text, "Message converted to template")
+		}
+	})
+
+	t.Run("WhatsApp Web (whatsmeow) bypasses session window check completely", func(t *testing.T) {
+		waWebConn := &repository.Connection{
+			ID:             uuid.New(),
+			WorkspaceID:    wsID,
+			Name:           "WA Web Conn",
+			Channel:        "whatsapp",
+			SenderIdentity: "+5511777770000",
+			Status:         "connected",
+		}
+		sessionReader := &fakeSessionReader{
+			sess: nil, // no session recorded
+		}
+		p := outbound.NewProcessor(nil, nil, &fakeRouteResolver{conn: waWebConn}, publisher)
+		p.SetWindowChecker(session.NewWindowChecker(sessionReader))
+
+		req := &domain.CreateMessageRequest{
+			To:      contactPhone,
+			Channel: "whatsapp",
+			Body:    "WhatsApp Web message with no window check",
+		}
+
+		qMsg, err := p.Ingest(context.Background(), wsID, "trace-wa-web-bypass", req)
+		if err != nil {
+			t.Fatalf("expected WhatsApp Web to bypass window check, got error: %v", err)
+		}
+		if qMsg.Body != "WhatsApp Web message with no window check" {
+			t.Errorf("expected Body preserved, got %q", qMsg.Body)
+		}
+	})
+
+	t.Run("Telegram bypasses session window check completely", func(t *testing.T) {
+		telegramConn := &repository.Connection{
+			ID:             uuid.New(),
+			WorkspaceID:    wsID,
+			Name:           "Telegram Conn",
+			Channel:        "telegram",
+			SenderIdentity: "@my_bot",
+			Status:         "connected",
+		}
+		sessionReader := &fakeSessionReader{
+			sess: nil, // no session recorded
+		}
+		p := outbound.NewProcessor(nil, nil, &fakeRouteResolver{conn: telegramConn}, publisher)
+		p.SetWindowChecker(session.NewWindowChecker(sessionReader))
+
+		req := &domain.CreateMessageRequest{
+			To:      "123456789",
+			Channel: "telegram",
+			Body:    "Telegram message with no window check",
+		}
+
+		qMsg, err := p.Ingest(context.Background(), wsID, "trace-telegram-bypass", req)
+		if err != nil {
+			t.Fatalf("expected Telegram to bypass window check, got error: %v", err)
+		}
+		if qMsg.Body != "Telegram message with no window check" {
+			t.Errorf("expected Body preserved, got %q", qMsg.Body)
+		}
+	})
 }
+
 
 
