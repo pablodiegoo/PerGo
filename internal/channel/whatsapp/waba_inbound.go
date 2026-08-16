@@ -148,6 +148,14 @@ func (a *WABAInboundAdapter) Parse(
 
 	for _, entry := range wabaPayload.Entry {
 		for _, change := range entry.Changes {
+			recipientIdentity := change.Value.Metadata.DisplayPhoneNumber
+			if recipientIdentity == "" {
+				recipientIdentity = change.Value.Metadata.PhoneNumberID
+			}
+			if conn != nil && conn.SenderIdentity != "" {
+				recipientIdentity = conn.SenderIdentity
+			}
+
 			if len(change.Value.Statuses) > 0 {
 				for _, status := range change.Value.Statuses {
 					events = append(events, &inbound.InboundEvent{
@@ -156,7 +164,7 @@ func (a *WABAInboundAdapter) Parse(
 						MessageID:    status.ID,
 						Channel:      "whatsapp_cloud",
 						From:         status.RecipientID,
-						To:           change.Value.Metadata.DisplayPhoneNumber,
+						To:           recipientIdentity,
 						Body:         status.Status,
 						Metadata:     map[string]string{"type": "status_update"},
 					})
@@ -165,10 +173,6 @@ func (a *WABAInboundAdapter) Parse(
 			}
 
 			for _, msg := range change.Value.Messages {
-				recipientIdentity := change.Value.Metadata.DisplayPhoneNumber
-				if recipientIdentity == "" {
-					recipientIdentity = change.Value.Metadata.PhoneNumberID
-				}
 
 				// Resolve media details
 				var mediaObj *wabaMediaObj

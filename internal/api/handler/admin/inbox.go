@@ -181,13 +181,22 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		}
 	}
 	if wabaIdentity != nil && h.Sessions != nil && workspaceID != uuid.Nil {
-		session, sErr := h.Sessions.Get(ctx, workspaceID, wabaIdentity.SenderIdentity, "whatsapp_cloud", wabaIdentity.SenderIdentity)
-		if sErr == nil {
-			if session.LastInboundAt.IsZero() || time.Since(session.LastInboundAt) > 24*time.Hour {
+		wabaSender := defaultSenders["whatsapp_cloud"]
+		if wabaSender == "" {
+			isWabaBlocked = true
+		} else {
+			session, sErr := h.Sessions.Get(ctx, workspaceID, wabaIdentity.SenderIdentity, "whatsapp_cloud", wabaSender)
+			if sErr == nil && session != nil {
+				windowDuration := 24 * time.Hour
+				if session.EntryPointType == "ctwa" {
+					windowDuration = 72 * time.Hour
+				}
+				if session.LastInboundAt.IsZero() || time.Since(session.LastInboundAt) > windowDuration {
+					isWabaBlocked = true
+				}
+			} else {
 				isWabaBlocked = true
 			}
-		} else {
-			isWabaBlocked = true
 		}
 	}
 

@@ -732,3 +732,90 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 		}
 	})
 }
+
+func TestInboundProcessor_WhatsAppCloudSessionTracking(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	dedupRepo := repository.NewInboundDedupRepository(pool)
+	sessRepo := repository.NewRecipientSessionRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "waba_session_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	pub := &fakePublisher{}
+	me := &fakeMediaEngine{}
+	aud := &fakeAuditWriter{}
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+
+	t.Run("records standard 24h recipient session", func(t *testing.T) {
+		event := &inbound.InboundEvent{
+			WorkspaceID: ws.ID,
+			MessageID:   "wamid.standard_sess_1",
+			Channel:     "whatsapp_cloud",
+			From:        "5511999990001",
+			To:          "+5511888880001",
+			Body:        "Hi there",
+			Metadata: map[string]string{
+				"entry_point_type": "standard",
+			},
+		}
+
+		err := proc.Process(ctx, event)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+
+		sess, err := sessRepo.Get(ctx, ws.ID, "5511999990001", "whatsapp_cloud", "+5511888880001")
+		if err != nil {
+			t.Fatalf("failed to retrieve recipient session: %v", err)
+		}
+		if sess.RecipientPhone != "5511999990001" {
+			t.Errorf("expected RecipientPhone 5511999990001, got %s", sess.RecipientPhone)
+		}
+		if sess.RecipientIdentity != "+5511888880001" {
+			t.Errorf("expected RecipientIdentity +5511888880001, got %s", sess.RecipientIdentity)
+		}
+		if sess.EntryPointType != "standard" {
+			t.Errorf("expected EntryPointType standard, got %s", sess.EntryPointType)
+		}
+		if sess.LastInboundAt.IsZero() || time.Since(sess.LastInboundAt) > 10*time.Second {
+			t.Errorf("expected LastInboundAt to be recent, got %v", sess.LastInboundAt)
+		}
+	})
+
+	t.Run("records ctwa 72h recipient session", func(t *testing.T) {
+		event := &inbound.InboundEvent{
+			WorkspaceID: ws.ID,
+			MessageID:   "wamid.ctwa_sess_1",
+			Channel:     "whatsapp_cloud",
+			From:        "5511999990002",
+			To:          "+5511888880001",
+			Body:        "Clicked ad",
+			Metadata: map[string]string{
+				"entry_point_type": "ctwa",
+			},
+		}
+
+		err := proc.Process(ctx, event)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+
+		sess, err := sessRepo.Get(ctx, ws.ID, "5511999990002", "whatsapp_cloud", "+5511888880001")
+		if err != nil {
+			t.Fatalf("failed to retrieve recipient session: %v", err)
+		}
+		if sess.EntryPointType != "ctwa" {
+			t.Errorf("expected EntryPointType ctwa, got %s", sess.EntryPointType)
+		}
+	})
+}
+

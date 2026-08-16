@@ -991,5 +991,163 @@ func TestInboxHandler_ToggleBot_HTTP(t *testing.T) {
 	}
 }
 
+func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
+	dsn := os.Getenv("PERGO_DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@localhost:5433/pergo?sslmode=disable"
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+		pool, err = pgxpool.New(ctx, dsn)
+		if err != nil {
+			t.Skip("PostgreSQL not available for testing")
+		}
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+		pool, err = pgxpool.New(ctx, dsn)
+		if err != nil {
+			t.Skip("PostgreSQL not available for testing")
+		}
+		if err := pool.Ping(ctx); err != nil {
+			t.Skip("PostgreSQL ping failed")
+		}
+	}
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	auditRepo := repository.NewAuditRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+	sessionRepo := repository.NewRecipientSessionRepository(pool)
+	encryptor, _ := crypto.NewEncryptor([]byte("dev-development-key-32-bytes-kek"))
+	connRepo := repository.NewConnectionRepository(pool, encryptor)
+
+	ws, err := wsRepo.Create(ctx, "ChatPanel WABA Window Test Workspace")
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() {
+		_ = wsRepo.Delete(ctx, ws.ID)
+	}()
+
+	// Create active WABA connection with canonical sender identity
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "WABA Connection",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+5511888880000",
+		Status:         "connected",
+		IsDefault:      true,
+	}
+	err = connRepo.Create(ctx, conn)
+	if err != nil {
+		t.Fatalf("failed to create connection: %v", err)
+	}
+
+	// Create contact with WhatsApp Cloud identity
+	contactPhone := "5511999990000"
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", contactPhone, "WABA Window User", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact: %v", err)
+	}
+
+	h := &admin.InboxHandler{
+		Repo:        auditRepo,
+		Sessions:    sessionRepo,
+		Workspaces:  wsRepo,
+		Connections: connRepo,
+		ContactRepo: contactRepo,
+	}
+
+	bannerText := "Janela de atendimento (24h) fechada para este contato"
+
+	t.Run("hides banner when active 24h standard session exists for contact and connection sender", func(t *testing.T) {
+		err := sessionRepo.Upsert(ctx, ws.ID, contactPhone, "whatsapp_cloud", "+5511888880000", time.Now().UTC().Add(-2*time.Hour), "standard")
+		if err != nil {
+			t.Fatalf("failed to upsert session: %v", err)
+		}
+
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/admin/inbox/chat?contact_id="+contact.ID.String(), nil)
+		req.Header.Set("HX-Request", "true")
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err = h.ChatPanel(c)
+		if err != nil {
+			t.Fatalf("ChatPanel error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+
+		body := rec.Body.String()
+		if strings.Contains(body, bannerText) {
+			t.Errorf("expected banner to be hidden for active 24h session, but it was present in HTML: %s", body)
+		}
+	})
+
+	t.Run("hides banner when active 72h CTWA session exists for contact and connection sender", func(t *testing.T) {
+		err := sessionRepo.Upsert(ctx, ws.ID, contactPhone, "whatsapp_cloud", "+5511888880000", time.Now().UTC().Add(-30*time.Hour), "ctwa")
+		if err != nil {
+			t.Fatalf("failed to upsert session: %v", err)
+		}
+
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/admin/inbox/chat?contact_id="+contact.ID.String(), nil)
+		req.Header.Set("HX-Request", "true")
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err = h.ChatPanel(c)
+		if err != nil {
+			t.Fatalf("ChatPanel error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+
+		body := rec.Body.String()
+		if strings.Contains(body, bannerText) {
+			t.Errorf("expected banner to be hidden for active 72h CTWA session at 30h, but it was present in HTML: %s", body)
+		}
+	})
+
+	t.Run("shows banner when session is expired (>24h for standard)", func(t *testing.T) {
+		err := sessionRepo.Upsert(ctx, ws.ID, contactPhone, "whatsapp_cloud", "+5511888880000", time.Now().UTC().Add(-26*time.Hour), "standard")
+		if err != nil {
+			t.Fatalf("failed to upsert session: %v", err)
+		}
+
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/admin/inbox/chat?contact_id="+contact.ID.String(), nil)
+		req.Header.Set("HX-Request", "true")
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err = h.ChatPanel(c)
+		if err != nil {
+			t.Fatalf("ChatPanel error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", rec.Code)
+		}
+
+		body := rec.Body.String()
+		if !strings.Contains(body, bannerText) {
+			t.Errorf("expected banner to be shown for expired session, but was not found in HTML: %s", body)
+		}
+	})
+}
+
+
 
 

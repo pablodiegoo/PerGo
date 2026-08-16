@@ -23,9 +23,11 @@ import (
 	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/platform/storage"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/session"
 )
 
 func connectNATS(t *testing.T) *nats.Conn {
@@ -333,6 +335,99 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 
 		if replayOrderCreatedCount != 0 {
 			t.Errorf("expected 0 order.created events on duplicate replay, got %d", replayOrderCreatedCount)
+		}
+	})
+
+	t.Run("POST Inbound message opens 24h Customer Service Window for outbound freeform API message", func(t *testing.T) {
+		customerPhone := "5511999991234"
+		inboundMsg := fmt.Sprintf(`{
+			"object": "whatsapp_business_account",
+			"entry": [
+				{
+					"id": "12345",
+					"changes": [
+						{
+							"field": "messages",
+							"value": {
+								"messaging_product": "whatsapp",
+								"metadata": {
+									"display_phone_number": "15550000000",
+									"phone_number_id": "phone_id_123"
+								},
+								"messages": [
+									{
+										"from": "%s",
+										"id": "wamid.inbound_window_test_001",
+										"timestamp": "1700000000",
+										"type": "text",
+										"text": {
+											"body": "Customer initiated conversation"
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			]
+		}`, customerPhone)
+
+		reqInbound := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/waba/%s", ws.ID), strings.NewReader(inboundMsg))
+		reqInbound.Header.Set("Content-Type", "application/json")
+		recInbound := httptest.NewRecorder()
+		cInbound := e.NewContext(reqInbound, recInbound)
+		cInbound.SetPath("/webhooks/waba/:workspace_id")
+		cInbound.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		err := h.HandlePost(cInbound)
+		if err != nil {
+			t.Fatalf("HandlePost inbound error: %v", err)
+		}
+		if recInbound.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", recInbound.Code)
+		}
+
+		// 1. Verify session is registered under connection's SenderIdentity "123456789"
+		sess, err := sessRepo.Get(ctx, ws.ID, customerPhone, "whatsapp_cloud", "123456789")
+		if err != nil {
+			t.Fatalf("failed to get recipient session: %v", err)
+		}
+		if sess.RecipientPhone != customerPhone {
+			t.Errorf("expected session phone %s, got %s", customerPhone, sess.RecipientPhone)
+		}
+		if sess.RecipientIdentity != "123456789" {
+			t.Errorf("expected session recipient identity '123456789', got %s", sess.RecipientIdentity)
+		}
+
+		// 2. Outbound Freeform Message API Call
+		windowChecker := session.NewWindowChecker(sessRepo)
+		msgHandler := &MessageHandler{
+			Publisher:      publisher,
+			ConnectionRepo: connRepo,
+			WindowChecker:  windowChecker,
+		}
+
+		outboundBody := fmt.Sprintf(`{
+			"to": "%s",
+			"channel": "whatsapp_cloud",
+			"body": "Freeform operator reply within window"
+		}`, customerPhone)
+
+		reqOutbound := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(outboundBody))
+		reqOutbound.Header.Set("Content-Type", "application/json")
+		reqOutbound.Header.Set("X-Trace-Id", "trace-window-test-"+uuid.New().String())
+		ctxWithWs := tenant.WithWorkspaceID(reqOutbound.Context(), ws.ID)
+		reqOutbound = reqOutbound.WithContext(ctxWithWs)
+
+		recOutbound := httptest.NewRecorder()
+		cOutbound := e.NewContext(reqOutbound, recOutbound)
+
+		err = msgHandler.Create(cOutbound)
+		if err != nil {
+			t.Fatalf("MessageHandler.Create error: %v", err)
+		}
+		if recOutbound.Code != http.StatusAccepted {
+			t.Errorf("status = %d, want 202 Accepted. Body: %s", recOutbound.Code, recOutbound.Body.String())
 		}
 	})
 }

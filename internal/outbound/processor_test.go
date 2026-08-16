@@ -540,3 +540,115 @@ func TestProcessor_CatalogResolution(t *testing.T) {
 	})
 }
 
+func TestProcessor_WhatsAppCloudWindowIngestion(t *testing.T) {
+	wsID := uuid.New()
+	connID := uuid.New()
+	senderIdentity := "+5511888880000"
+	contactPhone := "5511999990000"
+
+	wabaConn := &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    wsID,
+		Name:           "WABA Active Conn",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: senderIdentity,
+		Status:         "connected",
+	}
+
+	resolver := &fakeRouteResolver{conn: wabaConn}
+	publisher := &fakePublisher{}
+
+	t.Run("freeform message passes within 24h standard session", func(t *testing.T) {
+		sessionReader := &fakeSessionReader{
+			sess: &repository.RecipientSession{
+				WorkspaceID:       wsID,
+				RecipientPhone:    contactPhone,
+				Channel:           "whatsapp_cloud",
+				RecipientIdentity: senderIdentity,
+				LastInboundAt:     time.Now().Add(-2 * time.Hour),
+				EntryPointType:    "standard",
+			},
+		}
+		p := outbound.NewProcessor(nil, nil, resolver, publisher)
+		p.SetWindowChecker(session.NewWindowChecker(sessionReader))
+
+		req := &domain.CreateMessageRequest{
+			To:      contactPhone,
+			Channel: "whatsapp_cloud",
+			Body:    "Freeform reply within 24h window",
+		}
+
+		qMsg, err := p.Ingest(context.Background(), wsID, "trace-window-1", req)
+		if err != nil {
+			t.Fatalf("expected freeform message to pass ingestion within 24h, got: %v", err)
+		}
+		if qMsg.Body != "Freeform reply within 24h window" {
+			t.Errorf("expected Body to be preserved, got %q", qMsg.Body)
+		}
+		if qMsg.TemplateName != "" {
+			t.Errorf("expected no template conversion, got template %q", qMsg.TemplateName)
+		}
+	})
+
+	t.Run("freeform message passes within 72h CTWA session at 40h", func(t *testing.T) {
+		sessionReader := &fakeSessionReader{
+			sess: &repository.RecipientSession{
+				WorkspaceID:       wsID,
+				RecipientPhone:    contactPhone,
+				Channel:           "whatsapp_cloud",
+				RecipientIdentity: senderIdentity,
+				LastInboundAt:     time.Now().Add(-40 * time.Hour),
+				EntryPointType:    "ctwa",
+			},
+		}
+		p := outbound.NewProcessor(nil, nil, resolver, publisher)
+		p.SetWindowChecker(session.NewWindowChecker(sessionReader))
+
+		req := &domain.CreateMessageRequest{
+			To:      contactPhone,
+			Channel: "whatsapp_cloud",
+			Body:    "Freeform reply within 72h CTWA window",
+		}
+
+		qMsg, err := p.Ingest(context.Background(), wsID, "trace-window-2", req)
+		if err != nil {
+			t.Fatalf("expected freeform message to pass ingestion within 72h CTWA, got: %v", err)
+		}
+		if qMsg.Body != "Freeform reply within 72h CTWA window" {
+			t.Errorf("expected Body to be preserved, got %q", qMsg.Body)
+		}
+	})
+
+	t.Run("freeform message fails with SessionWindowError when window expired and no fallback template", func(t *testing.T) {
+		sessionReader := &fakeSessionReader{
+			sess: &repository.RecipientSession{
+				WorkspaceID:       wsID,
+				RecipientPhone:    contactPhone,
+				Channel:           "whatsapp_cloud",
+				RecipientIdentity: senderIdentity,
+				LastInboundAt:     time.Now().Add(-26 * time.Hour),
+				EntryPointType:    "standard",
+			},
+		}
+		p := outbound.NewProcessor(nil, nil, resolver, publisher)
+		p.SetWindowChecker(session.NewWindowChecker(sessionReader))
+
+		req := &domain.CreateMessageRequest{
+			To:      contactPhone,
+			Channel: "whatsapp_cloud",
+			Body:    "Freeform reply outside window",
+		}
+
+		_, err := p.Ingest(context.Background(), wsID, "trace-window-3", req)
+		if err == nil {
+			t.Fatalf("expected SessionWindowError for expired window, got nil")
+		}
+
+		var sessErr *session.SessionWindowError
+		if !errors.As(err, &sessErr) {
+			t.Fatalf("expected error to be *session.SessionWindowError, got %T: %v", err, err)
+		}
+	})
+}
+
+

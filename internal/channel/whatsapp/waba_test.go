@@ -1161,3 +1161,115 @@ func TestWABAAdapter_SSRFProtection(t *testing.T) {
 		t.Fatalf("expected error for restricted IP, got nil")
 	}
 }
+
+func TestWABAInboundAdapter_SenderIdentityStamping(t *testing.T) {
+	ctx := context.Background()
+	adapter := NewWABAInboundAdapter(nil)
+
+	creds := wabaVerifyCreds{
+		VerifyToken: "verify-tok",
+		Token:       "tok-123",
+	}
+	credsJSON, _ := json.Marshal(creds)
+	wsID := uuid.New()
+	connID := uuid.New()
+
+	payloadMessage := []byte(`{
+		"object": "whatsapp_business_account",
+		"entry": [{
+			"id": "waba_id",
+			"changes": [{
+				"field": "messages",
+				"value": {
+					"messaging_product": "whatsapp",
+					"metadata": {
+						"display_phone_number": "15550000000",
+						"phone_number_id": "phone_id_123"
+					},
+					"messages": [{
+						"from": "5511999999999",
+						"id": "wamid.msg_test_1",
+						"timestamp": "1700000000",
+						"type": "text",
+						"text": {"body": "Hello"}
+					}]
+				}
+			}]
+		}]
+	}`)
+
+	payloadStatus := []byte(`{
+		"object": "whatsapp_business_account",
+		"entry": [{
+			"id": "waba_id",
+			"changes": [{
+				"field": "messages",
+				"value": {
+					"messaging_product": "whatsapp",
+					"metadata": {
+						"display_phone_number": "15550000000",
+						"phone_number_id": "phone_id_123"
+					},
+					"statuses": [{
+						"id": "wamid.msg_test_1",
+						"status": "delivered",
+						"recipient_id": "5511999999999",
+						"timestamp": "1700000001"
+					}]
+				}
+			}]
+		}]
+	}`)
+
+	t.Run("stamps InboundEvent.To with Connection.SenderIdentity when set", func(t *testing.T) {
+		conn := &repository.Connection{
+			ID:             connID,
+			WorkspaceID:    wsID,
+			SenderIdentity: "+5511888888888",
+			Credentials:    credsJSON,
+		}
+
+		events, err := adapter.Parse(ctx, payloadMessage, nil, conn)
+		if err != nil {
+			t.Fatalf("Parse error: %v", err)
+		}
+		if len(events) != 1 {
+			t.Fatalf("expected 1 event, got %d", len(events))
+		}
+		if events[0].To != "+5511888888888" {
+			t.Errorf("expected InboundEvent.To = %q, got %q", "+5511888888888", events[0].To)
+		}
+
+		statusEvents, err := adapter.Parse(ctx, payloadStatus, nil, conn)
+		if err != nil {
+			t.Fatalf("Parse status error: %v", err)
+		}
+		if len(statusEvents) != 1 {
+			t.Fatalf("expected 1 status event, got %d", len(statusEvents))
+		}
+		if statusEvents[0].To != "+5511888888888" {
+			t.Errorf("expected status InboundEvent.To = %q, got %q", "+5511888888888", statusEvents[0].To)
+		}
+	})
+
+	t.Run("falls back to metadata DisplayPhoneNumber when Connection.SenderIdentity is empty", func(t *testing.T) {
+		conn := &repository.Connection{
+			ID:             connID,
+			WorkspaceID:    wsID,
+			SenderIdentity: "",
+			Credentials:    credsJSON,
+		}
+
+		events, err := adapter.Parse(ctx, payloadMessage, nil, conn)
+		if err != nil {
+			t.Fatalf("Parse error: %v", err)
+		}
+		if len(events) != 1 {
+			t.Fatalf("expected 1 event, got %d", len(events))
+		}
+		if events[0].To != "15550000000" {
+			t.Errorf("expected fallback InboundEvent.To = %q, got %q", "15550000000", events[0].To)
+		}
+	})
+}
+

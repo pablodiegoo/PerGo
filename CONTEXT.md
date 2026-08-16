@@ -68,6 +68,10 @@ _Avoid_: Contact point, address, phone number
 The consolidated module that orchestrates the batching, rate-limiting, and queued dispatch of campaign messages.
 _Avoid_: Bulk sender, campaign runner, batch pusher
 
+**Customer Service Window**:
+A rolling 24-hour (or 72-hour for Click-to-WhatsApp Ads) timeframe initiated by an inbound message from a contact to a specific WhatsApp Cloud connection. Freeform outbound messages are only permitted while this window is open; outside of it, only pre-approved Meta message templates may be sent unless a default template fallback is configured on the connection.
+_Avoid_: Session timer, 24h rule, chat timeout
+
 **Webhook Signature**:
 An HMAC-SHA256 digest generated using a workspace-scoped secret key and attached to outbound webhooks for cryptographic payload verification.
 _Avoid_: Token header, SHA hash, auth HMAC
