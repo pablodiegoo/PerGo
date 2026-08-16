@@ -435,6 +435,7 @@ templ TestConnectionModal(conn *repository.Connection, templates []repository.WA
 
 						if conn.Channel == "whatsapp_cloud" {
 							<input type="hidden" name="is_template" value="true" />
+							<input type="hidden" name="language" id="test-template-language" value="" />
 							<div class="flex flex-col gap-1">
 								<label for="test-template-name" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Template</label>
 								<select
@@ -442,31 +443,22 @@ templ TestConnectionModal(conn *repository.Connection, templates []repository.WA
 									id="test-template-name"
 									class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"
 									required
-									onchange="showTestTemplatePreview(this.value)"
+									onchange="showTestTemplatePreview(this)"
 								>
 									<option value="">Selecione um template...</option>
 									for _, t := range templates {
-										<option value={ t.Name }>{ fmt.Sprintf("%s (%s)", t.Name, t.Language) }</option>
+										<option
+											value={ t.Name }
+											data-language={ t.Language }
+											data-components={ string(t.Components) }
+										>{ fmt.Sprintf("%s (%s)", t.Name, t.Language) }</option>
 									}
 								</select>
 							</div>
 
 							<div id="test-template-vars" class="flex flex-col gap-3 bg-zinc-50 p-3 rounded border border-zinc-200 hidden">
 								<p class="text-xs font-bold text-zinc-600">Variáveis do Template</p>
-								<div class="flex flex-col gap-2">
-									<div class="flex items-center gap-2">
-										<span class="text-xs text-zinc-400 font-semibold w-16">{"{{1}}"}</span>
-										<input type="text" name="param_1" placeholder="Variável 1" class="flex-1 rounded border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800" />
-									</div>
-									<div class="flex items-center gap-2">
-										<span class="text-xs text-zinc-400 font-semibold w-16">{"{{2}}"}</span>
-										<input type="text" name="param_2" placeholder="Variável 2 (Opcional)" class="flex-1 rounded border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800" />
-									</div>
-									<div class="flex items-center gap-2">
-										<span class="text-xs text-zinc-400 font-semibold w-16">{"{{3}}"}</span>
-										<input type="text" name="param_3" placeholder="Variável 3 (Opcional)" class="flex-1 rounded border border-zinc-200 px-2.5 py-1.5 text-xs text-zinc-800" />
-									</div>
-								</div>
+								<div id="test-template-vars-content" class="flex flex-col gap-2"></div>
 							</div>
 						} else {
 							<input type="hidden" name="is_template" value="false" />
@@ -510,13 +502,84 @@ templ TestConnectionModal(conn *repository.Connection, templates []repository.WA
 	</div>
 
 	<script>
-		function showTestTemplatePreview(val) {
+		function showTestTemplatePreview(selectEl) {
 			var container = document.getElementById('test-template-vars');
-			if (container) {
-				if (val) {
-					container.classList.remove('hidden');
-				} else {
-					container.classList.add('hidden');
+			var contentContainer = document.getElementById('test-template-vars-content');
+			var langInput = document.getElementById('test-template-language');
+			if (!selectEl) return;
+			var selectedOption = selectEl.options ? selectEl.options[selectEl.selectedIndex] : null;
+
+			if (!selectedOption || !selectedOption.value) {
+				if (container) container.classList.add('hidden');
+				if (contentContainer) contentContainer.innerHTML = '';
+				if (langInput) langInput.value = '';
+				return;
+			}
+
+			var lang = selectedOption.getAttribute('data-language') || 'pt_BR';
+			if (langInput) langInput.value = lang;
+
+			if (container) container.classList.remove('hidden');
+
+			var componentsRaw = selectedOption.getAttribute('data-components');
+			if (!componentsRaw) {
+				if (contentContainer) {
+					contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200">ℹ️ Este template é estático e não requer variáveis.</p>';
+				}
+				return;
+			}
+
+			try {
+				var components = JSON.parse(componentsRaw);
+				var matches = [];
+				if (Array.isArray(components)) {
+					for (var i = 0; i < components.length; i++) {
+						var c = components[i];
+						var cType = (c.type || '').toUpperCase();
+						if (cType === 'BODY' && c.text) {
+							var found = c.text.match(/\{\{(\d+)\}\}/g);
+							if (found) {
+								for (var j = 0; j < found.length; j++) {
+									matches.push(found[j]);
+								}
+							}
+						}
+					}
+				}
+
+				if (matches.length === 0) {
+					if (contentContainer) {
+						contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200">ℹ️ Este template é estático e não requer variáveis.</p>';
+					}
+					return;
+				}
+
+				var uniqueMap = {};
+				for (var k = 0; k < matches.length; k++) {
+					uniqueMap[matches[k]] = true;
+				}
+				var uniqueParams = Object.keys(uniqueMap).sort(function(a, b) {
+					var numA = parseInt(a.replace(/[{}]/g, ''));
+					var numB = parseInt(b.replace(/[{}]/g, ''));
+					return numA - numB;
+				});
+
+				var html = '';
+				for (var idx = 0; idx < uniqueParams.length; idx++) {
+					var param = uniqueParams[idx];
+					var paramNum = parseInt(param.replace(/[{}]/g, ''));
+					html += '<div class="flex items-center gap-2">' +
+						'<span class="text-xs text-zinc-500 font-mono font-semibold w-12 text-center bg-zinc-200 py-1.5 rounded">' + param + '</span>' +
+						'<input type="text" name="param_' + paramNum + '" required placeholder="Valor para ' + param + '" class="flex-1 rounded border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white" />' +
+					'</div>';
+				}
+				if (contentContainer) {
+					contentContainer.innerHTML = html;
+				}
+			} catch (e) {
+				console.error("Failed to parse template components:", e);
+				if (contentContainer) {
+					contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200">ℹ️ Este template é estático e não requer variáveis.</p>';
 				}
 			}
 		}

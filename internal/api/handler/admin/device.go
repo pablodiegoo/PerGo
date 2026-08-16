@@ -20,7 +20,6 @@ import (
 	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/pkg/slug"
-	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
 	"github.com/pablojhp.pergo/templates/pages"
@@ -31,7 +30,7 @@ type DeviceHandler struct {
 	Sessions      *session.ActiveSession
 	Manager       *session.Manager
 	Connections   *repository.ConnectionRepository
-	Publisher     *queue.JetStreamPublisher
+	Publisher     MessagePublisher
 	NC            *nats.Conn
 	TemplatesRepo *repository.WABATemplateRepository
 	ExternalURL   string
@@ -391,10 +390,27 @@ func (h *DeviceHandler) RunTest(c *echo.Context) error {
 		return c.HTML(http.StatusOK, `<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Conexão não encontrada</div>`)
 	}
 
+	var language string
 	var componentsList []domain.TemplateComponent
 	if isTemplate && templateName != "" {
+		language = c.FormValue("language")
+		if language == "" && h.TemplatesRepo != nil {
+			tmpls, err := h.TemplatesRepo.ListByConnection(c.Request().Context(), conn.ID)
+			if err == nil {
+				for _, t := range tmpls {
+					if t.Name == templateName && t.Language != "" {
+						language = t.Language
+						break
+					}
+				}
+			}
+		}
+		if language == "" {
+			language = "pt_BR" // Default language fallback
+		}
+
 		var params []domain.TemplateParameter
-		for i := 1; i <= 3; i++ {
+		for i := 1; i <= 50; i++ {
 			val := c.FormValue(fmt.Sprintf("param_%d", i))
 			if val != "" {
 				params = append(params, domain.TemplateParameter{
@@ -403,13 +419,17 @@ func (h *DeviceHandler) RunTest(c *echo.Context) error {
 				})
 			}
 		}
-		componentsList = []domain.TemplateComponent{
-			{
-				Type:       "body",
-				Parameters: params,
-			},
+		if len(params) > 0 {
+			componentsList = []domain.TemplateComponent{
+				{
+					Type:       "body",
+					Parameters: params,
+				},
+			}
+			body = fmt.Sprintf("[Template: %s] Params: %v", templateName, params)
+		} else {
+			body = fmt.Sprintf("[Template: %s]", templateName)
 		}
-		body = fmt.Sprintf("[Template: %s] Params: %v", templateName, params)
 	}
 
 	traceID := "test-" + uuid.New().String()
@@ -426,13 +446,17 @@ func (h *DeviceHandler) RunTest(c *echo.Context) error {
 
 	if isTemplate {
 		qMsg.TemplateName = templateName
-		qMsg.Language = "pt_BR" // Default language
+		qMsg.Language = language
 		qMsg.Components = componentsList
 	}
 
 	payload, err := json.Marshal(qMsg)
 	if err != nil {
 		return c.HTML(http.StatusOK, fmt.Sprintf(`<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Erro ao serializar mensagem: %v</div>`, err))
+	}
+
+	if h.Publisher == nil {
+		return c.HTML(http.StatusServiceUnavailable, `<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Publisher não disponível</div>`)
 	}
 
 	err = h.Publisher.Publish(c.Request().Context(), "messages.outbound", payload, traceID)

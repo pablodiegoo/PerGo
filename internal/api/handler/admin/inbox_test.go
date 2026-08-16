@@ -1160,6 +1160,7 @@ func (p *testMessagePublisher) Publish(ctx context.Context, subject string, data
 	p.lastSubject = subject
 	p.lastData = data
 	p.lastTraceID = traceID
+	p.lastMessage = domain.QueueMessage{}
 	_ = json.Unmarshal(data, &p.lastMessage)
 	return nil
 }

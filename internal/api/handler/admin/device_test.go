@@ -13,6 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
+	"encoding/json"
+	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
@@ -311,6 +314,288 @@ func TestDeviceHandler_QRFragment_Rendering(t *testing.T) {
 	}
 	if !strings.Contains(outError, "Limite de conexões excedido") {
 		t.Errorf("expected rendered HTML to contain error message, got: %s", outError)
+	}
+}
+
+// TestDeviceHandler_RunTest_TemplateDynamicParamsAndLanguage verifies that RunTest
+// serializes the template's specified language and all dynamic parameters.
+func TestDeviceHandler_RunTest_TemplateDynamicParamsAndLanguage(t *testing.T) {
+	dsn := os.Getenv("PERGO_DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		dsnFallback := "postgres://postgres:postgres@localhost:5433/pergo?sslmode=disable"
+		pool, err = pgxpool.New(ctx, dsnFallback)
+		if err != nil {
+			t.Skip("PostgreSQL not available for testing")
+		}
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		t.Skip("PostgreSQL ping failed")
+	}
+
+	enc, err := crypto.NewEncryptor([]byte("dev-development-key-32-bytes-kek"))
+	if err != nil {
+		t.Fatalf("failed to init encryptor: %v", err)
+	}
+	connRepo := repository.NewConnectionRepository(pool, enc)
+	wsRepo := repository.NewWorkspaceRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "Test Workspace RunTest Params")
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	conn := &repository.Connection{
+		WorkspaceID:    ws.ID,
+		Name:           "WABA Cloud Test",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+15551234567",
+		Status:         "connected",
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("failed to create connection: %v", err)
+	}
+
+	pub := &testMessagePublisher{}
+	h := &admin.DeviceHandler{
+		Connections: connRepo,
+		Publisher:   pub,
+	}
+
+	e := echo.New()
+
+	t.Run("Dispatches with language and dynamic parameters", func(t *testing.T) {
+		fv := url.Values{}
+		fv.Set("connection_id", conn.ID.String())
+		fv.Set("to", "+5511999990001")
+		fv.Set("is_template", "true")
+		fv.Set("template_name", "shipping_update")
+		fv.Set("language", "en_US")
+		fv.Set("param_1", "Alice")
+		fv.Set("param_2", "TRACK-999")
+		fv.Set("param_3", "Arriving Monday")
+		fv.Set("param_4", "Express")
+
+		req := httptest.NewRequest(http.MethodPost, "/admin/devices/test", strings.NewReader(fv.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := h.RunTest(c)
+		if err != nil {
+			t.Fatalf("RunTest returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		qMsg := pub.lastMessage
+		if qMsg.TemplateName != "shipping_update" {
+			t.Errorf("expected TemplateName 'shipping_update', got %q", qMsg.TemplateName)
+		}
+		if qMsg.Language != "en_US" {
+			t.Errorf("expected Language 'en_US', got %q", qMsg.Language)
+		}
+		if len(qMsg.Components) != 1 {
+			t.Fatalf("expected 1 component, got %d", len(qMsg.Components))
+		}
+		params, err := outbound.NormalizeTemplateParams(qMsg.Components[0].Parameters)
+		if err != nil {
+			t.Fatalf("failed to normalize params: %v", err)
+		}
+		if len(params) != 4 {
+			t.Fatalf("expected 4 parameters, got %d", len(params))
+		}
+		if params[0].Text != "Alice" || params[1].Text != "TRACK-999" || params[2].Text != "Arriving Monday" || params[3].Text != "Express" {
+			t.Errorf("unexpected parameters: %+v", params)
+		}
+	})
+
+	t.Run("Dispatches static template with zero parameters", func(t *testing.T) {
+		fv := url.Values{}
+		fv.Set("connection_id", conn.ID.String())
+		fv.Set("to", "+5511999990001")
+		fv.Set("is_template", "true")
+		fv.Set("template_name", "static_welcome")
+		fv.Set("language", "pt_BR")
+
+		req := httptest.NewRequest(http.MethodPost, "/admin/devices/test", strings.NewReader(fv.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := h.RunTest(c)
+		if err != nil {
+			t.Fatalf("RunTest returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		qMsg := pub.lastMessage
+		if qMsg.TemplateName != "static_welcome" {
+			t.Errorf("expected TemplateName 'static_welcome', got %q", qMsg.TemplateName)
+		}
+		if qMsg.Language != "pt_BR" {
+			t.Errorf("expected Language 'pt_BR', got %q", qMsg.Language)
+		}
+		if len(qMsg.Components) != 0 {
+			t.Errorf("expected 0 components for static template, got %d", len(qMsg.Components))
+		}
+		if qMsg.Body != "[Template: static_welcome]" {
+			t.Errorf("expected body '[Template: static_welcome]', got %q", qMsg.Body)
+		}
+	})
+
+	t.Run("Returns 503 when publisher is nil", func(t *testing.T) {
+		hNoPub := &admin.DeviceHandler{
+			Connections: connRepo,
+			Publisher:   nil,
+		}
+
+		fv := url.Values{}
+		fv.Set("connection_id", conn.ID.String())
+		fv.Set("to", "+5511999990001")
+		fv.Set("is_template", "true")
+		fv.Set("template_name", "static_welcome")
+
+		req := httptest.NewRequest(http.MethodPost, "/admin/devices/test", strings.NewReader(fv.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := hNoPub.RunTest(c)
+		if err != nil {
+			t.Fatalf("RunTest returned error: %v", err)
+		}
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Errorf("expected status 503, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("Resolves template language fallback from repository when empty in form", func(t *testing.T) {
+		tmplRepo := repository.NewWABATemplateRepository(pool)
+		hWithTmpl := &admin.DeviceHandler{
+			Connections:   connRepo,
+			Publisher:     pub,
+			TemplatesRepo: tmplRepo,
+		}
+
+		tmpl := &repository.WABATemplate{
+			WorkspaceID:    ws.ID,
+			ConnectionID:   conn.ID,
+			MetaTemplateID: "meta-test-tmpl-id-1",
+			Name:           "spanish_promo",
+			Language:       "es_ES",
+			Category:       "MARKETING",
+			Status:         "APPROVED",
+			Components:     json.RawMessage(`[{"type":"BODY","text":"Hola {{1}}"}]`),
+		}
+		if _, err := tmplRepo.Create(ctx, tmpl); err != nil {
+			t.Fatalf("failed to create template: %v", err)
+		}
+
+		fv := url.Values{}
+		fv.Set("connection_id", conn.ID.String())
+		fv.Set("to", "+5511999990001")
+		fv.Set("is_template", "true")
+		fv.Set("template_name", "spanish_promo")
+		fv.Set("param_1", "Carlos")
+		// note: language field is omitted
+
+		req := httptest.NewRequest(http.MethodPost, "/admin/devices/test", strings.NewReader(fv.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := hWithTmpl.RunTest(c)
+		if err != nil {
+			t.Fatalf("RunTest returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		qMsg := pub.lastMessage
+		if qMsg.TemplateName != "spanish_promo" {
+			t.Errorf("expected TemplateName 'spanish_promo', got %q", qMsg.TemplateName)
+		}
+		if qMsg.Language != "es_ES" {
+			t.Errorf("expected Language resolved from repo 'es_ES', got %q", qMsg.Language)
+		}
+	})
+}
+
+// TestDeviceHandler_TestConnectionModal_DynamicTemplateAttributes verifies that
+// TestConnectionModal renders data-language, data-components, and preview elements.
+func TestDeviceHandler_TestConnectionModal_DynamicTemplateAttributes(t *testing.T) {
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    uuid.New(),
+		Name:           "WABA Cloud Device",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+15551234567",
+		Status:         "connected",
+	}
+
+	templates := []repository.WABATemplate{
+		{
+			Name:       "order_alert",
+			Language:   "en_US",
+			Components: json.RawMessage(`[{"type":"BODY","text":"Hello {{1}}, your order {{2}} is ready"}]`),
+		},
+		{
+			Name:       "static_announcement",
+			Language:   "pt_BR",
+			Components: json.RawMessage(`[{"type":"BODY","text":"Bem-vindo à nossa plataforma!"}]`),
+		},
+	}
+
+	var buf strings.Builder
+	comp := pages.TestConnectionModal(conn, templates)
+	if err := comp.Render(context.Background(), &buf); err != nil {
+		t.Fatalf("failed to render TestConnectionModal: %v", err)
+	}
+
+	html := buf.String()
+
+	// 1. Must contain hidden language input
+	if !strings.Contains(html, `name="language"`) || !strings.Contains(html, `id="test-template-language"`) {
+		t.Errorf("expected form to contain hidden input for language with id test-template-language")
+	}
+
+	// 2. Options must contain data-language and data-components
+	if !strings.Contains(html, `data-language="en_US"`) {
+		t.Errorf("expected template option to contain data-language=\"en_US\"")
+	}
+	if !strings.Contains(html, `data-components="[{&#34;type&#34;:&#34;BODY&#34;,&#34;text&#34;:&#34;Hello {{1}}, your order {{2}} is ready&#34;}]"`) && !strings.Contains(html, `data-components=`) {
+		t.Errorf("expected template option to contain data-components attribute")
+	}
+	if !strings.Contains(html, `data-language="pt_BR"`) {
+		t.Errorf("expected template option to contain data-language=\"pt_BR\"")
+	}
+
+	// 3. Must contain container for dynamic variables
+	if !strings.Contains(html, `id="test-template-vars"`) {
+		t.Errorf("expected modal to contain #test-template-vars container")
+	}
+	if !strings.Contains(html, `id="test-template-vars-content"`) {
+		t.Errorf("expected modal to contain #test-template-vars-content container")
+	}
+
+	// 4. Must call showTestTemplatePreview
+	if !strings.Contains(html, `showTestTemplatePreview(this)`) && !strings.Contains(html, `showTestTemplatePreview(this.value)`) {
+		t.Errorf("expected select to have onchange handler showTestTemplatePreview")
 	}
 }
 
