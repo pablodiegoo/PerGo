@@ -430,7 +430,7 @@ func TestHeadlessCPaaS_EndToEndLifecycle(t *testing.T) {
 		Event: "code",
 		Code:  "2@mock-qr-code-string-for-testing",
 	}
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	// 4.3 Poll QR state via GET /api/v1/connections/:id/qr
 	{

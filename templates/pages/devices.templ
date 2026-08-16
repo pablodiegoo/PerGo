@@ -536,7 +536,7 @@ templ TestConnectionModal(conn *repository.Connection, templates []repository.WA
 					for (var i = 0; i < components.length; i++) {
 						var c = components[i];
 						var cType = (c.type || '').toUpperCase();
-						if (cType === 'BODY' && c.text) {
+						if ((cType === 'BODY' || cType === 'HEADER') && c.text) {
 							var found = c.text.match(/\{\{(\d+)\}\}/g);
 							if (found) {
 								for (var j = 0; j < found.length; j++) {

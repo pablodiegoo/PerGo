@@ -171,7 +171,7 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 		body := `{"to":"` + contactPhone + `","channel":"whatsapp_cloud","body":"Initial freeform outreach"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		req = req.WithContext(tenant.WithWorkspaceID(middlewareWithTrace(ctx, "trc-init-1"), ws.ID))
+		req = req.WithContext(tenant.WithWorkspaceID(mw.WithContext(ctx, "trc-init-1"), ws.ID))
 		rec := httptest.NewRecorder()
 
 		e.ServeHTTP(rec, req)
@@ -203,7 +203,7 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 		body := `{"to":"` + contactPhone + `","channel":"whatsapp","body":"WhatsApp Web outreach"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		req = req.WithContext(tenant.WithWorkspaceID(middlewareWithTrace(ctx, "trc-waweb-1"), ws.ID))
+		req = req.WithContext(tenant.WithWorkspaceID(mw.WithContext(ctx, "trc-waweb-1"), ws.ID))
 		rec := httptest.NewRecorder()
 
 		e.ServeHTTP(rec, req)
@@ -217,7 +217,7 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 		body := `{"to":"123456789","channel":"telegram","body":"Telegram outreach"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		req = req.WithContext(tenant.WithWorkspaceID(middlewareWithTrace(ctx, "trc-tg-1"), ws.ID))
+		req = req.WithContext(tenant.WithWorkspaceID(mw.WithContext(ctx, "trc-tg-1"), ws.ID))
 		rec := httptest.NewRecorder()
 
 		e.ServeHTTP(rec, req)
@@ -294,7 +294,7 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 		body := `{"to":"` + contactPhone + `","channel":"whatsapp_cloud","body":"Freeform reply within 24h window"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		req = req.WithContext(tenant.WithWorkspaceID(middlewareWithTrace(ctx, "trc-reply-1"), ws.ID))
+		req = req.WithContext(tenant.WithWorkspaceID(mw.WithContext(ctx, "trc-reply-1"), ws.ID))
 		rec := httptest.NewRecorder()
 
 		e.ServeHTTP(rec, req)
@@ -375,7 +375,7 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 		body := `{"to":"5511999992222","channel":"whatsapp_cloud","body":"Reply within 72h CTWA window"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		req = req.WithContext(tenant.WithWorkspaceID(middlewareWithTrace(ctx, "trc-ctwa-reply"), ws.ID))
+		req = req.WithContext(tenant.WithWorkspaceID(mw.WithContext(ctx, "trc-ctwa-reply"), ws.ID))
 		rec := httptest.NewRecorder()
 
 		e.ServeHTTP(rec, req)
@@ -412,7 +412,7 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 		}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		req = req.WithContext(tenant.WithWorkspaceID(middlewareWithTrace(ctx, "trc-template-outbound"), ws.ID))
+		req = req.WithContext(tenant.WithWorkspaceID(mw.WithContext(ctx, "trc-template-outbound"), ws.ID))
 		rec := httptest.NewRecorder()
 
 		e.ServeHTTP(rec, req)
@@ -485,8 +485,4 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 			t.Errorf("unexpected params: %+v", params)
 		}
 	})
-}
-
-func middlewareWithTrace(ctx context.Context, traceID string) context.Context {
-	return mw.WithContext(ctx, traceID)
 }

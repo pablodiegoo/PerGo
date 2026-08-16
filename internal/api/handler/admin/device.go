@@ -409,27 +409,7 @@ func (h *DeviceHandler) RunTest(c *echo.Context) error {
 			language = "pt_BR" // Default language fallback
 		}
 
-		var params []domain.TemplateParameter
-		for i := 1; i <= 50; i++ {
-			val := c.FormValue(fmt.Sprintf("param_%d", i))
-			if val != "" {
-				params = append(params, domain.TemplateParameter{
-					Type: "text",
-					Text: val,
-				})
-			}
-		}
-		if len(params) > 0 {
-			componentsList = []domain.TemplateComponent{
-				{
-					Type:       "body",
-					Parameters: params,
-				},
-			}
-			body = fmt.Sprintf("[Template: %s] Params: %v", templateName, params)
-		} else {
-			body = fmt.Sprintf("[Template: %s]", templateName)
-		}
+		body, componentsList = ExtractFormTemplateParams(c, templateName)
 	}
 
 	traceID := "test-" + uuid.New().String()

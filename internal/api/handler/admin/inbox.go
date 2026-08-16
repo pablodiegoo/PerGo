@@ -186,23 +186,40 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		}
 	}
 	if wabaIdentity != nil && h.Sessions != nil && workspaceID != uuid.Nil {
-		wabaSender := defaultSenders["whatsapp_cloud"]
-		if wabaSender == "" {
-			isWabaBlocked = true
-		} else {
-			session, sErr := h.Sessions.Get(ctx, workspaceID, wabaIdentity.SenderIdentity, "whatsapp_cloud", wabaSender)
-			if sErr == nil && session != nil {
-				windowDuration := 24 * time.Hour
-				if session.EntryPointType == "ctwa" {
-					windowDuration = 72 * time.Hour
+		var hasOpenWindow bool
+		var checkedAny bool
+		for _, conn := range connections {
+			if conn.Channel == "whatsapp_cloud" && (conn.Status == "connected" || conn.Status == "active" || conn.Status == "") {
+				checkedAny = true
+				session, sErr := h.Sessions.Get(ctx, workspaceID, wabaIdentity.SenderIdentity, "whatsapp_cloud", conn.SenderIdentity)
+				if sErr == nil && session != nil {
+					windowDuration := 24 * time.Hour
+					if session.EntryPointType == "ctwa" {
+						windowDuration = 72 * time.Hour
+					}
+					if !session.LastInboundAt.IsZero() && time.Since(session.LastInboundAt) <= windowDuration {
+						hasOpenWindow = true
+						break
+					}
 				}
-				if session.LastInboundAt.IsZero() || time.Since(session.LastInboundAt) > windowDuration {
-					isWabaBlocked = true
-				}
-			} else {
-				isWabaBlocked = true
 			}
 		}
+		if !checkedAny {
+			wabaSender := defaultSenders["whatsapp_cloud"]
+			if wabaSender != "" {
+				session, sErr := h.Sessions.Get(ctx, workspaceID, wabaIdentity.SenderIdentity, "whatsapp_cloud", wabaSender)
+				if sErr == nil && session != nil {
+					windowDuration := 24 * time.Hour
+					if session.EntryPointType == "ctwa" {
+						windowDuration = 72 * time.Hour
+					}
+					if !session.LastInboundAt.IsZero() && time.Since(session.LastInboundAt) <= windowDuration {
+						hasOpenWindow = true
+					}
+				}
+			}
+		}
+		isWabaBlocked = !hasOpenWindow
 	}
 
 	if mw.IsHTMX(c) {
@@ -491,29 +508,7 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 			language = "pt_BR"
 		}
 
-		// Read dynamic parameters
-		var params []domain.TemplateParameter
-		for i := 1; i <= 50; i++ {
-			val := c.FormValue(fmt.Sprintf("param_%d", i))
-			if val != "" {
-				params = append(params, domain.TemplateParameter{
-					Type: "text",
-					Text: val,
-				})
-			}
-		}
-
-		if len(params) > 0 {
-			componentsList = []domain.TemplateComponent{
-				{
-					Type:       "body",
-					Parameters: params,
-				},
-			}
-			body = fmt.Sprintf("[Template: %s] Params: %v", templateName, params)
-		} else {
-			body = fmt.Sprintf("[Template: %s]", templateName)
-		}
+		body, componentsList = ExtractFormTemplateParams(c, templateName)
 	} else {
 		body = strings.TrimSpace(c.FormValue("body"))
 		if body == "" {
