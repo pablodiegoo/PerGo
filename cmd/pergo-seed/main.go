@@ -151,9 +151,7 @@ func findOrCreateWorkspaceWithID(ctx context.Context, wsRepo *repository.Workspa
 		return ws, nil
 	}
 	if existing, err := wsRepo.GetByName(ctx, name); err == nil && existing != nil {
-		if existing.ID == id {
-			return existing, nil
-		}
+		return existing, nil
 	}
 	return wsRepo.CreateWithID(ctx, id, name)
 }
