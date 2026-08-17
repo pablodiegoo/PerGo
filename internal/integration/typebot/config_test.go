@@ -55,7 +55,7 @@ func TestConfigRoundTrip(t *testing.T) {
 			t.Fatalf("failed to unmarshal config: %v", err)
 		}
 
-		if decoded.Bots != nil && len(decoded.Bots) != 0 {
+		if len(decoded.Bots) != 0 {
 			t.Errorf("expected empty bots list, got %v", decoded.Bots)
 		}
 	})
@@ -85,7 +85,7 @@ func TestConfigRoundTrip(t *testing.T) {
 			t.Fatalf("failed to unmarshal config: %v", err)
 		}
 
-		if decoded.Bots[0].TriggerWords != nil && len(decoded.Bots[0].TriggerWords) != 0 {
+		if len(decoded.Bots[0].TriggerWords) != 0 {
 			t.Errorf("expected empty trigger words list, got %v", decoded.Bots[0].TriggerWords)
 		}
 	})

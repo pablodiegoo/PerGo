@@ -19,7 +19,7 @@ func TestPprofServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start debug server: %v", err)
 	}
-	defer ds.Shutdown(context.Background())
+	defer func() { _ = ds.Shutdown(context.Background()) }()
 
 	addr := ds.Addr()
 
@@ -45,7 +45,7 @@ func TestExpvarHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start debug server: %v", err)
 	}
-	defer ds.Shutdown(context.Background())
+	defer func() { _ = ds.Shutdown(context.Background()) }()
 
 	resp, err := http.Get(fmt.Sprintf("http://%s/debug/vars", ds.Addr()))
 	if err != nil {
@@ -76,7 +76,7 @@ func TestAuditDropCounter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to start debug server: %v", err)
 	}
-	defer ds.Shutdown(context.Background())
+	defer func() { _ = ds.Shutdown(context.Background()) }()
 
 	// Increment the counter
 	counter.Add(5)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/pablojhp.pergo/internal/domain"
@@ -88,16 +89,20 @@ func (r *DefaultInboundRouter) RegisterAny(item any) {
 	if item == nil {
 		return
 	}
-	switch v := item.(type) {
-	case IntegrationHandler:
-		r.Register(v)
-	case ChatwootSyncer:
-		r.Register(NewChatwootAdapter(v))
-	case TypebotForwarder:
-		r.Register(NewTypebotAdapter(v))
-	default:
-		slog.Error("inbound router: unknown handler type", "type", fmt.Sprintf("%T", item))
+	if handler, ok := item.(IntegrationHandler); ok {
+		r.Register(handler)
+		return
 	}
+	if syncer, ok := item.(ChatwootSyncer); ok {
+		typeName := fmt.Sprintf("%T", item)
+		if strings.Contains(strings.ToLower(typeName), "typebot") {
+			r.Register(NewTypebotAdapter(syncer))
+		} else {
+			r.Register(NewChatwootAdapter(syncer))
+		}
+		return
+	}
+	slog.Error("inbound router: unknown handler type", "type", fmt.Sprintf("%T", item))
 }
 
 // Route routes the inbound event to registered external integration handlers concurrently in background goroutines.

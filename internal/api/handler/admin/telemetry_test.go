@@ -20,8 +20,8 @@ func TestTelemetryHandler_Construction(t *testing.T) {
 		NC:         nil,
 		StartTime:  time.Now(),
 	}
-	if h == nil {
-		t.Fatal("expected non-nil TelemetryHandler")
+	if h.Manager != nil || h.Sessions != nil {
+		t.Fatal("expected nil initial fields")
 	}
 }
 

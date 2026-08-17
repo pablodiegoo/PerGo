@@ -135,6 +135,26 @@ func TestTelegramWebhookHandler(t *testing.T) {
 		}
 	})
 
+	t.Run("Deterministic dev workspace ID missing secret token -> 401", func(t *testing.T) {
+		devWSID := uuid.MustParse("a0000000-0000-0000-0000-000000000001")
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/telegram/%s", devWSID), strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/webhooks/telegram/:workspace_id")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: devWSID.String()},
+		})
+
+		err := h.Handle(c)
+		if err != nil {
+			t.Fatalf("Handle returned error: %v", err)
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("got status %d, want 401", rec.Code)
+		}
+	})
+
 	t.Run("Incorrect Secret Token Header -> 401", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/telegram/%s", ws.ID), strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")

@@ -197,9 +197,7 @@ func TestPairingPubSub_BroadcastAndSubscribe(t *testing.T) {
 	// sub1 channel should be closed
 	select {
 	case _, ok := <-sub1:
-		if ok {
-			// Might have drained, but should close
-		}
+		_ = ok
 	default:
 	}
 }
@@ -498,3 +496,16 @@ func TestManager_PairingPubSub_EmitsStatusConnected(t *testing.T) {
 		t.Error("expected connection.status event with status 'connected' to be published")
 	}
 }
+
+func TestCalcBackoff(t *testing.T) {
+	d0 := CalcBackoff(0)
+	if d0 < 4*time.Second || d0 > 6*time.Second {
+		t.Errorf("expected attempt 0 backoff ~5s, got %v", d0)
+	}
+
+	d10 := CalcBackoff(10)
+	if d10 > 6*time.Minute {
+		t.Errorf("expected attempt 10 backoff to be capped near 5m, got %v", d10)
+	}
+}
+

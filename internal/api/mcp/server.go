@@ -80,7 +80,7 @@ func NewServer(
 	s.registerTools()
 
 	// Create SSE transport server mounted on base path "/api/mcp"
-	s.SSEServer = server.NewSSEServer(mcpSrv, server.WithBasePath("/api/mcp"))
+	s.SSEServer = server.NewSSEServer(mcpSrv, server.WithStaticBasePath("/api/mcp"))
 
 	return s
 }

@@ -597,5 +597,5 @@ func (h *WebhookDLQHandler) RetryDLQ(c *echo.Context) error {
 		slog.Error("admin: failed to delete retried DLQ log from DB", "error", err, "dlq_id", id)
 	}
 
-	return c.HTML(http.StatusOK, fmt.Sprintf("<td colspan=\"8\" class=\"success-icon\" style=\"color: var(--color-success); text-align: center;\">✓ Re-enqueued for delivery</td>"))
+	return c.HTML(http.StatusOK, `<td colspan="8" class="success-icon" style="color: var(--color-success); text-align: center;">✓ Re-enqueued for delivery</td>`)
 }

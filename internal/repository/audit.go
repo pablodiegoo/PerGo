@@ -78,7 +78,6 @@ func buildWhereClause(filters AuditFilters) (string, []any) {
 	if filters.End != nil {
 		conditions = append(conditions, fmt.Sprintf("created_at <= $%d", argIdx))
 		args = append(args, *filters.End)
-		argIdx++
 	}
 
 	if len(conditions) == 0 {

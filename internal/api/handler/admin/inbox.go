@@ -635,18 +635,6 @@ func (h *InboxHandler) MergeContacts(c *echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
-// safeInitial returns the first character of a string, uppercased, safely.
-func safeInitial(s string) string {
-	runes := []rune(s)
-	if len(runes) == 0 {
-		return "?"
-	}
-	r := runes[0]
-	if r >= 'a' && r <= 'z' {
-		r -= 32
-	}
-	return string(r)
-}
 
 // escapeHTML performs minimal HTML escaping to prevent XSS in string-concatenated HTML.
 func escapeHTML(s string) string {

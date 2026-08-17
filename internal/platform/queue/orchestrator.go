@@ -357,10 +357,7 @@ func (o *DispatchOrchestrator) resolveRecipientForChannel(ctx context.Context, w
 }
 
 func isNumericIdentifier(s string) bool {
-	check := s
-	if strings.HasPrefix(check, "-") {
-		check = check[1:]
-	}
+	check := strings.TrimPrefix(s, "-")
 	if check == "" {
 		return false
 	}

@@ -46,12 +46,40 @@ func (r *WorkspaceRepository) Create(ctx context.Context, name string) (*Workspa
 	return &ws, nil
 }
 
+// CreateWithID inserts a new workspace with a specific ID, updating the name on conflict.
+func (r *WorkspaceRepository) CreateWithID(ctx context.Context, id uuid.UUID, name string) (*Workspace, error) {
+	var ws Workspace
+	err := r.pool.QueryRow(ctx,
+		`INSERT INTO workspaces (id, name) VALUES ($1, $2)
+		 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = now()
+		 RETURNING id, name, pii_opt_in, webhook_secret, created_at, updated_at`,
+		id, name,
+	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.CreatedAt, &ws.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &ws, nil
+}
+
 // GetByID retrieves a workspace by ID.
 func (r *WorkspaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*Workspace, error) {
 	var ws Workspace
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, name, pii_opt_in, webhook_secret, created_at, updated_at FROM workspaces WHERE id = $1`,
 		id,
+	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.CreatedAt, &ws.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &ws, nil
+}
+
+// GetByName retrieves a workspace by unique name.
+func (r *WorkspaceRepository) GetByName(ctx context.Context, name string) (*Workspace, error) {
+	var ws Workspace
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, name, pii_opt_in, webhook_secret, created_at, updated_at FROM workspaces WHERE name = $1`,
+		name,
 	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
 		return nil, err

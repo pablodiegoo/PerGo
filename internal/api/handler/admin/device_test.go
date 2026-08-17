@@ -25,7 +25,6 @@ import (
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
-// TestDeviceHandler_Construction verifies fields are correct.
 func TestDeviceHandler_Construction(t *testing.T) {
 	h := &admin.DeviceHandler{
 		Sessions:      nil,
@@ -35,8 +34,8 @@ func TestDeviceHandler_Construction(t *testing.T) {
 		NC:            nil,
 		TemplatesRepo: nil,
 	}
-	if h == nil {
-		t.Fatal("expected non-nil DeviceHandler")
+	if h.Sessions != nil || h.Manager != nil {
+		t.Fatal("expected nil initial fields")
 	}
 }
 

@@ -54,8 +54,16 @@ func main() {
 	slog.Info("seed complete")
 }
 
+// DefaultDevWorkspaceID is the standard deterministic UUID for the development workspace.
+const DefaultDevWorkspaceID = "a0000000-0000-0000-0000-000000000001"
+
 func run(ctx context.Context, cfg *config.Config) error {
-	// Resolve workspace name from .env.seed (PERGO_WORKSPACE).
+	// Resolve workspace UUID and name from .env.seed (DEFAULT_WORKSPACE_ID / PERGO_WORKSPACE).
+	workspaceIDStr := envOrDefault("DEFAULT_WORKSPACE_ID", envOrDefault("PERGO_DEV_WORKSPACE_ID", DefaultDevWorkspaceID))
+	workspaceID, err := uuid.Parse(workspaceIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid workspace UUID %q: %w", workspaceIDStr, err)
+	}
 	workspaceName := envOrDefault("PERGO_WORKSPACE", "Agora")
 
 	// Resolve WABA credentials from .env.seed.
@@ -104,8 +112,8 @@ func run(ctx context.Context, cfg *config.Config) error {
 	connRepo := repository.NewConnectionRepository(pool, encryptor)
 	sessRepo := repository.NewRecipientSessionRepository(pool)
 
-	// 1. Workspace (create or reuse).
-	ws, err := findOrCreateWorkspace(ctx, wsRepo, workspaceName)
+	// 1. Workspace (create or reuse deterministic workspace).
+	ws, err := findOrCreateWorkspaceWithID(ctx, wsRepo, workspaceID, workspaceName)
 	if err != nil {
 		return fmt.Errorf("workspace setup: %w", err)
 	}
@@ -137,16 +145,17 @@ func run(ctx context.Context, cfg *config.Config) error {
 	return nil
 }
 
-func findOrCreateWorkspace(ctx context.Context, wsRepo *repository.WorkspaceRepository, name string) (*repository.Workspace, error) {
-	list, err := wsRepo.List(ctx, 100)
-	if err == nil {
-		for i := range list {
-			if list[i].Name == name {
-				return &list[i], nil
-			}
+func findOrCreateWorkspaceWithID(ctx context.Context, wsRepo *repository.WorkspaceRepository, id uuid.UUID, name string) (*repository.Workspace, error) {
+	ws, err := wsRepo.GetByID(ctx, id)
+	if err == nil && ws != nil {
+		return ws, nil
+	}
+	if existing, err := wsRepo.GetByName(ctx, name); err == nil && existing != nil {
+		if existing.ID == id {
+			return existing, nil
 		}
 	}
-	return wsRepo.Create(ctx, name)
+	return wsRepo.CreateWithID(ctx, id, name)
 }
 
 func ensureConnection(ctx context.Context, repo *repository.ConnectionRepository, wsID uuid.UUID, displayPhone string, cred []byte) (*repository.Connection, error) {

@@ -34,9 +34,6 @@ func NormalizeTemplateParams(params interface{}) ([]domain.TemplateParameter, er
 			if err := json.Unmarshal(b, &tp); err != nil {
 				return domain.TemplateParameter{}, err
 			}
-			if tp.Type == "" && tp.Text == "" {
-				// Maybe it's a value? 
-			}
 			if tp.Type == "" && tp.Text != "" {
 				tp.Type = "text"
 			}

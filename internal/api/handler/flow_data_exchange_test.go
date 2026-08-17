@@ -15,9 +15,7 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 )
 
-type mockProvider struct{}
-func (m *mockProvider) Encrypt(plaintext []byte) ([]byte, string, int, error) { return plaintext, "mock", 1, nil }
-func (m *mockProvider) Decrypt(ciphertext []byte) ([]byte, error) { return ciphertext, nil }
+
 
 func TestHandleFlowDataExchange(t *testing.T) {
 	// Setup keys

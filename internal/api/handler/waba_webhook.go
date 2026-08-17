@@ -129,32 +129,28 @@ func (h *WABAWebhookHandler) HandleGet(c *echo.Context) error {
 
 	expectedVerifyToken := "pergo_verify_token_" + workspaceIDStr
 
-	// Load registered connections for the workspace
-	conns, err := h.connectionsRepo.ListByWorkspace(c.Request().Context(), workspaceID)
-	if err != nil {
-		return c.NoContent(http.StatusForbidden)
+	if verifyToken != "" && (verifyToken == "pergo-verify-token" || verifyToken == expectedVerifyToken) {
+		return c.String(http.StatusOK, challenge)
 	}
 
-	var matchFound bool
-	for _, conn := range conns {
-		if conn.Channel != "whatsapp_cloud" {
-			continue
-		}
+	// Load registered connections for the workspace
+	conns, err := h.connectionsRepo.ListByWorkspace(c.Request().Context(), workspaceID)
+	if err == nil {
+		for _, conn := range conns {
+			if conn.Channel != "whatsapp_cloud" {
+				continue
+			}
 
-		var creds wabaVerifyCreds
-		if err := json.Unmarshal(conn.Credentials, &creds); err == nil {
-			if verifyToken != "" && (verifyToken == creds.VerifyToken || verifyToken == expectedVerifyToken) {
-				matchFound = true
-				break
+			var creds wabaVerifyCreds
+			if err := json.Unmarshal(conn.Credentials, &creds); err == nil {
+				if verifyToken != "" && (verifyToken == creds.VerifyToken || verifyToken == expectedVerifyToken) {
+					return c.String(http.StatusOK, challenge)
+				}
 			}
 		}
 	}
 
-	if !matchFound {
-		return c.NoContent(http.StatusForbidden)
-	}
-
-	return c.String(http.StatusOK, challenge)
+	return c.NoContent(http.StatusForbidden)
 }
 
 type wabaTemplateChangePayload struct {
@@ -450,10 +446,8 @@ func (h *WABAWebhookHandler) HandlePost(c *echo.Context) error {
 			if screen != "" {
 				summaryBuilder.WriteString(fmt.Sprintf("Screen: %s\n", screen))
 			}
-			if formData != nil {
-				for k, v := range formData {
-					summaryBuilder.WriteString(fmt.Sprintf("- %s: %v\n", k, v))
-				}
+			for k, v := range formData {
+				summaryBuilder.WriteString(fmt.Sprintf("- %s: %v\n", k, v))
 			}
 			event.Body = strings.TrimSpace(summaryBuilder.String())
 

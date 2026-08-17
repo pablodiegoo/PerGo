@@ -536,8 +536,8 @@ func (m *Manager) ActiveDevices() []*Session {
 	return m.registry.All()
 }
 
-// calcBackoff computes exponential backoff with jitter.
-func calcBackoff(attempt int) time.Duration {
+// CalcBackoff computes exponential backoff with jitter.
+func CalcBackoff(attempt int) time.Duration {
 	backoff := float64(defaultReconnectBackoff) * math.Pow(2, float64(attempt))
 	if backoff > float64(maxReconnectBackoff) {
 		backoff = float64(maxReconnectBackoff)

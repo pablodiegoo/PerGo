@@ -134,6 +134,39 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 		}
 	})
 
+	t.Run("GET Deterministic dev workspace ID verification challenge", func(t *testing.T) {
+		devWSID := uuid.MustParse("a0000000-0000-0000-0000-000000000001")
+
+		// 1. Generic pergo-verify-token
+		req1 := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/webhooks/waba/%s?hub.verify_token=pergo-verify-token&hub.challenge=chal_seed_1", devWSID), nil)
+		rec1 := httptest.NewRecorder()
+		c1 := e.NewContext(req1, rec1)
+		c1.SetPath("/webhooks/waba/:workspace_id")
+		c1.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: devWSID.String()}})
+
+		if err := h.HandleGet(c1); err != nil {
+			t.Fatalf("HandleGet error: %v", err)
+		}
+		if rec1.Code != http.StatusOK || rec1.Body.String() != "chal_seed_1" {
+			t.Errorf("status = %d, body = %q, want 200 / chal_seed_1", rec1.Code, rec1.Body.String())
+		}
+
+		// 2. Workspace-specific expected verify token
+		expectedToken := "pergo_verify_token_" + devWSID.String()
+		req2 := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/webhooks/waba/%s?hub.verify_token=%s&hub.challenge=chal_seed_2", devWSID, expectedToken), nil)
+		rec2 := httptest.NewRecorder()
+		c2 := e.NewContext(req2, rec2)
+		c2.SetPath("/webhooks/waba/:workspace_id")
+		c2.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: devWSID.String()}})
+
+		if err := h.HandleGet(c2); err != nil {
+			t.Fatalf("HandleGet error: %v", err)
+		}
+		if rec2.Code != http.StatusOK || rec2.Body.String() != "chal_seed_2" {
+			t.Errorf("status = %d, body = %q, want 200 / chal_seed_2", rec2.Code, rec2.Body.String())
+		}
+	})
+
 	t.Run("POST Inbound message ingestion and deduplication", func(t *testing.T) {
 		body := `{
 			"object": "whatsapp_business_account",

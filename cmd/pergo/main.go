@@ -891,13 +891,6 @@ func runServer(ctx context.Context, pool *pgxpool.Pool, db *sql.DB) error {
 	return nil
 }
 
-func envOrDefault(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return fallback
-}
-
 // natsConn wraps *nats.Conn to satisfy the handler.NATSConn interface.
 type natsConn struct {
 	nc *nats.Conn

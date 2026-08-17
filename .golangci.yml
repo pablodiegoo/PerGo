@@ -1,0 +1,50 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - errcheck
+    - gosec
+
+linters-settings:
+  staticcheck:
+    checks: ["all", "-SA1029"]
+  errcheck:
+    check-type-assertions: false
+    check-blank: false
+    exclude-functions:
+      - fmt.Fprintf
+      - fmt.Fprintln
+      - fmt.Fprint
+      - (*github.com/jackc/pgx/v5.Tx).Rollback
+      - (github.com/jackc/pgx/v5.Tx).Rollback
+      - (*github.com/jackc/pgx/v5/pgxpool.Pool).Close
+      - (*net/http.Response).Body.Close
+      - (*net/http.Server).Shutdown
+      - (*github.com/nats-io/nats.go.Subscription).Unsubscribe
+      - encoding/json.Unmarshal
+      - (*encoding/json.Encoder).Encode
+      - net/http.ResponseWriter.Write
+      - (net/http.ResponseWriter).Write
+      - net.Conn.Write
+      - (net.Conn).Write
+      - crypto/rand.Read
+      - (*github.com/pablojhp.pergo/internal/repository.WorkspaceRepository).Delete
+  gosec:
+    excludes:
+      - G101 # Hardcoded credentials heuristic flags token variable names
+      - G104 # Defer and unchecked returns handled by errcheck
+      - G108 # pprof profiling endpoint explicitly required by PRD
+      - G112 # ReadHeaderTimeout handled at reverse proxy/production ingress
+      - G115 # Safe integer conversions in metrics/attempt counters
+      - G404 # Pseudo-random tokens for non-cryptographic IDs/jitter
+
+issues:
+  exclude-dirs:
+    - tmp
+    - bin
