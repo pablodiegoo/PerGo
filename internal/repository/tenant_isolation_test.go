@@ -235,6 +235,12 @@ func TestRepository_StrictTenantIsolation_RejectsNilUUID(t *testing.T) {
 	t.Run("AuditRepository", func(t *testing.T) {
 		repo := repository.NewAuditRepository(nil)
 
+		if _, _, err := repo.ListFiltered(ctx, repository.AuditFilters{WorkspaceID: &nilID}); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
+			t.Errorf("ListFiltered: expected ErrInvalidWorkspaceID, got %v", err)
+		}
+		if _, err := repo.ListAll(ctx, repository.AuditFilters{WorkspaceID: &nilID}); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
+			t.Errorf("ListAll: expected ErrInvalidWorkspaceID, got %v", err)
+		}
 		if _, err := repo.ListConversations(ctx, nilID, ""); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("ListConversations: expected ErrInvalidWorkspaceID, got %v", err)
 		}

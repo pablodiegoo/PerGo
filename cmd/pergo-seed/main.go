@@ -54,9 +54,6 @@ func main() {
 	slog.Info("seed complete")
 }
 
-// DefaultDevWorkspaceID is the standard deterministic UUID for the development workspace.
-const DefaultDevWorkspaceID = "a0000000-0000-0000-0000-000000000001"
-
 func run(ctx context.Context, cfg *config.Config) error {
 	workspaceName := envOrDefault("PERGO_WORKSPACE", "Agora")
 

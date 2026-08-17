@@ -42,11 +42,6 @@ func (h *TagAdminHandler) RedirectToWorkspaceTags(c *echo.Context) error {
 	if wsID == uuid.Nil {
 		if ws, err := h.wsRepo.EnsureWorkspace(ctx, "Agora"); err == nil && ws != nil {
 			wsID = ws.ID
-		} else {
-			list, err := h.wsRepo.List(ctx, 1)
-			if err == nil && len(list) > 0 {
-				wsID = list[0].ID
-			}
 		}
 	}
 	if wsID == uuid.Nil {

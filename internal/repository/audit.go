@@ -89,6 +89,9 @@ func buildWhereClause(filters AuditFilters) (string, []any) {
 // ListFiltered returns audit entries matching the given filters, with pagination.
 // Returns entries, total count (before pagination), and error.
 func (r *AuditRepository) ListFiltered(ctx context.Context, filters AuditFilters) ([]AuditEntry, int, error) {
+	if filters.WorkspaceID != nil && *filters.WorkspaceID == uuid.Nil {
+		return nil, 0, ErrInvalidWorkspaceID
+	}
 	whereClause, args := buildWhereClause(filters)
 
 	// Count total matching rows (before pagination)
@@ -137,6 +140,9 @@ func (r *AuditRepository) ListFiltered(ctx context.Context, filters AuditFilters
 // ListAll returns all audit entries matching filters without pagination (for CSV export).
 // Uses the same filter logic as ListFiltered but returns all matching rows.
 func (r *AuditRepository) ListAll(ctx context.Context, filters AuditFilters) ([]AuditEntry, error) {
+	if filters.WorkspaceID != nil && *filters.WorkspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	whereClause, args := buildWhereClause(filters)
 
 	query := "SELECT id, workspace_id, trace_id, event_type, payload, created_at FROM audit_logs" + whereClause + " ORDER BY created_at DESC"

@@ -3,20 +3,7 @@ package main
 import (
 	"encoding/json"
 	"testing"
-
-	"github.com/google/uuid"
 )
-
-func TestDeterministicDevWorkspaceID_Constant(t *testing.T) {
-	parsed, err := uuid.Parse(DefaultDevWorkspaceID)
-	if err != nil {
-		t.Fatalf("DefaultDevWorkspaceID %q is not a valid UUID: %v", DefaultDevWorkspaceID, err)
-	}
-	expected := "a0000000-0000-0000-0000-000000000001"
-	if parsed.String() != expected {
-		t.Errorf("expected DefaultDevWorkspaceID to be %s, got %s", expected, parsed.String())
-	}
-}
 
 func TestRandToken(t *testing.T) {
 	tok1 := randToken(16)
@@ -61,13 +48,14 @@ func TestWABAConfigJSONMarshaling(t *testing.T) {
 }
 
 func TestInboundPayloadJSONMarshaling(t *testing.T) {
+	testWSID := "11111111-2222-3333-4444-555555555555"
 	payload := inboundPayload{
 		Event:       "inbound_message",
 		TraceID:     "trace-1",
 		MessageID:   "wamid.1234",
 		Channel:     "whatsapp_cloud",
 		Timestamp:   "2026-08-17T12:00:00Z",
-		WorkspaceID: DefaultDevWorkspaceID,
+		WorkspaceID: testWSID,
 		From:        "15551234567",
 		To:          "15559876543",
 		Body:        "Hello PerGo",
@@ -81,7 +69,7 @@ func TestInboundPayloadJSONMarshaling(t *testing.T) {
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		t.Fatalf("failed to unmarshal inboundPayload: %v", err)
 	}
-	if parsed.WorkspaceID != DefaultDevWorkspaceID || parsed.Body != "Hello PerGo" {
+	if parsed.WorkspaceID != testWSID || parsed.Body != "Hello PerGo" {
 		t.Errorf("unexpected unmarshaled payload: %+v", parsed)
 	}
 }

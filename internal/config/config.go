@@ -4,8 +4,6 @@ package config
 import (
 	"encoding/base64"
 	"os"
-
-	"github.com/google/uuid"
 )
 
 // Config holds all configuration for the PerGo server.
@@ -29,9 +27,6 @@ type Config struct {
 	DefaultWorkspaceID string
 }
 
-// DefaultDevWorkspaceID is the standard deterministic UUID for the development workspace.
-const DefaultDevWorkspaceID = "a0000000-0000-0000-0000-000000000001"
-
 // Load reads configuration from environment variables with sensible defaults.
 func Load() *Config {
 	cfg := &Config{
@@ -50,7 +45,7 @@ func Load() *Config {
 		S3Region:           envOrDefault("PERGO_S3_REGION", envOrDefault("S3_REGION", "us-east-1")),
 		S3UsePathStyle:     os.Getenv("PERGO_S3_USE_PATH_STYLE") == "true" || os.Getenv("S3_USE_PATH_STYLE") == "true",
 		ExternalURL:        envOrDefault("PERGO_EXTERNAL_URL", "http://localhost:8080"),
-		DefaultWorkspaceID: envOrDefault("DEFAULT_WORKSPACE_ID", envOrDefault("PERGO_DEV_WORKSPACE_ID", DefaultDevWorkspaceID)),
+		DefaultWorkspaceID: envOrDefault("DEFAULT_WORKSPACE_ID", envOrDefault("PERGO_DEV_WORKSPACE_ID", "")),
 	}
 
 	if cfg.KEKBase64 != "" {
@@ -61,16 +56,6 @@ func Load() *Config {
 	}
 
 	return cfg
-}
-
-// DefaultWorkspaceUUID returns the configured DefaultWorkspaceID as a parsed uuid.UUID, falling back to DefaultDevWorkspaceID.
-func (c *Config) DefaultWorkspaceUUID() uuid.UUID {
-	if c.DefaultWorkspaceID != "" {
-		if id, err := uuid.Parse(c.DefaultWorkspaceID); err == nil && id != uuid.Nil {
-			return id
-		}
-	}
-	return uuid.MustParse(DefaultDevWorkspaceID)
 }
 
 func envOrDefault(key, fallback string) string {

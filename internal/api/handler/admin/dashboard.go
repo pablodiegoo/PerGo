@@ -20,13 +20,12 @@ import (
 
 // DashboardHandler holds dependencies for the admin dashboard.
 type DashboardHandler struct {
-	Pool               *pgxpool.Pool
-	Workspaces         *repository.WorkspaceRepository
-	Audit              *audit.Querier
-	APIKeys            *repository.APIKeyRepository
-	Connections        *repository.ConnectionRepository
-	Publisher          *queue.JetStreamPublisher
-	DefaultWorkspaceID uuid.UUID
+	Pool        *pgxpool.Pool
+	Workspaces  *repository.WorkspaceRepository
+	Audit       *audit.Querier
+	APIKeys     *repository.APIKeyRepository
+	Connections *repository.ConnectionRepository
+	Publisher   *queue.JetStreamPublisher
 }
 
 // Index renders the dashboard landing page.
@@ -46,13 +45,6 @@ func (h *DashboardHandler) Index(c *echo.Context) error {
 
 		if ws == nil {
 			ws, _ = h.Workspaces.EnsureWorkspace(ctx, "Agora")
-			if ws == nil {
-				// Fetch first workspace if EnsureWorkspace failed
-				list, err := h.Workspaces.List(ctx, 1)
-				if err == nil && len(list) > 0 {
-					ws = &list[0]
-				}
-			}
 		}
 	}
 
@@ -236,12 +228,6 @@ func (h *DashboardHandler) WorkspaceSelector(c *echo.Context) error {
 
 	if ws == nil {
 		ws, _ = h.Workspaces.EnsureWorkspace(ctx, "Agora")
-		if ws == nil {
-			list, err := h.Workspaces.List(ctx, 1)
-			if err == nil && len(list) > 0 {
-				ws = &list[0]
-			}
-		}
 	}
 
 	workspaces, _ := h.Workspaces.List(ctx, 50)

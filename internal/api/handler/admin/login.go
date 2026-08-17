@@ -24,7 +24,7 @@ func LoginPage(c *echo.Context, showError bool) error {
 }
 
 // LoginPost handles the login form submission.
-func LoginPost(c *echo.Context, wsRepo *repository.WorkspaceRepository, adminPassword string, defaultWorkspaceIDs ...uuid.UUID) error {
+func LoginPost(c *echo.Context, wsRepo *repository.WorkspaceRepository, adminPassword string) error {
 	password := c.FormValue("password")
 
 	if password != adminPassword {
@@ -44,15 +44,9 @@ func LoginPost(c *echo.Context, wsRepo *repository.WorkspaceRepository, adminPas
 		}
 	}
 
-	if activeWSID == uuid.Nil {
-		if len(defaultWorkspaceIDs) > 0 && defaultWorkspaceIDs[0] != uuid.Nil {
-			activeWSID = defaultWorkspaceIDs[0]
-		} else if wsRepo != nil {
-			if ws, err := wsRepo.EnsureWorkspace(c.Request().Context(), "Agora"); err == nil && ws != nil {
-				activeWSID = ws.ID
-			}
-		}
-		if activeWSID != uuid.Nil {
+	if activeWSID == uuid.Nil && wsRepo != nil {
+		if ws, err := wsRepo.EnsureWorkspace(c.Request().Context(), "Agora"); err == nil && ws != nil {
+			activeWSID = ws.ID
 			c.SetCookie(&http.Cookie{
 				Name:     "pergo-active-workspace",
 				Value:    activeWSID.String(),
