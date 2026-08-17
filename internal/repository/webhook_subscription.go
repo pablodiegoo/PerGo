@@ -41,6 +41,9 @@ func NewWebhookSubscriptionRepository(pool *pgxpool.Pool, encryptor CredentialPr
 
 // Create inserts a new subscription
 func (r *WebhookSubscriptionRepository) Create(ctx context.Context, wsID uuid.UUID, url string, eventTypes []string, secretPlaintext []byte) (*WebhookSubscription, error) {
+	if wsID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	ciphertext, keyID, keyVersion, err := r.encryptor.Encrypt(secretPlaintext)
 	if err != nil {
 		return nil, err
@@ -87,6 +90,9 @@ func (r *WebhookSubscriptionRepository) Get(ctx context.Context, id uuid.UUID) (
 
 // ListByWorkspace returns all subscriptions belonging to a workspace
 func (r *WebhookSubscriptionRepository) ListByWorkspace(ctx context.Context, wsID uuid.UUID) ([]*WebhookSubscription, error) {
+	if wsID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, workspace_id, url, secret, key_id, key_version, event_types, active, created_at, updated_at
 		 FROM webhook_subscriptions WHERE workspace_id = $1 ORDER BY created_at DESC`,

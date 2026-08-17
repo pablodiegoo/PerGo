@@ -30,6 +30,9 @@ func NewTagRepository(pool *pgxpool.Pool) *TagRepository {
 
 // CreateTag creates a new workspace-scoped tag.
 func (r *TagRepository) CreateTag(ctx context.Context, workspaceID uuid.UUID, name, color string) (*domain.Tag, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, errors.New("tag name cannot be empty")
@@ -57,6 +60,9 @@ func (r *TagRepository) CreateTag(ctx context.Context, workspaceID uuid.UUID, na
 
 // GetTagByID retrieves a tag by ID within a workspace.
 func (r *TagRepository) GetTagByID(ctx context.Context, workspaceID, tagID uuid.UUID) (*domain.Tag, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	var tag domain.Tag
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, workspace_id, name, color, created_at
@@ -75,6 +81,9 @@ func (r *TagRepository) GetTagByID(ctx context.Context, workspaceID, tagID uuid.
 
 // ListTags lists all tags in a workspace ordered by name.
 func (r *TagRepository) ListTags(ctx context.Context, workspaceID uuid.UUID) ([]domain.Tag, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	rows, err := r.pool.Query(ctx, `
 		SELECT id, workspace_id, name, color, created_at
 		FROM tags
@@ -99,6 +108,9 @@ func (r *TagRepository) ListTags(ctx context.Context, workspaceID uuid.UUID) ([]
 
 // DeleteTag deletes a tag by ID within a workspace.
 func (r *TagRepository) DeleteTag(ctx context.Context, workspaceID, tagID uuid.UUID) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	res, err := r.pool.Exec(ctx, `
 		DELETE FROM tags WHERE workspace_id = $1 AND id = $2
 	`, workspaceID, tagID)
@@ -113,6 +125,9 @@ func (r *TagRepository) DeleteTag(ctx context.Context, workspaceID, tagID uuid.U
 
 // AddTagToContact links a tag to a contact.
 func (r *TagRepository) AddTagToContact(ctx context.Context, workspaceID, contactID, tagID uuid.UUID) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	// Verify tag belongs to workspace
 	_, err := r.GetTagByID(ctx, workspaceID, tagID)
 	if err != nil {
@@ -145,6 +160,9 @@ func (r *TagRepository) AddTagToContact(ctx context.Context, workspaceID, contac
 
 // RemoveTagFromContact unlinks a tag from a contact.
 func (r *TagRepository) RemoveTagFromContact(ctx context.Context, workspaceID, contactID, tagID uuid.UUID) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	res, err := r.pool.Exec(ctx, `
 		DELETE FROM contact_tags
 		WHERE contact_id = $1 AND tag_id = $2
@@ -161,6 +179,9 @@ func (r *TagRepository) RemoveTagFromContact(ctx context.Context, workspaceID, c
 
 // GetContactTags retrieves all tags associated with a specific contact.
 func (r *TagRepository) GetContactTags(ctx context.Context, workspaceID, contactID uuid.UUID) ([]domain.Tag, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	rows, err := r.pool.Query(ctx, `
 		SELECT t.id, t.workspace_id, t.name, t.color, t.created_at
 		FROM tags t
@@ -186,6 +207,9 @@ func (r *TagRepository) GetContactTags(ctx context.Context, workspaceID, contact
 
 // ListContactsByTag retrieves all contacts matching a given tag ID.
 func (r *TagRepository) ListContactsByTag(ctx context.Context, workspaceID, tagID uuid.UUID) ([]domain.Contact, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	rows, err := r.pool.Query(ctx, `
 		SELECT c.id, c.workspace_id, c.name, c.email, c.attributes, c.tags, c.closed_at, c.created_at, c.updated_at, c.bot_active, c.bot_paused_at
 		FROM contacts c

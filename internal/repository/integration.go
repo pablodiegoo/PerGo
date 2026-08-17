@@ -45,6 +45,9 @@ func NewIntegrationRepository(pool *pgxpool.Pool, provider CredentialProvider) *
 
 // Save inserts or updates an integration configuration, encrypting the config payload.
 func (r *IntegrationRepository) Save(ctx context.Context, i *Integration) error {
+	if i == nil || i.WorkspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	if i.ID == uuid.Nil {
 		i.ID = uuid.New()
 	}
@@ -87,6 +90,9 @@ func (r *IntegrationRepository) Save(ctx context.Context, i *Integration) error 
 
 // GetByProvider retrieves and decrypts an integration configuration by workspace ID and provider name.
 func (r *IntegrationRepository) GetByProvider(ctx context.Context, workspaceID uuid.UUID, provider string) (*Integration, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	query := `
 		SELECT id, workspace_id, name, provider, active, config, key_id, key_version, created_at, updated_at
 		FROM integrations

@@ -48,6 +48,9 @@ func (r *WorkspaceRepository) Create(ctx context.Context, name string) (*Workspa
 
 // CreateWithID inserts a new workspace with a specific ID, updating the name on conflict.
 func (r *WorkspaceRepository) CreateWithID(ctx context.Context, id uuid.UUID, name string) (*Workspace, error) {
+	if id == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	var ws Workspace
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO workspaces (id, name) VALUES ($1, $2)
@@ -61,8 +64,26 @@ func (r *WorkspaceRepository) CreateWithID(ctx context.Context, id uuid.UUID, na
 	return &ws, nil
 }
 
+// EnsureWorkspace returns an existing workspace if available, or creates a new workspace dynamically if the database contains zero workspaces.
+func (r *WorkspaceRepository) EnsureWorkspace(ctx context.Context, defaultName string) (*Workspace, error) {
+	list, err := r.List(ctx, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(list) > 0 {
+		return &list[0], nil
+	}
+	if defaultName == "" {
+		defaultName = "Agora"
+	}
+	return r.Create(ctx, defaultName)
+}
+
 // GetByID retrieves a workspace by ID.
 func (r *WorkspaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*Workspace, error) {
+	if id == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	var ws Workspace
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, name, pii_opt_in, webhook_secret, created_at, updated_at FROM workspaces WHERE id = $1`,
@@ -93,6 +114,9 @@ var (
 
 // SetWebhookSecret sets or updates a workspace's webhook secret key.
 func (r *WorkspaceRepository) SetWebhookSecret(ctx context.Context, id uuid.UUID, secret string) error {
+	if id == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE workspaces SET webhook_secret = $2, updated_at = NOW() WHERE id = $1`,
 		id, secret,
@@ -108,6 +132,9 @@ func (r *WorkspaceRepository) SetWebhookSecret(ctx context.Context, id uuid.UUID
 
 // GenerateWebhookSecret generates a new 32-byte hex-encoded secret for a workspace.
 func (r *WorkspaceRepository) GenerateWebhookSecret(ctx context.Context, id uuid.UUID) (string, error) {
+	if id == uuid.Nil {
+		return "", ErrInvalidWorkspaceID
+	}
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("failed to generate random secret: %w", err)
@@ -156,6 +183,9 @@ func (r *WorkspaceRepository) List(ctx context.Context, limit int) ([]Workspace,
 
 // Delete removes a workspace by ID. Associated API keys cascade-delete via foreign key.
 func (r *WorkspaceRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	if id == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	_, err := r.pool.Exec(ctx, `DELETE FROM workspaces WHERE id = $1`, id)
 	return err
 }

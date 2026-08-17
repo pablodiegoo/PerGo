@@ -30,6 +30,9 @@ func NewDeliveryClaimRepository(pool *pgxpool.Pool) *DeliveryClaimRepository {
 // CreateClaim attempts to record an active message delivery claim before worker dispatch.
 // Returns inserted=true if claim acquired, inserted=false if claim already exists.
 func (r *DeliveryClaimRepository) CreateClaim(ctx context.Context, claim *DeliveryClaim) (bool, error) {
+	if claim == nil || claim.WorkspaceID == uuid.Nil {
+		return false, ErrInvalidWorkspaceID
+	}
 	if claim.ID == uuid.Nil {
 		claim.ID = uuid.New()
 	}
@@ -47,6 +50,9 @@ func (r *DeliveryClaimRepository) CreateClaim(ctx context.Context, claim *Delive
 
 // ReleaseClaim deletes a delivery claim upon successful message ack or terminal failure.
 func (r *DeliveryClaimRepository) ReleaseClaim(ctx context.Context, workspaceID uuid.UUID, traceID string) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	query := `DELETE FROM dispatch_delivery_claim WHERE workspace_id = $1 AND trace_id = $2`
 	_, err := r.pool.Exec(ctx, query, workspaceID, traceID)
 	return err

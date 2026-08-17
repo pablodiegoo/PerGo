@@ -26,6 +26,9 @@ func NewCampaignRepository(pool *pgxpool.Pool) *CampaignRepository {
 }
 
 func (r *CampaignRepository) Create(ctx context.Context, c *domain.Campaign) (*domain.Campaign, error) {
+	if c == nil || c.WorkspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	recipientsJSON, err := json.Marshal(c.Recipients)
 	if err != nil {
 		return nil, fmt.Errorf("marshal recipients: %w", err)
@@ -274,6 +277,9 @@ func (r *CampaignRepository) UpdateRecipientStatus(ctx context.Context, id uuid.
 }
 
 func (r *CampaignRepository) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]domain.Campaign, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, workspace_id, connection_id, connection_slug, name, status, batch_size, delay_seconds, 
 		        template_name, message_body, channel, tag_id, total_recipients, sent_recipients, failed_recipients, 

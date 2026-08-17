@@ -33,6 +33,9 @@ func NewTypebotSessionRepository(pool *pgxpool.Pool) *TypebotSessionRepository {
 }
 
 func (r *TypebotSessionRepository) GetSession(ctx context.Context, workspaceID, contactID, connectionID uuid.UUID) (*TypebotSession, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	query := `
 		SELECT workspace_id, contact_id, connection_id, typebot_session_id, created_at, updated_at
 		FROM typebot_sessions
@@ -53,6 +56,9 @@ func (r *TypebotSessionRepository) GetSession(ctx context.Context, workspaceID, 
 }
 
 func (r *TypebotSessionRepository) UpsertSession(ctx context.Context, s *TypebotSession) error {
+	if s == nil || s.WorkspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	query := `
 		INSERT INTO typebot_sessions (
 			workspace_id, contact_id, connection_id, typebot_session_id, created_at, updated_at
@@ -70,6 +76,9 @@ func (r *TypebotSessionRepository) UpsertSession(ctx context.Context, s *Typebot
 }
 
 func (r *TypebotSessionRepository) DeleteSession(ctx context.Context, workspaceID, contactID, connectionID uuid.UUID) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	query := `
 		DELETE FROM typebot_sessions
 		WHERE workspace_id = $1 AND contact_id = $2 AND connection_id = $3

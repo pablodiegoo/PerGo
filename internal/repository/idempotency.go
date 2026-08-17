@@ -47,6 +47,9 @@ func NewIdempotencyRepository(pool *pgxpool.Pool) *IdempotencyRepository {
 }
 
 func (r *IdempotencyRepository) CheckAndStore(ctx context.Context, workspaceID uuid.UUID, keyHash, traceID string, ttl time.Duration) (bool, error) {
+	if workspaceID == uuid.Nil {
+		return false, ErrInvalidWorkspaceID
+	}
 	if ttl <= 0 {
 		ttl = 24 * time.Hour
 	}
@@ -62,6 +65,9 @@ func (r *IdempotencyRepository) CheckAndStore(ctx context.Context, workspaceID u
 }
 
 func (r *IdempotencyRepository) GetByIdempotencyKey(ctx context.Context, workspaceID uuid.UUID, keyHash string) (*IdempotencyEntry, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	var entry IdempotencyEntry
 	query := `SELECT id, workspace_id, key_hash, trace_id, status_code, response_body, provider_message_id, created_at, expires_at FROM message_idempotency WHERE workspace_id = $1 AND key_hash = $2 AND expires_at > NOW()`
 	err := r.pool.QueryRow(ctx, query, workspaceID, keyHash).Scan(
@@ -79,12 +85,18 @@ func (r *IdempotencyRepository) GetByIdempotencyKey(ctx context.Context, workspa
 }
 
 func (r *IdempotencyRepository) UpdateResponse(ctx context.Context, workspaceID uuid.UUID, keyHash string, statusCode int, responseBody []byte, providerMsgID *string) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	query := `UPDATE message_idempotency SET status_code = $3, response_body = $4, provider_message_id = $5 WHERE workspace_id = $1 AND key_hash = $2`
 	_, err := r.pool.Exec(ctx, query, workspaceID, keyHash, statusCode, responseBody, providerMsgID)
 	return err
 }
 
 func (r *IdempotencyRepository) RecordLedger(ctx context.Context, entry *IngressLedgerEntry) error {
+	if entry == nil || entry.WorkspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	if entry.ID == uuid.Nil {
 		entry.ID = uuid.New()
 	}
@@ -98,6 +110,9 @@ func (r *IdempotencyRepository) RecordLedger(ctx context.Context, entry *Ingress
 }
 
 func (r *IdempotencyRepository) UpdateLedgerStatus(ctx context.Context, workspaceID uuid.UUID, traceID, status string, errReason *string) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	query := `UPDATE message_ingress_ledger SET status = $3, error_reason = $4, updated_at = NOW() WHERE workspace_id = $1 AND trace_id = $2`
 	_, err := r.pool.Exec(ctx, query, workspaceID, traceID, status, errReason)
 	return err

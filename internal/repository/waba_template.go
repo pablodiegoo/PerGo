@@ -120,6 +120,9 @@ func (r *WABATemplateRepository) removeFromCache(connectionID uuid.UUID, id uuid
 
 // Create inserts a new template, updates cache, and returns it.
 func (r *WABATemplateRepository) Create(ctx context.Context, tmpl *WABATemplate) (*WABATemplate, error) {
+	if tmpl == nil || tmpl.WorkspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	if tmpl.Components == nil {
 		tmpl.Components = json.RawMessage("[]")
 	}
@@ -139,6 +142,9 @@ func (r *WABATemplateRepository) Create(ctx context.Context, tmpl *WABATemplate)
 
 // Upsert inserts a template or updates its fields if it already exists (matching connection_id, name, language).
 func (r *WABATemplateRepository) Upsert(ctx context.Context, tmpl *WABATemplate) (*WABATemplate, error) {
+	if tmpl == nil || tmpl.WorkspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	if tmpl.Components == nil {
 		tmpl.Components = json.RawMessage("[]")
 	}
@@ -223,6 +229,9 @@ func (r *WABATemplateRepository) GetByNameAndLanguage(ctx context.Context, conne
 
 // ListByWorkspace returns all templates for a workspace, ordered by created_at descending.
 func (r *WABATemplateRepository) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]WABATemplate, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, workspace_id, connection_id, meta_template_id, name, language, status, category, components, rejection_reason, quality_score, created_at, updated_at
 		 FROM waba_templates WHERE workspace_id = $1 ORDER BY created_at DESC`,

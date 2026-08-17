@@ -64,4 +64,36 @@ func TestWorkspaceRepository_CreateWithID_And_GetByName(t *testing.T) {
 			t.Errorf("expected error for non-existent workspace name, got nil (ws: %+v)", missing)
 		}
 	})
+
+	t.Run("EnsureWorkspace dynamically provisions when empty and reuses existing", func(t *testing.T) {
+		// Clean up
+		_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
+
+		// 1. Database contains 0 workspaces -> dynamic creation with random UUID
+		ws1, err := repo.EnsureWorkspace(ctx, "Agora")
+		if err != nil {
+			t.Fatalf("unexpected error ensuring workspace on empty DB: %v", err)
+		}
+		if ws1 == nil {
+			t.Fatal("expected workspace not to be nil")
+		}
+		if ws1.ID == uuid.Nil {
+			t.Fatal("expected non-nil UUID for ensured workspace")
+		}
+		if ws1.Name != "Agora" {
+			t.Errorf("expected name Agora, got %s", ws1.Name)
+		}
+
+		// 2. Database contains >= 1 workspace -> reuses existing without creating second or renaming
+		ws2, err := repo.EnsureWorkspace(ctx, "DifferentName")
+		if err != nil {
+			t.Fatalf("unexpected error ensuring workspace on populated DB: %v", err)
+		}
+		if ws2.ID != ws1.ID {
+			t.Errorf("expected ensured workspace to return existing ID %s, got %s", ws1.ID, ws2.ID)
+		}
+		if ws2.Name != "Agora" {
+			t.Errorf("expected existing name Agora to be preserved, got %s", ws2.Name)
+		}
+	})
 }

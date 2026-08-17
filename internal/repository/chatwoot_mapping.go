@@ -39,6 +39,9 @@ func NewChatwootMappingRepository(pool *pgxpool.Pool) *ChatwootMappingRepository
 
 // Upsert inserts or updates a Chatwoot mapping profile.
 func (r *ChatwootMappingRepository) Upsert(ctx context.Context, m *ChatwootMapping) error {
+	if m == nil || m.WorkspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	query := `
 		INSERT INTO chatwoot_mappings (
 			workspace_id, contact_id, connection_id, 
@@ -64,6 +67,9 @@ func (r *ChatwootMappingRepository) Upsert(ctx context.Context, m *ChatwootMappi
 
 // GetByContactAndConnection retrieves a mapping by workspace ID, contact ID, and connection ID.
 func (r *ChatwootMappingRepository) GetByContactAndConnection(ctx context.Context, workspaceID, contactID, connectionID uuid.UUID) (*ChatwootMapping, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	query := `
 		SELECT workspace_id, contact_id, connection_id, chatwoot_contact_id, chatwoot_conversation_id, channel, sender_identity, created_at, updated_at
 		FROM chatwoot_mappings
@@ -87,6 +93,9 @@ func (r *ChatwootMappingRepository) GetByContactAndConnection(ctx context.Contex
 
 // GetByConversationID retrieves a mapping by workspace ID and Chatwoot conversation ID.
 func (r *ChatwootMappingRepository) GetByConversationID(ctx context.Context, workspaceID uuid.UUID, chatwootConversationID int64) (*ChatwootMapping, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	query := `
 		SELECT workspace_id, contact_id, connection_id, chatwoot_contact_id, chatwoot_conversation_id, channel, sender_identity, created_at, updated_at
 		FROM chatwoot_mappings
@@ -110,6 +119,9 @@ func (r *ChatwootMappingRepository) GetByConversationID(ctx context.Context, wor
 
 // Delete removes a Chatwoot mapping.
 func (r *ChatwootMappingRepository) Delete(ctx context.Context, workspaceID, contactID, connectionID uuid.UUID) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	query := `
 		DELETE FROM chatwoot_mappings
 		WHERE workspace_id = $1 AND contact_id = $2 AND connection_id = $3

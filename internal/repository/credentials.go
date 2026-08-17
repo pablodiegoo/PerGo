@@ -30,6 +30,9 @@ func NewCredentialsRepository(pool *pgxpool.Pool, provider CredentialProvider) *
 
 // Save encrypts the credentials payload and saves or updates it in the connections table.
 func (r *CredentialsRepository) Save(ctx context.Context, workspaceID uuid.UUID, channel string, plaintext []byte) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	if len(plaintext) == 0 {
 		return errors.New("credentials payload cannot be empty")
 	}
@@ -93,6 +96,9 @@ func (r *CredentialsRepository) Save(ctx context.Context, workspaceID uuid.UUID,
 
 // Get retrieves the credentials from the connections table and decrypts them.
 func (r *CredentialsRepository) Get(ctx context.Context, workspaceID uuid.UUID, channel string) ([]byte, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	var ciphertext []byte
 	var keyID string
 	var keyVersion int
@@ -117,6 +123,9 @@ func (r *CredentialsRepository) Get(ctx context.Context, workspaceID uuid.UUID, 
 
 // Delete removes credentials for a workspace and channel.
 func (r *CredentialsRepository) Delete(ctx context.Context, workspaceID uuid.UUID, channel string) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	_, err := r.pool.Exec(ctx,
 		`DELETE FROM connections WHERE workspace_id = $1 AND channel = $2`,
 		workspaceID, channel,

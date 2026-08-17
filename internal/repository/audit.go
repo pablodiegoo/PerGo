@@ -186,6 +186,9 @@ type ThreadMessage struct {
 
 // ListConversations lists unified conversations grouped by contact_id.
 func (r *AuditRepository) ListConversations(ctx context.Context, workspaceID uuid.UUID, channelFilter string) ([]ConversationSummary, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	query := `
 		WITH MsgWithContact AS (
 			SELECT 
@@ -253,6 +256,9 @@ func (r *AuditRepository) ListConversations(ctx context.Context, workspaceID uui
 
 // ListThreadByContact performs a UNION between inbound and outbound messages matching ANY identity owned by the Contact.
 func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID uuid.UUID, contactID uuid.UUID, afterID *uuid.UUID) ([]ThreadMessage, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	query := `
 		SELECT al.id, al.trace_id, 'inbound' AS direction, COALESCE(al.payload->>'body', '') AS body, al.created_at, NULL::VARCHAR AS status, COALESCE(al.payload->'metadata', '{}'::jsonb) AS metadata
 		FROM audit_logs al

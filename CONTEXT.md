@@ -5,8 +5,16 @@ PerGo is a self-hosted CPaaS that provides unified API messaging and compliance 
 ## Language
 
 **Workspace**:
-A tenant boundary isolating connections, API keys, and audit logs.
+A tenant boundary isolating connections, API keys, campaigns, tags, contacts, and audit logs. Identified strictly by a real UUID generated dynamically without magic or hardcoded default IDs.
 _Avoid_: Account, tenant, pool
+
+**Active Workspace**:
+The specific workspace currently selected by a System Operator in the admin console session (persisted via session cookie) or resolved from an API key in API requests, defining the tenant scope for all operations.
+_Avoid_: Current account, selected tenant
+
+**System Operator**:
+A global administrator authenticated to the PerGo admin console who can create, inspect, and switch between any Workspace.
+_Avoid_: Superuser, root user, master admin
 
 **Connection**:
 A configured messaging provider instance linked to a specific channel and sender identity.

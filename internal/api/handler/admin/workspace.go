@@ -53,12 +53,16 @@ func (h *WorkspaceHandler) ActiveWorkspace(c *echo.Context) error {
 	}
 
 	if wsID == uuid.Nil {
-		// Fetch first workspace
-		list, err := h.Repo.List(ctx, 1)
-		if err == nil && len(list) > 0 {
-			wsID = list[0].ID
+		if ws, err := h.Repo.EnsureWorkspace(ctx, "Agora"); err == nil && ws != nil {
+			wsID = ws.ID
 		} else {
-			return c.String(http.StatusInternalServerError, "no workspaces configured")
+			// Fetch first workspace
+			list, err := h.Repo.List(ctx, 1)
+			if err == nil && len(list) > 0 {
+				wsID = list[0].ID
+			} else {
+				return c.String(http.StatusInternalServerError, "no workspaces configured")
+			}
 		}
 	}
 

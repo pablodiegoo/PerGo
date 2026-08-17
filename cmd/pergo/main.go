@@ -253,6 +253,13 @@ func main() {
 
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	wsRepo := repository.NewWorkspaceRepository(pool)
+	var defaultWSID uuid.UUID
+	if ws, err := wsRepo.EnsureWorkspace(ctx, "Agora"); err != nil {
+		slog.Warn("could not ensure default workspace on startup", "error", err)
+	} else {
+		defaultWSID = ws.ID
+		slog.Info("default workspace ready", "workspace_id", ws.ID, "name", ws.Name)
+	}
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
 
@@ -518,10 +525,10 @@ func main() {
 		return admin.LoginPage(c, false)
 	})
 	adminPublic.POST("/login", func(c *echo.Context) error {
-		return admin.LoginPost(c, wsRepo, cfg.AdminPassword)
+		return admin.LoginPost(c, wsRepo, cfg.AdminPassword, defaultWSID)
 	})
 	adminPublic.POST("/login/", func(c *echo.Context) error {
-		return admin.LoginPost(c, wsRepo, cfg.AdminPassword)
+		return admin.LoginPost(c, wsRepo, cfg.AdminPassword, defaultWSID)
 	})
 	adminPublic.POST("/logout", func(c *echo.Context) error {
 		return admin.Logout(c)
@@ -552,9 +559,12 @@ func main() {
 				}
 			}
 			if ws == nil {
-				list, err := wsRepo.List(ctx, 1)
-				if err == nil && len(list) > 0 {
-					ws = &list[0]
+				ws, _ = wsRepo.EnsureWorkspace(ctx, "Agora")
+				if ws == nil {
+					list, err := wsRepo.List(ctx, 1)
+					if err == nil && len(list) > 0 {
+						ws = &list[0]
+					}
 				}
 			}
 			workspaces, _ := wsRepo.List(ctx, 50)
@@ -574,12 +584,13 @@ func main() {
 
 	// Admin dashboard
 	dashboardHandler := &admin.DashboardHandler{
-		Pool:        pool,
-		Workspaces:  wsRepo,
-		Audit:       auditQuerier,
-		APIKeys:     apiKeyRepo,
-		Connections: connectionRepo,
-		Publisher:   publisher,
+		Pool:               pool,
+		Workspaces:         wsRepo,
+		Audit:              auditQuerier,
+		APIKeys:            apiKeyRepo,
+		Connections:        connectionRepo,
+		Publisher:          publisher,
+		DefaultWorkspaceID: defaultWSID,
 	}
 	adminGroup.GET("/", dashboardHandler.Index)
 	adminGroup.POST("/webhook/simulate", dashboardHandler.SimulateWebhook)
@@ -709,9 +720,13 @@ func main() {
 			wsID, _ = uuid.Parse(cookie.Value)
 		}
 		if wsID == uuid.Nil {
-			list, err := wsRepo.List(ctx, 1)
-			if err == nil && len(list) > 0 {
-				wsID = list[0].ID
+			if ws, err := wsRepo.EnsureWorkspace(ctx, "Agora"); err == nil && ws != nil {
+				wsID = ws.ID
+			} else {
+				list, err := wsRepo.List(ctx, 1)
+				if err == nil && len(list) > 0 {
+					wsID = list[0].ID
+				}
 			}
 		}
 		if wsID == uuid.Nil {
@@ -774,9 +789,13 @@ func main() {
 			wsID, _ = uuid.Parse(cookie.Value)
 		}
 		if wsID == uuid.Nil {
-			list, err := wsRepo.List(ctx, 1)
-			if err == nil && len(list) > 0 {
-				wsID = list[0].ID
+			if ws, err := wsRepo.EnsureWorkspace(ctx, "Agora"); err == nil && ws != nil {
+				wsID = ws.ID
+			} else {
+				list, err := wsRepo.List(ctx, 1)
+				if err == nil && len(list) > 0 {
+					wsID = list[0].ID
+				}
 			}
 		}
 		if wsID == uuid.Nil {

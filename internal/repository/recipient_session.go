@@ -40,6 +40,9 @@ func NewRecipientSessionRepository(pool *pgxpool.Pool) *RecipientSessionReposito
 // Upsert inserts or updates a recipient session setting last_inbound_at to the given/current time.
 // It also sets entry_point_type (defaulting to "standard") and resets notified_expiring_at to NULL.
 func (r *RecipientSessionRepository) Upsert(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string, lastInboundAt time.Time, entryPointType string) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	if entryPointType == "" {
 		entryPointType = "standard"
 	}
@@ -59,6 +62,9 @@ func (r *RecipientSessionRepository) Upsert(ctx context.Context, workspaceID uui
 // Get retrieves a recipient session by workspace ID, recipient phone/ID, channel, and recipient identity.
 // It supports E.164 phone normalization (+ prefix) and falls back to matching by workspace, recipient phone, and channel.
 func (r *RecipientSessionRepository) Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*RecipientSession, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	var s RecipientSession
 	trimmedPhone := strings.TrimPrefix(recipientPhone, "+")
 	withPlusPhone := "+" + trimmedPhone
@@ -131,6 +137,9 @@ func (r *RecipientSessionRepository) GetExpiringSessions(ctx context.Context, st
 
 // MarkNotifiedExpiring sets notified_expiring_at to the given time for a specific recipient session.
 func (r *RecipientSessionRepository) MarkNotifiedExpiring(ctx context.Context, workspaceID uuid.UUID, recipientPhone, channel, recipientIdentity string, notifiedAt time.Time) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	_, err := r.pool.Exec(ctx,
 		`UPDATE recipient_sessions
 		 SET notified_expiring_at = $5
@@ -142,6 +151,9 @@ func (r *RecipientSessionRepository) MarkNotifiedExpiring(ctx context.Context, w
 
 // UpdateLastReadAt updates the last_read_at timestamp for a specific recipient session.
 func (r *RecipientSessionRepository) UpdateLastReadAt(ctx context.Context, workspaceID uuid.UUID, recipientPhone, channel, recipientIdentity string, lastReadAt time.Time) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	_, err := r.pool.Exec(ctx,
 		`UPDATE recipient_sessions
 		 SET last_read_at = $5
@@ -153,6 +165,9 @@ func (r *RecipientSessionRepository) UpdateLastReadAt(ctx context.Context, works
 
 // UpdateLastReadAtByContact updates the last_read_at timestamp for all recipient sessions belonging to a contact.
 func (r *RecipientSessionRepository) UpdateLastReadAtByContact(ctx context.Context, workspaceID uuid.UUID, contactID uuid.UUID, lastReadAt time.Time) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	_, err := r.pool.Exec(ctx,
 		`UPDATE recipient_sessions rs
 		 SET last_read_at = $3

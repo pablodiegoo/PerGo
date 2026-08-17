@@ -59,6 +59,9 @@ func NewWebhookDLQRepository(pool *pgxpool.Pool, encryptor CredentialProvider) *
 
 // InsertDLQ inserts a new webhook DLQ item.
 func (r *WebhookDLQRepository) InsertDLQ(ctx context.Context, workspaceID uuid.UUID, subscriptionID uuid.UUID, traceID, messageID, eventType string, payload []byte, url string, attempts int, failureReason *string) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO webhook_dlqs (workspace_id, subscription_id, trace_id, message_id, event_type, payload, webhook_url, attempts, failure_reason, last_attempt_at, updated_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now())`,
@@ -69,6 +72,9 @@ func (r *WebhookDLQRepository) InsertDLQ(ctx context.Context, workspaceID uuid.U
 
 // ListDLQ lists DLQ items for a workspace with pagination.
 func (r *WebhookDLQRepository) ListDLQ(ctx context.Context, workspaceID uuid.UUID, limit, offset int) ([]*WebhookDLQ, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, workspace_id, subscription_id, trace_id, message_id, event_type, payload, webhook_url, last_attempt_at, failure_reason, attempts, created_at, updated_at
 		 FROM webhook_dlqs 
@@ -135,6 +141,9 @@ func (r *WebhookDLQRepository) DeleteDLQ(ctx context.Context, id uuid.UUID) erro
 
 // GetDLQBadgeCount returns the number of unresolved DLQ items for a workspace.
 func (r *WebhookDLQRepository) GetDLQBadgeCount(ctx context.Context, workspaceID uuid.UUID) (int, error) {
+	if workspaceID == uuid.Nil {
+		return 0, ErrInvalidWorkspaceID
+	}
 	var count int
 	err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM webhook_dlqs WHERE workspace_id = $1`,

@@ -57,6 +57,9 @@ func NewConnectionRepository(pool *pgxpool.Pool, provider CredentialProvider) *C
 
 // Create inserts a new connection into the database, encrypting credentials if present.
 func (r *ConnectionRepository) Create(ctx context.Context, c *Connection) error {
+	if c == nil || c.WorkspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	if c.ID == uuid.Nil {
 		c.ID = uuid.New()
 	}
@@ -129,6 +132,9 @@ func (r *ConnectionRepository) GetByID(ctx context.Context, id uuid.UUID) (*Conn
 
 // GetBySlug retrieves a connection by workspace ID and slug, utilizing an in-memory cache.
 func (r *ConnectionRepository) GetBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (*Connection, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	cacheKey := workspaceID.String() + ":" + slug
 
 	r.mu.RLock()
@@ -159,6 +165,9 @@ func (r *ConnectionRepository) GetBySlug(ctx context.Context, workspaceID uuid.U
 
 // GetBySenderIdentity retrieves a connection by sender identity, decrypting credentials if present.
 func (r *ConnectionRepository) GetBySenderIdentity(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*Connection, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	query := `
 		SELECT id, workspace_id, name, slug, channel, sender_identity, status, is_default, 
 		       credentials, key_id, key_version, jid, connected_since, proxy_url, created_at, updated_at
@@ -184,6 +193,9 @@ func (r *ConnectionRepository) GetByJID(ctx context.Context, jid string) (*Conne
 
 // GetDefaultChannelConnection retrieves the default connection for a given workspace and channel.
 func (r *ConnectionRepository) GetDefaultChannelConnection(ctx context.Context, workspaceID uuid.UUID, channel string) (*Connection, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	query := `
 		SELECT id, workspace_id, name, slug, channel, sender_identity, status, is_default, 
 		       credentials, key_id, key_version, jid, connected_since, proxy_url, created_at, updated_at
@@ -196,6 +208,9 @@ func (r *ConnectionRepository) GetDefaultChannelConnection(ctx context.Context, 
 
 // ListByWorkspace returns all connections for a workspace.
 func (r *ConnectionRepository) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]*Connection, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	query := `
 		SELECT id, workspace_id, name, slug, channel, sender_identity, status, is_default, 
 		       credentials, key_id, key_version, jid, connected_since, proxy_url, created_at, updated_at
@@ -465,6 +480,9 @@ func (r *ConnectionRepository) scanRowAndDecrypt(rows pgx.Rows) (*Connection, er
 
 // CountActiveByWorkspace returns the count of connections for the workspace with 'active' or 'connected' status.
 func (r *ConnectionRepository) CountActiveByWorkspace(ctx context.Context, workspaceID uuid.UUID) (int, error) {
+	if workspaceID == uuid.Nil {
+		return 0, ErrInvalidWorkspaceID
+	}
 	var count int
 	err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM connections WHERE workspace_id = $1 AND status IN ('active', 'connected')`,

@@ -51,6 +51,9 @@ func (r *MessageDispatchRepository) GetOrCreateDispatch(
 	templateName *string,
 	variablesJSON map[string]string,
 ) (*MessageDispatch, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	var varsJSON []byte
 	var err error
 	if variablesJSON != nil {

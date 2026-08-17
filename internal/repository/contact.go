@@ -26,6 +26,9 @@ func NewContactRepository(pool *pgxpool.Pool) *ContactRepository {
 
 // GetByID loads a contact and all its associated identities.
 func (r *ContactRepository) GetByID(ctx context.Context, workspaceID, contactID uuid.UUID) (*domain.Contact, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	var c domain.Contact
 	var attrsRaw []byte
 	err := r.pool.QueryRow(ctx, `
@@ -74,6 +77,9 @@ func (r *ContactRepository) ResolveContact(
 	workspaceID uuid.UUID,
 	channel, senderIdentity, name, username, phone string,
 ) (*domain.Contact, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	// 1. Try to find the identity directly
 	var contactID uuid.UUID
 	err := r.pool.QueryRow(ctx, `
@@ -210,6 +216,9 @@ func (r *ContactRepository) CreateContact(
 	email *string,
 	attributes map[string]string,
 ) (*domain.Contact, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	if strings.TrimSpace(name) == "" {
 		return nil, errors.New("contact name cannot be empty")
 	}
@@ -236,6 +245,9 @@ func (r *ContactRepository) UpdateAttributes(
 	workspaceID, contactID uuid.UUID,
 	attributes map[string]string,
 ) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	attrsJSON, err := marshalAttributes(attributes)
 	if err != nil {
 		return fmt.Errorf("marshal contact attributes: %w", err)
@@ -257,6 +269,9 @@ func (r *ContactRepository) UpdateAttributes(
 
 // UpdateContact updates a contact's profile data (name, email, attributes).
 func (r *ContactRepository) UpdateContact(ctx context.Context, workspaceID uuid.UUID, contact *domain.Contact) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	if contact == nil {
 		return errors.New("nil contact")
 	}
@@ -281,6 +296,9 @@ func (r *ContactRepository) UpdateContact(ctx context.Context, workspaceID uuid.
 
 // DeleteContact deletes a contact by ID within a workspace.
 func (r *ContactRepository) DeleteContact(ctx context.Context, workspaceID, contactID uuid.UUID) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	res, err := r.pool.Exec(ctx, `
 		DELETE FROM contacts WHERE workspace_id = $1 AND id = $2
 	`, workspaceID, contactID)
@@ -295,6 +313,9 @@ func (r *ContactRepository) DeleteContact(ctx context.Context, workspaceID, cont
 
 // MergeContacts unifies the identities of a secondary contact into the primary contact, deleting the secondary.
 func (r *ContactRepository) MergeContacts(ctx context.Context, workspaceID uuid.UUID, primaryID, secondaryID uuid.UUID) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	if primaryID == secondaryID {
 		return errors.New("cannot merge contact with itself")
 	}
@@ -370,6 +391,9 @@ func (r *ContactRepository) MergeContacts(ctx context.Context, workspaceID uuid.
 
 // SearchContacts performs a type-ahead search matching contacts by name or linked identities in a workspace.
 func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid.UUID, query string, excludeID uuid.UUID, limit int) ([]domain.Contact, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	q := "%" + strings.ToLower(query) + "%"
 	rows, err := r.pool.Query(ctx, `
 		SELECT DISTINCT c.id, c.name, c.email, c.attributes, c.tags, c.closed_at, c.created_at, c.updated_at, c.bot_active, c.bot_paused_at
@@ -407,6 +431,9 @@ func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid
 
 // ResolveTelegramChatID translates a Telegram username/phone into a numeric chat ID.
 func (r *ContactRepository) ResolveTelegramChatID(ctx context.Context, workspaceID uuid.UUID, identifier string) (string, error) {
+	if workspaceID == uuid.Nil {
+		return "", ErrInvalidWorkspaceID
+	}
 	clean := strings.TrimSpace(identifier)
 	if clean == "" {
 		return "", errors.New("empty identifier")
@@ -456,6 +483,9 @@ func (r *ContactRepository) ResolveTelegramChatID(ctx context.Context, workspace
 
 // HasUnread checks if a contact has any unread sessions in their workspace.
 func (r *ContactRepository) HasUnread(ctx context.Context, workspaceID, contactID uuid.UUID) (bool, error) {
+	if workspaceID == uuid.Nil {
+		return false, ErrInvalidWorkspaceID
+	}
 	var hasUnread bool
 	err := r.pool.QueryRow(ctx, `
 		SELECT EXISTS (
@@ -477,6 +507,9 @@ func (r *ContactRepository) HasUnread(ctx context.Context, workspaceID, contactI
 
 // AddTags appends tags to the contact's tag list while preserving uniqueness.
 func (r *ContactRepository) AddTags(ctx context.Context, workspaceID, contactID uuid.UUID, tags []string) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	if len(tags) == 0 {
 		return nil
 	}
@@ -495,6 +528,9 @@ func (r *ContactRepository) AddTags(ctx context.Context, workspaceID, contactID 
 
 // CloseThread sets closed_at to the current timestamp.
 func (r *ContactRepository) CloseThread(ctx context.Context, workspaceID, contactID uuid.UUID) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	_, err := r.pool.Exec(ctx, `
 		UPDATE contacts 
 		SET closed_at = NOW(), updated_at = NOW() 
@@ -505,6 +541,9 @@ func (r *ContactRepository) CloseThread(ctx context.Context, workspaceID, contac
 
 // UpdateBotState toggles bot activity and sets the paused timestamp for a contact.
 func (r *ContactRepository) UpdateBotState(ctx context.Context, workspaceID, contactID uuid.UUID, botActive bool, pausedAt *time.Time) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	_, err := r.pool.Exec(ctx, `
 		UPDATE contacts 
 		SET bot_active = $3, bot_paused_at = $4, updated_at = NOW() 
@@ -516,6 +555,9 @@ func (r *ContactRepository) UpdateBotState(ctx context.Context, workspaceID, con
 // FindIdentityForChannel finds an eligible target identity on targetChannel for the given recipient,
 // inspecting direct formatting or querying cross-channel contact identities in the workspace.
 func (r *ContactRepository) FindIdentityForChannel(ctx context.Context, workspaceID uuid.UUID, recipient string, targetChannel string) (string, bool, error) {
+	if workspaceID == uuid.Nil {
+		return "", false, ErrInvalidWorkspaceID
+	}
 	clean := strings.TrimSpace(recipient)
 	if clean == "" {
 		return "", false, nil

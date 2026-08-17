@@ -23,6 +23,9 @@ func NewInboundDedupRepository(pool *pgxpool.Pool) *InboundDedupRepository {
 // InsertAndCheck atomically inserts the provider message ID.
 // Returns true if the message was successfully inserted (unique), or false if it already existed.
 func (r *InboundDedupRepository) InsertAndCheck(ctx context.Context, workspaceID uuid.UUID, channel, providerMessageID string) (bool, error) {
+	if workspaceID == uuid.Nil {
+		return false, ErrInvalidWorkspaceID
+	}
 	query := `
 		INSERT INTO inbound_dedups (workspace_id, channel, provider_message_id, created_at)
 		VALUES ($1, $2, $3, NOW())

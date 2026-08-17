@@ -58,12 +58,6 @@ func main() {
 const DefaultDevWorkspaceID = "a0000000-0000-0000-0000-000000000001"
 
 func run(ctx context.Context, cfg *config.Config) error {
-	// Resolve workspace UUID and name from .env.seed (DEFAULT_WORKSPACE_ID / PERGO_WORKSPACE).
-	workspaceIDStr := envOrDefault("DEFAULT_WORKSPACE_ID", envOrDefault("PERGO_DEV_WORKSPACE_ID", DefaultDevWorkspaceID))
-	workspaceID, err := uuid.Parse(workspaceIDStr)
-	if err != nil {
-		return fmt.Errorf("invalid workspace UUID %q: %w", workspaceIDStr, err)
-	}
 	workspaceName := envOrDefault("PERGO_WORKSPACE", "Agora")
 
 	// Resolve WABA credentials from .env.seed.
@@ -112,8 +106,8 @@ func run(ctx context.Context, cfg *config.Config) error {
 	connRepo := repository.NewConnectionRepository(pool, encryptor)
 	sessRepo := repository.NewRecipientSessionRepository(pool)
 
-	// 1. Workspace (create or reuse deterministic workspace).
-	ws, err := findOrCreateWorkspaceWithID(ctx, wsRepo, workspaceID, workspaceName)
+	// 1. Workspace (dynamically resolve existing or create workspace).
+	ws, err := resolveSeedWorkspace(ctx, wsRepo, workspaceName)
 	if err != nil {
 		return fmt.Errorf("workspace setup: %w", err)
 	}
@@ -145,15 +139,13 @@ func run(ctx context.Context, cfg *config.Config) error {
 	return nil
 }
 
-func findOrCreateWorkspaceWithID(ctx context.Context, wsRepo *repository.WorkspaceRepository, id uuid.UUID, name string) (*repository.Workspace, error) {
-	ws, err := wsRepo.GetByID(ctx, id)
-	if err == nil && ws != nil {
-		return ws, nil
+func resolveSeedWorkspace(ctx context.Context, wsRepo *repository.WorkspaceRepository, workspaceName string) (*repository.Workspace, error) {
+	if wsIDStr := envOrDefault("DEFAULT_WORKSPACE_ID", envOrDefault("PERGO_DEV_WORKSPACE_ID", "")); wsIDStr != "" {
+		if id, err := uuid.Parse(wsIDStr); err == nil && id != uuid.Nil {
+			return wsRepo.CreateWithID(ctx, id, workspaceName)
+		}
 	}
-	if existing, err := wsRepo.GetByName(ctx, name); err == nil && existing != nil {
-		return existing, nil
-	}
-	return wsRepo.CreateWithID(ctx, id, name)
+	return wsRepo.EnsureWorkspace(ctx, workspaceName)
 }
 
 func ensureConnection(ctx context.Context, repo *repository.ConnectionRepository, wsID uuid.UUID, displayPhone string, cred []byte) (*repository.Connection, error) {

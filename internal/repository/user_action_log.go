@@ -36,6 +36,9 @@ func NewUserActionLogRepository(pool *pgxpool.Pool) *UserActionLogRepository {
 
 // Insert writes a new UserActionLog into the database.
 func (r *UserActionLogRepository) Insert(ctx context.Context, log *UserActionLog) error {
+	if log == nil || log.WorkspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
 	var id uuid.UUID
 	var createdAt time.Time
 
@@ -56,6 +59,9 @@ func (r *UserActionLogRepository) Insert(ctx context.Context, log *UserActionLog
 
 // ListByWorkspace returns a paginated list of logs and the total count.
 func (r *UserActionLogRepository) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID, limit, offset int, actorType, source string) ([]UserActionLog, int, error) {
+	if workspaceID == uuid.Nil {
+		return nil, 0, ErrInvalidWorkspaceID
+	}
 	if limit <= 0 {
 		limit = 50
 	}

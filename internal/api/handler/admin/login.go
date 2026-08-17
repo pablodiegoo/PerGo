@@ -2,7 +2,9 @@ package admin
 
 import (
 	"net/http"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
@@ -22,7 +24,7 @@ func LoginPage(c *echo.Context, showError bool) error {
 }
 
 // LoginPost handles the login form submission.
-func LoginPost(c *echo.Context, wsRepo *repository.WorkspaceRepository, adminPassword string) error {
+func LoginPost(c *echo.Context, wsRepo *repository.WorkspaceRepository, adminPassword string, defaultWorkspaceIDs ...uuid.UUID) error {
 	password := c.FormValue("password")
 
 	if password != adminPassword {
@@ -33,6 +35,33 @@ func LoginPost(c *echo.Context, wsRepo *repository.WorkspaceRepository, adminPas
 	// Set session cookie
 	secret := mw.GetSessionSecret()
 	mw.SetSessionCookie(c, secret)
+
+	// Set active workspace cookie if not already set or invalid
+	var activeWSID uuid.UUID
+	if cookie, err := c.Cookie("pergo-active-workspace"); err == nil && cookie != nil && cookie.Value != "" {
+		if parsed, parseErr := uuid.Parse(cookie.Value); parseErr == nil {
+			activeWSID = parsed
+		}
+	}
+
+	if activeWSID == uuid.Nil {
+		if len(defaultWorkspaceIDs) > 0 && defaultWorkspaceIDs[0] != uuid.Nil {
+			activeWSID = defaultWorkspaceIDs[0]
+		} else if wsRepo != nil {
+			if ws, err := wsRepo.EnsureWorkspace(c.Request().Context(), "Agora"); err == nil && ws != nil {
+				activeWSID = ws.ID
+			}
+		}
+		if activeWSID != uuid.Nil {
+			c.SetCookie(&http.Cookie{
+				Name:     "pergo-active-workspace",
+				Value:    activeWSID.String(),
+				Path:     "/",
+				Expires:  time.Now().Add(365 * 24 * time.Hour),
+				HttpOnly: true,
+			})
+		}
+	}
 
 	return c.Redirect(http.StatusFound, "/admin/")
 }

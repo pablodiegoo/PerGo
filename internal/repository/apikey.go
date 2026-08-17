@@ -48,6 +48,9 @@ func NewAPIKeyRepository(pool *pgxpool.Pool) *APIKeyRepository {
 
 // Create generates a new API key, stores the hash and prefix, and returns the API key and plaintext key.
 func (r *APIKeyRepository) Create(ctx context.Context, workspaceID uuid.UUID, name string) (*APIKey, string, error) {
+	if workspaceID == uuid.Nil {
+		return nil, "", ErrInvalidWorkspaceID
+	}
 	// Generate random 32-byte key, hex-encoded for safe UTF-8 storage of the prefix
 	keyBytes := make([]byte, 32)
 	if _, err := rand.Read(keyBytes); err != nil {
@@ -128,6 +131,9 @@ func (r *APIKeyRepository) Revoke(ctx context.Context, id uuid.UUID) error {
 
 // ListByWorkspace returns all API keys for a workspace (including revoked), ordered by created_at descending.
 func (r *APIKeyRepository) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]APIKey, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, workspace_id, key_prefix, key_hash, name, revoked_at, key_id, key_version, created_at
 		 FROM api_keys WHERE workspace_id = $1 ORDER BY created_at DESC`,
@@ -167,6 +173,9 @@ func (r *APIKeyRepository) GetByID(ctx context.Context, id uuid.UUID) (*APIKey, 
 
 // CountActive returns the count of non-revoked API keys for the workspace.
 func (r *APIKeyRepository) CountActive(ctx context.Context, workspaceID uuid.UUID) (int, error) {
+	if workspaceID == uuid.Nil {
+		return 0, ErrInvalidWorkspaceID
+	}
 	var count int
 	err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*) FROM api_keys WHERE workspace_id = $1 AND revoked_at IS NULL`,
