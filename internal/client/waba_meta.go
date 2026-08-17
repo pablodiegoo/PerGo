@@ -237,3 +237,54 @@ func (c *WABAMetaClient) SyncTemplates(ctx context.Context, connectionID uuid.UU
 
 	return synced, nil
 }
+
+// WABAPhoneNumberDetails contains phone number metadata returned by Meta Graph API.
+type WABAPhoneNumberDetails struct {
+	ID                     string `json:"id"`
+	DisplayPhoneNumber     string `json:"display_phone_number"`
+	VerifiedName           string `json:"verified_name"`
+	CodeVerificationStatus string `json:"code_verification_status"`
+	QualityRating          string `json:"quality_rating"`
+}
+
+// FetchPhoneNumberDetails retrieves phone number details (display_phone_number, verified_name) from Meta Graph API.
+func (c *WABAMetaClient) FetchPhoneNumberDetails(ctx context.Context, phoneNumberID, token string) (*WABAPhoneNumberDetails, error) {
+	metaURL := fmt.Sprintf("%s/%s?fields=display_phone_number,verified_name,code_verification_status,quality_rating", c.baseURL, phoneNumberID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, metaURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to Meta API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		type metaErrorResponse struct {
+			Error struct {
+				Message string `json:"message"`
+				Code    int    `json:"code"`
+			} `json:"error"`
+		}
+		var metaErr metaErrorResponse
+		if err := json.Unmarshal(respBytes, &metaErr); err == nil && metaErr.Error.Message != "" {
+			return nil, fmt.Errorf("Meta API error: %s (code %d)", metaErr.Error.Message, metaErr.Error.Code)
+		}
+		return nil, fmt.Errorf("Meta API returned HTTP status %d: %s", resp.StatusCode, string(respBytes))
+	}
+
+	var details WABAPhoneNumberDetails
+	if err := json.Unmarshal(respBytes, &details); err != nil {
+		return nil, fmt.Errorf("failed to parse phone number details: %w", err)
+	}
+
+	return &details, nil
+}

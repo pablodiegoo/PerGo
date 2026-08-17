@@ -15,7 +15,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/config"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -64,10 +66,23 @@ func run(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("missing WABA credentials in .env.seed: need ACCESS_TOKEN, PHONE_NUMBER_ID, WHATSAPP_BUSINESS_ACCOUNT_ID")
 	}
 
-	// Derive a display phone number used as the recipient identity.
-	// For WABA the recipient identity is the DisplayPhoneNumber (a real E.164).
-	// Seed a placeholder derived from the phone_number_id if none is known.
+	// Derive display phone number used as the recipient identity.
+	// Queries Meta Graph API to resolve the real DisplayPhoneNumber if not explicitly provided.
 	displayPhone := envOrDefault("DISPLAY_PHONE_NUMBER", "")
+	if displayPhone == "" {
+		metaClient := client.NewWABAMetaClient(nil, "")
+		if details, err := metaClient.FetchPhoneNumberDetails(ctx, phoneID, token); err == nil && details != nil && details.DisplayPhoneNumber != "" {
+			if clean, valid := domain.SanitizePhone(details.DisplayPhoneNumber); valid {
+				displayPhone = clean
+			} else {
+				displayPhone = details.DisplayPhoneNumber
+			}
+			slog.Info("resolved WABA display phone number from Meta API", "display_phone", displayPhone, "verified_name", details.VerifiedName)
+		}
+	}
+	if displayPhone == "" {
+		displayPhone = phoneID
+	}
 
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {

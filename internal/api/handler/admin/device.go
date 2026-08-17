@@ -214,6 +214,14 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 		}
 
 		senderIdentity = phoneNumberID
+		metaClient := client.NewWABAMetaClient(nil, "")
+		if details, err := metaClient.FetchPhoneNumberDetails(ctx, phoneNumberID, token); err == nil && details != nil && details.DisplayPhoneNumber != "" {
+			if clean, valid := domain.SanitizePhone(details.DisplayPhoneNumber); valid {
+				senderIdentity = clean
+			} else {
+				senderIdentity = details.DisplayPhoneNumber
+			}
+		}
 
 		wabaCfg = pages.WABAConfig{
 			PhoneNumberID: phoneNumberID,

@@ -192,19 +192,6 @@ func (h *WABAWebhookHandler) HandlePost(c *echo.Context) error {
 		return c.NoContent(http.StatusForbidden)
 	}
 
-	var matchingConn *repository.Connection
-	for _, conn := range conns {
-		if conn.Channel == "whatsapp_cloud" {
-			matchingConn = conn
-			break
-		}
-	}
-
-	if matchingConn == nil {
-		slog.Warn("waba webhook: no connection found", "workspace_id", workspaceID)
-		return c.NoContent(http.StatusForbidden)
-	}
-
 	// Read raw request body with 2MiB limit
 	body, err := ReadLimitedBody(c.Request().Body, MaxWABAPayloadSize)
 	if err != nil {
@@ -213,6 +200,58 @@ func (h *WABAWebhookHandler) HandlePost(c *echo.Context) error {
 			return c.NoContent(http.StatusRequestEntityTooLarge)
 		}
 		return c.NoContent(http.StatusBadRequest)
+	}
+
+	var incomingPhoneID, incomingDisplayPhone string
+	var wabaMetaExtract struct {
+		Entry []struct {
+			Changes []struct {
+				Value struct {
+					Metadata struct {
+						DisplayPhoneNumber string `json:"display_phone_number"`
+						PhoneNumberID      string `json:"phone_number_id"`
+					} `json:"metadata"`
+				} `json:"value"`
+			} `json:"changes"`
+		} `json:"entry"`
+	}
+	if json.Unmarshal(body, &wabaMetaExtract) == nil && len(wabaMetaExtract.Entry) > 0 {
+		for _, entry := range wabaMetaExtract.Entry {
+			for _, change := range entry.Changes {
+				if change.Value.Metadata.PhoneNumberID != "" {
+					incomingPhoneID = change.Value.Metadata.PhoneNumberID
+				}
+				if change.Value.Metadata.DisplayPhoneNumber != "" {
+					incomingDisplayPhone = change.Value.Metadata.DisplayPhoneNumber
+				}
+			}
+		}
+	}
+
+	var matchingConn *repository.Connection
+	for _, conn := range conns {
+		if conn.Channel != "whatsapp_cloud" {
+			continue
+		}
+		if incomingPhoneID != "" || incomingDisplayPhone != "" {
+			var creds struct {
+				PhoneNumberID string `json:"phone_number_id"`
+			}
+			_ = json.Unmarshal(conn.Credentials, &creds)
+			if (incomingPhoneID != "" && (conn.SenderIdentity == incomingPhoneID || creds.PhoneNumberID == incomingPhoneID)) ||
+				(incomingDisplayPhone != "" && (conn.SenderIdentity == incomingDisplayPhone || strings.TrimPrefix(conn.SenderIdentity, "+") == strings.TrimPrefix(incomingDisplayPhone, "+"))) {
+				matchingConn = conn
+				break
+			}
+		}
+		if matchingConn == nil {
+			matchingConn = conn
+		}
+	}
+
+	if matchingConn == nil {
+		slog.Warn("waba webhook: no connection found", "workspace_id", workspaceID)
+		return c.NoContent(http.StatusForbidden)
 	}
 
 	// Verify X-Hub-Signature-256 signature if enabled

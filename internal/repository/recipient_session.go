@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -56,13 +57,42 @@ func (r *RecipientSessionRepository) Upsert(ctx context.Context, workspaceID uui
 }
 
 // Get retrieves a recipient session by workspace ID, recipient phone/ID, channel, and recipient identity.
+// It supports E.164 phone normalization (+ prefix) and falls back to matching by workspace, recipient phone, and channel.
 func (r *RecipientSessionRepository) Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*RecipientSession, error) {
 	var s RecipientSession
+	trimmedPhone := strings.TrimPrefix(recipientPhone, "+")
+	withPlusPhone := "+" + trimmedPhone
+	trimmedIdentity := strings.TrimPrefix(recipientIdentity, "+")
+	withPlusIdentity := "+" + trimmedIdentity
+
+	if recipientIdentity != "" {
+		err := r.pool.QueryRow(ctx,
+			`SELECT workspace_id, recipient_phone, channel, recipient_identity, last_inbound_at, last_read_at, entry_point_type, notified_expiring_at
+			 FROM recipient_sessions 
+			 WHERE workspace_id = $1 
+			   AND (recipient_phone = $2 OR recipient_phone = $3 OR recipient_phone = $4) 
+			   AND channel = $5 
+			   AND (recipient_identity = $6 OR recipient_identity = $7 OR recipient_identity = $8)
+			 ORDER BY last_inbound_at DESC LIMIT 1`,
+			workspaceID, recipientPhone, trimmedPhone, withPlusPhone, channel, recipientIdentity, trimmedIdentity, withPlusIdentity,
+		).Scan(&s.WorkspaceID, &s.RecipientPhone, &s.Channel, &s.RecipientIdentity, &s.LastInboundAt, &s.LastReadAt, &s.EntryPointType, &s.NotifiedExpiringAt)
+		if err == nil {
+			return &s, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, err
+		}
+	}
+
+	// Fallback: match by workspace, recipient phone (normalized), and channel
 	err := r.pool.QueryRow(ctx,
 		`SELECT workspace_id, recipient_phone, channel, recipient_identity, last_inbound_at, last_read_at, entry_point_type, notified_expiring_at
 		 FROM recipient_sessions 
-		 WHERE workspace_id = $1 AND recipient_phone = $2 AND channel = $3 AND recipient_identity = $4`,
-		workspaceID, recipientPhone, channel, recipientIdentity,
+		 WHERE workspace_id = $1 
+		   AND (recipient_phone = $2 OR recipient_phone = $3 OR recipient_phone = $4) 
+		   AND channel = $5
+		 ORDER BY last_inbound_at DESC LIMIT 1`,
+		workspaceID, recipientPhone, trimmedPhone, withPlusPhone, channel,
 	).Scan(&s.WorkspaceID, &s.RecipientPhone, &s.Channel, &s.RecipientIdentity, &s.LastInboundAt, &s.LastReadAt, &s.EntryPointType, &s.NotifiedExpiringAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
