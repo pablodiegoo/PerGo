@@ -8,7 +8,7 @@ tmp_dir = "tmp"
   bin = "./tmp/pergo"
   delay = 500
   exclude_dir = [
-    "tmp", "vendor", ".planning", ".agents",
+    "tmp", "vendor", ".planning", ".agents", "docs", "testdata", "test-results",
     "templates/*_templ.go"  # gerados pelo pre_cmd, não fonte
   ]
   include_ext = ["go", "templ"]
