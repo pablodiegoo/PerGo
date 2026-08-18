@@ -190,28 +190,41 @@ func (m *Manager) ListSessions() []*SessionHealthInfo {
 }
 
 func (m *Manager) SubscribeQR(key string) (<-chan QREvent, func()) {
+	ch, unsub, _ := m.SubscribeQRForWorkspace(uuid.Nil, key)
+	return ch, unsub
+}
+
+func (m *Manager) SubscribeQRForWorkspace(wsID uuid.UUID, key string) (<-chan QREvent, func(), bool) {
 	m.mu.Lock()
 	ps, ok := m.pairingSessions[key]
 	m.mu.Unlock()
 
-	if !ok {
+	if !ok || (wsID != uuid.Nil && ps.WorkspaceID() != wsID) {
 		ch := make(chan QREvent, 1)
 		ch <- QREvent{
 			Status:  "error",
 			Message: "No active pairing session",
 		}
 		close(ch)
-		return ch, func() {}
+		return ch, func() {}, false
 	}
-	return ps.Subscribe()
+	ch, unsub := ps.Subscribe()
+	return ch, unsub, true
 }
 
 func (m *Manager) GetPairingState(key string) (*QREvent, bool) {
+	return m.GetPairingStateForWorkspace(uuid.Nil, key)
+}
+
+func (m *Manager) GetPairingStateForWorkspace(wsID uuid.UUID, key string) (*QREvent, bool) {
 	m.mu.Lock()
 	ps, ok := m.pairingSessions[key]
 	m.mu.Unlock()
 
 	if !ok {
+		return nil, false
+	}
+	if wsID != uuid.Nil && ps.WorkspaceID() != wsID {
 		return nil, false
 	}
 	ps.mu.RLock()

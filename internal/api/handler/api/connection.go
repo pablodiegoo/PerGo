@@ -29,7 +29,9 @@ type ConnectionRepo interface {
 type SessionManager interface {
 	StartPairingSession(ctx context.Context, workspaceID uuid.UUID, phone string, existingConnID *uuid.UUID, proxyURL string) (*session.PairingSession, error)
 	GetPairingState(key string) (*session.QREvent, bool)
+	GetPairingStateForWorkspace(wsID uuid.UUID, key string) (*session.QREvent, bool)
 	SubscribeQR(key string) (<-chan session.QREvent, func())
+	SubscribeQRForWorkspace(wsID uuid.UUID, key string) (<-chan session.QREvent, func(), bool)
 	CancelPairing(connectionID uuid.UUID)
 	CancelPairingByPhone(phone string)
 	EmitStatusEvent(ctx context.Context, wsID uuid.UUID, connID uuid.UUID, channelName, senderIdentity, status string) error
@@ -181,11 +183,11 @@ func (h *ConnectionAPIHandler) GetQR(c *echo.Context) error {
 	}
 
 	if h.manager != nil {
-		if evt, ok := h.manager.GetPairingState(id); ok && evt != nil {
+		if evt, ok := h.manager.GetPairingStateForWorkspace(wsID, id); ok && evt != nil {
 			return c.JSON(http.StatusOK, evt)
 		}
 		if phone := c.QueryParam("phone"); phone != "" && phone != id {
-			if evt, ok := h.manager.GetPairingState(phone); ok && evt != nil {
+			if evt, ok := h.manager.GetPairingStateForWorkspace(wsID, phone); ok && evt != nil {
 				return c.JSON(http.StatusOK, evt)
 			}
 		}
@@ -244,7 +246,23 @@ func (h *ConnectionAPIHandler) StreamQR(c *echo.Context) error {
 		})
 	}
 
-	qrCh, unsub := h.manager.SubscribeQR(id)
+	qrCh, unsub, ok := h.manager.SubscribeQRForWorkspace(wsID, id)
+	if !ok {
+		if parsedID, err := uuid.Parse(id); err == nil && h.repo != nil {
+			conn, err := h.repo.GetByID(c.Request().Context(), parsedID)
+			if err != nil || conn == nil || conn.WorkspaceID != wsID {
+				return c.JSON(http.StatusNotFound, map[string]string{
+					"code":    "not_found",
+					"message": "pairing session or connection not found",
+				})
+			}
+		} else {
+			return c.JSON(http.StatusNotFound, map[string]string{
+				"code":    "not_found",
+				"message": "pairing session not found",
+			})
+		}
+	}
 	defer unsub()
 
 	c.Response().Header().Set("Content-Type", "text/event-stream")
@@ -258,10 +276,20 @@ func (h *ConnectionAPIHandler) StreamQR(c *echo.Context) error {
 		flusher.Flush()
 	}
 
+	pingTicker := time.NewTicker(15 * time.Second)
+	defer pingTicker.Stop()
+
 	for {
 		select {
 		case <-c.Request().Context().Done():
 			return nil
+		case <-pingTicker.C:
+			if _, err := fmt.Fprintf(c.Response(), ": ping\n\n"); err != nil {
+				return nil
+			}
+			if flusher != nil {
+				flusher.Flush()
+			}
 		case evt, ok := <-qrCh:
 			if !ok {
 				return nil

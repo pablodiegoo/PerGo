@@ -65,6 +65,7 @@ type mockSessionManager struct {
 	mu              sync.RWMutex
 	pairingStates   map[string]*session.QREvent
 	subscribeChans  map[string]chan session.QREvent
+	workspaceMap    map[string]uuid.UUID
 	cancelCalls     []uuid.UUID
 	cancelPhoneList []string
 	errOnStart      error
@@ -74,6 +75,7 @@ func newMockSessionManager() *mockSessionManager {
 	return &mockSessionManager{
 		pairingStates:  make(map[string]*session.QREvent),
 		subscribeChans: make(map[string]chan session.QREvent),
+		workspaceMap:   make(map[string]uuid.UUID),
 	}
 }
 
@@ -97,31 +99,55 @@ func (m *mockSessionManager) StartPairingSession(ctx context.Context, workspaceI
 	}
 	m.pairingStates[phone] = evt
 	m.pairingStates[connID.String()] = evt
+	m.workspaceMap[phone] = workspaceID
+	m.workspaceMap[connID.String()] = workspaceID
 
 	return session.NewPairingSession(workspaceID, phone, connID), nil
 }
 
 func (m *mockSessionManager) GetPairingState(key string) (*session.QREvent, bool) {
+	return m.GetPairingStateForWorkspace(uuid.Nil, key)
+}
+
+func (m *mockSessionManager) GetPairingStateForWorkspace(wsID uuid.UUID, key string) (*session.QREvent, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	if wsID != uuid.Nil {
+		if mappedWs, ok := m.workspaceMap[key]; ok && mappedWs != wsID {
+			return nil, false
+		}
+	}
 	evt, ok := m.pairingStates[key]
 	return evt, ok
 }
 
 func (m *mockSessionManager) SubscribeQR(key string) (<-chan session.QREvent, func()) {
+	ch, unsub, _ := m.SubscribeQRForWorkspace(uuid.Nil, key)
+	return ch, unsub
+}
+
+func (m *mockSessionManager) SubscribeQRForWorkspace(wsID uuid.UUID, key string) (<-chan session.QREvent, func(), bool) {
 	m.mu.Lock()
+	defer m.mu.Unlock()
+	if wsID != uuid.Nil {
+		if mappedWs, ok := m.workspaceMap[key]; ok && mappedWs != wsID {
+			ch := make(chan session.QREvent, 1)
+			close(ch)
+			return ch, func() {}, false
+		}
+	}
 	ch, ok := m.subscribeChans[key]
 	if !ok {
-		ch = make(chan session.QREvent, 10)
-		m.subscribeChans[key] = ch
+		ch = make(chan session.QREvent, 1)
+		close(ch)
+		return ch, func() {}, false
 	}
-	m.mu.Unlock()
 
 	return ch, func() {
 		m.mu.Lock()
 		delete(m.subscribeChans, key)
 		m.mu.Unlock()
-	}
+	}, true
 }
 
 func (m *mockSessionManager) CancelPairing(connectionID uuid.UUID) {
@@ -262,6 +288,7 @@ func TestConnectionAPIHandler_GetQR(t *testing.T) {
 		ConnectionID: &connID,
 	}
 	mgr.pairingStates[connID.String()] = evt
+	mgr.workspaceMap[connID.String()] = wsID
 
 	handler := api.NewConnectionAPIHandler(connRepo, mgr, nil)
 
@@ -334,6 +361,7 @@ func TestConnectionAPIHandler_StreamQR(t *testing.T) {
 	connID := uuid.New().String()
 	ch := make(chan session.QREvent, 5)
 	mgr.subscribeChans[connID] = ch
+	mgr.workspaceMap[connID] = wsID
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -513,3 +541,42 @@ func TestConnectionAPIHandler_RouteAliases(t *testing.T) {
 		}
 	}
 }
+
+func TestConnectionAPIHandler_StreamQR_NotFoundOrUnauthorized(t *testing.T) {
+	wsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+	mgr := newMockSessionManager()
+	handler := api.NewConnectionAPIHandler(connRepo, mgr, nil)
+
+	// Mock SubscribeQRForWorkspace to simulate not found / forbidden
+	mgr.subscribeChans = make(map[string]chan session.QREvent)
+
+	e, c, rec := setupEchoWithTenant(http.MethodGet, "/api/v1/connections/unknown-id/qr/stream", nil, wsID)
+	c.SetPath("/api/v1/connections/:id/qr/stream")
+	c.SetPathValues(echo.PathValues{{Name: "id", Value: "unknown-id"}})
+	_ = e
+
+	// Override SubscribeQRForWorkspace in a local custom mock if needed or verify repo fallback
+	otherWsID := uuid.New()
+	foreignConnID := uuid.New()
+	connRepo.connections[foreignConnID] = &repository.Connection{
+		ID:          foreignConnID,
+		WorkspaceID: otherWsID,
+		Status:      "pending",
+	}
+
+	// Requesting foreign connection
+	_, cForeign, recForeign := setupEchoWithTenant(http.MethodGet, "/api/v1/connections/"+foreignConnID.String()+"/qr/stream", nil, wsID)
+	cForeign.SetPath("/api/v1/connections/:id/qr/stream")
+	cForeign.SetPathValues(echo.PathValues{{Name: "id", Value: foreignConnID.String()}})
+
+	err := handler.StreamQR(cForeign)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if recForeign.Code != http.StatusNotFound {
+		t.Errorf("expected status 404 for foreign connection stream, got %d", recForeign.Code)
+	}
+	_ = rec
+}
+

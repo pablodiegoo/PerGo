@@ -99,7 +99,12 @@ func (h *DeviceHandler) GetQR(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "phone is required")
 	}
 
-	evt, ok := h.Manager.GetPairingState(phone)
+	workspaceID := resolveWorkspaceIDOrNil(c)
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	evt, ok := h.Manager.GetPairingStateForWorkspace(workspaceID, phone)
 	if !ok {
 		return mw.Render(c, http.StatusOK, pages.QRFragment("", "", phone, "error", "Nenhuma sessão de pareamento ativa para este número"))
 	}
@@ -120,6 +125,11 @@ func (h *DeviceHandler) Disconnect(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "invalid connection ID format")
 	}
 
+	workspaceID := resolveWorkspaceIDOrNil(c)
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
 	ctx := c.Request().Context()
 	conn, err := h.Connections.GetByID(ctx, id)
 	if err != nil {
@@ -127,6 +137,10 @@ func (h *DeviceHandler) Disconnect(c *echo.Context) error {
 			return c.String(http.StatusNotFound, "connection not found")
 		}
 		return c.String(http.StatusInternalServerError, "failed to get connection")
+	}
+
+	if conn.WorkspaceID != workspaceID {
+		return c.String(http.StatusNotFound, "connection not found")
 	}
 
 	// If WhatsApp Web, stop active session
@@ -139,7 +153,6 @@ func (h *DeviceHandler) Disconnect(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "failed to delete connection")
 	}
 
-	workspaceID := resolveWorkspaceIDOrNil(c)
 	connections, err := h.Connections.ListByWorkspace(ctx, workspaceID)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to reload connections")
@@ -356,6 +369,11 @@ func (h *DeviceHandler) UpdateSlug(c *echo.Context) error {
 // TestForm renders the connectivity test modal.
 // GET /admin/devices/test?id={id}
 func (h *DeviceHandler) TestForm(c *echo.Context) error {
+	workspaceID := resolveWorkspaceIDOrNil(c)
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
 	idStr := c.QueryParam("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
@@ -363,7 +381,7 @@ func (h *DeviceHandler) TestForm(c *echo.Context) error {
 	}
 
 	conn, err := h.Connections.GetByID(c.Request().Context(), id)
-	if err != nil {
+	if err != nil || conn == nil || conn.WorkspaceID != workspaceID {
 		return c.String(http.StatusNotFound, "connection not found")
 	}
 
@@ -382,6 +400,11 @@ func (h *DeviceHandler) TestForm(c *echo.Context) error {
 // RunTest publishes a test outbound message to the messages.outbound JetStream subject.
 // POST /admin/devices/test
 func (h *DeviceHandler) RunTest(c *echo.Context) error {
+	workspaceID := resolveWorkspaceIDOrNil(c)
+	if workspaceID == uuid.Nil {
+		return c.HTML(http.StatusOK, `<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Workspace não selecionado</div>`)
+	}
+
 	connIDStr := c.FormValue("connection_id")
 	to := c.FormValue("to")
 	body := c.FormValue("body")
@@ -394,7 +417,7 @@ func (h *DeviceHandler) RunTest(c *echo.Context) error {
 	}
 
 	conn, err := h.Connections.GetByID(c.Request().Context(), connID)
-	if err != nil {
+	if err != nil || conn == nil || conn.WorkspaceID != workspaceID {
 		return c.HTML(http.StatusOK, `<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Conexão não encontrada</div>`)
 	}
 
@@ -463,6 +486,11 @@ func (h *DeviceHandler) RunTest(c *echo.Context) error {
 // WS upgrades the connection to WebSocket and streams NATS events live to the client.
 // GET /admin/devices/test/ws
 func (h *DeviceHandler) WS(c *echo.Context) error {
+	workspaceID := resolveWorkspaceIDOrNil(c)
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
 	ws, err := websocket.Accept(c.Response(), c.Request(), &websocket.AcceptOptions{
 		InsecureSkipVerify: true,
 	})
@@ -501,7 +529,7 @@ func (h *DeviceHandler) WS(c *echo.Context) error {
 	}
 	defer sub3.Unsubscribe()
 
-	slog.Info("device connectivity tester websocket connection established")
+	slog.Info("device connectivity tester websocket connection established", "workspace_id", workspaceID)
 
 	// Message read loop in separate goroutine to detect client disconnecting
 	errChan := make(chan error, 1)
@@ -515,6 +543,10 @@ func (h *DeviceHandler) WS(c *echo.Context) error {
 		}
 	}()
 
+	type eventWorkspacePayload struct {
+		WorkspaceID uuid.UUID `json:"workspace_id"`
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -523,11 +555,26 @@ func (h *DeviceHandler) WS(c *echo.Context) error {
 			slog.Info("device websocket closed by client", "error", err)
 			return nil
 		case m := <-ch:
-			var eventType, badgeClass, title string
-			var prettyJSON bytes.Buffer
-
 			subject := m.Subject
 			rawPayload := m.Data
+
+			// Filter out events not belonging to this workspace
+			if strings.HasPrefix(subject, "inbound.events.") {
+				subWsStr := strings.TrimPrefix(subject, "inbound.events.")
+				if subWsStr != "" && subWsStr != workspaceID.String() {
+					continue
+				}
+			} else {
+				var p eventWorkspacePayload
+				if err := json.Unmarshal(rawPayload, &p); err == nil && p.WorkspaceID != uuid.Nil {
+					if p.WorkspaceID != workspaceID {
+						continue
+					}
+				}
+			}
+
+			var eventType, badgeClass, title string
+			var prettyJSON bytes.Buffer
 
 			if err := json.Indent(&prettyJSON, rawPayload, "", "  "); err != nil {
 				prettyJSON.Reset()

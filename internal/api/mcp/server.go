@@ -786,10 +786,10 @@ func (s *Server) handleGetConnectionStatus(ctx context.Context, request mcp.Call
 			}
 		}
 
-		if evt, ok := s.sessionManager.GetPairingState(conn.ID.String()); ok && evt != nil {
+		if evt, ok := s.sessionManager.GetPairingStateForWorkspace(conn.WorkspaceID, conn.ID.String()); ok && evt != nil {
 			res.PairingStatus = evt.Status
 		} else if conn.SenderIdentity != "" {
-			if evt, ok := s.sessionManager.GetPairingState(conn.SenderIdentity); ok && evt != nil {
+			if evt, ok := s.sessionManager.GetPairingStateForWorkspace(conn.WorkspaceID, conn.SenderIdentity); ok && evt != nil {
 				res.PairingStatus = evt.Status
 			}
 		}
@@ -834,7 +834,7 @@ func (s *Server) handleGetConnectionQRCode(ctx context.Context, request mcp.Call
 	}
 
 	if s.sessionManager != nil {
-		if evt, ok := s.sessionManager.GetPairingState(conn.ID.String()); ok && evt != nil {
+		if evt, ok := s.sessionManager.GetPairingStateForWorkspace(workspaceID, conn.ID.String()); ok && evt != nil {
 			resBytes, err := json.MarshalIndent(evt, "", "  ")
 			if err != nil {
 				return mcp.NewToolResultError(fmt.Sprintf("failed to marshal qr event: %v", err)), nil
@@ -842,7 +842,7 @@ func (s *Server) handleGetConnectionQRCode(ctx context.Context, request mcp.Call
 			return mcp.NewToolResultText(string(resBytes)), nil
 		}
 		if conn.SenderIdentity != "" {
-			if evt, ok := s.sessionManager.GetPairingState(conn.SenderIdentity); ok && evt != nil {
+			if evt, ok := s.sessionManager.GetPairingStateForWorkspace(workspaceID, conn.SenderIdentity); ok && evt != nil {
 				resBytes, err := json.MarshalIndent(evt, "", "  ")
 				if err != nil {
 					return mcp.NewToolResultError(fmt.Sprintf("failed to marshal qr event: %v", err)), nil

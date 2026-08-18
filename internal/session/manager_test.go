@@ -509,3 +509,58 @@ func TestCalcBackoff(t *testing.T) {
 	}
 }
 
+func TestManager_Pairing_TenantIsolation(t *testing.T) {
+	mockCli := newMockWhatsAppClient()
+	factory := &mockClientFactory{client: mockCli}
+	reg := NewActiveSession()
+	mgr := NewManager(nil, nil, reg, nil, "2.3000.1025000000", nil)
+	mgr.SetClientFactory(factory)
+
+	ctx := context.Background()
+	wsA := uuid.New()
+	wsB := uuid.New()
+	phone := "5511999998888"
+
+	ps, err := mgr.StartPairingSession(ctx, wsA, phone, nil, "")
+	if err != nil {
+		t.Fatalf("StartPairingSession failed: %v", err)
+	}
+
+	// 1. Same workspace (wsA) should get pairing state
+	state, ok := mgr.GetPairingStateForWorkspace(wsA, phone)
+	if !ok || state == nil {
+		t.Errorf("expected state to be found for workspace A")
+	}
+
+	// 2. Different workspace (wsB) should NOT get pairing state
+	stateB, okB := mgr.GetPairingStateForWorkspace(wsB, phone)
+	if okB || stateB != nil {
+		t.Errorf("expected state to NOT be found for workspace B, got %v", stateB)
+	}
+
+	// 3. Different workspace (wsB) by connection ID should NOT get pairing state
+	stateBID, okBID := mgr.GetPairingStateForWorkspace(wsB, ps.connectionID.String())
+	if okBID || stateBID != nil {
+		t.Errorf("expected state to NOT be found for workspace B using connection ID")
+	}
+
+	// 4. Same workspace (wsA) subscribing
+	subA, unsubA, okSubA := mgr.SubscribeQRForWorkspace(wsA, phone)
+	defer unsubA()
+	if !okSubA || subA == nil {
+		t.Errorf("expected subscribe to succeed for workspace A")
+	}
+
+	// 5. Different workspace (wsB) subscribing should fail (ok=false, closed/error channel)
+	subB, unsubB, okSubB := mgr.SubscribeQRForWorkspace(wsB, phone)
+	defer unsubB()
+	if okSubB {
+		t.Errorf("expected subscribe to return ok=false for workspace B")
+	}
+	evtB := <-subB
+	if evtB.Status != "error" {
+		t.Errorf("expected error event for workspace B subscriber, got %v", evtB)
+	}
+}
+
+

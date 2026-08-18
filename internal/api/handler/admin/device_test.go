@@ -177,6 +177,92 @@ func TestDeviceHandler_DatabaseFlows(t *testing.T) {
 			t.Errorf("expected connection to be deleted, got error: %v", err)
 		}
 	})
+
+	t.Run("Reject Cross-Tenant Disconnect (IDOR)", func(t *testing.T) {
+		otherWS, err := wsRepo.Create(ctx, "Other Workspace Devices")
+		if err != nil {
+			t.Fatalf("failed to create other workspace: %v", err)
+		}
+		defer func() { _ = wsRepo.Delete(ctx, otherWS.ID) }()
+
+		foreignConn := &repository.Connection{
+			WorkspaceID:    otherWS.ID,
+			Name:           "Foreign Device",
+			Channel:        "telegram",
+			SenderIdentity: "@ForeignBot",
+			Status:         "connected",
+		}
+		if err := connRepo.Create(ctx, foreignConn); err != nil {
+			t.Fatalf("failed to create foreign connection: %v", err)
+		}
+
+		// Operator on ws tries to delete foreignConn on otherWS
+		req := httptest.NewRequest(http.MethodDelete, "/admin/devices/"+foreignConn.ID.String(), nil)
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/devices/:id")
+		c.SetPathValues(echo.PathValues{
+			{Name: "id", Value: foreignConn.ID.String()},
+		})
+
+		if err := h.Disconnect(c); err != nil {
+			t.Errorf("Disconnect returned error: %v", err)
+		}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected status 404 for cross-tenant delete, got %d", rec.Code)
+		}
+
+		// Verify foreign connection was NOT deleted
+		fc, err := connRepo.GetByID(ctx, foreignConn.ID)
+		if err != nil || fc == nil {
+			t.Errorf("foreign connection should still exist, got error: %v", err)
+		}
+	})
+
+	t.Run("Reject Cross-Tenant TestForm and RunTest", func(t *testing.T) {
+		otherWS, err := wsRepo.Create(ctx, "Other Workspace TestForm")
+		if err != nil {
+			t.Fatalf("failed to create other workspace: %v", err)
+		}
+		defer func() { _ = wsRepo.Delete(ctx, otherWS.ID) }()
+
+		foreignConn := &repository.Connection{
+			WorkspaceID:    otherWS.ID,
+			Name:           "Foreign Device 2",
+			Channel:        "telegram",
+			SenderIdentity: "@ForeignBot2",
+			Status:         "connected",
+		}
+		if err := connRepo.Create(ctx, foreignConn); err != nil {
+			t.Fatalf("failed to create foreign connection: %v", err)
+		}
+
+		// 1. TestForm cross-tenant check
+		req := httptest.NewRequest(http.MethodGet, "/admin/devices/test?id="+foreignConn.ID.String(), nil)
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		_ = h.TestForm(c)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected status 404 for cross-tenant TestForm, got %d", rec.Code)
+		}
+
+		// 2. RunTest cross-tenant check
+		fv := url.Values{}
+		fv.Set("connection_id", foreignConn.ID.String())
+		fv.Set("to", "+5511999990001")
+		fv.Set("body", "Hello")
+		reqRun := httptest.NewRequest(http.MethodPost, "/admin/devices/test", strings.NewReader(fv.Encode()))
+		reqRun.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		reqRun.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		recRun := httptest.NewRecorder()
+		cRun := e.NewContext(reqRun, recRun)
+		_ = h.RunTest(cRun)
+		if !strings.Contains(recRun.Body.String(), "Conexão não encontrada") {
+			t.Errorf("expected RunTest to return connection not found HTML, got %s", recRun.Body.String())
+		}
+	})
 }
 
 // TestDeviceHandler_StartPairing_LimitExceeded checks that the handler returns HTTP 422
