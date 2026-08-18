@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/api/handler/api"
 	whatsapp "github.com/pablojhp.pergo/internal/channel/whatsapp"
+	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
@@ -42,6 +44,17 @@ func (m *mockConnectionRepo) GetByID(ctx context.Context, id uuid.UUID) (*reposi
 	return conn, nil
 }
 
+func (m *mockConnectionRepo) GetBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, conn := range m.connections {
+		if conn.WorkspaceID == workspaceID && conn.Slug == slug {
+			return conn, nil
+		}
+	}
+	return nil, repository.ErrConnectionNotFound
+}
+
 func (m *mockConnectionRepo) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]*repository.Connection, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -54,11 +67,49 @@ func (m *mockConnectionRepo) ListByWorkspace(ctx context.Context, workspaceID uu
 	return list, nil
 }
 
+func (m *mockConnectionRepo) Create(ctx context.Context, c *repository.Connection) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if c.ID == uuid.Nil {
+		c.ID = uuid.New()
+	}
+	m.connections[c.ID] = c
+	return nil
+}
+
 func (m *mockConnectionRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.connections, id)
 	return nil
+}
+
+type mockWABAMetaClient struct {
+	mu              sync.Mutex
+	syncCalled      bool
+	detailsToReturn *client.WABAPhoneNumberDetails
+	detailsErr      error
+	errOnSync       error
+}
+
+func (m *mockWABAMetaClient) FetchPhoneNumberDetails(ctx context.Context, phoneNumberID, token string) (*client.WABAPhoneNumberDetails, error) {
+	if m.detailsErr != nil {
+		return nil, m.detailsErr
+	}
+	if m.detailsToReturn != nil {
+		return m.detailsToReturn, nil
+	}
+	return nil, errors.New("not found")
+}
+
+func (m *mockWABAMetaClient) SyncTemplates(ctx context.Context, connectionID uuid.UUID, wabaAccountID, token string, workspaceID uuid.UUID, repo *repository.WABATemplateRepository, bypassRateLimit bool) ([]repository.WABATemplate, error) {
+	m.mu.Lock()
+	m.syncCalled = true
+	m.mu.Unlock()
+	if m.errOnSync != nil {
+		return nil, m.errOnSync
+	}
+	return []repository.WABATemplate{}, nil
 }
 
 type mockSessionManager struct {
@@ -517,7 +568,11 @@ func TestConnectionAPIHandler_RouteAliases(t *testing.T) {
 	routes := e.Router().Routes()
 	expectedPaths := []string{
 		"/api/v1/connections/pair",
+		"/api/v1/connections/waba",
+		"/api/v1/workspaces/:workspace_id/connections/waba",
 		"/api/v1/devices/pair",
+		"/api/v1/devices/waba",
+		"/api/v1/workspaces/:workspace_id/devices/waba",
 		"/api/v1/connections",
 		"/api/v1/devices",
 		"/api/v1/connections/:id/qr",
@@ -579,4 +634,294 @@ func TestConnectionAPIHandler_StreamQR_NotFoundOrUnauthorized(t *testing.T) {
 	}
 	_ = rec
 }
+
+func TestConnectionAPIHandler_CreateWABA_Success(t *testing.T) {
+	wsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+	metaClient := &mockWABAMetaClient{}
+
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
+	handler.SetMetaClient(metaClient)
+
+	reqPayload := map[string]interface{}{
+		"name":                 "WABA Agencia",
+		"phone_number_id":      "123456789",
+		"waba_account_id":      "987654321",
+		"token":                "EAABbCcDd123",
+		"verify_token":         "custom_verify_token",
+		"app_secret":           "secret_xyz",
+		"display_phone_number": "+55 11 99999-9999",
+		"verified_name":        "Nome da Empresa",
+	}
+	payloadBytes, _ := json.Marshal(reqPayload)
+
+	_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", payloadBytes, wsID)
+
+	if err := handler.CreateWABA(c); err != nil {
+		t.Fatalf("unexpected handler error: %v", err)
+	}
+
+	if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+		t.Fatalf("expected status 201 or 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res api.ConnectionItem
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("failed to decode response JSON: %v", err)
+	}
+
+	if res.ID == uuid.Nil {
+		t.Errorf("expected valid connection ID, got Nil")
+	}
+	if res.Name != "WABA Agencia" {
+		t.Errorf("expected name 'WABA Agencia', got %q", res.Name)
+	}
+	if res.Slug != "waba-agencia" {
+		t.Errorf("expected slug 'waba-agencia', got %q", res.Slug)
+	}
+	if res.Channel != "whatsapp_cloud" {
+		t.Errorf("expected channel 'whatsapp_cloud', got %q", res.Channel)
+	}
+	if res.SenderIdentity != "5511999999999" {
+		t.Errorf("expected sanitized sender_identity '5511999999999', got %q", res.SenderIdentity)
+	}
+	if res.Status != "connected" {
+		t.Errorf("expected status 'connected', got %q", res.Status)
+	}
+
+	// Verify persistence in repository
+	saved, err := connRepo.GetByID(context.Background(), res.ID)
+	if err != nil || saved == nil {
+		t.Fatalf("connection not found in repository: %v", err)
+	}
+	if saved.WorkspaceID != wsID {
+		t.Errorf("expected workspace ID %s, got %s", wsID, saved.WorkspaceID)
+	}
+
+	// Verify credentials JSON contains all fields
+	type storedCreds struct {
+		PhoneNumberID string `json:"phone_number_id"`
+		WABAAccountID string `json:"waba_account_id"`
+		Token         string `json:"token"`
+		VerifyToken   string `json:"verify_token"`
+		AppSecret     string `json:"app_secret"`
+	}
+	var creds storedCreds
+	if err := json.Unmarshal(saved.Credentials, &creds); err != nil {
+		t.Fatalf("failed to unmarshal stored credentials: %v", err)
+	}
+	if creds.PhoneNumberID != "123456789" || creds.WABAAccountID != "987654321" || creds.Token != "EAABbCcDd123" {
+		t.Errorf("stored credentials mismatch: %+v", creds)
+	}
+	if creds.VerifyToken != "custom_verify_token" || creds.AppSecret != "secret_xyz" {
+		t.Errorf("stored optional credentials mismatch: %+v", creds)
+	}
+}
+
+func TestConnectionAPIHandler_CreateWABA_FetchMetaDetailsFallback(t *testing.T) {
+	wsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+	metaClient := &mockWABAMetaClient{
+		detailsToReturn: &client.WABAPhoneNumberDetails{
+			DisplayPhoneNumber: "+55 (21) 98888-7777",
+			VerifiedName:       "Empresa do Rio",
+		},
+	}
+
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
+	handler.SetMetaClient(metaClient)
+
+	reqPayload := map[string]interface{}{
+		"phone_number_id": "meta_phone_123",
+		"waba_account_id": "meta_account_456",
+		"token":           "meta_token_789",
+	}
+	payloadBytes, _ := json.Marshal(reqPayload)
+
+	_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", payloadBytes, wsID)
+
+	if err := handler.CreateWABA(c); err != nil {
+		t.Fatalf("unexpected handler error: %v", err)
+	}
+
+	if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+		t.Fatalf("expected status 201 or 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res api.ConnectionItem
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("failed to decode response JSON: %v", err)
+	}
+
+	if res.SenderIdentity != "5521988887777" {
+		t.Errorf("expected sender_identity '5521988887777' from Meta details fallback, got %q", res.SenderIdentity)
+	}
+	if res.Name != "Empresa do Rio" {
+		t.Errorf("expected name 'Empresa do Rio' from Meta details fallback, got %q", res.Name)
+	}
+}
+
+func TestConnectionAPIHandler_CreateWABA_MissingRequiredFields(t *testing.T) {
+	wsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
+
+	testCases := []struct {
+		name    string
+		payload string
+	}{
+		{
+			name:    "missing phone_number_id",
+			payload: `{"waba_account_id":"acc123","token":"tok123"}`,
+		},
+		{
+			name:    "missing waba_account_id",
+			payload: `{"phone_number_id":"pn123","token":"tok123"}`,
+		},
+		{
+			name:    "missing token",
+			payload: `{"phone_number_id":"pn123","waba_account_id":"acc123"}`,
+		},
+		{
+			name:    "empty fields",
+			payload: `{"phone_number_id":"","waba_account_id":"","token":""}`,
+		},
+		{
+			name:    "malformed JSON",
+			payload: `{"phone_number_id": 123...invalid`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", []byte(tc.payload), wsID)
+
+			if err := handler.CreateWABA(c); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("expected 400 Bad Request, got %d: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestConnectionAPIHandler_CreateWABA_UnauthorizedAndTenantIsolation(t *testing.T) {
+	wsID := uuid.New()
+	otherWsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
+
+	validPayload := []byte(`{"phone_number_id":"123","waba_account_id":"456","token":"tok"}`)
+
+	// 1. Missing workspace context
+	{
+		_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", validPayload, uuid.Nil)
+		if err := handler.CreateWABA(c); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 Unauthorized when workspace is missing, got %d", rec.Code)
+		}
+	}
+
+	// 2. Workspace ID in path matches context
+	{
+		_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/workspaces/"+wsID.String()+"/connections/waba", validPayload, wsID)
+		c.SetPath("/api/v1/workspaces/:workspace_id/connections/waba")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: wsID.String()}})
+
+		if err := handler.CreateWABA(c); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+			t.Errorf("expected 201 Created for matching workspace_id, got %d: %s", rec.Code, rec.Body.String())
+		}
+	}
+
+	// 3. Workspace ID in path does not match authenticated context (Tenant Isolation)
+	{
+		_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/workspaces/"+otherWsID.String()+"/connections/waba", validPayload, wsID)
+		c.SetPath("/api/v1/workspaces/:workspace_id/connections/waba")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: otherWsID.String()}})
+
+		if err := handler.CreateWABA(c); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusForbidden && rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 403 Forbidden or 401 Unauthorized for mismatched workspace_id, got %d", rec.Code)
+		}
+	}
+}
+
+func TestConnectionAPIHandler_CreateWABA_SlugGenerationAndConflict(t *testing.T) {
+	wsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
+
+	payload1 := []byte(`{"name":"Loja Matriz","phone_number_id":"111","waba_account_id":"acc1","token":"tok1"}`)
+	payload2 := []byte(`{"name":"Loja Matriz","phone_number_id":"222","waba_account_id":"acc2","token":"tok2"}`)
+
+	// First creation -> slug: loja-matriz
+	_, c1, rec1 := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", payload1, wsID)
+	if err := handler.CreateWABA(c1); err != nil {
+		t.Fatalf("unexpected error 1: %v", err)
+	}
+	var res1 api.ConnectionItem
+	_ = json.Unmarshal(rec1.Body.Bytes(), &res1)
+	if res1.Slug != "loja-matriz" {
+		t.Errorf("expected slug 'loja-matriz', got %q", res1.Slug)
+	}
+
+	// Second creation with same name -> slug: loja-matriz-2
+	_, c2, rec2 := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", payload2, wsID)
+	if err := handler.CreateWABA(c2); err != nil {
+		t.Fatalf("unexpected error 2: %v", err)
+	}
+	var res2 api.ConnectionItem
+	_ = json.Unmarshal(rec2.Body.Bytes(), &res2)
+	if res2.Slug != "loja-matriz-2" {
+		t.Errorf("expected slug 'loja-matriz-2', got %q", res2.Slug)
+	}
+}
+
+func TestConnectionAPIHandler_CreateWABA_TemplateSyncTrigger(t *testing.T) {
+	wsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+	metaClient := &mockWABAMetaClient{}
+
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
+	handler.SetMetaClient(metaClient)
+
+	payload := []byte(`{"name":"Sync Test","phone_number_id":"999","waba_account_id":"acc999","token":"tok999"}`)
+	_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", payload, wsID)
+
+	if err := handler.CreateWABA(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+		t.Fatalf("expected success status, got %d", rec.Code)
+	}
+
+	if !metaClient.syncCalled {
+		t.Errorf("expected template sync to be triggered upon WABA connection creation")
+	}
+
+	// Even if template sync returns error, connection creation should succeed gracefully
+	metaClientErr := &mockWABAMetaClient{errOnSync: errors.New("Meta API sync timeout")}
+	handlerErr := api.NewConnectionAPIHandler(connRepo, nil, nil)
+	handlerErr.SetMetaClient(metaClientErr)
+
+	payloadErr := []byte(`{"name":"Sync Err Test","phone_number_id":"888","waba_account_id":"acc888","token":"tok888"}`)
+	_, cErr, recErr := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", payloadErr, wsID)
+
+	if err := handlerErr.CreateWABA(cErr); err != nil {
+		t.Fatalf("unexpected error on handler: %v", err)
+	}
+	if recErr.Code != http.StatusCreated && recErr.Code != http.StatusOK {
+		t.Errorf("expected success status even if template sync fails, got %d", recErr.Code)
+	}
+}
+
 

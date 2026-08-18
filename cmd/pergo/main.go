@@ -490,11 +490,13 @@ func main() {
 	workspaceAPIHandler.RegisterRoutes(e, middleware.MasterAuth(cfg))
 
 	// --- Connection & Device REST API handler ---
+	wabaMetaClient := client.NewWABAMetaClient(nil, "")
 	connectionAPIHandler := apipkg.NewConnectionAPIHandler(connectionRepo, sessionManager, sessionRegistry)
+	connectionAPIHandler.SetTemplateRepo(wabaTemplateRepo)
+	connectionAPIHandler.SetMetaClient(wabaMetaClient)
 	connectionAPIHandler.RegisterRoutes(e)
 
 	// --- WABA Template REST API handler ---
-	wabaMetaClient := client.NewWABAMetaClient(nil, "")
 	wabaTemplateAPIHandler := apipkg.NewWABATemplateAPIHandler(wabaTemplateRepo, connectionRepo, wabaMetaClient)
 	wabaTemplateAPIHandler.RegisterRoutes(e)
 

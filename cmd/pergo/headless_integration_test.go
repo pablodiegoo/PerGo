@@ -666,6 +666,87 @@ func TestHeadlessCPaaS_EndToEndLifecycle(t *testing.T) {
 		}
 	}
 
+	// =========================================================================
+	// STEP 6: Headless WABA Connection Registration
+	// =========================================================================
+	var wabaConnID uuid.UUID
+	{
+		wabaPayload := `{
+			"name": "Acme WhatsApp Cloud",
+			"phone_number_id": "98765432101",
+			"waba_account_id": "12345678901",
+			"token": "EAAHeadlessTestToken987",
+			"verify_token": "verify_custom_tok",
+			"app_secret": "meta_app_secret_123",
+			"display_phone_number": "+55 11 98888-7777",
+			"verified_name": "Acme Headless Verified"
+		}`
+
+		// 6.1 Create WABA connection via POST /api/v1/connections/waba
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/connections/waba", strings.NewReader(wabaPayload))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		rec := httptest.NewRecorder()
+		s.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+			t.Fatalf("expected 201 Created on WABA connection creation, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var wabaResp apipkg.ConnectionItem
+		if err := json.Unmarshal(rec.Body.Bytes(), &wabaResp); err != nil {
+			t.Fatalf("failed to decode WABA connection response: %v", err)
+		}
+
+		wabaConnID = wabaResp.ID
+		if wabaConnID == uuid.Nil {
+			t.Fatal("expected non-nil connection ID for WABA connection")
+		}
+		if wabaResp.Channel != "whatsapp_cloud" {
+			t.Errorf("expected channel whatsapp_cloud, got %s", wabaResp.Channel)
+		}
+		if wabaResp.SenderIdentity != "5511988887777" {
+			t.Errorf("expected sanitized sender identity 5511988887777, got %s", wabaResp.SenderIdentity)
+		}
+		if wabaResp.Status != "connected" {
+			t.Errorf("expected status connected, got %s", wabaResp.Status)
+		}
+
+		// 6.2 Verify connection is persisted and credentials are encrypted in DB
+		dbConn, err := s.connRepo.GetByID(ctx, wabaConnID)
+		if err != nil || dbConn == nil {
+			t.Fatalf("failed to get WABA connection from repo: %v", err)
+		}
+		if dbConn.WorkspaceID != wsID {
+			t.Errorf("expected connection workspace %s, got %s", wsID, dbConn.WorkspaceID)
+		}
+
+		// 6.3 Test workspace-scoped alias POST /api/v1/workspaces/:workspace_id/connections/waba
+		aliasPayload := `{
+			"name": "Acme WhatsApp Cloud 2",
+			"phone_number_id": "98765432102",
+			"waba_account_id": "12345678901",
+			"token": "EAAHeadlessTestToken988",
+			"display_phone_number": "+55 11 98888-7778"
+		}`
+		reqAlias := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/connections/waba", wsID), strings.NewReader(aliasPayload))
+		reqAlias.Header.Set("Content-Type", "application/json")
+		reqAlias.Header.Set("Authorization", "Bearer "+apiKey)
+		recAlias := httptest.NewRecorder()
+		s.e.ServeHTTP(recAlias, reqAlias)
+
+		if recAlias.Code != http.StatusCreated && recAlias.Code != http.StatusOK {
+			t.Fatalf("expected 201 Created on WABA connection alias creation, got %d: %s", recAlias.Code, recAlias.Body.String())
+		}
+
+		var wabaAliasResp apipkg.ConnectionItem
+		if err := json.Unmarshal(recAlias.Body.Bytes(), &wabaAliasResp); err != nil {
+			t.Fatalf("failed to decode WABA alias response: %v", err)
+		}
+		defer func() { _ = s.connRepo.Delete(ctx, wabaAliasResp.ID) }()
+		defer func() { _ = s.connRepo.Delete(ctx, wabaConnID) }()
+	}
+
 	// Cleanup Webhook Subscription
 	_ = s.webhookSubRepo.Delete(ctx, subID)
 }

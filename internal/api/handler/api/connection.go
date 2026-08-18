@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +14,9 @@ import (
 	"github.com/labstack/echo/v5"
 
 	whatsapp "github.com/pablojhp.pergo/internal/channel/whatsapp"
+	"github.com/pablojhp.pergo/internal/client"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/pkg/slug"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
@@ -21,8 +25,16 @@ import (
 // ConnectionRepo defines the repository methods required by ConnectionAPIHandler.
 type ConnectionRepo interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*repository.Connection, error)
+	GetBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error)
 	ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]*repository.Connection, error)
+	Create(ctx context.Context, c *repository.Connection) error
 	Delete(ctx context.Context, id uuid.UUID) error
+}
+
+// WABAMetaClient defines operations for interacting with Meta Graph API for WABA.
+type WABAMetaClient interface {
+	FetchPhoneNumberDetails(ctx context.Context, phoneNumberID, token string) (*client.WABAPhoneNumberDetails, error)
+	SyncTemplates(ctx context.Context, connectionID uuid.UUID, wabaAccountID, token string, workspaceID uuid.UUID, repo *repository.WABATemplateRepository, bypassRateLimit bool) ([]repository.WABATemplate, error)
 }
 
 // SessionManager defines the pairing and session methods required by ConnectionAPIHandler.
@@ -45,9 +57,11 @@ type ActiveSessions interface {
 
 // ConnectionAPIHandler handles headless REST APIs for connection lifecycle and QR streaming.
 type ConnectionAPIHandler struct {
-	repo     ConnectionRepo
-	manager  SessionManager
-	sessions ActiveSessions
+	repo          ConnectionRepo
+	manager       SessionManager
+	sessions      ActiveSessions
+	templatesRepo *repository.WABATemplateRepository
+	metaClient    WABAMetaClient
 }
 
 // NewConnectionAPIHandler creates a new ConnectionAPIHandler.
@@ -59,25 +73,255 @@ func NewConnectionAPIHandler(repo ConnectionRepo, manager SessionManager, sessio
 	}
 }
 
+// SetTemplateRepo sets the WABA template repository used for template sync.
+func (h *ConnectionAPIHandler) SetTemplateRepo(repo *repository.WABATemplateRepository) {
+	h.templatesRepo = repo
+}
+
+// SetMetaClient sets the WABA Meta client used for Meta API interactions.
+func (h *ConnectionAPIHandler) SetMetaClient(metaClient WABAMetaClient) {
+	h.metaClient = metaClient
+}
+
 // RegisterRoutes registers the connection endpoints on both /api/v1/connections and /api/v1/devices.
 func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	// Canonical routes
 	connGroup := e.Group("/api/v1/connections")
 	connGroup.POST("/pair", h.StartPairing)
+	connGroup.POST("/waba", h.CreateWABA)
+	connGroup.POST("/waba/", h.CreateWABA)
 	connGroup.GET("", h.List)
 	connGroup.GET("/", h.List)
 	connGroup.GET("/:id/qr/stream", h.StreamQR)
 	connGroup.GET("/:id/qr", h.GetQR)
 	connGroup.DELETE("/:id", h.Disconnect)
 
+	// Workspace-scoped canonical routes
+	wsConnGroup := e.Group("/api/v1/workspaces/:workspace_id/connections")
+	wsConnGroup.POST("/waba", h.CreateWABA)
+	wsConnGroup.POST("/waba/", h.CreateWABA)
+
 	// Retrocompatible aliases
 	devGroup := e.Group("/api/v1/devices")
 	devGroup.POST("/pair", h.StartPairing)
+	devGroup.POST("/waba", h.CreateWABA)
+	devGroup.POST("/waba/", h.CreateWABA)
 	devGroup.GET("", h.List)
 	devGroup.GET("/", h.List)
 	devGroup.GET("/:id/qr/stream", h.StreamQR)
 	devGroup.GET("/:id/qr", h.GetQR)
 	devGroup.DELETE("/:id", h.Disconnect)
+
+	// Workspace-scoped aliases
+	wsDevGroup := e.Group("/api/v1/workspaces/:workspace_id/devices")
+	wsDevGroup.POST("/waba", h.CreateWABA)
+	wsDevGroup.POST("/waba/", h.CreateWABA)
+}
+
+func (h *ConnectionAPIHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
+	ctxID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
+	if !ok || ctxID == uuid.Nil {
+		return uuid.Nil, errors.New("workspace context required")
+	}
+
+	if paramIDStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && paramIDStr != "" {
+		parsed, err := uuid.Parse(paramIDStr)
+		if err != nil || parsed == uuid.Nil {
+			return uuid.Nil, errors.New("invalid workspace_id parameter")
+		}
+		if parsed != ctxID {
+			return uuid.Nil, errors.New("workspace ID mismatch: authenticated workspace does not match URL")
+		}
+	}
+
+	return ctxID, nil
+}
+
+// CreateWABAConnectionRequest defines the JSON payload for registering a WhatsApp Cloud API connection.
+type CreateWABAConnectionRequest struct {
+	Name               string `json:"name"`
+	PhoneNumberID      string `json:"phone_number_id"`
+	WABAAccountID      string `json:"waba_account_id"`
+	Token              string `json:"token"`
+	VerifyToken        string `json:"verify_token,omitempty"`
+	AppSecret          string `json:"app_secret,omitempty"`
+	DisplayPhoneNumber string `json:"display_phone_number,omitempty"`
+	VerifiedName       string `json:"verified_name,omitempty"`
+}
+
+// CreateWABA registers a new WhatsApp Cloud (WABA) connection headless via REST API.
+// POST /api/v1/connections/waba & POST /api/v1/workspaces/:workspace_id/connections/waba
+func (h *ConnectionAPIHandler) CreateWABA(c *echo.Context) error {
+	wsID, err := h.resolveWorkspaceID(c)
+	if err != nil {
+		if strings.Contains(err.Error(), "mismatch") {
+			return c.JSON(http.StatusForbidden, map[string]string{
+				"code":    "forbidden",
+				"message": err.Error(),
+			})
+		}
+		return c.JSON(http.StatusUnauthorized, map[string]string{
+			"code":    "unauthorized",
+			"message": err.Error(),
+		})
+	}
+
+	var req CreateWABAConnectionRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "invalid request body",
+		})
+	}
+
+	phoneNumberID := strings.TrimSpace(req.PhoneNumberID)
+	wabaAccountID := strings.TrimSpace(req.WABAAccountID)
+	token := strings.TrimSpace(req.Token)
+
+	if phoneNumberID == "" || wabaAccountID == "" || token == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "phone_number_id, waba_account_id, and token are required",
+		})
+	}
+
+	ctx := c.Request().Context()
+
+	var senderIdentity string
+	var verifiedName string = strings.TrimSpace(req.VerifiedName)
+
+	if displayPhone := strings.TrimSpace(req.DisplayPhoneNumber); displayPhone != "" {
+		if clean, valid := domain.SanitizePhone(displayPhone); valid {
+			senderIdentity = clean
+		} else {
+			senderIdentity = displayPhone
+		}
+	} else if h.metaClient != nil {
+		if details, err := h.metaClient.FetchPhoneNumberDetails(ctx, phoneNumberID, token); err == nil && details != nil {
+			if details.DisplayPhoneNumber != "" {
+				if clean, valid := domain.SanitizePhone(details.DisplayPhoneNumber); valid {
+					senderIdentity = clean
+				} else {
+					senderIdentity = details.DisplayPhoneNumber
+				}
+			}
+			if verifiedName == "" && details.VerifiedName != "" {
+				verifiedName = details.VerifiedName
+			}
+		}
+	}
+
+	if senderIdentity == "" {
+		senderIdentity = phoneNumberID
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		if verifiedName != "" {
+			name = verifiedName
+		} else if req.DisplayPhoneNumber != "" {
+			name = req.DisplayPhoneNumber
+		} else {
+			name = "WABA " + phoneNumberID
+		}
+	}
+
+	baseSlug := slug.Generate(name)
+	if baseSlug == "" {
+		baseSlug = "waba"
+	}
+
+	candidateSlug := baseSlug
+	if h.repo != nil {
+		counter := 1
+		for {
+			existing, err := h.repo.GetBySlug(ctx, wsID, candidateSlug)
+			if errors.Is(err, repository.ErrConnectionNotFound) || existing == nil {
+				break
+			}
+			counter++
+			candidateSlug = fmt.Sprintf("%s-%d", baseSlug, counter)
+		}
+	}
+
+	type storedWABAConfig struct {
+		PhoneNumberID string `json:"phone_number_id"`
+		Token         string `json:"token"`
+		WABAAccountID string `json:"waba_account_id"`
+		VerifyToken   string `json:"verify_token,omitempty"`
+		AppSecret     string `json:"app_secret,omitempty"`
+	}
+
+	wabaCfg := storedWABAConfig{
+		PhoneNumberID: phoneNumberID,
+		Token:         token,
+		WABAAccountID: wabaAccountID,
+		VerifyToken:   strings.TrimSpace(req.VerifyToken),
+		AppSecret:     strings.TrimSpace(req.AppSecret),
+	}
+
+	credentialsJSON, err := json.Marshal(wabaCfg)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"code":    "internal_error",
+			"message": "failed to encode credentials",
+		})
+	}
+
+	if h.repo == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"code":    "internal_error",
+			"message": "connection repository not configured",
+		})
+	}
+
+	now := time.Now().UTC()
+	connID := uuid.New()
+	conn := &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    wsID,
+		Name:           name,
+		Slug:           candidateSlug,
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: senderIdentity,
+		Status:         "connected",
+		Credentials:    credentialsJSON,
+		ConnectedSince: &now,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+
+	if err := h.repo.Create(ctx, conn); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"code":    "internal_error",
+			"message": fmt.Sprintf("failed to save connection: %v", err),
+		})
+	}
+
+	if h.metaClient != nil {
+		if _, err := h.metaClient.SyncTemplates(ctx, conn.ID, wabaAccountID, token, wsID, h.templatesRepo, true); err != nil {
+			slog.Warn("failed to run initial template sync on waba connection creation", "error", err, "connection_id", conn.ID)
+		}
+	}
+
+	if h.manager != nil {
+		_ = h.manager.EmitStatusEvent(ctx, wsID, conn.ID, conn.Channel, conn.SenderIdentity, "connected")
+	}
+
+	resp := ConnectionItem{
+		ID:             conn.ID,
+		Name:           conn.Name,
+		Slug:           conn.Slug,
+		Channel:        conn.Channel,
+		SenderIdentity: conn.SenderIdentity,
+		Status:         conn.Status,
+		IsDefault:      conn.IsDefault,
+		ConnectedSince: conn.ConnectedSince,
+		CreatedAt:      conn.CreatedAt,
+		UpdatedAt:      conn.UpdatedAt,
+	}
+
+	return c.JSON(http.StatusCreated, resp)
 }
 
 // PairConnectionRequest defines the JSON payload for initiating a pairing flow.
