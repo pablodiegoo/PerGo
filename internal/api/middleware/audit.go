@@ -59,7 +59,8 @@ func AuditMiddleware(repo ActionLogInserter) echo.MiddlewareFunc {
 				if len(bodyBytes) > 0 {
 					var js map[string]any
 					if json.Unmarshal(bodyBytes, &js) == nil {
-						metadataBytes = bodyBytes
+						sanitized := sanitizeJSONMap(js)
+						metadataBytes, _ = json.Marshal(sanitized)
 					}
 				}
 				if len(metadataBytes) == 0 {
@@ -228,4 +229,41 @@ func determineDashboardAction(method, path string) string {
 	}
 
 	return resource + "." + action
+}
+
+func sanitizeJSONMap(m map[string]any) map[string]any {
+	result := make(map[string]any, len(m))
+	for k, v := range m {
+		lower := strings.ToLower(k)
+		if strings.Contains(lower, "password") ||
+			strings.Contains(lower, "token") ||
+			strings.Contains(lower, "secret") ||
+			strings.Contains(lower, "credential") ||
+			strings.Contains(lower, "private_key") ||
+			strings.Contains(lower, "api_key") ||
+			strings.Contains(lower, "kek") {
+			result[k] = "[REDACTED]"
+		} else if nested, ok := v.(map[string]any); ok {
+			result[k] = sanitizeJSONMap(nested)
+		} else if slice, ok := v.([]any); ok {
+			result[k] = sanitizeJSONSlice(slice)
+		} else {
+			result[k] = v
+		}
+	}
+	return result
+}
+
+func sanitizeJSONSlice(slice []any) []any {
+	result := make([]any, len(slice))
+	for i, item := range slice {
+		if nested, ok := item.(map[string]any); ok {
+			result[i] = sanitizeJSONMap(nested)
+		} else if nestedSlice, ok := item.([]any); ok {
+			result[i] = sanitizeJSONSlice(nestedSlice)
+		} else {
+			result[i] = item
+		}
+	}
+	return result
 }

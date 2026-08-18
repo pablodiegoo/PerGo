@@ -55,8 +55,12 @@ import (
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "mcp" {
-		slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
+		slog.SetDefault(slog.New(obs.NewRedactingHandler(slog.NewJSONHandler(os.Stderr, nil))))
 		cfg := config.Load()
+		if err := cfg.Validate(); err != nil {
+			slog.Error("invalid configuration", "error", err)
+			os.Exit(1)
+		}
 		ctx := context.Background()
 
 		pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
@@ -75,6 +79,10 @@ func main() {
 
 		kek := cfg.KEKBytes
 		if len(kek) != 32 {
+			if cfg.IsProduction() {
+				slog.Error("PERGO_KEK_BASE64 is required and must be 32 bytes in production")
+				os.Exit(1)
+			}
 			kek = make([]byte, 32)
 			copy(kek, []byte("dev-development-key-32-bytes-kek"))
 		}
@@ -133,10 +141,14 @@ func main() {
 		return
 	}
 
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	slog.SetDefault(slog.New(obs.NewRedactingHandler(slog.NewJSONHandler(os.Stdout, nil))))
 
 	// --- Config from env vars ---
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		slog.Error("invalid configuration", "error", err)
+		os.Exit(1)
+	}
 
 	// --- PostgreSQL ---
 	ctx, cancel := context.WithCancel(context.Background())
@@ -192,6 +204,10 @@ func main() {
 	// --- Cryptography Encryptor & Credentials Repository ---
 	kek := cfg.KEKBytes
 	if len(kek) != 32 {
+		if cfg.IsProduction() {
+			slog.Error("PERGO_KEK_BASE64 is required and must be 32 bytes in production")
+			os.Exit(1)
+		}
 		slog.Warn("PERGO_KEK_BASE64 is not set or not 32 bytes; using a default development key. DO NOT USE IN PRODUCTION.")
 		kek = make([]byte, 32)
 		copy(kek, []byte("dev-development-key-32-bytes-kek"))

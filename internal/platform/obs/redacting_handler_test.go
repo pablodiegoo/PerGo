@@ -264,3 +264,52 @@ func TestRedactingHandler_Enabled(t *testing.T) {
 		t.Errorf("expected Enabled(LevelWarn) to return true")
 	}
 }
+
+func TestRedactingHandler_CredentialsRedaction(t *testing.T) {
+	var buf bytes.Buffer
+	jsonHandler := slog.NewJSONHandler(&buf, nil)
+	logger := slog.New(NewRedactingHandler(jsonHandler))
+
+	logger.Info("auth event",
+		"password", "supersecret123",
+		"token", "bearer-token-abc",
+		"secret", "oauth-secret",
+		"credentials", "waba-creds",
+		"api_key", "pk_live_12345",
+		"kek", "32-bytes-key-material",
+		"authorization", "Bearer my-secret-token",
+		"webhook_secret", "whsec_abcdef",
+		"client_secret", "cs_123",
+		"refresh_token", "rt_987",
+		"custom_bot_token", "123456:ABC-DEF",
+		"user_password_hash", "argon2id$...",
+		"service_account_private_key", "-----BEGIN RSA PRIVATE KEY-----",
+		"safe_field", "safe_value",
+	)
+
+	var output map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &output); err != nil {
+		t.Fatalf("failed to unmarshal log JSON: %v", err)
+	}
+
+	redactedKeys := []string{
+		"password", "token", "secret", "credentials", "api_key", "kek",
+		"authorization", "webhook_secret", "client_secret", "refresh_token",
+		"custom_bot_token", "user_password_hash", "service_account_private_key",
+	}
+
+	for _, k := range redactedKeys {
+		val, ok := output[k]
+		if !ok {
+			t.Errorf("expected key %q in log output", k)
+			continue
+		}
+		if val != RedactionPlaceholder {
+			t.Errorf("expected key %q to be redacted to %q, got %v", k, RedactionPlaceholder, val)
+		}
+	}
+
+	if output["safe_field"] != "safe_value" {
+		t.Errorf("expected safe_field to be 'safe_value', got %v", output["safe_field"])
+	}
+}

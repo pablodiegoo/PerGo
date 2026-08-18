@@ -28,7 +28,7 @@ type Connection struct {
 	SenderIdentity string     `json:"sender_identity"`
 	Status         string     `json:"status"`
 	IsDefault      bool       `json:"is_default"`
-	Credentials    []byte     `json:"credentials,omitempty"`
+	Credentials    []byte     `json:"-"`
 	KeyID          string     `json:"key_id,omitempty"`
 	KeyVersion     int        `json:"key_version,omitempty"`
 	JID            *string    `json:"jid,omitempty"`

@@ -19,6 +19,7 @@ import (
 	"github.com/pablojhp.pergo/internal/config"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/obs"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -44,7 +45,12 @@ type inboundPayload struct {
 }
 
 func main() {
+	slog.SetDefault(slog.New(obs.NewRedactingHandler(slog.NewJSONHandler(os.Stdout, nil))))
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		slog.Error("invalid configuration", "error", err)
+		os.Exit(1)
+	}
 	ctx := context.Background()
 
 	if err := run(ctx, cfg); err != nil {

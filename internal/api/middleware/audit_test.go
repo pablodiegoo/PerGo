@@ -232,4 +232,58 @@ func TestDashboardAuditMiddleware(t *testing.T) {
 			t.Fatal("timeout waiting for audit log")
 		}
 	})
+
+	t.Run("API payload redacts sensitive credential fields in metadata", func(t *testing.T) {
+		apiKey := &repository.APIKey{
+			ID:          uuid.New(),
+			WorkspaceID: uuid.New(),
+			Name:        "Test Key",
+		}
+
+		apiHandler := func(c *echo.Context) error {
+			c.Set("api_key", apiKey)
+			return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+		}
+
+		e.POST("/api/v1/auth-test", apiHandler, AuditMiddleware(inserter))
+
+		reqBody := `{"username":"alice","password":"secretpassword123","token":"jwt-token-abc","nested":{"api_key":"pk_123","note":"ok"}}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth-test", strings.NewReader(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d", rec.Code)
+		}
+
+		select {
+		case log := <-inserter.ch:
+			var meta map[string]any
+			if err := json.Unmarshal(log.Metadata, &meta); err != nil {
+				t.Fatalf("failed to unmarshal log metadata: %v", err)
+			}
+			if meta["username"] != "alice" {
+				t.Errorf("expected username 'alice', got %v", meta["username"])
+			}
+			if meta["password"] != "[REDACTED]" {
+				t.Errorf("expected password to be redacted, got %v", meta["password"])
+			}
+			if meta["token"] != "[REDACTED]" {
+				t.Errorf("expected token to be redacted, got %v", meta["token"])
+			}
+			nested, ok := meta["nested"].(map[string]any)
+			if !ok {
+				t.Fatalf("expected nested map in metadata")
+			}
+			if nested["api_key"] != "[REDACTED]" {
+				t.Errorf("expected nested.api_key to be redacted, got %v", nested["api_key"])
+			}
+			if nested["note"] != "ok" {
+				t.Errorf("expected nested.note to be 'ok', got %v", nested["note"])
+			}
+		case <-time.After(200 * time.Millisecond):
+			t.Fatal("timeout waiting for audit log")
+		}
+	})
 }

@@ -8,12 +8,14 @@ import (
 
 // Config holds all configuration for the PerGo server.
 type Config struct {
+	Env            string
 	DatabaseURL    string
 	NATSUrl        string
 	ServerPort     string
 	DebugPort      string
 	KEKBase64      string
 	KEKBytes       []byte // decoded from KEKBase64
+	KEKDecodeErr   error  // error if KEKBase64 decoding fails
 	AdminPassword  string
 	MasterKey      string
 	SessionSecret  string
@@ -29,6 +31,7 @@ type Config struct {
 // Load reads configuration from environment variables with sensible defaults.
 func Load() *Config {
 	cfg := &Config{
+		Env:            envOrDefault("PERGO_ENV", envOrDefault("ENV", "development")),
 		DatabaseURL:    envOrDefault("PERGO_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"),
 		NATSUrl:        envOrDefault("PERGO_NATS_URL", "nats://localhost:4222"),
 		ServerPort:     envOrDefault("PERGO_SERVER_PORT", "8080"),
@@ -48,12 +51,33 @@ func Load() *Config {
 
 	if cfg.KEKBase64 != "" {
 		kek, err := base64.StdEncoding.DecodeString(cfg.KEKBase64)
-		if err == nil {
+		if err != nil {
+			cfg.KEKDecodeErr = err
+		} else {
 			cfg.KEKBytes = kek
 		}
 	}
 
 	return cfg
+}
+
+// IsProduction returns true if the environment is set to production.
+func (c *Config) IsProduction() bool {
+	return c.Env == "production" || c.Env == "prod"
+}
+
+// Validate checks that mandatory configuration values are sound.
+func (c *Config) Validate() error {
+	if c.KEKDecodeErr != nil {
+		return c.KEKDecodeErr
+	}
+	if c.KEKBase64 != "" && len(c.KEKBytes) != 32 {
+		return os.ErrInvalid
+	}
+	if c.IsProduction() && len(c.KEKBytes) != 32 {
+		return os.ErrInvalid
+	}
+	return nil
 }
 
 func envOrDefault(key, fallback string) string {

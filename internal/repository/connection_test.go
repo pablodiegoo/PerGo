@@ -3,7 +3,9 @@ package repository_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -416,5 +418,27 @@ func TestConnectionRepository_CountActiveByWorkspace(t *testing.T) {
 	}
 	if count != 1 {
 		t.Errorf("expected 1 active/connected connection after updating status to disconnected, got %d", count)
+	}
+}
+
+func TestConnection_JSON_OmitCredentials(t *testing.T) {
+	conn := repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    uuid.New(),
+		Name:           "Secret WABA",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "1234567890",
+		Status:         "active",
+		Credentials:    []byte(`{"token":"super_secret_access_token_123"}`),
+	}
+
+	data, err := json.Marshal(conn)
+	if err != nil {
+		t.Fatalf("failed to marshal connection: %v", err)
+	}
+
+	jsonStr := string(data)
+	if strings.Contains(jsonStr, "super_secret_access_token") || strings.Contains(jsonStr, "credentials") {
+		t.Fatalf("credentials leaked in connection JSON serialization: %s", jsonStr)
 	}
 }

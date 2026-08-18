@@ -11,6 +11,7 @@ const RedactionPlaceholder = "[REDACTED]"
 
 // DefaultSensitiveKeys lists the standard attribute keys redacted by default.
 var DefaultSensitiveKeys = []string{
+	// PII
 	"phone",
 	"phone_number",
 	"recipient",
@@ -22,12 +23,33 @@ var DefaultSensitiveKeys = []string{
 	"content",
 	"message_body",
 	"payload",
+	// Security credentials & tokens
+	"password",
+	"token",
+	"secret",
+	"credentials",
+	"api_key",
+	"key",
+	"kek",
+	"authorization",
+	"access_key",
+	"secret_key",
+	"private_key",
+	"bearer",
+	"webhook_secret",
+	"access_token",
+	"client_secret",
+	"refresh_token",
+	"auth_token",
+	"master_key",
+	"session_secret",
 }
 
 // RedactingHandler wraps an slog.Handler to sanitize sensitive attributes.
 type RedactingHandler struct {
-	handler       slog.Handler
-	sensitiveKeys map[string]struct{}
+	handler        slog.Handler
+	sensitiveKeys  map[string]struct{}
+	customOverride bool
 }
 
 // RedactingHandlerOption configures a RedactingHandler.
@@ -36,6 +58,7 @@ type RedactingHandlerOption func(*RedactingHandler)
 // WithSensitiveKeys overrides the set of sensitive keys with the given keys.
 func WithSensitiveKeys(keys ...string) RedactingHandlerOption {
 	return func(h *RedactingHandler) {
+		h.customOverride = true
 		h.sensitiveKeys = make(map[string]struct{}, len(keys))
 		for _, k := range keys {
 			h.sensitiveKeys[strings.ToLower(k)] = struct{}{}
@@ -92,8 +115,9 @@ func (h *RedactingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 		redacted[i] = h.redactAttr(a)
 	}
 	return &RedactingHandler{
-		handler:       h.handler.WithAttrs(redacted),
-		sensitiveKeys: h.sensitiveKeys,
+		handler:        h.handler.WithAttrs(redacted),
+		sensitiveKeys:  h.sensitiveKeys,
+		customOverride: h.customOverride,
 	}
 }
 
@@ -103,8 +127,9 @@ func (h *RedactingHandler) WithGroup(name string) slog.Handler {
 		return h
 	}
 	return &RedactingHandler{
-		handler:       h.handler.WithGroup(name),
-		sensitiveKeys: h.sensitiveKeys,
+		handler:        h.handler.WithGroup(name),
+		sensitiveKeys:  h.sensitiveKeys,
+		customOverride: h.customOverride,
 	}
 }
 
@@ -112,8 +137,22 @@ func (h *RedactingHandler) isSensitive(key string) bool {
 	if key == "" {
 		return false
 	}
-	_, ok := h.sensitiveKeys[strings.ToLower(key)]
-	return ok
+	lower := strings.ToLower(key)
+	if _, ok := h.sensitiveKeys[lower]; ok {
+		return true
+	}
+	if !h.customOverride {
+		if strings.Contains(lower, "password") ||
+			strings.Contains(lower, "secret") ||
+			strings.Contains(lower, "token") ||
+			strings.Contains(lower, "credential") ||
+			strings.Contains(lower, "private_key") ||
+			strings.Contains(lower, "api_key") ||
+			strings.Contains(lower, "auth_header") {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *RedactingHandler) redactAttr(a slog.Attr) slog.Attr {
