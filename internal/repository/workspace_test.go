@@ -96,4 +96,40 @@ func TestWorkspaceRepository_CreateWithID_And_GetByName(t *testing.T) {
 			t.Errorf("expected existing name Agora to be preserved, got %s", ws2.Name)
 		}
 	})
+
+	t.Run("GetEarliest returns the earliest created workspace", func(t *testing.T) {
+		// Clean up
+		_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
+
+		// Empty DB returns ErrWorkspaceNotFound
+		earliest, err := repo.GetEarliest(ctx)
+		if err == nil || earliest != nil {
+			t.Fatalf("expected error on empty DB, got ws=%v, err=%v", earliest, err)
+		}
+
+		// Create first workspace
+		wsFirst, err := repo.Create(ctx, "First Workspace")
+		if err != nil {
+			t.Fatalf("failed to create first workspace: %v", err)
+		}
+
+		// Create second workspace
+		_, err = repo.Create(ctx, "Second Workspace")
+		if err != nil {
+			t.Fatalf("failed to create second workspace: %v", err)
+		}
+
+		// GetEarliest should return wsFirst
+		earliest, err = repo.GetEarliest(ctx)
+		if err != nil {
+			t.Fatalf("unexpected error getting earliest: %v", err)
+		}
+		if earliest.ID != wsFirst.ID {
+			t.Errorf("expected earliest workspace ID %s, got %s", wsFirst.ID, earliest.ID)
+		}
+		if earliest.Name != "First Workspace" {
+			t.Errorf("expected earliest workspace name 'First Workspace', got %s", earliest.Name)
+		}
+	})
 }
+

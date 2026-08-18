@@ -42,10 +42,10 @@ func (h *WorkspaceHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error
 func (h *WorkspaceHandler) ActiveWorkspace(c *echo.Context) error {
 	ctx := c.Request().Context()
 	var wsID uuid.UUID
-	cookie, err := c.Cookie("pergo-active-workspace")
-	if err == nil && cookie != nil && cookie.Value != "" {
-		if parsed, parseErr := uuid.Parse(cookie.Value); parseErr == nil {
-			// Verify workspace exists
+	if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		wsID = id
+	} else if cookie, err := c.Cookie(mw.ActiveWorkspaceCookieName); err == nil && cookie != nil && cookie.Value != "" {
+		if parsed, parseErr := uuid.Parse(cookie.Value); parseErr == nil && parsed != uuid.Nil {
 			if _, checkErr := h.Repo.GetByID(ctx, parsed); checkErr == nil {
 				wsID = parsed
 			}
@@ -53,10 +53,11 @@ func (h *WorkspaceHandler) ActiveWorkspace(c *echo.Context) error {
 	}
 
 	if wsID == uuid.Nil {
-		if ws, err := h.Repo.EnsureWorkspace(ctx, "Agora"); err == nil && ws != nil {
+		if ws, err := h.Repo.GetEarliest(ctx); err == nil && ws != nil {
 			wsID = ws.ID
+			mw.SetActiveWorkspaceCookie(c, wsID)
 		} else {
-			return c.String(http.StatusInternalServerError, "no workspaces configured")
+			return c.Redirect(http.StatusFound, "/admin/workspaces/new")
 		}
 	}
 

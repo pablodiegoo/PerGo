@@ -543,36 +543,7 @@ func main() {
 	adminGroup.Use(middleware.HTMXMiddleware())
 	adminGroup.Use(middleware.SessionAuthMiddleware())
 	adminGroup.Use(middleware.DashboardAuditMiddleware(userActionLogRepo))
-	adminGroup.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c *echo.Context) error {
-			ctx := c.Request().Context()
-			ctx = context.WithValue(ctx, "active_path", c.Request().URL.Path)
-
-			// Get active workspace and workspaces list to avoid HTMX reload flash
-			var ws *repository.Workspace
-			cookie, err := c.Cookie("pergo-active-workspace")
-			if err == nil && cookie != nil && cookie.Value != "" {
-				if wsID, parseErr := uuid.Parse(cookie.Value); parseErr == nil {
-					ws, _ = wsRepo.GetByID(ctx, wsID)
-				}
-			}
-			if ws == nil {
-				ws, _ = wsRepo.EnsureWorkspace(ctx, "Agora")
-			}
-			workspaces, _ := wsRepo.List(ctx, 50)
-
-			// Inject into context
-			if ws != nil {
-				ctx = context.WithValue(ctx, "active_workspace", ws)
-			}
-			if len(workspaces) > 0 {
-				ctx = context.WithValue(ctx, "workspaces_list", workspaces)
-			}
-
-			c.SetRequest(c.Request().WithContext(ctx))
-			return next(c)
-		}
-	})
+	adminGroup.Use(middleware.ActiveWorkspaceMiddleware(wsRepo))
 
 	// Admin dashboard
 	dashboardHandler := &admin.DashboardHandler{

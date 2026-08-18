@@ -14,7 +14,9 @@ import (
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/pages"
 )
 
 // setupWorkspaceRoutes creates a real Echo instance with workspace + API key admin routes.
@@ -42,12 +44,14 @@ func setupWorkspaceRoutes(t *testing.T) *echo.Echo {
 	e.Use(mw.HTMXMiddleware())
 
 	// Public admin routes (no session auth)
+	wsRepo := repository.NewWorkspaceRepository(pool)
+
 	adminPublic := e.Group("/admin")
 	adminPublic.GET("/login", func(c *echo.Context) error {
 		return admin.LoginPage(c, false)
 	})
 	adminPublic.POST("/login", func(c *echo.Context) error {
-		return admin.LoginPost(c, nil, "testpass123")
+		return admin.LoginPost(c, wsRepo, "testpass123")
 	})
 	adminPublic.POST("/logout", func(c *echo.Context) error {
 		return admin.Logout(c)
@@ -56,17 +60,25 @@ func setupWorkspaceRoutes(t *testing.T) *echo.Echo {
 	// Protected admin routes (session auth required)
 	adminGroup := e.Group("/admin")
 	adminGroup.Use(mw.SessionAuthMiddleware())
-
-	// Workspace repository
-	wsRepo := repository.NewWorkspaceRepository(pool)
+	adminGroup.Use(mw.ActiveWorkspaceMiddleware(wsRepo))
 
 	// Workspace handler
 	workspaceHandler := &admin.WorkspaceHandler{Repo: wsRepo}
 	adminGroup.GET("/workspaces", workspaceHandler.List)
+	adminGroup.GET("/workspaces/new", func(c *echo.Context) error {
+		return mw.Render(c, http.StatusOK, pages.WorkspaceCreateForm())
+	})
 	adminGroup.POST("/workspaces", workspaceHandler.Create)
 	adminGroup.GET("/workspaces/:id", workspaceHandler.Detail)
 	adminGroup.GET("/workspaces/:id/confirm-delete", workspaceHandler.ConfirmDelete)
 	adminGroup.DELETE("/workspaces/:id", workspaceHandler.Delete)
+	adminGroup.GET("/test-tenant-ctx", func(c *echo.Context) error {
+		id, ok := tenant.WorkspaceIDFrom(c.Request().Context())
+		if !ok {
+			return c.String(http.StatusInternalServerError, "missing workspace_id")
+		}
+		return c.JSON(http.StatusOK, map[string]string{"workspace_id": id.String()})
+	})
 
 	// API key repository + handler
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
@@ -348,3 +360,155 @@ func TestAdminAPIKeyRevoke(t *testing.T) {
 		t.Errorf("expected response to contain 'revoked' badge, got: %s", body)
 	}
 }
+
+// Test 10: Active workspace resolution, fallback to earliest, and invalid cookie auto-healing
+func TestAdminWorkspace_ActiveResolutionAndFallback(t *testing.T) {
+	e := setupWorkspaceRoutes(t)
+	cookie := loginAndGetCookie(t, e)
+
+	pool := getTestPool(t)
+	ctx := t.Context()
+	_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws1, err := wsRepo.Create(ctx, "Earliest Workspace")
+	if err != nil {
+		t.Fatalf("failed to create ws1: %v", err)
+	}
+	ws2, err := wsRepo.Create(ctx, "Secondary Workspace")
+	if err != nil {
+		t.Fatalf("failed to create ws2: %v", err)
+	}
+
+	// 1. Missing cookie -> falls back to earliest workspace (ws1) and issues updated cookie
+	req1 := httptest.NewRequest(http.MethodGet, "/admin/workspaces", nil)
+	req1.AddCookie(cookie)
+	rec1 := httptest.NewRecorder()
+	e.ServeHTTP(rec1, req1)
+
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rec1.Code, rec1.Body.String())
+	}
+	var foundCookie *http.Cookie
+	for _, c := range rec1.Result().Cookies() {
+		if c.Name == mw.ActiveWorkspaceCookieName {
+			foundCookie = c
+			break
+		}
+	}
+	if foundCookie == nil {
+		t.Fatal("expected pergo-active-workspace cookie to be set on missing cookie request")
+	}
+	if foundCookie.Value != ws1.ID.String() {
+		t.Errorf("expected fallback to earliest ws1 ID %s, got %s", ws1.ID, foundCookie.Value)
+	}
+
+	// 2. Valid cookie pointing to ws2 -> resolves ws2
+	req2 := httptest.NewRequest(http.MethodGet, "/admin/test-tenant-ctx", nil)
+	req2.AddCookie(cookie)
+	req2.AddCookie(&http.Cookie{
+		Name:  mw.ActiveWorkspaceCookieName,
+		Value: ws2.ID.String(),
+	})
+	rec2 := httptest.NewRecorder()
+	e.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec2.Code)
+	}
+	if !strings.Contains(rec2.Body.String(), ws2.ID.String()) {
+		t.Errorf("expected tenant context to contain ws2 ID %s, got: %s", ws2.ID, rec2.Body.String())
+	}
+
+	// 3. Invalid / deleted workspace cookie -> auto-heals to earliest workspace (ws1)
+	req3 := httptest.NewRequest(http.MethodGet, "/admin/test-tenant-ctx", nil)
+	req3.AddCookie(cookie)
+	req3.AddCookie(&http.Cookie{
+		Name:  mw.ActiveWorkspaceCookieName,
+		Value: uuid.New().String(), // Non-existent workspace ID
+	})
+	rec3 := httptest.NewRecorder()
+	e.ServeHTTP(rec3, req3)
+
+	if rec3.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", rec3.Code)
+	}
+	if !strings.Contains(rec3.Body.String(), ws1.ID.String()) {
+		t.Errorf("expected auto-healed tenant context to contain ws1 ID %s, got: %s", ws1.ID, rec3.Body.String())
+	}
+	var healedCookie *http.Cookie
+	for _, c := range rec3.Result().Cookies() {
+		if c.Name == mw.ActiveWorkspaceCookieName {
+			healedCookie = c
+			break
+		}
+	}
+	if healedCookie == nil {
+		t.Fatal("expected auto-healed pergo-active-workspace cookie on invalid cookie request")
+	}
+	if healedCookie.Value != ws1.ID.String() {
+		t.Errorf("expected auto-healed cookie value %s, got %s", ws1.ID, healedCookie.Value)
+	}
+}
+
+// Test 11: Empty database condition redirects operator requests to /admin/workspaces/new
+func TestAdminWorkspace_EmptyDatabase_RedirectsToNew(t *testing.T) {
+	e := setupWorkspaceRoutes(t)
+	cookie := loginAndGetCookie(t, e)
+
+	pool := getTestPool(t)
+	ctx := t.Context()
+	_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
+
+	// 1. Standard request to /admin/workspaces redirects to /admin/workspaces/new (302 Found)
+	req1 := httptest.NewRequest(http.MethodGet, "/admin/workspaces", nil)
+	req1.AddCookie(cookie)
+	rec1 := httptest.NewRecorder()
+	e.ServeHTTP(rec1, req1)
+
+	if rec1.Code != http.StatusFound {
+		t.Fatalf("expected 302 Found on empty database, got %d", rec1.Code)
+	}
+	if loc := rec1.Header().Get("Location"); loc != "/admin/workspaces/new" {
+		t.Errorf("expected redirect to /admin/workspaces/new, got %q", loc)
+	}
+
+	// 2. HTMX request to /admin/workspaces sets HX-Redirect header
+	req2 := httptest.NewRequest(http.MethodGet, "/admin/workspaces", nil)
+	req2.AddCookie(cookie)
+	req2.Header.Set("HX-Request", "true")
+	rec2 := httptest.NewRecorder()
+	e.ServeHTTP(rec2, req2)
+
+	if hxRedirect := rec2.Header().Get("HX-Redirect"); hxRedirect != "/admin/workspaces/new" {
+		t.Errorf("expected HX-Redirect /admin/workspaces/new, got %q", hxRedirect)
+	}
+
+	// 3. GET /admin/workspaces/new is accessible without redirect loop
+	req3 := httptest.NewRequest(http.MethodGet, "/admin/workspaces/new", nil)
+	req3.AddCookie(cookie)
+	rec3 := httptest.NewRecorder()
+	e.ServeHTTP(rec3, req3)
+
+	if rec3.Code != http.StatusOK {
+		t.Fatalf("expected GET /admin/workspaces/new to return 200 OK, got %d", rec3.Code)
+	}
+
+	// 4. POST /admin/workspaces creates workspace on empty DB
+	form := url.Values{}
+	form.Set("name", "Initial Onboarding Workspace")
+	req4 := httptest.NewRequest(http.MethodPost, "/admin/workspaces", strings.NewReader(form.Encode()))
+	req4.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req4.Header.Set("HX-Request", "true")
+	req4.AddCookie(cookie)
+	rec4 := httptest.NewRecorder()
+	e.ServeHTTP(rec4, req4)
+
+	if rec4.Code != http.StatusOK && rec4.Code != http.StatusCreated {
+		t.Fatalf("expected POST /admin/workspaces to return 200/201, got %d: %s", rec4.Code, rec4.Body.String())
+	}
+	if !strings.Contains(rec4.Body.String(), "Initial Onboarding Workspace") {
+		t.Errorf("expected created workspace row in body, got: %s", rec4.Body.String())
+	}
+}
+

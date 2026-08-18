@@ -2,7 +2,6 @@ package admin
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -38,22 +37,16 @@ func LoginPost(c *echo.Context, wsRepo *repository.WorkspaceRepository, adminPas
 
 	// Set active workspace cookie if not already set or invalid
 	var activeWSID uuid.UUID
-	if cookie, err := c.Cookie("pergo-active-workspace"); err == nil && cookie != nil && cookie.Value != "" {
-		if parsed, parseErr := uuid.Parse(cookie.Value); parseErr == nil {
+	if cookie, err := c.Cookie(mw.ActiveWorkspaceCookieName); err == nil && cookie != nil && cookie.Value != "" {
+		if parsed, parseErr := uuid.Parse(cookie.Value); parseErr == nil && parsed != uuid.Nil {
 			activeWSID = parsed
 		}
 	}
 
 	if activeWSID == uuid.Nil && wsRepo != nil {
-		if ws, err := wsRepo.EnsureWorkspace(c.Request().Context(), "Agora"); err == nil && ws != nil {
+		if ws, err := wsRepo.GetEarliest(c.Request().Context()); err == nil && ws != nil {
 			activeWSID = ws.ID
-			c.SetCookie(&http.Cookie{
-				Name:     "pergo-active-workspace",
-				Value:    activeWSID.String(),
-				Path:     "/",
-				Expires:  time.Now().Add(365 * 24 * time.Hour),
-				HttpOnly: true,
-			})
+			mw.SetActiveWorkspaceCookie(c, activeWSID)
 		}
 	}
 

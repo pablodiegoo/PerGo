@@ -12,6 +12,7 @@ import (
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/platform/audit"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/layout"
@@ -33,37 +34,22 @@ type DashboardHandler struct {
 func (h *DashboardHandler) Index(c *echo.Context) error {
 	ctx := c.Request().Context()
 
-	// 1. Resolve workspace from cookie or database
+	// 1. Resolve workspace from context (injected by ActiveWorkspaceMiddleware) or fallback
 	var ws *repository.Workspace
-	if h.Workspaces != nil {
-		cookie, err := c.Cookie("pergo-active-workspace")
-		if err == nil && cookie != nil && cookie.Value != "" {
-			if wsID, parseErr := uuid.Parse(cookie.Value); parseErr == nil {
-				ws, _ = h.Workspaces.GetByID(ctx, wsID)
-			}
-		}
-
-		if ws == nil {
-			ws, _ = h.Workspaces.EnsureWorkspace(ctx, "Agora")
-		}
+	if wsVal, ok := ctx.Value("active_workspace").(*repository.Workspace); ok && wsVal != nil {
+		ws = wsVal
+	} else if wsID, ok := tenant.WorkspaceIDFrom(ctx); ok && h.Workspaces != nil {
+		ws, _ = h.Workspaces.GetByID(ctx, wsID)
 	}
-
+	if ws == nil && h.Workspaces != nil {
+		ws, _ = h.Workspaces.GetEarliest(ctx)
+	}
 	if ws == nil {
 		ws = &repository.Workspace{
 			ID:   uuid.Nil,
 			Name: "Dummy Workspace",
 		}
 	}
-
-	// Set workspace ID cookie
-	newCookie := &http.Cookie{
-		Name:     "pergo-active-workspace",
-		Value:    ws.ID.String(),
-		Path:     "/",
-		Expires:  time.Now().Add(365 * 24 * time.Hour),
-		HttpOnly: true,
-	}
-	c.SetCookie(newCookie)
 
 	// 2. Query workspace count, API keys count and connections count for this workspace
 	wsCount := 0
@@ -197,19 +183,12 @@ func (h *DashboardHandler) SelectWorkspace(c *echo.Context) error {
 	if wsIDStr == "" {
 		return c.String(http.StatusBadRequest, "workspace_id is required")
 	}
-	if _, err := uuid.Parse(wsIDStr); err != nil {
+	wsID, err := uuid.Parse(wsIDStr)
+	if err != nil || wsID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace_id")
 	}
 
-	cookie := &http.Cookie{
-		Name:     "pergo-active-workspace",
-		Value:    wsIDStr,
-		Path:     "/",
-		Expires:  time.Now().Add(365 * 24 * time.Hour),
-		HttpOnly: true,
-	}
-	c.SetCookie(cookie)
-
+	mw.SetActiveWorkspaceCookie(c, wsID)
 	return c.NoContent(http.StatusNoContent)
 }
 
@@ -219,18 +198,20 @@ func (h *DashboardHandler) WorkspaceSelector(c *echo.Context) error {
 	ctx := c.Request().Context()
 
 	var ws *repository.Workspace
-	cookie, err := c.Cookie("pergo-active-workspace")
-	if err == nil && cookie != nil && cookie.Value != "" {
-		if wsID, parseErr := uuid.Parse(cookie.Value); parseErr == nil {
-			ws, _ = h.Workspaces.GetByID(ctx, wsID)
-		}
+	if wsVal, ok := ctx.Value("active_workspace").(*repository.Workspace); ok && wsVal != nil {
+		ws = wsVal
+	} else if wsID, ok := tenant.WorkspaceIDFrom(ctx); ok && h.Workspaces != nil {
+		ws, _ = h.Workspaces.GetByID(ctx, wsID)
+	}
+	if ws == nil && h.Workspaces != nil {
+		ws, _ = h.Workspaces.GetEarliest(ctx)
 	}
 
-	if ws == nil {
-		ws, _ = h.Workspaces.EnsureWorkspace(ctx, "Agora")
+	var workspaces []repository.Workspace
+	if h.Workspaces != nil {
+		workspaces, _ = h.Workspaces.List(ctx, 50)
 	}
-
-	workspaces, _ := h.Workspaces.List(ctx, 50)
 
 	return mw.Render(c, http.StatusOK, layout.WorkspaceSelector(ws, workspaces))
 }
+

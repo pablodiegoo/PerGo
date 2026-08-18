@@ -380,6 +380,54 @@ func TestHashAPIKeyRoundTrip(t *testing.T) {
 	}
 }
 
+// TestActiveWorkspaceMiddleware_TenantIsolationResolution verifies that ActiveWorkspaceMiddleware
+// populates request context with validated tenant metadata accessible via tenant.WorkspaceIDFrom(ctx)
+// and tenant.RequireWorkspaceID(ctx).
+func TestActiveWorkspaceMiddleware_TenantIsolationResolution(t *testing.T) {
+	pool := mustPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "test-active-ws-"+uuid.New().String()[:8])
+	if err != nil {
+		t.Fatalf("Create workspace: %v", err)
+	}
+
+	e := echo.New()
+	e.Use(middleware.ActiveWorkspaceMiddleware(wsRepo))
+
+	var resolvedID uuid.UUID
+	var reqID uuid.UUID
+	var requireErr error
+	e.GET("/admin/test-tenant", func(c *echo.Context) error {
+		resolvedID, _ = tenant.WorkspaceIDFrom(c.Request().Context())
+		reqID, requireErr = tenant.RequireWorkspaceID(c.Request().Context())
+		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/test-tenant", nil)
+	req.AddCookie(&http.Cookie{
+		Name:  middleware.ActiveWorkspaceCookieName,
+		Value: ws.ID.String(),
+	})
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if requireErr != nil {
+		t.Fatalf("RequireWorkspaceID failed: %v", requireErr)
+	}
+	if resolvedID != ws.ID {
+		t.Errorf("expected WorkspaceIDFrom %s, got %s", ws.ID, resolvedID)
+	}
+	if reqID != ws.ID {
+		t.Errorf("expected RequireWorkspaceID %s, got %s", ws.ID, reqID)
+	}
+}
+
 // --- helpers ---
 
 func mustPool(t *testing.T) *pgxpool.Pool {

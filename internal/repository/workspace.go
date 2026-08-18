@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -66,17 +67,30 @@ func (r *WorkspaceRepository) CreateWithID(ctx context.Context, id uuid.UUID, na
 
 // EnsureWorkspace returns an existing workspace if available, or creates a new workspace dynamically if the database contains zero workspaces.
 func (r *WorkspaceRepository) EnsureWorkspace(ctx context.Context, defaultName string) (*Workspace, error) {
-	list, err := r.List(ctx, 1)
-	if err != nil {
-		return nil, err
-	}
-	if len(list) > 0 {
-		return &list[0], nil
+	ws, err := r.GetEarliest(ctx)
+	if err == nil && ws != nil {
+		return ws, nil
 	}
 	if defaultName == "" {
 		defaultName = "Agora"
 	}
 	return r.Create(ctx, defaultName)
+}
+
+// GetEarliest returns the earliest created workspace in the database (ORDER BY created_at ASC LIMIT 1).
+// Returns ErrWorkspaceNotFound if no workspaces exist.
+func (r *WorkspaceRepository) GetEarliest(ctx context.Context) (*Workspace, error) {
+	var ws Workspace
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, name, pii_opt_in, webhook_secret, created_at, updated_at FROM workspaces ORDER BY created_at ASC LIMIT 1`,
+	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.CreatedAt, &ws.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrWorkspaceNotFound
+		}
+		return nil, err
+	}
+	return &ws, nil
 }
 
 // GetByID retrieves a workspace by ID.
@@ -90,6 +104,9 @@ func (r *WorkspaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*Works
 		id,
 	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrWorkspaceNotFound
+		}
 		return nil, err
 	}
 	return &ws, nil
@@ -103,6 +120,9 @@ func (r *WorkspaceRepository) GetByName(ctx context.Context, name string) (*Work
 		name,
 	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrWorkspaceNotFound
+		}
 		return nil, err
 	}
 	return &ws, nil
