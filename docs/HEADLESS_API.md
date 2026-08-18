@@ -45,6 +45,31 @@ Creates a new tenant workspace and automatically generates a default workspace A
 }
 ```
 
+### 1.3 List Workspaces
+Lists all configured tenant workspaces.
+
+* **Method & Path:** `GET /api/v1/workspaces`
+* **Query Parameters:**
+  * `limit` (optional, integer, default: `50`): Maximum number of workspaces to return.
+* **Request Headers:**
+  * `Authorization: Bearer <PERGO_MASTER_KEY>` (or `X-Master-Key: <PERGO_MASTER_KEY>`)
+
+#### Response (`200 OK`)
+```json
+{
+  "workspaces": [
+    {
+      "id": "a5e8c1b2-3f4d-4e5a-8b9c-0d1e2f3a4b5c",
+      "name": "Acme Corp",
+      "pii_opt_in": false,
+      "webhook_secret": "9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b",
+      "created_at": "2026-08-15T00:00:00Z",
+      "updated_at": "2026-08-15T00:00:00Z"
+    }
+  ]
+}
+```
+
 ---
 
 ## 2. Connection Lifecycle & QR Pairing APIs

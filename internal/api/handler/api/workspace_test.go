@@ -20,6 +20,7 @@ import (
 type mockWorkspaceRepo struct {
 	createFunc         func(ctx context.Context, name string) (*repository.Workspace, error)
 	generateSecretFunc func(ctx context.Context, id uuid.UUID) (string, error)
+	listFunc           func(ctx context.Context, limit int) ([]repository.Workspace, error)
 }
 
 func (m *mockWorkspaceRepo) Create(ctx context.Context, name string) (*repository.Workspace, error) {
@@ -39,6 +40,28 @@ func (m *mockWorkspaceRepo) GenerateWebhookSecret(ctx context.Context, id uuid.U
 		return m.generateSecretFunc(ctx, id)
 	}
 	return "whsec_mocked1234567890abcdef1234567890abcdef", nil
+}
+
+func (m *mockWorkspaceRepo) List(ctx context.Context, limit int) ([]repository.Workspace, error) {
+	if m.listFunc != nil {
+		return m.listFunc(ctx, limit)
+	}
+	return []repository.Workspace{
+		{
+			ID:        uuid.MustParse("11111111-1111-1111-1111-111111111111"),
+			Name:      "Workspace 1",
+			PIIOptIn:  false,
+			CreatedAt: time.Date(2026, 8, 15, 10, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 8, 15, 10, 0, 0, 0, time.UTC),
+		},
+		{
+			ID:        uuid.MustParse("22222222-2222-2222-2222-222222222222"),
+			Name:      "Workspace 2",
+			PIIOptIn:  true,
+			CreatedAt: time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC),
+		},
+	}, nil
 }
 
 type mockAPIKeyRepo struct {
@@ -301,4 +324,189 @@ func TestWorkspaceAPIHandler_MasterAuth_Integration(t *testing.T) {
 			t.Fatalf("expected 401 Unauthorized, got %d", rec.Code)
 		}
 	})
+
+	t.Run("GET list authorized via Bearer master key", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
+		req.Header.Set("Authorization", "Bearer "+masterKey)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("GET list authorized via X-Master-Key", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
+		req.Header.Set("X-Master-Key", masterKey)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("GET list unauthorized with missing master key", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 Unauthorized, got %d", rec.Code)
+		}
+	})
+}
+
+func TestWorkspaceAPIHandler_List_Success(t *testing.T) {
+	e := echo.New()
+	wsRepo := &mockWorkspaceRepo{}
+	apiKeyRepo := &mockAPIKeyRepo{}
+	h := apipkg.NewWorkspaceAPIHandler(wsRepo, apiKeyRepo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.List(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res apipkg.ListWorkspacesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if len(res.Workspaces) != 2 {
+		t.Fatalf("expected 2 workspaces, got %d", len(res.Workspaces))
+	}
+
+	if res.Workspaces[0].Name != "Workspace 1" {
+		t.Errorf("expected first workspace name 'Workspace 1', got %q", res.Workspaces[0].Name)
+	}
+	if res.Workspaces[0].ID != uuid.MustParse("11111111-1111-1111-1111-111111111111") {
+		t.Errorf("expected first workspace ID '11111111-1111-1111-1111-111111111111', got %s", res.Workspaces[0].ID)
+	}
+	if res.Workspaces[1].Name != "Workspace 2" {
+		t.Errorf("expected second workspace name 'Workspace 2', got %q", res.Workspaces[1].Name)
+	}
+}
+
+func TestWorkspaceAPIHandler_List_Empty(t *testing.T) {
+	e := echo.New()
+	wsRepo := &mockWorkspaceRepo{
+		listFunc: func(ctx context.Context, limit int) ([]repository.Workspace, error) {
+			return []repository.Workspace{}, nil
+		},
+	}
+	apiKeyRepo := &mockAPIKeyRepo{}
+	h := apipkg.NewWorkspaceAPIHandler(wsRepo, apiKeyRepo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.List(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res apipkg.ListWorkspacesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if res.Workspaces == nil || len(res.Workspaces) != 0 {
+		t.Fatalf("expected empty non-nil slice, got %v", res.Workspaces)
+	}
+}
+
+func TestWorkspaceAPIHandler_List_LimitParam(t *testing.T) {
+	e := echo.New()
+	var capturedLimit int
+	wsRepo := &mockWorkspaceRepo{
+		listFunc: func(ctx context.Context, limit int) ([]repository.Workspace, error) {
+			capturedLimit = limit
+			return []repository.Workspace{}, nil
+		},
+	}
+	apiKeyRepo := &mockAPIKeyRepo{}
+	h := apipkg.NewWorkspaceAPIHandler(wsRepo, apiKeyRepo)
+
+	t.Run("custom limit parsed", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces?limit=10", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := h.List(c); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if capturedLimit != 10 {
+			t.Errorf("expected limit 10, got %d", capturedLimit)
+		}
+	})
+
+	t.Run("default limit when omitted or invalid", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces?limit=-5", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := h.List(c); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if capturedLimit != 50 {
+			t.Errorf("expected default limit 50, got %d", capturedLimit)
+		}
+	})
+
+	t.Run("limit capped at maximum 500", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces?limit=9999", nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := h.List(c); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if capturedLimit != 500 {
+			t.Errorf("expected limit capped at 500, got %d", capturedLimit)
+		}
+	})
+}
+
+func TestWorkspaceAPIHandler_List_Error(t *testing.T) {
+	e := echo.New()
+	wsRepo := &mockWorkspaceRepo{
+		listFunc: func(ctx context.Context, limit int) ([]repository.Workspace, error) {
+			return nil, errors.New("db error")
+		},
+	}
+	apiKeyRepo := &mockAPIKeyRepo{}
+	h := apipkg.NewWorkspaceAPIHandler(wsRepo, apiKeyRepo)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.List(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 Internal Server Error, got %d", rec.Code)
+	}
+
+	var errRes map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &errRes); err != nil {
+		t.Fatalf("failed to decode error body: %v", err)
+	}
+	if errRes["code"] != "internal_error" {
+		t.Errorf("expected code 'internal_error', got %q", errRes["code"])
+	}
 }

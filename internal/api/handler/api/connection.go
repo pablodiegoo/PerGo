@@ -153,10 +153,16 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 
 	// Workspace-scoped canonical routes
 	wsConnGroup := e.Group("/api/v1/workspaces/:workspace_id/connections")
+	wsConnGroup.POST("/pair", h.StartPairing)
 	wsConnGroup.POST("/waba", h.CreateWABA)
 	wsConnGroup.POST("/waba/", h.CreateWABA)
 	wsConnGroup.POST("/telegram", h.CreateTelegram)
 	wsConnGroup.POST("/telegram/", h.CreateTelegram)
+	wsConnGroup.GET("", h.List)
+	wsConnGroup.GET("/", h.List)
+	wsConnGroup.GET("/:id/qr/stream", h.StreamQR)
+	wsConnGroup.GET("/:id/qr", h.GetQR)
+	wsConnGroup.DELETE("/:id", h.Disconnect)
 
 	// Retrocompatible aliases
 	devGroup := e.Group("/api/v1/devices")
@@ -173,10 +179,16 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 
 	// Workspace-scoped aliases
 	wsDevGroup := e.Group("/api/v1/workspaces/:workspace_id/devices")
+	wsDevGroup.POST("/pair", h.StartPairing)
 	wsDevGroup.POST("/waba", h.CreateWABA)
 	wsDevGroup.POST("/waba/", h.CreateWABA)
 	wsDevGroup.POST("/telegram", h.CreateTelegram)
 	wsDevGroup.POST("/telegram/", h.CreateTelegram)
+	wsDevGroup.GET("", h.List)
+	wsDevGroup.GET("/", h.List)
+	wsDevGroup.GET("/:id/qr/stream", h.StreamQR)
+	wsDevGroup.GET("/:id/qr", h.GetQR)
+	wsDevGroup.DELETE("/:id", h.Disconnect)
 }
 
 func (h *ConnectionAPIHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {

@@ -252,6 +252,52 @@ func TestHeadlessCPaaS_EndToEndLifecycle(t *testing.T) {
 	wsID := provisionResp.ID
 	apiKey := *provisionResp.APIKey
 
+	// 1.4 List workspaces via GET /api/v1/workspaces using Master Key
+	{
+		// Reject unauthenticated
+		reqNoAuth := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
+		recNoAuth := httptest.NewRecorder()
+		s.e.ServeHTTP(recNoAuth, reqNoAuth)
+		if recNoAuth.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 Unauthorized on GET /api/v1/workspaces without master key, got %d", recNoAuth.Code)
+		}
+
+		// Reject wrong key
+		reqWrong := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
+		reqWrong.Header.Set("Authorization", "Bearer invalid-master-key")
+		recWrong := httptest.NewRecorder()
+		s.e.ServeHTTP(recWrong, reqWrong)
+		if recWrong.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 Unauthorized on GET /api/v1/workspaces with invalid master key, got %d", recWrong.Code)
+		}
+
+		// Accept valid master key
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/workspaces", nil)
+		req.Header.Set("Authorization", "Bearer "+s.cfg.MasterKey)
+		rec := httptest.NewRecorder()
+		s.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK on GET /api/v1/workspaces with master key, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var listResp apipkg.ListWorkspacesResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &listResp); err != nil {
+			t.Fatalf("failed to decode list response: %v", err)
+		}
+
+		found := false
+		for _, ws := range listResp.Workspaces {
+			if ws.ID == wsID && ws.Name == "Acme Headless Corp" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected workspace %s (%s) in GET /api/v1/workspaces list response", wsID, "Acme Headless Corp")
+		}
+	}
+
 	// =========================================================================
 	// STEP 2: Authenticate Subsequent Requests using Returned API Key
 	// =========================================================================

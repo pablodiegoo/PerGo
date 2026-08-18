@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,10 +12,11 @@ import (
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
-// WorkspaceRepo defines data access operations required for workspace provisioning.
+// WorkspaceRepo defines data access operations required for workspace provisioning and management.
 type WorkspaceRepo interface {
 	Create(ctx context.Context, name string) (*repository.Workspace, error)
 	GenerateWebhookSecret(ctx context.Context, id uuid.UUID) (string, error)
+	List(ctx context.Context, limit int) ([]repository.Workspace, error)
 }
 
 // APIKeyRepo defines data access operations required for API key provisioning.
@@ -22,7 +24,7 @@ type APIKeyRepo interface {
 	Create(ctx context.Context, workspaceID uuid.UUID, name string) (*repository.APIKey, string, error)
 }
 
-// WorkspaceAPIHandler handles programmatic workspace provisioning REST API requests.
+// WorkspaceAPIHandler handles programmatic workspace provisioning and tenant management REST API requests.
 type WorkspaceAPIHandler struct {
 	wsRepo     WorkspaceRepo
 	apiKeyRepo APIKeyRepo
@@ -44,6 +46,23 @@ func (h *WorkspaceAPIHandler) RegisterRoutes(e *echo.Echo, masterAuth echo.Middl
 	}
 	g.POST("", h.Create)
 	g.POST("/", h.Create)
+	g.GET("", h.List)
+	g.GET("/", h.List)
+}
+
+// WorkspaceItem defines the JSON representation of a workspace entity in list responses.
+type WorkspaceItem struct {
+	ID            uuid.UUID `json:"id"`
+	Name          string    `json:"name"`
+	PIIOptIn      bool      `json:"pii_opt_in"`
+	WebhookSecret *string   `json:"webhook_secret,omitempty"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// ListWorkspacesResponse defines the JSON response returned by GET /api/v1/workspaces.
+type ListWorkspacesResponse struct {
+	Workspaces []WorkspaceItem `json:"workspaces"`
 }
 
 // CreateWorkspaceRequest defines the JSON payload for workspace provisioning.
@@ -124,4 +143,42 @@ func (h *WorkspaceAPIHandler) Create(c *echo.Context) error {
 	}
 
 	return c.JSON(http.StatusCreated, res)
+}
+
+// List handles GET /api/v1/workspaces to list all tenant workspaces.
+func (h *WorkspaceAPIHandler) List(c *echo.Context) error {
+	ctx := c.Request().Context()
+	limit := 50
+	if limitStr := c.QueryParam("limit"); limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 {
+			if parsedLimit > 500 {
+				parsedLimit = 500
+			}
+			limit = parsedLimit
+		}
+	}
+
+	workspaces, err := h.wsRepo.List(ctx, limit)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"code":    "internal_error",
+			"message": "failed to list workspaces",
+		})
+	}
+
+	items := make([]WorkspaceItem, 0, len(workspaces))
+	for _, ws := range workspaces {
+		items = append(items, WorkspaceItem{
+			ID:            ws.ID,
+			Name:          ws.Name,
+			PIIOptIn:      ws.PIIOptIn,
+			WebhookSecret: ws.WebhookSecret,
+			CreatedAt:     ws.CreatedAt,
+			UpdatedAt:     ws.UpdatedAt,
+		})
+	}
+
+	return c.JSON(http.StatusOK, ListWorkspacesResponse{
+		Workspaces: items,
+	})
 }
