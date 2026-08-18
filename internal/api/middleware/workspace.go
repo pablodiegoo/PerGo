@@ -3,6 +3,8 @@ package middleware
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -27,7 +29,7 @@ const (
 // 3. If the cookie is absent, invalid, or points to a deleted workspace, it automatically falls back
 //    to the earliest created workspace in PostgreSQL (ORDER BY created_at ASC LIMIT 1) and issues an
 //    updated cookie to the browser.
-// 4. If the database has zero workspaces, it redirects the operator to /admin/workspaces/new.
+// 4. If the database has zero workspaces, it redirects the operator to /admin/workspaces/new with an onboarding message.
 func ActiveWorkspaceMiddleware(wsRepo *repository.WorkspaceRepository) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
@@ -36,7 +38,7 @@ func ActiveWorkspaceMiddleware(wsRepo *repository.WorkspaceRepository) echo.Midd
 			method := c.Request().Method
 
 			// Exclude workspace creation and public admin routes from empty database redirection
-			isCreateWorkspacePath := path == "/admin/workspaces/new" || path == "/admin/workspaces/new/" ||
+			isCreateWorkspacePath := strings.HasPrefix(path, "/admin/workspaces/new") ||
 				(strings.HasPrefix(path, "/admin/workspaces") && method == http.MethodPost) ||
 				strings.HasPrefix(path, "/admin/login") ||
 				strings.HasPrefix(path, "/admin/logout") ||
@@ -49,13 +51,20 @@ func ActiveWorkspaceMiddleware(wsRepo *repository.WorkspaceRepository) echo.Midd
 				cookie, err := c.Cookie(ActiveWorkspaceCookieName)
 				if err == nil && cookie != nil && cookie.Value != "" {
 					if parsedID, parseErr := uuid.Parse(cookie.Value); parseErr == nil && parsedID != uuid.Nil {
-						ws, _ = wsRepo.GetByID(ctx, parsedID)
+						var getErr error
+						ws, getErr = wsRepo.GetByID(ctx, parsedID)
+						if getErr != nil && !errors.Is(getErr, repository.ErrWorkspaceNotFound) {
+							slog.WarnContext(ctx, "failed to get workspace by cookie ID", "workspace_id", parsedID, "error", getErr)
+						}
 					}
 				}
 
 				// 2. If cookie is missing or invalid/deleted, fall back to earliest created workspace
 				if ws == nil {
 					earliest, err := wsRepo.GetEarliest(ctx)
+					if err != nil && !errors.Is(err, repository.ErrWorkspaceNotFound) {
+						slog.WarnContext(ctx, "failed to get earliest workspace", "error", err)
+					}
 					if err == nil && earliest != nil {
 						ws = earliest
 						// Issue updated cookie to the browser (auto-healing)
@@ -68,30 +77,22 @@ func ActiveWorkspaceMiddleware(wsRepo *repository.WorkspaceRepository) echo.Midd
 			if ws == nil {
 				if isCreateWorkspacePath {
 					ctx = context.WithValue(ctx, "active_path", path)
-					ctx = context.WithValue(ctx, "workspaces_list", []repository.Workspace{})
 					c.SetRequest(c.Request().WithContext(ctx))
 					return next(c)
 				}
-				// Empty database condition -> redirect operator to /admin/workspaces/new
+				// Empty database condition -> redirect operator to /admin/workspaces/new?onboarding=true
+				onboardingURL := "/admin/workspaces/new?onboarding=true"
 				if c.Request().Header.Get("HX-Request") == "true" {
-					c.Response().Header().Set("HX-Redirect", "/admin/workspaces/new")
+					c.Response().Header().Set("HX-Redirect", onboardingURL)
 					return c.NoContent(http.StatusOK)
 				}
-				return c.Redirect(http.StatusFound, "/admin/workspaces/new")
+				return c.Redirect(http.StatusFound, onboardingURL)
 			}
 
 			// 4. Inject workspace into context
 			ctx = tenant.WithWorkspaceID(ctx, ws.ID)
 			ctx = context.WithValue(ctx, "active_workspace", ws)
 			ctx = context.WithValue(ctx, "active_path", path)
-
-			// Fetch workspaces list for sidebar selector
-			if wsRepo != nil {
-				workspaces, err := wsRepo.List(ctx, 50)
-				if err == nil && len(workspaces) > 0 {
-					ctx = context.WithValue(ctx, "workspaces_list", workspaces)
-				}
-			}
 
 			c.SetRequest(c.Request().WithContext(ctx))
 			c.Set("workspace", ws)
@@ -100,9 +101,6 @@ func ActiveWorkspaceMiddleware(wsRepo *repository.WorkspaceRepository) echo.Midd
 		}
 	}
 }
-
-// AdminWorkspaceMiddleware is an alias for ActiveWorkspaceMiddleware.
-var AdminWorkspaceMiddleware = ActiveWorkspaceMiddleware
 
 // SetActiveWorkspaceCookie sets the active workspace cookie on the response.
 func SetActiveWorkspaceCookie(c *echo.Context, wsID uuid.UUID) {

@@ -49,6 +49,7 @@ import (
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
 	"github.com/pablojhp.pergo/internal/webhook"
+	"github.com/pablojhp.pergo/templates/layout"
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
@@ -569,7 +570,12 @@ func main() {
 	adminGroup.GET("/workspace", workspaceHandler.ActiveWorkspace)
 	adminGroup.POST("/workspaces", workspaceHandler.Create)
 	adminGroup.GET("/workspaces/new", func(c *echo.Context) error {
-		return middleware.Render(c, http.StatusOK, pages.WorkspaceCreateForm())
+		onboarding := c.QueryParam("onboarding") == "true"
+		form := pages.WorkspaceCreateForm(onboarding)
+		if middleware.IsHTMX(c) {
+			return middleware.Render(c, http.StatusOK, form)
+		}
+		return middleware.Render(c, http.StatusOK, layout.Base("New Workspace", form))
 	})
 	adminGroup.GET("/workspaces/:id", workspaceHandler.Detail)
 	adminGroup.GET("/workspace/:id", workspaceHandler.Detail)

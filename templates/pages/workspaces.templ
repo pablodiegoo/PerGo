@@ -94,8 +94,14 @@ templ WorkspaceRow(ws repository.Workspace) {
 }
 
 // WorkspaceCreateForm renders the create workspace form.
-templ WorkspaceCreateForm() {
+templ WorkspaceCreateForm(showOnboarding ...bool) {
 	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6">
+		if len(showOnboarding) > 0 && showOnboarding[0] {
+			<div class="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-900">
+				<h3 class="font-semibold text-base mb-1">Bem-vindo ao PerGo!</h3>
+				<p class="text-sm text-blue-700">Nenhum workspace foi encontrado. Crie sua primeira área de trabalho (workspace) para começar a configurar conexões e disparos.</p>
+			</div>
+		}
 		<h2 class="text-lg font-semibold text-zinc-900 mb-4">Create Workspace</h2>
 		<form
 			hx-post="/admin/workspaces"

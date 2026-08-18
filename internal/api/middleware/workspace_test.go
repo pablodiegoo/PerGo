@@ -259,8 +259,8 @@ func TestActiveWorkspaceMiddleware_EmptyDatabase_RedirectToNew(t *testing.T) {
 	if rec.Code != http.StatusFound {
 		t.Errorf("expected 302 Found redirect on empty DB, got %d", rec.Code)
 	}
-	if loc := rec.Header().Get("Location"); loc != "/admin/workspaces/new" {
-		t.Errorf("expected Location /admin/workspaces/new, got %q", loc)
+	if loc := rec.Header().Get("Location"); loc != "/admin/workspaces/new?onboarding=true" {
+		t.Errorf("expected Location /admin/workspaces/new?onboarding=true, got %q", loc)
 	}
 
 	// HTMX request -> HX-Redirect header
@@ -269,8 +269,8 @@ func TestActiveWorkspaceMiddleware_EmptyDatabase_RedirectToNew(t *testing.T) {
 	recHTMX := httptest.NewRecorder()
 	e.ServeHTTP(recHTMX, reqHTMX)
 
-	if hxRedirect := recHTMX.Header().Get("HX-Redirect"); hxRedirect != "/admin/workspaces/new" {
-		t.Errorf("expected HX-Redirect /admin/workspaces/new, got %q", hxRedirect)
+	if hxRedirect := recHTMX.Header().Get("HX-Redirect"); hxRedirect != "/admin/workspaces/new?onboarding=true" {
+		t.Errorf("expected HX-Redirect /admin/workspaces/new?onboarding=true, got %q", hxRedirect)
 	}
 }
 

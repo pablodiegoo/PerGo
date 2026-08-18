@@ -45,9 +45,13 @@ func (h *DashboardHandler) Index(c *echo.Context) error {
 		ws, _ = h.Workspaces.GetEarliest(ctx)
 	}
 	if ws == nil {
-		ws = &repository.Workspace{
-			ID:   uuid.Nil,
-			Name: "Dummy Workspace",
+		if h.Workspaces == nil {
+			ws = &repository.Workspace{
+				ID:   uuid.New(),
+				Name: "Workspace",
+			}
+		} else {
+			return c.Redirect(http.StatusFound, "/admin/workspaces/new?onboarding=true")
 		}
 	}
 

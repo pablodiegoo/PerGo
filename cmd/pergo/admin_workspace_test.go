@@ -16,6 +16,7 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/layout"
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
@@ -66,7 +67,12 @@ func setupWorkspaceRoutes(t *testing.T) *echo.Echo {
 	workspaceHandler := &admin.WorkspaceHandler{Repo: wsRepo}
 	adminGroup.GET("/workspaces", workspaceHandler.List)
 	adminGroup.GET("/workspaces/new", func(c *echo.Context) error {
-		return mw.Render(c, http.StatusOK, pages.WorkspaceCreateForm())
+		onboarding := c.QueryParam("onboarding") == "true"
+		form := pages.WorkspaceCreateForm(onboarding)
+		if mw.IsHTMX(c) {
+			return mw.Render(c, http.StatusOK, form)
+		}
+		return mw.Render(c, http.StatusOK, layout.Base("New Workspace", form))
 	})
 	adminGroup.POST("/workspaces", workspaceHandler.Create)
 	adminGroup.GET("/workspaces/:id", workspaceHandler.Detail)
@@ -451,7 +457,7 @@ func TestAdminWorkspace_ActiveResolutionAndFallback(t *testing.T) {
 	}
 }
 
-// Test 11: Empty database condition redirects operator requests to /admin/workspaces/new
+// Test 11: Empty database condition redirects operator requests to /admin/workspaces/new with onboarding message
 func TestAdminWorkspace_EmptyDatabase_RedirectsToNew(t *testing.T) {
 	e := setupWorkspaceRoutes(t)
 	cookie := loginAndGetCookie(t, e)
@@ -460,7 +466,7 @@ func TestAdminWorkspace_EmptyDatabase_RedirectsToNew(t *testing.T) {
 	ctx := t.Context()
 	_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
 
-	// 1. Standard request to /admin/workspaces redirects to /admin/workspaces/new (302 Found)
+	// 1. Standard request to /admin/workspaces redirects to /admin/workspaces/new?onboarding=true (302 Found)
 	req1 := httptest.NewRequest(http.MethodGet, "/admin/workspaces", nil)
 	req1.AddCookie(cookie)
 	rec1 := httptest.NewRecorder()
@@ -469,8 +475,8 @@ func TestAdminWorkspace_EmptyDatabase_RedirectsToNew(t *testing.T) {
 	if rec1.Code != http.StatusFound {
 		t.Fatalf("expected 302 Found on empty database, got %d", rec1.Code)
 	}
-	if loc := rec1.Header().Get("Location"); loc != "/admin/workspaces/new" {
-		t.Errorf("expected redirect to /admin/workspaces/new, got %q", loc)
+	if loc := rec1.Header().Get("Location"); loc != "/admin/workspaces/new?onboarding=true" {
+		t.Errorf("expected redirect to /admin/workspaces/new?onboarding=true, got %q", loc)
 	}
 
 	// 2. HTMX request to /admin/workspaces sets HX-Redirect header
@@ -480,18 +486,22 @@ func TestAdminWorkspace_EmptyDatabase_RedirectsToNew(t *testing.T) {
 	rec2 := httptest.NewRecorder()
 	e.ServeHTTP(rec2, req2)
 
-	if hxRedirect := rec2.Header().Get("HX-Redirect"); hxRedirect != "/admin/workspaces/new" {
-		t.Errorf("expected HX-Redirect /admin/workspaces/new, got %q", hxRedirect)
+	if hxRedirect := rec2.Header().Get("HX-Redirect"); hxRedirect != "/admin/workspaces/new?onboarding=true" {
+		t.Errorf("expected HX-Redirect /admin/workspaces/new?onboarding=true, got %q", hxRedirect)
 	}
 
-	// 3. GET /admin/workspaces/new is accessible without redirect loop
-	req3 := httptest.NewRequest(http.MethodGet, "/admin/workspaces/new", nil)
+	// 3. GET /admin/workspaces/new?onboarding=true renders the onboarding welcome message
+	req3 := httptest.NewRequest(http.MethodGet, "/admin/workspaces/new?onboarding=true", nil)
 	req3.AddCookie(cookie)
 	rec3 := httptest.NewRecorder()
 	e.ServeHTTP(rec3, req3)
 
 	if rec3.Code != http.StatusOK {
 		t.Fatalf("expected GET /admin/workspaces/new to return 200 OK, got %d", rec3.Code)
+	}
+	body := rec3.Body.String()
+	if !strings.Contains(body, "Bem-vindo ao PerGo!") {
+		t.Errorf("expected onboarding welcome message in response, got: %s", body)
 	}
 
 	// 4. POST /admin/workspaces creates workspace on empty DB
