@@ -2,7 +2,6 @@ package layout
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -76,6 +75,12 @@ func isSubmenuActive(activePath, target string) bool {
 			!strings.Contains(activePath, "/templates") &&
 			!strings.Contains(activePath, "/tags")
 	}
+	if target == "/admin/tags" {
+		return strings.HasPrefix(activePath, "/admin/tags")
+	}
+	if target == "/admin/templates" {
+		return strings.HasPrefix(activePath, "/admin/templates")
+	}
 	if target == "/admin/webhooks" {
 		return strings.HasPrefix(activePath, "/admin/webhooks") || strings.Contains(activePath, "/webhooks")
 	}
@@ -140,7 +145,7 @@ templ Sidebar() {
 					</svg>
 				</button>
 				
-				<ul id="settings-submenu" class={ "transition-all duration-200 pl-10 mt-1 space-y-1 overflow-hidden", templ.KV("max-h-[240px] opacity-100", isSettingsActive(getActivePath(ctx))), templ.KV("max-h-0 opacity-0", !isSettingsActive(getActivePath(ctx))) }>
+				<ul id="settings-submenu" class={ "transition-all duration-200 pl-10 mt-1 space-y-1 overflow-hidden", templ.KV("max-h-[380px] opacity-100", isSettingsActive(getActivePath(ctx))), templ.KV("max-h-0 opacity-0", !isSettingsActive(getActivePath(ctx))) }>
 					<li>
 						<a href="/admin/connections" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/connections")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/connections")) }>Conexões</a>
 					</li>
@@ -151,22 +156,26 @@ templ Sidebar() {
 						<a href="/admin/workspace" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/workspace")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/workspace")) }>Workspace</a>
 					</li>
 					<li>
+						<a href="/admin/tags" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/tags")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/tags")) }>Tags & Contatos</a>
+					</li>
+					<li>
+						<a href="/admin/templates" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/templates")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/templates")) }>WABA Templates</a>
+					</li>
+					<li>
 						<a href="/admin/webhooks" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/webhooks")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/webhooks")) }>Webhooks</a>
 					</li>
 					<li>
 						<a href="/admin/telemetry" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/telemetry")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/telemetry")) }>Telemetry</a>
 					</li>
-					if ws := getActiveWorkspace(ctx); ws != nil {
-						<li>
-							<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/headless", ws.ID.String())) } class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/headless")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/headless")) }>Headless API & SSO</a>
-						</li>
-						<li>
-							<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/chatwoot", ws.ID.String())) } class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")) }>Chatwoot</a>
-						</li>
-						<li>
-							<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/typebot", ws.ID.String())) } class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/typebot")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/typebot")) }>Typebot</a>
-						</li>
-					}
+					<li>
+						<a href="/admin/integrations/headless" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/headless")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/headless")) }>Headless API & SSO</a>
+					</li>
+					<li>
+						<a href="/admin/integrations/chatwoot" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")) }>Chatwoot</a>
+					</li>
+					<li>
+						<a href="/admin/integrations/typebot" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/typebot")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/typebot")) }>Typebot</a>
+					</li>
 				</ul>
 			</li>
 		</ul>

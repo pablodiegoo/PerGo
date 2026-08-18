@@ -16,6 +16,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -234,7 +235,6 @@ func TestTagAdminHandler(t *testing.T) {
 		handlerWithWS := admin.NewTagAdminHandler(tagRepo, contactRepo, wsRepo)
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/tags", nil)
-		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
@@ -245,9 +245,26 @@ func TestTagAdminHandler(t *testing.T) {
 		if rec.Code != http.StatusFound {
 			t.Fatalf("expected 302 Found, got %d", rec.Code)
 		}
-		expectedLocation := fmt.Sprintf("/admin/workspaces/%s/tags", ws.ID)
+		expectedLocation := "/admin/tags"
 		if loc := rec.Header().Get("Location"); loc != expectedLocation {
 			t.Errorf("expected Location %s, got %s", expectedLocation, loc)
+		}
+	})
+
+	t.Run("FlatRouting_ContextResolution", func(t *testing.T) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/admin/tags", nil)
+		req = req.WithContext(tenant.WithWorkspaceID(req.Context(), ws.ID))
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/tags")
+
+		if err := handler.Page(c); err != nil {
+			t.Fatalf("Page failed: %v", err)
+		}
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
 		}
 	})
 }

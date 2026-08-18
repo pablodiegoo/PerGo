@@ -34,7 +34,7 @@ templ WebhooksContent(workspaces []repository.Workspace, dlqItems []*repository.
 						<tr class="hover:bg-zinc-50/50 transition-colors">
 							<td class="px-6 py-4 font-semibold text-zinc-900">{ ws.Name }</td>
 							<td class="px-6 py-4 text-right">
-								<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/webhooks", ws.ID)) } class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-xs font-semibold px-3 py-1.5 rounded">Configure</a>
+								<a href="/admin/webhooks" class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-xs font-semibold px-3 py-1.5 rounded">Configure</a>
 							</td>
 						</tr>
 					}
@@ -67,12 +67,12 @@ templ WorkspaceWebhooksContent(ws repository.Workspace, subs []*repository.Webho
 		<div class="flex gap-2">
 			<button
 				class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center cursor-pointer"
-				hx-get={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/new", ws.ID) }
+				hx-get="/admin/webhooks/subscriptions/new"
 				hx-target="#modal-container"
 			>
 				+ Add Endpoint
 			</button>
-			<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", ws.ID)) } class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">Back to Workspace</a>
+			<a href="/admin/workspace" class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">Back to Workspace</a>
 		</div>
 	</div>
 
@@ -125,7 +125,7 @@ templ WorkspaceWebhooksContent(ws repository.Workspace, subs []*repository.Webho
 								<div class="inline-flex gap-1.5 items-center">
 									<button
 										class="btn btn-ghost hover:bg-emerald-50 text-emerald-700 btn-xs font-semibold px-2 py-1 rounded cursor-pointer transition"
-										hx-post={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s/ping", ws.ID, sub.ID) }
+										hx-post={ fmt.Sprintf("/admin/webhooks/subscriptions/%s/ping", sub.ID) }
 										hx-target={ fmt.Sprintf("#ping-status-%s", sub.ID) }
 										hx-swap="innerHTML"
 										title="Send simulated ping payload to verify connectivity"
@@ -134,7 +134,7 @@ templ WorkspaceWebhooksContent(ws repository.Workspace, subs []*repository.Webho
 									</button>
 									<button
 										class="btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold px-2 py-1 rounded cursor-pointer transition"
-										hx-get={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s/test-form", ws.ID, sub.ID) }
+										hx-get={ fmt.Sprintf("/admin/webhooks/subscriptions/%s/test-form", sub.ID) }
 										hx-target="#modal-container"
 										title="Simulate custom webhook payload"
 									>
@@ -142,7 +142,7 @@ templ WorkspaceWebhooksContent(ws repository.Workspace, subs []*repository.Webho
 									</button>
 									<button
 										class="btn btn-ghost hover:bg-amber-50 text-amber-700 btn-xs font-semibold px-2 py-1 rounded cursor-pointer transition"
-										hx-get={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s/rotate-form", ws.ID, sub.ID) }
+										hx-get={ fmt.Sprintf("/admin/webhooks/subscriptions/%s/rotate-form", sub.ID) }
 										hx-target="#modal-container"
 										title="Rotate HMAC signing secret"
 									>
@@ -150,7 +150,7 @@ templ WorkspaceWebhooksContent(ws repository.Workspace, subs []*repository.Webho
 									</button>
 									<button
 										class="btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold px-2 py-1 rounded cursor-pointer transition"
-										hx-get={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s/edit", ws.ID, sub.ID) }
+										hx-get={ fmt.Sprintf("/admin/webhooks/subscriptions/%s/edit", sub.ID) }
 										hx-target="#modal-container"
 										title="Edit endpoint parameters"
 									>
@@ -158,7 +158,7 @@ templ WorkspaceWebhooksContent(ws repository.Workspace, subs []*repository.Webho
 									</button>
 									<button
 										class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold px-2 py-1 rounded cursor-pointer transition"
-										hx-delete={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s", ws.ID, sub.ID) }
+										hx-delete={ fmt.Sprintf("/admin/webhooks/subscriptions/%s", sub.ID) }
 										hx-confirm="Are you sure you want to permanently delete this webhook subscription?"
 										hx-target={ fmt.Sprintf("#sub-row-%s", sub.ID) }
 										hx-swap="delete"
@@ -405,9 +405,9 @@ templ SubscriptionFormModal(wsID uuid.UUID, sub *repository.WebhookSubscription)
 			</div>
 			<form
 				if sub != nil {
-					hx-post={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s", wsID, sub.ID) }
+					hx-post={ fmt.Sprintf("/admin/webhooks/subscriptions/%s", sub.ID) }
 				} else {
-					hx-post={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions", wsID) }
+					hx-post="/admin/webhooks/subscriptions"
 				}
 				hx-target="#modal-container"
 				hx-swap="innerHTML"
@@ -545,7 +545,7 @@ templ RotateSecretModal(wsID uuid.UUID, sub *repository.WebhookSubscription) {
 			</div>
 
 			<form
-				hx-post={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s/rotate", wsID, sub.ID) }
+				hx-post={ fmt.Sprintf("/admin/webhooks/subscriptions/%s/rotate", sub.ID) }
 				hx-target="#modal-container"
 				hx-swap="innerHTML"
 				class="space-y-4"
@@ -613,7 +613,7 @@ templ TestWebhookModal(wsID uuid.UUID, sub *repository.WebhookSubscription) {
 			
 			<div class="modal-body grid grid-cols-1 md:grid-cols-2 gap-6">
 				<form
-					hx-post={ fmt.Sprintf("/admin/workspaces/%s/webhooks/subscriptions/%s/test", wsID, sub.ID) }
+					hx-post={ fmt.Sprintf("/admin/webhooks/subscriptions/%s/test", sub.ID) }
 					hx-target="#test-result-container"
 					hx-swap="innerHTML"
 					class="space-y-4"

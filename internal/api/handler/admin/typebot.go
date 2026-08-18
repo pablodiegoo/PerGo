@@ -3,6 +3,7 @@ package admin
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -11,6 +12,7 @@ import (
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	typebot "github.com/pablojhp.pergo/internal/integration/typebot"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -30,12 +32,20 @@ func NewTypebotSettingsHandler(
 	}
 }
 
-func (h *TypebotSettingsHandler) GetSettings(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
+func (h *TypebotSettingsHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
+	if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
+		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
+			return id, nil
+		}
 	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
+		return wsID, nil
+	}
+	return uuid.Nil, fmt.Errorf("invalid or missing workspace ID")
+}
+
+func (h *TypebotSettingsHandler) GetSettings(c *echo.Context) error {
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -86,11 +96,7 @@ func (h *TypebotSettingsHandler) GetSettings(c *echo.Context) error {
 }
 
 func (h *TypebotSettingsHandler) PostSettings(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}

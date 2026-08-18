@@ -18,10 +18,10 @@ templ WABATemplateListContent(workspaceID uuid.UUID, templates []repository.WABA
 	<div class="page-header">
 		<h1>WABA Templates</h1>
 		<div class="header-actions">
-			<a href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", workspaceID)) } class="btn btn-secondary">Back to Workspace</a>
+			<a href="/admin/workspace" class="btn btn-secondary">Back to Workspace</a>
 			<button
 				class="btn btn-primary"
-				hx-get={ fmt.Sprintf("/admin/workspaces/%s/templates/new", workspaceID) }
+				hx-get="/admin/templates/new"
 				hx-target="#template-form-area"
 				hx-swap="innerHTML"
 			>
@@ -76,7 +76,7 @@ templ WABATemplateRow(workspaceID uuid.UUID, tmpl repository.WABATemplate) {
 			<div class="btn-group">
 				<button
 					class="btn btn-secondary btn-sm"
-					hx-post={ fmt.Sprintf("/admin/workspaces/%s/templates/%s/sync", workspaceID, tmpl.ID) }
+					hx-post={ fmt.Sprintf("/admin/templates/%s/sync", tmpl.ID) }
 					hx-target={ fmt.Sprintf("#template-row-%s", tmpl.ID) }
 					hx-swap="outerHTML"
 				>
@@ -84,7 +84,7 @@ templ WABATemplateRow(workspaceID uuid.UUID, tmpl repository.WABATemplate) {
 				</button>
 				<button
 					class="btn btn-danger btn-sm"
-					hx-delete={ fmt.Sprintf("/admin/workspaces/%s/templates/%s", workspaceID, tmpl.ID) }
+					hx-delete={ fmt.Sprintf("/admin/templates/%s", tmpl.ID) }
 					hx-target={ fmt.Sprintf("#template-row-%s", tmpl.ID) }
 					hx-swap="delete"
 					hx-confirm="Are you sure you want to delete this template?"
@@ -101,7 +101,7 @@ templ WABATemplateCreateForm(workspaceID uuid.UUID) {
 	<div class="section shadow-lg p-6 rounded-lg bg-card border">
 		<h2 class="text-xl font-bold mb-4">New WABA Template</h2>
 		<form
-			hx-post={ fmt.Sprintf("/admin/workspaces/%s/templates", workspaceID) }
+			hx-post="/admin/templates"
 		>
 			<div class="form-group mb-4">
 				<label for="name" class="form-label block font-semibold mb-1">Template Name</label>

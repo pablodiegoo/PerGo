@@ -11,6 +11,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 	"github.com/pablojhp.pergo/ui/views/waba_template"
@@ -34,13 +35,21 @@ func NewWABATemplateHandler(repo *repository.WABATemplateRepository, connections
 	}
 }
 
+func (h *WABATemplateHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
+	if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
+		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
+			return id, nil
+		}
+	}
+	if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
+		return wsID, nil
+	}
+	return uuid.Nil, fmt.Errorf("invalid or missing workspace ID")
+}
+
 // List retrieves all templates for a workspace and renders the template list page or fragment.
 func (h *WABATemplateHandler) List(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -58,11 +67,7 @@ func (h *WABATemplateHandler) List(c *echo.Context) error {
 
 // Create handles WABA template registration on Meta and local database persistence.
 func (h *WABATemplateHandler) Create(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -192,7 +197,7 @@ func (h *WABATemplateHandler) Create(c *echo.Context) error {
 	}
 
 	if mw.IsHTMX(c) {
-		c.Response().Header().Set("HX-Redirect", fmt.Sprintf("/admin/workspaces/%s/templates", workspaceID))
+		c.Response().Header().Set("HX-Redirect", "/admin/templates")
 		return c.NoContent(http.StatusOK)
 	}
 	return c.JSON(http.StatusCreated, dbTmpl)
@@ -200,11 +205,7 @@ func (h *WABATemplateHandler) Create(c *echo.Context) error {
 
 // Sync retrieves the current approval status of a template from Meta and updates local storage.
 func (h *WABATemplateHandler) Sync(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -293,11 +294,7 @@ func (h *WABATemplateHandler) Sync(c *echo.Context) error {
 
 // Delete handles local deletion of a WABA template.
 func (h *WABATemplateHandler) Delete(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -331,11 +328,7 @@ func (h *WABATemplateHandler) Delete(c *echo.Context) error {
 
 // NewForm renders the creation form.
 func (h *WABATemplateHandler) NewForm(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}

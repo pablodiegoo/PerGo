@@ -18,6 +18,7 @@ import (
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/webhook"
@@ -45,6 +46,18 @@ func NewWebhookDLQHandler(
 	}
 }
 
+func (h *WebhookDLQHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
+	if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
+		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
+			return id, nil
+		}
+	}
+	if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
+		return wsID, nil
+	}
+	return uuid.Nil, fmt.Errorf("invalid or missing workspace ID")
+}
+
 func generateRandomSecret() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -55,11 +68,7 @@ func generateRandomSecret() (string, error) {
 
 // Page renders the webhooks config page for a workspace.
 func (h *WebhookDLQHandler) Page(c *echo.Context) error {
-	wsIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(wsIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -85,11 +94,7 @@ func (h *WebhookDLQHandler) Page(c *echo.Context) error {
 
 // GetSubscriptionNewForm returns the new subscription modal form.
 func (h *WebhookDLQHandler) GetSubscriptionNewForm(c *echo.Context) error {
-	wsIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(wsIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -99,11 +104,7 @@ func (h *WebhookDLQHandler) GetSubscriptionNewForm(c *echo.Context) error {
 
 // GetSubscriptionEditForm returns the edit subscription modal form.
 func (h *WebhookDLQHandler) GetSubscriptionEditForm(c *echo.Context) error {
-	wsIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(wsIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -127,11 +128,7 @@ func (h *WebhookDLQHandler) GetSubscriptionEditForm(c *echo.Context) error {
 
 // CreateSubscription creates a new webhook subscription and reveals its signing secret.
 func (h *WebhookDLQHandler) CreateSubscription(c *echo.Context) error {
-	wsIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(wsIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -237,11 +234,7 @@ func (h *WebhookDLQHandler) DeleteSubscription(c *echo.Context) error {
 
 // GetRotateSecretForm renders the modal to rotate a webhook subscription secret.
 func (h *WebhookDLQHandler) GetRotateSecretForm(c *echo.Context) error {
-	wsIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(wsIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -265,11 +258,7 @@ func (h *WebhookDLQHandler) GetRotateSecretForm(c *echo.Context) error {
 
 // RotateSubscriptionSecret generates or sets a new signing secret for a webhook subscription.
 func (h *WebhookDLQHandler) RotateSubscriptionSecret(c *echo.Context) error {
-	wsIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(wsIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -376,11 +365,7 @@ func (h *WebhookDLQHandler) PingSubscription(c *echo.Context) error {
 
 // GetSubscriptionTestForm returns the simulation modal form.
 func (h *WebhookDLQHandler) GetSubscriptionTestForm(c *echo.Context) error {
-	wsIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(wsIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}

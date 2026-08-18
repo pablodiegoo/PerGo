@@ -38,7 +38,7 @@ type SSOGeneratorResultData struct {
 templ IntegrationTabs(workspaceID uuid.UUID, activeTab string) {
 	<div class="flex border-b border-zinc-200 mb-8 space-x-8">
 		<a
-			href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/headless", workspaceID.String())) }
+			href="/admin/integrations/headless"
 			class={ "pb-4 text-sm font-semibold transition-colors border-b-2 flex items-center gap-2", 
 				templ.KV("border-zinc-950 text-zinc-950", activeTab == "headless"), 
 				templ.KV("border-transparent text-zinc-500 hover:text-zinc-800 hover:border-zinc-300", activeTab != "headless") }
@@ -49,7 +49,7 @@ templ IntegrationTabs(workspaceID uuid.UUID, activeTab string) {
 			<span>Headless API & SSO</span>
 		</a>
 		<a
-			href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/chatwoot", workspaceID.String())) }
+			href="/admin/integrations/chatwoot"
 			class={ "pb-4 text-sm font-semibold transition-colors border-b-2 flex items-center gap-2", 
 				templ.KV("border-zinc-950 text-zinc-950", activeTab == "chatwoot"), 
 				templ.KV("border-transparent text-zinc-500 hover:text-zinc-800 hover:border-zinc-300", activeTab != "chatwoot") }
@@ -60,7 +60,7 @@ templ IntegrationTabs(workspaceID uuid.UUID, activeTab string) {
 			<span>Chatwoot</span>
 		</a>
 		<a
-			href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/typebot", workspaceID.String())) }
+			href="/admin/integrations/typebot"
 			class={ "pb-4 text-sm font-semibold transition-colors border-b-2 flex items-center gap-2", 
 				templ.KV("border-zinc-950 text-zinc-950", activeTab == "typebot"), 
 				templ.KV("border-transparent text-zinc-500 hover:text-zinc-800 hover:border-zinc-300", activeTab != "typebot") }
@@ -87,7 +87,7 @@ templ HeadlessIntegrationContent(data HeadlessPortalData) {
 		</div>
 		<div class="flex items-center gap-2">
 			<a
-				href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", data.Workspace.ID)) }
+				href="/admin/workspace"
 				class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center"
 			>
 				Configurações do Workspace
@@ -174,7 +174,7 @@ templ HeadlessIntegrationContent(data HeadlessPortalData) {
 							} else {
 								<span class="text-xs text-zinc-400 italic flex-1">Nenhum segredo configurado</span>
 								<a
-									href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/webhooks", data.Workspace.ID)) }
+									href="/admin/webhooks"
 									class="btn btn-xs btn-outline border-zinc-300 text-zinc-700 hover:bg-zinc-100 rounded px-2.5 py-1 text-xs font-medium"
 								>
 									Configurar
@@ -233,7 +233,7 @@ templ HeadlessIntegrationContent(data HeadlessPortalData) {
 
 			<div class="pt-4 border-t border-zinc-100 flex items-center justify-between">
 				<a
-					href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", data.Workspace.ID)) }
+					href="/admin/workspace"
 					class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-xs font-semibold px-3 py-1.5 rounded transition w-full text-center flex items-center justify-center gap-1.5"
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -270,7 +270,7 @@ templ HeadlessIntegrationContent(data HeadlessPortalData) {
 		</div>
 
 		<form
-			hx-post={ fmt.Sprintf("/admin/workspaces/%s/integrations/headless/sso-generate", data.Workspace.ID.String()) }
+			hx-post="/admin/integrations/headless/sso-generate"
 			hx-target="#sso-result-area"
 			hx-swap="innerHTML"
 			class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6"
@@ -298,8 +298,8 @@ templ HeadlessIntegrationContent(data HeadlessPortalData) {
 					<option value="/admin/connections" selected>Conexões (/admin/connections)</option>
 					<option value="/admin/inbox">Live Inbox (/admin/inbox)</option>
 					<option value="/admin/campaigns">Campanhas (/admin/campaigns)</option>
-					<option value={ fmt.Sprintf("/admin/workspaces/%s/webhooks", data.Workspace.ID.String()) }>Webhooks (/admin/webhooks)</option>
-					<option value={ fmt.Sprintf("/admin/workspaces/%s", data.Workspace.ID.String()) }>Configurações do Workspace</option>
+					<option value="/admin/webhooks">Webhooks (/admin/webhooks)</option>
+					<option value="/admin/workspace">Configurações do Workspace</option>
 					<option value="/admin/">Visão Geral (/admin/)</option>
 				</select>
 			</div>
@@ -576,7 +576,7 @@ templ ChatwootSettingsContent(workspaceID uuid.UUID, cfg ChatwootConfig, active 
 		
 		<form
 			method="POST"
-			action={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/chatwoot", workspaceID.String())) }
+			action="/admin/integrations/chatwoot"
 			class="space-y-6"
 		>
 			<div class="flex flex-col gap-1.5">
@@ -657,7 +657,7 @@ templ ChatwootSettingsContent(workspaceID uuid.UUID, cfg ChatwootConfig, active 
 					Salvar Configurações
 				</button>
 				<a 
-					href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/integrations/headless", workspaceID.String())) } 
+					href="/admin/integrations/headless" 
 					class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-5 py-2 rounded-md transition h-9 flex items-center justify-center"
 				>
 					Cancelar

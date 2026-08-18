@@ -145,9 +145,9 @@ func TagRow(workspaceID uuid.UUID, tag domain.Tag) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var8 string
-		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/api/v1/workspaces/%s/tags/%s", workspaceID, tag.ID))
+		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/tags/%s", tag.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/tags.templ`, Line: 29, Col: 81}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/tags.templ`, Line: 29, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
@@ -229,33 +229,7 @@ func TagsPage(workspaceID uuid.UUID, tags []domain.Tag) templ.Component {
 			templ_7745c5c3_Var10 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"space-y-6\"><div class=\"flex justify-between items-center\"><div><h1 class=\"text-2xl font-bold text-zinc-900\">Etiquetas & Segmentação de Contatos</h1><p class=\"text-sm text-zinc-500\">Crie tags dinâmicas e importe listas de contatos CSV para segmentar mensagens.</p></div></div><!-- Formulário de Criação de Tag --><div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm\"><h2 class=\"text-md font-semibold text-zinc-900 mb-4\">Nova Tag</h2><form hx-post=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var11 string
-		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/api/v1/workspaces/%s/tags", workspaceID))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/tags.templ`, Line: 80, Col: 68}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\" hx-target=\"#tag-list-body\" hx-swap=\"afterbegin\" class=\"flex flex-wrap gap-4 items-end\"><div class=\"flex-1 min-w-[200px]\"><label for=\"tag-name\" class=\"block text-xs font-semibold text-zinc-600 mb-1 uppercase tracking-wider\">Nome da Tag</label> <input type=\"text\" id=\"tag-name\" name=\"name\" required placeholder=\"ex: Cliente VIP, Lead Frio\" class=\"w-full px-3 py-2 border border-zinc-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950\"></div><div class=\"w-32\"><label for=\"tag-color\" class=\"block text-xs font-semibold text-zinc-600 mb-1 uppercase tracking-wider\">Cor Hex</label> <input type=\"color\" id=\"tag-color\" name=\"color\" value=\"#3B82F6\" class=\"w-full h-9 p-1 border border-zinc-300 rounded-md cursor-pointer\"></div><button type=\"submit\" class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none font-semibold px-5 h-9 rounded-md transition text-sm\">Criar Tag</button></form></div><!-- Formulário de Importação de CSV --><div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm\"><h2 class=\"text-md font-semibold text-zinc-900 mb-2\">Importar Contatos via CSV</h2><p class=\"text-xs text-zinc-500 mb-4\">O arquivo CSV deve conter pelo menos as colunas: <code>phone</code> (ou <code>sender_identity</code>), <code>name</code>, <code>email</code>, <code>tags</code> (separadas por vírgula).</p><form hx-post=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var12 string
-		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/api/v1/workspaces/%s/contacts/import", workspaceID))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/tags.templ`, Line: 104, Col: 79}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\" hx-encoding=\"multipart/form-data\" hx-target=\"#import-result\" hx-swap=\"innerHTML\" class=\"flex gap-4 items-center\"><input type=\"file\" name=\"file\" accept=\".csv\" required class=\"text-sm text-zinc-600 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 cursor-pointer\"> <button type=\"submit\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold px-4 h-9 rounded-md transition text-sm\">Upload & Importar</button></form><div id=\"import-result\" class=\"mt-3\"></div></div><!-- Tabela de Tags -->")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"space-y-6\"><div class=\"flex justify-between items-center\"><div><h1 class=\"text-2xl font-bold text-zinc-900\">Etiquetas & Segmentação de Contatos</h1><p class=\"text-sm text-zinc-500\">Crie tags dinâmicas e importe listas de contatos CSV para segmentar mensagens.</p></div></div><!-- Formulário de Criação de Tag --><div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm\"><h2 class=\"text-md font-semibold text-zinc-900 mb-4\">Nova Tag</h2><form hx-post=\"/admin/tags\" hx-target=\"#tag-list-body\" hx-swap=\"afterbegin\" class=\"flex flex-wrap gap-4 items-end\"><div class=\"flex-1 min-w-[200px]\"><label for=\"tag-name\" class=\"block text-xs font-semibold text-zinc-600 mb-1 uppercase tracking-wider\">Nome da Tag</label> <input type=\"text\" id=\"tag-name\" name=\"name\" required placeholder=\"ex: Cliente VIP, Lead Frio\" class=\"w-full px-3 py-2 border border-zinc-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950\"></div><div class=\"w-32\"><label for=\"tag-color\" class=\"block text-xs font-semibold text-zinc-600 mb-1 uppercase tracking-wider\">Cor Hex</label> <input type=\"color\" id=\"tag-color\" name=\"color\" value=\"#3B82F6\" class=\"w-full h-9 p-1 border border-zinc-300 rounded-md cursor-pointer\"></div><button type=\"submit\" class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none font-semibold px-5 h-9 rounded-md transition text-sm\">Criar Tag</button></form></div><!-- Formulário de Importação de CSV --><div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm\"><h2 class=\"text-md font-semibold text-zinc-900 mb-2\">Importar Contatos via CSV</h2><p class=\"text-xs text-zinc-500 mb-4\">O arquivo CSV deve conter pelo menos as colunas: <code>phone</code> (ou <code>sender_identity</code>), <code>name</code>, <code>email</code>, <code>tags</code> (separadas por vírgula).</p><form hx-post=\"/admin/contacts/import\" hx-encoding=\"multipart/form-data\" hx-target=\"#import-result\" hx-swap=\"innerHTML\" class=\"flex gap-4 items-center\"><input type=\"file\" name=\"file\" accept=\".csv\" required class=\"text-sm text-zinc-600 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200 cursor-pointer\"> <button type=\"submit\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 font-semibold px-4 h-9 rounded-md transition text-sm\">Upload & Importar</button></form><div id=\"import-result\" class=\"mt-3\"></div></div><!-- Tabela de Tags -->")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -263,7 +237,7 @@ func TagsPage(workspaceID uuid.UUID, tags []domain.Tag) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

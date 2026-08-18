@@ -3,6 +3,7 @@ package admin
 import (
 	"encoding/csv"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -31,23 +33,21 @@ func NewTagAdminHandler(tagRepo *repository.TagRepository, contactRepo *reposito
 	}
 }
 
-// RedirectToWorkspaceTags handles GET /tags by redirecting to /admin/workspaces/:workspace_id/tags
-func (h *TagAdminHandler) RedirectToWorkspaceTags(c *echo.Context) error {
-	ctx := c.Request().Context()
-	cookie, err := c.Cookie("pergo-active-workspace")
-	var wsID uuid.UUID
-	if err == nil && cookie != nil && cookie.Value != "" {
-		wsID, _ = uuid.Parse(cookie.Value)
-	}
-	if wsID == uuid.Nil {
-		if ws, err := h.wsRepo.EnsureWorkspace(ctx, "Agora"); err == nil && ws != nil {
-			wsID = ws.ID
+func (h *TagAdminHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
+	if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
+		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
+			return id, nil
 		}
 	}
-	if wsID == uuid.Nil {
-		return c.String(http.StatusBadRequest, "nenhum workspace encontrado. Crie um workspace primeiro.")
+	if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
+		return wsID, nil
 	}
-	return c.Redirect(http.StatusFound, "/admin/workspaces/"+wsID.String()+"/tags")
+	return uuid.Nil, fmt.Errorf("invalid or missing workspace ID")
+}
+
+// RedirectToWorkspaceTags handles legacy GET /tags by redirecting to /admin/tags
+func (h *TagAdminHandler) RedirectToWorkspaceTags(c *echo.Context) error {
+	return c.Redirect(http.StatusFound, "/admin/tags")
 }
 
 type CreateTagRequest struct {
@@ -55,14 +55,10 @@ type CreateTagRequest struct {
 	Color string `json:"color" form:"color"`
 }
 
-// ListTags handles GET /api/v1/workspaces/:workspace_id/tags
-// Page handles GET /admin/workspaces/:workspace_id/tags
+// ListTags handles GET /api/v1/workspaces/:workspace_id/tags or GET /admin/tags
+// Page handles GET /admin/tags or legacy GET /admin/workspaces/:workspace_id/tags
 func (h *TagAdminHandler) Page(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.String(http.StatusBadRequest, "invalid workspace ID")
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -79,11 +75,7 @@ func (h *TagAdminHandler) Page(c *echo.Context) error {
 }
 
 func (h *TagAdminHandler) ListTags(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
@@ -96,13 +88,9 @@ func (h *TagAdminHandler) ListTags(c *echo.Context) error {
 	return c.JSON(http.StatusOK, tags)
 }
 
-// CreateTag handles POST /api/v1/workspaces/:workspace_id/tags
+// CreateTag handles POST /api/v1/workspaces/:workspace_id/tags or POST /admin/tags
 func (h *TagAdminHandler) CreateTag(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
@@ -120,16 +108,16 @@ func (h *TagAdminHandler) CreateTag(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
+	if mw.IsHTMX(c) {
+		return mw.Render(c, http.StatusOK, pages.TagRow(workspaceID, *tag))
+	}
+
 	return c.JSON(http.StatusCreated, tag)
 }
 
-// DeleteTag handles DELETE /api/v1/workspaces/:workspace_id/tags/:id
+// DeleteTag handles DELETE /api/v1/workspaces/:workspace_id/tags/:id or DELETE /admin/tags/:id
 func (h *TagAdminHandler) DeleteTag(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
@@ -155,11 +143,7 @@ func (h *TagAdminHandler) DeleteTag(c *echo.Context) error {
 
 // AddContactTag handles POST /api/v1/workspaces/:workspace_id/contacts/:contact_id/tags/:tag_id
 func (h *TagAdminHandler) AddContactTag(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
@@ -191,11 +175,7 @@ func (h *TagAdminHandler) AddContactTag(c *echo.Context) error {
 
 // RemoveContactTag handles DELETE /api/v1/workspaces/:workspace_id/contacts/:contact_id/tags/:tag_id
 func (h *TagAdminHandler) RemoveContactTag(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
@@ -231,13 +211,9 @@ type ImportResult struct {
 	Errors         int `json:"errors"`
 }
 
-// ImportContactsCSV handles POST /api/v1/workspaces/:workspace_id/contacts/import
+// ImportContactsCSV handles POST /api/v1/workspaces/:workspace_id/contacts/import or POST /admin/contacts/import
 func (h *TagAdminHandler) ImportContactsCSV(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
@@ -384,13 +360,9 @@ func (h *TagAdminHandler) ImportContactsCSV(c *echo.Context) error {
 
 
 
-// ExportContactsCSV handles GET /api/v1/workspaces/:workspace_id/contacts/export
+// ExportContactsCSV handles GET /api/v1/workspaces/:workspace_id/contacts/export or GET /admin/contacts/export
 func (h *TagAdminHandler) ExportContactsCSV(c *echo.Context) error {
-	workspaceIDStr, err := echo.PathParam[string](c, "workspace_id")
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
-	}
-	workspaceID, err := uuid.Parse(workspaceIDStr)
+	workspaceID, err := h.resolveWorkspaceID(c)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}

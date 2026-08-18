@@ -16,6 +16,7 @@ import (
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	typebot "github.com/pablojhp.pergo/internal/integration/typebot"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -280,6 +281,26 @@ func TestTypebotSettingsHandler(t *testing.T) {
 		}
 		if !strings.Contains(body, `value="sales,help"`) {
 			t.Error("expected body to contain trigger_keywords value")
+		}
+	})
+
+	t.Run("FlatRouting_ContextResolution", func(t *testing.T) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/admin/integrations/typebot", nil)
+		ctx := tenant.WithWorkspaceID(req.Context(), ws.ID)
+		ctx = context.WithValue(ctx, "active_workspace", ws)
+		ctx = context.WithValue(ctx, "active_path", "/admin/integrations/typebot")
+		req = req.WithContext(ctx)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/integrations/typebot")
+
+		err := h.GetSettings(c)
+		if err != nil {
+			t.Fatalf("GetSettings failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d. Body: %s", http.StatusOK, rec.Code, rec.Body.String())
 		}
 	})
 }

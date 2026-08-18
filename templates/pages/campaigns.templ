@@ -29,7 +29,7 @@ templ CampaignsContent(workspaceID uuid.UUID, campaigns []domain.Campaign, templ
 		<div class="header-actions">
 			<button
 				class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center gap-2"
-				hx-get={ fmt.Sprintf("/admin/workspaces/%s/campaigns/new", workspaceID) }
+				hx-get="/admin/campaigns/new"
 				hx-target="#campaign-form-area"
 				hx-swap="innerHTML"
 			>
@@ -39,7 +39,7 @@ templ CampaignsContent(workspaceID uuid.UUID, campaigns []domain.Campaign, templ
 		</div>
 	</div>
 
-	<div id="campaign-form-area" class="mb-6" hx-get={ fmt.Sprintf("/admin/workspaces/%s/campaigns/new", workspaceID) } hx-trigger="connection-created from:body"></div>
+	<div id="campaign-form-area" class="mb-6" hx-get="/admin/campaigns/new" hx-trigger="connection-created from:body"></div>
 
 	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6">
 		<div class="overflow-x-auto border border-zinc-200 rounded-lg shadow-sm">
@@ -77,7 +77,7 @@ templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
 		id={ fmt.Sprintf("campaign-row-%s", c.ID) } 
 		class="hover:bg-zinc-50/50 transition-colors"
 		if c.Status == domain.CampaignStatusSending || c.Status == domain.CampaignStatusRunning {
-			hx-get={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/row", workspaceID, c.ID) }
+			hx-get={ fmt.Sprintf("/admin/campaigns/%s/row", c.ID) }
 			hx-trigger="every 2s"
 			hx-swap="outerHTML"
 		}
@@ -98,25 +98,29 @@ templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
 			}
 		</td>
 		<td class="px-6 py-4 font-mono text-xs text-zinc-500">
-			if c.TotalRecipients > 0 {
-				{ fmt.Sprintf("%d / %d", c.SentRecipients, c.TotalRecipients) }
-			} else {
-				{ fmt.Sprintf("%d", len(c.Recipients)) }
+			{ fmt.Sprintf("%d", c.TotalRecipients) }
+			if c.Status == domain.CampaignStatusCompleted || c.Status == domain.CampaignStatusSending || c.Status == domain.CampaignStatusRunning || c.Status == domain.CampaignStatusPaused {
+				<span class="text-[11px] text-zinc-400 block font-normal">
+					{ fmt.Sprintf("%d env / %d falhas", c.SentRecipients, c.FailedRecipients) }
+				</span>
 			}
 		</td>
 		<td class="px-6 py-4">
 			if c.Status == domain.CampaignStatusDraft {
 				<span class="badge badge-sm bg-zinc-100 text-zinc-700 border-zinc-200 px-2 py-0.5 text-xs font-semibold">Rascunho</span>
 			} else if c.Status == domain.CampaignStatusScheduled {
-				<span class="badge badge-sm bg-amber-50 text-amber-700 border-amber-200 px-2 py-0.5 text-xs font-semibold">Agendada</span>
+				<span class="badge badge-sm bg-blue-50 text-blue-700 border-blue-200 px-2 py-0.5 text-xs font-semibold">Agendada</span>
 			} else if c.Status == domain.CampaignStatusSending || c.Status == domain.CampaignStatusRunning {
-				<span class="badge badge-sm bg-blue-50 text-blue-700 border-blue-200 px-2 py-0.5 text-xs font-semibold animate-pulse">Enviando</span>
+				<span class="badge badge-sm bg-emerald-50 text-emerald-700 border-emerald-200 px-2 py-0.5 text-xs font-semibold flex items-center gap-1">
+					<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+					Enviando
+				</span>
 			} else if c.Status == domain.CampaignStatusPaused {
-				<span class="badge badge-sm bg-amber-100 text-amber-800 border-amber-300 px-2 py-0.5 text-xs font-semibold">Pausada</span>
+				<span class="badge badge-sm bg-amber-50 text-amber-700 border-amber-200 px-2 py-0.5 text-xs font-semibold">Pausada</span>
 			} else if c.Status == domain.CampaignStatusCompleted {
-				<span class="badge badge-sm bg-emerald-50 text-emerald-700 border-emerald-200 px-2 py-0.5 text-xs font-semibold">Concluída</span>
+				<span class="badge badge-sm bg-zinc-100 text-zinc-600 border-zinc-200 px-2 py-0.5 text-xs font-semibold">Concluída</span>
 			} else if c.Status == domain.CampaignStatusFailed {
-				<span class="badge badge-sm bg-rose-100 text-rose-800 border-rose-300 px-2 py-0.5 text-xs font-semibold">Falhou</span>
+				<span class="badge badge-sm bg-rose-50 text-rose-700 border-rose-200 px-2 py-0.5 text-xs font-semibold">Falhou</span>
 			} else if c.Status == domain.CampaignStatusCancelled {
 				<span class="badge badge-sm bg-rose-50 text-rose-700 border-rose-200 px-2 py-0.5 text-xs font-semibold">Cancelada</span>
 			}
@@ -127,7 +131,7 @@ templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
 				if c.Status == domain.CampaignStatusDraft {
 					<button
 						class="btn btn-ghost hover:bg-emerald-50 text-emerald-600 btn-xs font-semibold"
-						hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/start", workspaceID, c.ID) }
+						hx-post={ fmt.Sprintf("/admin/campaigns/%s/start", c.ID) }
 						hx-target={ fmt.Sprintf("#campaign-row-%s", c.ID) }
 						hx-swap="outerHTML"
 					>
@@ -137,7 +141,7 @@ templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
 				if c.Status == domain.CampaignStatusScheduled {
 					<button
 						class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold"
-						hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/cancel", workspaceID, c.ID) }
+						hx-post={ fmt.Sprintf("/admin/campaigns/%s/cancel", c.ID) }
 						hx-target={ fmt.Sprintf("#campaign-row-%s", c.ID) }
 						hx-swap="outerHTML"
 					>
@@ -147,7 +151,7 @@ templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
 				if c.Status == domain.CampaignStatusSending || c.Status == domain.CampaignStatusRunning {
 					<button
 						class="btn btn-ghost hover:bg-amber-50 text-amber-600 btn-xs font-semibold"
-						hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/pause", workspaceID, c.ID) }
+						hx-post={ fmt.Sprintf("/admin/campaigns/%s/pause", c.ID) }
 						hx-target={ fmt.Sprintf("#campaign-row-%s", c.ID) }
 						hx-swap="outerHTML"
 					>
@@ -155,7 +159,7 @@ templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
 					</button>
 					<button
 						class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold"
-						hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/cancel", workspaceID, c.ID) }
+						hx-post={ fmt.Sprintf("/admin/campaigns/%s/cancel", c.ID) }
 						hx-target={ fmt.Sprintf("#campaign-row-%s", c.ID) }
 						hx-swap="outerHTML"
 					>
@@ -165,7 +169,7 @@ templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
 				if c.Status == domain.CampaignStatusPaused {
 					<button
 						class="btn btn-ghost hover:bg-emerald-50 text-emerald-600 btn-xs font-semibold"
-						hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/resume", workspaceID, c.ID) }
+						hx-post={ fmt.Sprintf("/admin/campaigns/%s/resume", c.ID) }
 						hx-target={ fmt.Sprintf("#campaign-row-%s", c.ID) }
 						hx-swap="outerHTML"
 					>
@@ -173,7 +177,7 @@ templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
 					</button>
 					<button
 						class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold"
-						hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/cancel", workspaceID, c.ID) }
+						hx-post={ fmt.Sprintf("/admin/campaigns/%s/cancel", c.ID) }
 						hx-target={ fmt.Sprintf("#campaign-row-%s", c.ID) }
 						hx-swap="outerHTML"
 					>
@@ -182,7 +186,7 @@ templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
 				}
 				if len(c.SkippedRows) > 0 {
 					<a
-						href={ templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/skipped/download", workspaceID, c.ID)) }
+						href={ templ.SafeURL(fmt.Sprintf("/admin/campaigns/%s/skipped/download", c.ID)) }
 						class="btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold flex items-center gap-1"
 						target="_blank"
 					>
@@ -192,7 +196,7 @@ templ CampaignRow(workspaceID uuid.UUID, c domain.Campaign) {
 				}
 				<button
 					class="btn btn-ghost hover:bg-rose-50 text-rose-600 btn-xs font-semibold"
-					hx-delete={ fmt.Sprintf("/admin/workspaces/%s/campaigns/%s", workspaceID, c.ID) }
+					hx-delete={ fmt.Sprintf("/admin/campaigns/%s", c.ID) }
 					hx-target={ fmt.Sprintf("#campaign-row-%s", c.ID) }
 					hx-swap="delete"
 					hx-confirm="Tem certeza de que deseja excluir esta campanha?"
@@ -216,7 +220,7 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 		<div id="campaign-create-alert"></div>
 
 		<form
-			hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns", workspaceID) }
+			hx-post="/admin/campaigns"
 			hx-swap="none"
 			hx-on::response-error="document.getElementById('campaign-create-alert').innerHTML = '<div class=\'alert bg-rose-50 text-rose-800 border border-rose-200 rounded-lg p-3 text-xs mb-4 flex items-center gap-2\'><svg xmlns=\'http://www.w3.org/2000/svg\' class=\'h-4 w-4 text-rose-600 flex-shrink-0\' viewBox=\'0 0 20 20\' fill=\'currentColor\'><path fill-rule=\'evenodd\' d=\'M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z\' clip-rule=\'evenodd\'/></svg><span>' + (event.detail.xhr.responseText || 'Erro ao criar campanha.') + '</span></div>'"
 			id="campaign-create-form"
@@ -278,7 +282,7 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 						name="csv_file"
 						accept=".csv"
 						hx-encoding="multipart/form-data"
-						hx-post={ fmt.Sprintf("/admin/workspaces/%s/campaigns/upload", workspaceID) }
+						hx-post="/admin/campaigns/upload"
 						hx-target="#csv-preview-container"
 						hx-swap="innerHTML"
 						class="form-input border border-zinc-300 rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full cursor-pointer file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-zinc-100 file:text-zinc-700 hover:file:bg-zinc-200"

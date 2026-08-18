@@ -15,6 +15,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -203,6 +204,26 @@ func TestChatwootAdminHandler(t *testing.T) {
 		body := rec.Body.String()
 		if !strings.Contains(body, "ID da Conta inválido") {
 			t.Errorf("expected body to contain invalid account ID error message, got: %s", body)
+		}
+	})
+
+	t.Run("FlatRouting_ContextResolution", func(t *testing.T) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/admin/integrations/chatwoot", nil)
+		ctx := tenant.WithWorkspaceID(req.Context(), ws.ID)
+		ctx = context.WithValue(ctx, "active_workspace", ws)
+		ctx = context.WithValue(ctx, "active_path", "/admin/integrations/chatwoot")
+		req = req.WithContext(ctx)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/integrations/chatwoot")
+
+		err := h.GetSettings(c)
+		if err != nil {
+			t.Fatalf("GetSettings failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d. Body: %s", http.StatusOK, rec.Code, rec.Body.String())
 		}
 	})
 }
@@ -404,6 +425,26 @@ func TestHeadlessAdminHandler(t *testing.T) {
 		}
 		if !strings.Contains(body, "redirect=%2Fadmin%2F") && !strings.Contains(body, "redirect=/admin/") {
 			t.Error("expected sanitized redirect to /admin/")
+		}
+	})
+
+	t.Run("FlatRouting_ContextResolution", func(t *testing.T) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/admin/integrations/headless", nil)
+		ctx := tenant.WithWorkspaceID(req.Context(), ws.ID)
+		ctx = context.WithValue(ctx, "active_workspace", ws)
+		ctx = context.WithValue(ctx, "active_path", "/admin/integrations/headless")
+		req = req.WithContext(ctx)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/integrations/headless")
+
+		err := h.GetPortal(c)
+		if err != nil {
+			t.Fatalf("GetPortal failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d. Body: %s", http.StatusOK, rec.Code, rec.Body.String())
 		}
 	})
 }

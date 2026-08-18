@@ -18,6 +18,7 @@ import (
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -208,6 +209,28 @@ func TestWABATemplateHandler(t *testing.T) {
 
 		if synced.Status != "APPROVED" {
 			t.Errorf("expected status APPROVED, got %s", synced.Status)
+		}
+	})
+
+	t.Run("FlatRouting_ContextResolution", func(t *testing.T) {
+		h := admin.NewWABATemplateHandler(tmplRepo, connRepo)
+
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/admin/templates", nil)
+		reqCtx := tenant.WithWorkspaceID(req.Context(), ws.ID)
+		req = req.WithContext(reqCtx)
+
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/templates")
+
+		err := h.List(c)
+		if err != nil {
+			t.Fatalf("List returned error: %v", err)
+		}
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d. Body: %s", http.StatusOK, rec.Code, rec.Body.String())
 		}
 	})
 }
