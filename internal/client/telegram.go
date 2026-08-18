@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -82,8 +83,11 @@ func (c *HTTPTelegramBotClient) ValidateToken(ctx context.Context, token string)
 
 // RegisterWebhook sets up the webhook URL and secret token on Telegram.
 func (c *HTTPTelegramBotClient) RegisterWebhook(ctx context.Context, token, webhookURL, secretToken string) error {
-	url := fmt.Sprintf("%s/bot%s/setWebhook?url=%s&secret_token=%s", c.baseURL, token, webhookURL, secretToken)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+	escapedURL := url.QueryEscape(webhookURL)
+	escapedSecret := url.QueryEscape(secretToken)
+	endpoint := fmt.Sprintf("%s/bot%s/setWebhook?url=%s&secret_token=%s", c.baseURL, token, escapedURL, escapedSecret)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create Telegram webhook registration request: %w", err)
 	}
@@ -111,6 +115,6 @@ func (c *HTTPTelegramBotClient) RegisterWebhook(ctx context.Context, token, webh
 		return fmt.Errorf("Telegram webhook registration failed: %s", tgResp.Description)
 	}
 
-	slog.Info("Telegram webhook registered successfully", "url", webhookURL)
+	slog.InfoContext(ctx, "Telegram webhook registered successfully", "url", webhookURL)
 	return nil
 }

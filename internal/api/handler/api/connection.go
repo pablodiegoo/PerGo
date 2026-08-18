@@ -379,7 +379,7 @@ func (h *ConnectionAPIHandler) CreateWABA(c *echo.Context) error {
 
 	if h.metaClient != nil {
 		if _, err := h.metaClient.SyncTemplates(ctx, conn.ID, wabaAccountID, token, wsID, h.templatesRepo, true); err != nil {
-			slog.Warn("failed to run initial template sync on waba connection creation", "error", err, "connection_id", conn.ID)
+			slog.WarnContext(ctx, "failed to run initial template sync on waba connection creation", "error", err, "connection_id", conn.ID)
 		}
 	}
 
@@ -459,19 +459,16 @@ func (h *ConnectionAPIHandler) CreateTelegram(c *echo.Context) error {
 	}
 
 	secretToken := strings.TrimSpace(req.SecretToken)
-	if secretToken == "" {
-		if strings.HasPrefix(h.externalURL, "https://") {
-			secretToken = uuid.New().String()
-		} else {
-			secretToken = "pergo_secret_token_" + wsID.String()
-		}
-	}
-
 	if strings.HasPrefix(h.externalURL, "https://") {
+		if secretToken == "" {
+			secretToken = uuid.New().String()
+		}
 		webhookURL := fmt.Sprintf("%s/webhooks/telegram/%s", h.externalURL, wsID.String())
 		if err := tgClient.RegisterWebhook(ctx, token, webhookURL, secretToken); err != nil {
-			slog.Warn("failed to register Telegram webhook on connection creation", "error", err, "workspace_id", wsID)
+			slog.WarnContext(ctx, "failed to register Telegram webhook on connection creation", "error", err, "workspace_id", wsID)
 		}
+	} else if secretToken == "" {
+		secretToken = "pergo_secret_token_" + wsID.String()
 	}
 
 	name := strings.TrimSpace(req.Name)
