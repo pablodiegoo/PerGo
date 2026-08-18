@@ -3,10 +3,10 @@ package components
 // ConfirmModal renders a reusable HTMX modal confirmation dialog.
 // The confirm button uses hx-delete to execute the action.
 templ ConfirmModal(title string, message string, hxDeleteURL string) {
-	<div class="modal-backdrop" onclick="this.closest('.modal-backdrop').remove()">
-		<div class="modal" onclick="event.stopPropagation()">
+	<div class="modal-backdrop" role="presentation" onclick="this.closest('.modal-backdrop').remove()" onkeydown="if(event.key === 'Escape') this.closest('.modal-backdrop').remove()" tabindex="0">
+		<div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" onclick="event.stopPropagation()">
 			<div class="modal-header">
-				<h3>{ title }</h3>
+				<h3 id="confirm-modal-title">{ title }</h3>
 			</div>
 			<div class="modal-body">
 				<p>{ message }</p>

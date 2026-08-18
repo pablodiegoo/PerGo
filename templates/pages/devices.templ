@@ -78,6 +78,7 @@ templ ConnectionRow(conn *repository.Connection) {
 					name="slug"
 					value={ conn.Slug }
 					required
+					aria-label={ "Editar slug da conexão " + conn.Name }
 					class="form-input text-xs font-mono px-2 py-0.5 border border-zinc-200 rounded bg-zinc-50 focus:bg-white focus:border-zinc-400 focus:outline-none w-36 font-semibold text-zinc-800"
 					title="Clique para editar e pressione Enter para salvar"
 				/>
@@ -167,14 +168,14 @@ templ ConnectionStatusBadge(status string) {
 
 // PairForm renders the unified new connection modal form.
 templ PairForm() {
-	<div class="modal-backdrop" onclick="this.closest('.modal-backdrop').remove()">
-		<div class="custom-modal w-full max-w-lg" onclick="event.stopPropagation()">
+	<div class="modal-backdrop" role="presentation" onclick="this.closest('.modal-backdrop').remove()" onkeydown="if(event.key === 'Escape') this.closest('.modal-backdrop').remove()" tabindex="0">
+		<div class="custom-modal w-full max-w-lg" role="dialog" aria-modal="true" aria-labelledby="pair-modal-title" onclick="event.stopPropagation()">
 			<div class="modal-header border-b pb-3 mb-4">
-				<h3 class="text-lg font-bold text-zinc-900">Nova Conexão</h3>
+				<h3 id="pair-modal-title" class="text-lg font-bold text-zinc-900">Nova Conexão</h3>
 			</div>
 			<div class="modal-body space-y-4">
 				<div id="modal-error-container"></div>
-				<form id="new-connection-form" class="space-y-4" hx-on::after-request="if(event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget') && document.getElementById('new-channel-select').value !== 'whatsapp') this.closest('.modal-backdrop').remove()">
+				<form id="new-connection-form" class="space-y-4" hx-indicator="#conn-submit-spinner" hx-on::after-request="if(event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget') && document.getElementById('new-channel-select').value !== 'whatsapp') this.closest('.modal-backdrop').remove()">
 					<div class="flex flex-col gap-1">
 						<label for="new-conn-name" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Nome da Conexão</label>
 						<input type="text" id="new-conn-name" name="name" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="Ex: WhatsApp Suporte, Telegram Bot"/>
@@ -234,8 +235,9 @@ templ PairForm() {
 
 					<div class="modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6">
 						<button type="button" class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center" onclick="this.closest('.modal-backdrop').remove()">Cancelar</button>
-						<button type="submit" id="new-conn-submit-btn" class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center">
-							Salvar Conexão
+						<button type="submit" id="new-conn-submit-btn" class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center gap-2">
+							<span id="conn-submit-spinner" class="htmx-indicator spinner border-2 border-white border-t-transparent rounded-full w-3.5 h-3.5 animate-spin" aria-hidden="true"></span>
+							<span id="new-conn-submit-label">Começar Emparelhamento</span>
 						</button>
 					</div>
 				</form>
@@ -249,6 +251,15 @@ templ PairForm() {
 					const wabaFields = document.getElementById('fields-waba');
 					const tgFields = document.getElementById('fields-telegram');
 					const submitBtn = document.getElementById('new-conn-submit-btn');
+					const submitLabel = document.getElementById('new-conn-submit-label');
+
+					const setButtonText = function(text) {
+						if (submitLabel) {
+							submitLabel.innerText = text;
+						} else if (submitBtn) {
+							submitBtn.innerText = text;
+						}
+					};
 
 					// Hide everything
 					waWebFields.style.display = 'none';
@@ -264,7 +275,7 @@ templ PairForm() {
 						waWebFields.style.display = 'block';
 						waWebFields.querySelectorAll('input[data-required="true"]').forEach(i => i.required = true);
 						
-						submitBtn.innerText = 'Começar Emparelhamento';
+						setButtonText('Começar Emparelhamento');
 						submitBtn.setAttribute('hx-post', '/admin/devices/pair');
 						submitBtn.setAttribute('hx-target', '#qr-area');
 						submitBtn.setAttribute('hx-swap', 'innerHTML');
@@ -273,7 +284,7 @@ templ PairForm() {
 						wabaFields.style.display = 'block';
 						wabaFields.querySelectorAll('input[data-required="true"]').forEach(i => i.required = true);
 						
-						submitBtn.innerText = 'Salvar Conexão';
+						setButtonText('Salvar Conexão');
 						submitBtn.setAttribute('hx-post', '/admin/devices/create');
 						submitBtn.setAttribute('hx-target', '#connections-table-container');
 						submitBtn.setAttribute('hx-swap', 'innerHTML');
@@ -282,7 +293,7 @@ templ PairForm() {
 						tgFields.style.display = 'block';
 						tgFields.querySelectorAll('input[data-required="true"]').forEach(i => i.required = true);
 						
-						submitBtn.innerText = 'Salvar Conexão';
+						setButtonText('Salvar Conexão');
 						submitBtn.setAttribute('hx-post', '/admin/devices/create');
 						submitBtn.setAttribute('hx-target', '#connections-table-container');
 						submitBtn.setAttribute('hx-swap', 'innerHTML');
@@ -298,19 +309,19 @@ templ PairForm() {
 
 // QRFragment renders the current QR code state as an HTMX-refreshable fragment.
 templ QRFragment(code string, qrPNG string, phone string, status string, message string) {
-	<div class="qr-fragment" id="qr-area">
+	<div class="qr-fragment" id="qr-area" role="region" aria-label="Status do Emparelhamento WhatsApp">
 		@components.BanWarning()
 		if message != "" {
-			<p class="qr-status mb-3 text-xs text-zinc-500 font-medium text-center">{ message }</p>
+			<p class="qr-status mb-3 text-xs text-zinc-500 font-medium text-center" role="status" aria-live="polite">{ message }</p>
 		}
 		switch status {
 			case "pending":
 				if qrPNG != "" {
-					<div class="qr-container bg-white border border-zinc-200 rounded-xl p-5 shadow-sm flex flex-col items-center max-w-xs mx-auto">
+					<div class="qr-container bg-white border border-zinc-200 rounded-xl p-5 shadow-sm flex flex-col items-center max-w-xs mx-auto" role="status" aria-live="polite">
 						<div class="qr-image-wrapper bg-white p-2 rounded-lg border border-zinc-100 shadow-inner mb-3">
 							<img
 								src={ templ.SafeURL(qrPNG) }
-								alt="WhatsApp QR Code"
+								alt="WhatsApp QR Code para leitura no aplicativo móvel"
 								class="w-56 h-56 object-contain block mx-auto select-none"
 							/>
 						</div>
@@ -320,7 +331,7 @@ templ QRFragment(code string, qrPNG string, phone string, status string, message
 						</div>
 					</div>
 				} else if code != "" {
-					<div class="qr-container bg-white border border-zinc-200 rounded-xl p-5 shadow-sm flex flex-col items-center max-w-xs mx-auto">
+					<div class="qr-container bg-white border border-zinc-200 rounded-xl p-5 shadow-sm flex flex-col items-center max-w-xs mx-auto" role="status" aria-live="polite">
 						<div class="qr-code-raw bg-zinc-50 p-3 border border-zinc-200 rounded font-mono text-xs select-all break-all text-zinc-700 mb-3" data-qr={ code }>
 							<code>{ code }</code>
 						</div>
@@ -330,8 +341,8 @@ templ QRFragment(code string, qrPNG string, phone string, status string, message
 						</div>
 					</div>
 				} else {
-					<div class="qr-loading flex flex-col items-center py-8">
-						<div class="spinner border-2 border-zinc-950 border-t-transparent rounded-full w-8 h-8 animate-spin mb-3"></div>
+					<div class="qr-loading flex flex-col items-center py-8" role="status" aria-live="polite">
+						<div class="spinner border-2 border-zinc-950 border-t-transparent rounded-full w-8 h-8 animate-spin mb-3" aria-hidden="true"></div>
 						<p class="text-xs text-zinc-500 font-medium">Inicializando sessão WhatsApp Web...</p>
 					</div>
 				}
@@ -342,8 +353,8 @@ templ QRFragment(code string, qrPNG string, phone string, status string, message
 					hx-swap="innerHTML"
 				></div>
 			case "paired":
-				<div class="qr-success text-center py-6 bg-emerald-50/50 border border-emerald-100 rounded-xl p-5 max-w-sm mx-auto">
-					<div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold">
+				<div class="qr-success text-center py-6 bg-emerald-50/50 border border-emerald-100 rounded-xl p-5 max-w-sm mx-auto" role="status" aria-live="polite">
+					<div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold" aria-hidden="true">
 						✓
 					</div>
 					<h3 class="text-base font-bold text-zinc-900 mb-1">Dispositivo Pareado com Sucesso!</h3>
@@ -365,8 +376,8 @@ templ QRFragment(code string, qrPNG string, phone string, status string, message
 					</button>
 				</div>
 			case "error":
-				<div class="qr-error text-center py-6 bg-rose-50/50 border border-rose-100 rounded-xl p-5 max-w-sm mx-auto">
-					<div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl font-bold">
+				<div class="qr-error text-center py-6 bg-rose-50/50 border border-rose-100 rounded-xl p-5 max-w-sm mx-auto" role="alert" aria-live="assertive">
+					<div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl font-bold" aria-hidden="true">
 						✕
 					</div>
 					<h3 class="text-base font-bold text-zinc-900 mb-1">Falha no Pareamento</h3>
@@ -393,10 +404,10 @@ templ QRFragment(code string, qrPNG string, phone string, status string, message
 // TestConnectionModal renders the modal to test message sending and view NATS streams.
 templ TestConnectionModal(conn *repository.Connection, templates []repository.WABATemplate) {
 	<script src="https://unpkg.com/htmx-ext-ws@2.0.1/ws.js"></script>
-	<div class="modal-backdrop" onclick="this.closest('.modal-backdrop').remove()">
-		<div class="custom-modal w-full max-w-4xl" onclick="event.stopPropagation()">
+	<div class="modal-backdrop" role="presentation" onclick="this.closest('.modal-backdrop').remove()" onkeydown="if(event.key === 'Escape') this.closest('.modal-backdrop').remove()" tabindex="0">
+		<div class="custom-modal w-full max-w-4xl" role="dialog" aria-modal="true" aria-labelledby="test-modal-title" onclick="event.stopPropagation()">
 			<div class="modal-header border-b pb-3 mb-4">
-				<h3 class="text-lg font-bold text-zinc-900">Testar Conexão: { conn.Name }</h3>
+				<h3 id="test-modal-title" class="text-lg font-bold text-zinc-900">Testar Conexão: { conn.Name }</h3>
 			</div>
 			<div class="modal-body grid grid-cols-1 md:grid-cols-2 gap-6">
 				<!-- Left column: Send form -->
@@ -406,6 +417,7 @@ templ TestConnectionModal(conn *repository.Connection, templates []repository.WA
 						hx-post="/admin/devices/test"
 						hx-target="#test-form-alert"
 						hx-swap="innerHTML"
+						hx-indicator="#test-submit-spinner"
 						class="space-y-4"
 					>
 						<input type="hidden" name="connection_id" value={ conn.ID.String() }/>
@@ -475,8 +487,9 @@ templ TestConnectionModal(conn *repository.Connection, templates []repository.WA
 							</div>
 						}
 
-						<button type="submit" class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none w-full font-semibold py-2 rounded-md transition h-10">
-							Enviar Mensagem de Teste
+						<button type="submit" id="test-conn-submit-btn" class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none w-full font-semibold py-2 rounded-md transition h-10 flex items-center justify-center gap-2">
+							<span id="test-submit-spinner" class="htmx-indicator spinner border-2 border-white border-t-transparent rounded-full w-4 h-4 animate-spin" aria-hidden="true"></span>
+							<span>Enviar Mensagem de Teste</span>
 						</button>
 					</form>
 				</div>
@@ -488,7 +501,7 @@ templ TestConnectionModal(conn *repository.Connection, templates []repository.WA
 						Atividade em Tempo Real (NATS)
 					</h4>
 					
-					<div class="event-list flex-1 overflow-y-auto min-h-[250px] max-h-[350px] space-y-2" id="playground-events">
+					<div class="event-list flex-1 overflow-y-auto min-h-[250px] max-h-[350px] space-y-2" id="playground-events" role="log" aria-live="polite">
 						<div class="text-center text-zinc-400 italic text-xs py-10" id="playground-empty">
 							Nenhum evento recebido ainda. Envie um teste para ver logs em tempo real.
 						</div>

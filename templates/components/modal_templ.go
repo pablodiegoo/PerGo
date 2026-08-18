@@ -31,14 +31,14 @@ func ConfirmModal(title string, message string, hxDeleteURL string) templ.Compon
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"modal-backdrop\" onclick=\"this.closest('.modal-backdrop').remove()\"><div class=\"modal\" onclick=\"event.stopPropagation()\"><div class=\"modal-header\"><h3>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"modal-backdrop\" role=\"presentation\" onclick=\"this.closest('.modal-backdrop').remove()\" onkeydown=\"if(event.key === 'Escape') this.closest('.modal-backdrop').remove()\" tabindex=\"0\"><div class=\"modal\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"confirm-modal-title\" onclick=\"event.stopPropagation()\"><div class=\"modal-header\"><h3 id=\"confirm-modal-title\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/modal.templ`, Line: 9, Col: 15}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/modal.templ`, Line: 9, Col: 40}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
