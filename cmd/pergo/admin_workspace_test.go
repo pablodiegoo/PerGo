@@ -8,11 +8,16 @@ import (
 	"strings"
 	"testing"
 
+	"time"
+
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -522,3 +527,590 @@ func TestAdminWorkspace_EmptyDatabase_RedirectsToNew(t *testing.T) {
 	}
 }
 
+// setupFullAdminEcho initializes an Echo server wired with all admin routes and repositories for multi-tenant verification.
+func setupFullAdminEcho(t *testing.T) (*echo.Echo, *pgxpool.Pool, *repository.WorkspaceRepository) {
+	t.Helper()
+	t.Setenv("PERGO_ADMIN_PASSWORD", "testpass123")
+
+	pool := getTestPool(t)
+	if pool == nil {
+		t.Skip("PostgreSQL not available, skipping integration test")
+	}
+
+	db, err := postgres.NewSQLDB(pool)
+	if err != nil {
+		t.Fatalf("failed to create sql.DB: %v", err)
+	}
+	_ = postgres.RunMigrations(db)
+	db.Close()
+
+	kek := []byte("01234567890123456789012345678901")
+	encryptor, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, encryptor)
+	tagRepo := repository.NewTagRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+	campaignRepo := repository.NewCampaignRepository(pool)
+	wabaTemplateRepo := repository.NewWABATemplateRepository(pool)
+	webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
+	webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, encryptor)
+	apiKeyRepo := repository.NewAPIKeyRepository(pool)
+	auditRepo := repository.NewAuditRepository(pool)
+	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
+	userActionLogRepo := repository.NewUserActionLogRepository(pool)
+
+	e := echo.New()
+	e.Use(mw.HTMXMiddleware())
+
+	adminPublic := e.Group("/admin")
+	adminPublic.GET("/login", func(c *echo.Context) error {
+		return admin.LoginPage(c, false)
+	})
+	adminPublic.POST("/login", func(c *echo.Context) error {
+		return admin.LoginPost(c, wsRepo, "testpass123")
+	})
+
+	adminGroup := e.Group("/admin")
+	adminGroup.Use(mw.SessionAuthMiddleware())
+	adminGroup.Use(mw.ActiveWorkspaceMiddleware(wsRepo))
+
+	// Dashboard
+	dashboardHandler := &admin.DashboardHandler{
+		Pool:        pool,
+		Workspaces:  wsRepo,
+		APIKeys:     apiKeyRepo,
+		Connections: connRepo,
+	}
+	adminGroup.GET("/", dashboardHandler.Index)
+	adminGroup.POST("/workspaces/active", dashboardHandler.SelectWorkspace)
+	adminGroup.GET("/workspaces/selector", dashboardHandler.WorkspaceSelector)
+
+	// Workspaces
+	workspaceHandler := &admin.WorkspaceHandler{
+		Repo:        wsRepo,
+		APIKeys:     apiKeyRepo,
+		ExternalURL: "http://localhost:8080",
+	}
+	adminGroup.GET("/workspaces", workspaceHandler.ActiveWorkspace)
+	adminGroup.GET("/workspace", workspaceHandler.ActiveWorkspace)
+	adminGroup.POST("/workspaces", workspaceHandler.Create)
+	adminGroup.GET("/workspaces/:id", workspaceHandler.Detail)
+	adminGroup.GET("/workspace/:id", workspaceHandler.Detail)
+	apiKeyHandler := &admin.APIKeyHandler{Repo: apiKeyRepo, Workspaces: wsRepo}
+	adminGroup.GET("/workspaces/:id/keys", apiKeyHandler.List)
+
+	// Connections
+	deviceHandler := &admin.DeviceHandler{
+		Connections: connRepo,
+		ExternalURL: "http://localhost:8080",
+	}
+	adminGroup.GET("/connections", deviceHandler.List)
+	adminGroup.GET("/devices", deviceHandler.List)
+
+	// Campaigns
+	campaignHandler := admin.NewCampaignHandler(campaignRepo, wabaTemplateRepo, connRepo, tagRepo, nil)
+	adminGroup.GET("/campaigns", campaignHandler.List)
+	adminGroup.GET("/campaigns/new", campaignHandler.NewForm)
+	adminGroup.POST("/campaigns", campaignHandler.Create)
+	adminGroup.GET("/campaigns/:id/row", campaignHandler.GetRow)
+
+	// Tags
+	tagAdminHandler := admin.NewTagAdminHandler(tagRepo, contactRepo, wsRepo)
+	adminGroup.GET("/tags", tagAdminHandler.Page)
+	adminGroup.POST("/tags", tagAdminHandler.CreateTag)
+
+	// Webhooks
+	webhookHandler := admin.NewWebhookDLQHandler(webhookDLQRepo, webhookSubRepo, wsRepo, nil)
+	adminGroup.GET("/webhooks", webhookHandler.Page)
+	adminGroup.GET("/webhooks/subscriptions/new", webhookHandler.GetSubscriptionNewForm)
+	adminGroup.GET("/webhooks/subscriptions/:subscription_id/edit", webhookHandler.GetSubscriptionEditForm)
+	adminGroup.GET("/webhooks/subscriptions/:subscription_id/rotate-form", webhookHandler.GetRotateSecretForm)
+	adminGroup.GET("/webhooks/subscriptions/:subscription_id/test-form", webhookHandler.GetSubscriptionTestForm)
+	adminGroup.GET("/webhooks/dlq/:dlq_id/details", webhookHandler.GetDetails)
+
+	// Audit Logs
+	auditHandler := &admin.AuditHandler{Repo: auditRepo, Workspaces: wsRepo}
+	userLogsHandler := admin.NewUserLogsHandler(userActionLogRepo)
+	adminGroup.GET("/logs/outbound", auditHandler.ListOutbound)
+	adminGroup.GET("/logs/inbound", auditHandler.ListInbound)
+	adminGroup.GET("/logs/actions", userLogsHandler.List)
+	adminGroup.GET("/logs/actions/:id/metadata", userLogsHandler.GetMetadata)
+
+	// Inbox
+	inboxHandler := &admin.InboxHandler{
+		Repo:           auditRepo,
+		Sessions:       recipientSessionRepo,
+		Workspaces:     wsRepo,
+		Connections:    connRepo,
+		ContactRepo:    contactRepo,
+		UserActionLogs: userActionLogRepo,
+	}
+	adminGroup.GET("/inbox", inboxHandler.View)
+	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)
+
+	return e, pool, wsRepo
+}
+
+// TestSmartSwitcherUX_Transitions tests that the workspace switcher in the sidebar smoothly transitions:
+// - List/collection views reload in place (HX-Refresh: true)
+// - Detail views redirect to section root (HX-Redirect: /admin/...)
+func TestSmartSwitcherUX_Transitions(t *testing.T) {
+	e, _, wsRepo := setupFullAdminEcho(t)
+	cookie := loginAndGetCookie(t, e)
+
+	ctx := t.Context()
+	ws1, err := wsRepo.Create(ctx, fmt.Sprintf("Switcher WS 1 %s", uuid.New().String()[:6]))
+	if err != nil {
+		t.Fatalf("failed to create ws1: %v", err)
+	}
+	ws2, err := wsRepo.Create(ctx, fmt.Sprintf("Switcher WS 2 %s", uuid.New().String()[:6]))
+	if err != nil {
+		t.Fatalf("failed to create ws2: %v", err)
+	}
+
+	testCases := []struct {
+		name         string
+		currentURL   string
+		expectReload bool
+		expectTarget string
+	}{
+		// Collection / list views -> Reload in place
+		{name: "Dashboard", currentURL: "http://localhost:8080/admin/", expectReload: true},
+		{name: "Inbox", currentURL: "http://localhost:8080/admin/inbox", expectReload: true},
+		{name: "Connections", currentURL: "http://localhost:8080/admin/connections", expectReload: true},
+		{name: "Devices", currentURL: "http://localhost:8080/admin/devices", expectReload: true},
+		{name: "Campaigns List", currentURL: "http://localhost:8080/admin/campaigns", expectReload: true},
+		{name: "Campaigns New", currentURL: "http://localhost:8080/admin/campaigns/new", expectReload: true},
+		{name: "Tags List", currentURL: "http://localhost:8080/admin/tags", expectReload: true},
+		{name: "Webhooks List", currentURL: "http://localhost:8080/admin/webhooks", expectReload: true},
+		{name: "Logs Outbound", currentURL: "http://localhost:8080/admin/logs/outbound", expectReload: true},
+		{name: "Workspaces List", currentURL: "http://localhost:8080/admin/workspaces", expectReload: true},
+
+		// Detail views -> Redirect to section root
+		{name: "Campaign Detail Row", currentURL: "http://localhost:8080/admin/campaigns/c-12345/row", expectReload: false, expectTarget: "/admin/campaigns"},
+		{name: "Webhook Subscription Edit", currentURL: "http://localhost:8080/admin/webhooks/subscriptions/sub-999/edit", expectReload: false, expectTarget: "/admin/webhooks"},
+		{name: "Webhook Subscription Rotate", currentURL: "http://localhost:8080/admin/webhooks/subscriptions/sub-999/rotate-form", expectReload: false, expectTarget: "/admin/webhooks"},
+		{name: "Webhook DLQ Detail", currentURL: "http://localhost:8080/admin/webhooks/dlq/dlq-999/details", expectReload: false, expectTarget: "/admin/webhooks"},
+		{name: "Workspace Detail", currentURL: fmt.Sprintf("http://localhost:8080/admin/workspaces/%s", ws1.ID), expectReload: false, expectTarget: "/admin/workspaces"},
+		{name: "Workspace Keys", currentURL: fmt.Sprintf("http://localhost:8080/admin/workspaces/%s/keys", ws1.ID), expectReload: false, expectTarget: "/admin/workspaces"},
+		{name: "Action Log Metadata", currentURL: "http://localhost:8080/admin/logs/actions/act-123/metadata", expectReload: false, expectTarget: "/admin/logs/actions"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			form := url.Values{}
+			form.Set("workspace_id", ws2.ID.String())
+
+			req := httptest.NewRequest(http.MethodPost, "/admin/workspaces/active", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			req.Header.Set("HX-Request", "true")
+			req.Header.Set("HX-Current-URL", tc.currentURL)
+			req.AddCookie(cookie)
+			req.AddCookie(&http.Cookie{
+				Name:  mw.ActiveWorkspaceCookieName,
+				Value: ws1.ID.String(),
+			})
+
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK && rec.Code != http.StatusNoContent {
+				t.Fatalf("expected 200/204, got %d: %s", rec.Code, rec.Body.String())
+			}
+
+			if tc.expectReload {
+				if rec.Header().Get("HX-Refresh") != "true" {
+					t.Errorf("expected HX-Refresh 'true', got %q", rec.Header().Get("HX-Refresh"))
+				}
+				if rec.Header().Get("HX-Redirect") != "" {
+					t.Errorf("expected no HX-Redirect on list view, got %q", rec.Header().Get("HX-Redirect"))
+				}
+			} else {
+				if rec.Header().Get("HX-Redirect") != tc.expectTarget {
+					t.Errorf("expected HX-Redirect %q, got %q", tc.expectTarget, rec.Header().Get("HX-Redirect"))
+				}
+				if rec.Header().Get("HX-Refresh") != "" {
+					t.Errorf("expected no HX-Refresh on detail view, got %q", rec.Header().Get("HX-Refresh"))
+				}
+			}
+
+			// Verify cookie was updated to ws2
+			var activeCookie *http.Cookie
+			for _, c := range rec.Result().Cookies() {
+				if c.Name == mw.ActiveWorkspaceCookieName {
+					activeCookie = c
+					break
+				}
+			}
+			if activeCookie == nil || activeCookie.Value != ws2.ID.String() {
+				t.Errorf("expected active workspace cookie set to ws2 ID %s", ws2.ID)
+			}
+		})
+	}
+}
+
+// TestMultiWorkspace_EndToEndIsolation verifies strict tenant isolation across:
+// Inbox, Connections, Campaigns, Tags, Webhooks, and Audit Logs.
+// Alternately toggling pergo-active-workspace cookie ensures no cross-tenant data leakage or phantom UUID errors.
+func TestMultiWorkspace_EndToEndIsolation(t *testing.T) {
+	e, pool, wsRepo := setupFullAdminEcho(t)
+	cookie := loginAndGetCookie(t, e)
+	ctx := t.Context()
+
+	kek := []byte("01234567890123456789012345678901")
+	encryptor, _ := crypto.NewEncryptor(kek)
+
+	connRepo := repository.NewConnectionRepository(pool, encryptor)
+	tagRepo := repository.NewTagRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+	campaignRepo := repository.NewCampaignRepository(pool)
+	webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, encryptor)
+	webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
+
+	// Create Workspace Alpha & Beta
+	wsAlpha, err := wsRepo.Create(ctx, fmt.Sprintf("Workspace Alpha %s", uuid.New().String()[:6]))
+	if err != nil {
+		t.Fatalf("failed to create wsAlpha: %v", err)
+	}
+	wsBeta, err := wsRepo.Create(ctx, fmt.Sprintf("Workspace Beta %s", uuid.New().String()[:6]))
+	if err != nil {
+		t.Fatalf("failed to create wsBeta: %v", err)
+	}
+
+	// 1. Seed Connections
+	connAlpha := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    wsAlpha.ID,
+		Name:           "Alpha WhatsApp Connection",
+		Channel:        "whatsapp",
+		SenderIdentity: "+5511999990001",
+		Status:         "active",
+		Slug:           fmt.Sprintf("alpha-wa-%s", uuid.New().String()[:4]),
+	}
+	if err := connRepo.Create(ctx, connAlpha); err != nil {
+		t.Fatalf("failed to create connAlpha: %v", err)
+	}
+
+	connBeta := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    wsBeta.ID,
+		Name:           "Beta Telegram Connection",
+		Channel:        "telegram",
+		SenderIdentity: "beta_tele_bot",
+		Status:         "active",
+		Slug:           fmt.Sprintf("beta-tg-%s", uuid.New().String()[:4]),
+	}
+	if err := connRepo.Create(ctx, connBeta); err != nil {
+		t.Fatalf("failed to create connBeta: %v", err)
+	}
+
+	// 2. Seed Tags & Contacts
+	tagAlpha, err := tagRepo.CreateTag(ctx, wsAlpha.ID, "Alpha-VIP-Tag", "#ff0000")
+	if err != nil {
+		t.Fatalf("failed to create tagAlpha: %v", err)
+	}
+	tagBeta, err := tagRepo.CreateTag(ctx, wsBeta.ID, "Beta-VIP-Tag", "#00ff00")
+	if err != nil {
+		t.Fatalf("failed to create tagBeta: %v", err)
+	}
+
+	contactAlpha, err := contactRepo.ResolveContact(ctx, wsAlpha.ID, "whatsapp", "+5511999990001", "Alice Alpha Contact", "alice", "+5511999990001")
+	if err != nil {
+		t.Fatalf("failed to create contactAlpha: %v", err)
+	}
+	_ = tagRepo.AddTagToContact(ctx, wsAlpha.ID, contactAlpha.ID, tagAlpha.ID)
+
+	contactBeta, err := contactRepo.ResolveContact(ctx, wsBeta.ID, "telegram", "beta_tele_user", "Bob Beta Contact", "bob", "+5511999990002")
+	if err != nil {
+		t.Fatalf("failed to create contactBeta: %v", err)
+	}
+	_ = tagRepo.AddTagToContact(ctx, wsBeta.ID, contactBeta.ID, tagBeta.ID)
+
+	// 3. Seed Campaigns
+	chanWA := "whatsapp"
+	chanTG := "telegram"
+	schedAlpha := time.Now().Add(1 * time.Hour)
+	schedBeta := time.Now().Add(2 * time.Hour)
+
+	campAlpha := &domain.Campaign{
+		ID:              uuid.New(),
+		WorkspaceID:     wsAlpha.ID,
+		Name:            "Campaign Alpha 2026 Special",
+		Channel:         &chanWA,
+		ConnectionID:    &connAlpha.ID,
+		Status:          domain.CampaignStatusDraft,
+		TotalRecipients: 10,
+		ScheduledAt:     &schedAlpha,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+	if _, err := campaignRepo.Create(ctx, campAlpha); err != nil {
+		t.Fatalf("failed to create campAlpha: %v", err)
+	}
+
+	campBeta := &domain.Campaign{
+		ID:              uuid.New(),
+		WorkspaceID:     wsBeta.ID,
+		Name:            "Campaign Beta 2026 Special",
+		Channel:         &chanTG,
+		ConnectionID:    &connBeta.ID,
+		Status:          domain.CampaignStatusRunning,
+		TotalRecipients: 20,
+		ScheduledAt:     &schedBeta,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+	if _, err := campaignRepo.Create(ctx, campBeta); err != nil {
+		t.Fatalf("failed to create campBeta: %v", err)
+	}
+
+	// 4. Seed Webhook Subscriptions & DLQ
+	subAlpha, err := webhookSubRepo.Create(ctx, wsAlpha.ID, "https://alpha.example.com/events/v1", []string{"message.delivered"}, []byte("sec-alpha-12345"))
+	if err != nil {
+		t.Fatalf("failed to create subAlpha: %v", err)
+	}
+
+	subBeta, err := webhookSubRepo.Create(ctx, wsBeta.ID, "https://beta.example.com/events/v1", []string{"message.failed"}, []byte("sec-beta-67890"))
+	if err != nil {
+		t.Fatalf("failed to create subBeta: %v", err)
+	}
+
+	reasonAlpha := "Alpha delivery webhook connection timeout"
+	if err := webhookDLQRepo.InsertDLQ(ctx, wsAlpha.ID, subAlpha.ID, "trace-dlq-alpha", "msg-alpha-1", "message.delivered", []byte(`{"tenant":"alpha"}`), subAlpha.URL, 3, &reasonAlpha); err != nil {
+		t.Fatalf("failed to create dlqAlpha: %v", err)
+	}
+
+	reasonBeta := "Beta delivery webhook endpoint 500 error"
+	if err := webhookDLQRepo.InsertDLQ(ctx, wsBeta.ID, subBeta.ID, "trace-dlq-beta", "msg-beta-1", "message.failed", []byte(`{"tenant":"beta"}`), subBeta.URL, 5, &reasonBeta); err != nil {
+		t.Fatalf("failed to create dlqBeta: %v", err)
+	}
+
+	// 5. Seed Audit Logs
+	traceAlpha := fmt.Sprintf("trace-alpha-%s", uuid.New().String()[:8])
+	_, _ = pool.Exec(ctx, `
+		INSERT INTO audit_logs (id, workspace_id, trace_id, event_type, payload, created_at)
+		VALUES ($1, $2, $3, $4, $5, NOW())
+	`, uuid.New(), wsAlpha.ID, traceAlpha, "outbound_message", []byte(`{"text":"Alpha outbound payload"}`))
+
+	traceBeta := fmt.Sprintf("trace-beta-%s", uuid.New().String()[:8])
+	_, _ = pool.Exec(ctx, `
+		INSERT INTO audit_logs (id, workspace_id, trace_id, event_type, payload, created_at)
+		VALUES ($1, $2, $3, $4, $5, NOW())
+	`, uuid.New(), wsBeta.ID, traceBeta, "outbound_message", []byte(`{"text":"Beta outbound payload"}`))
+
+	// --- PHASE A: Access views with Workspace Alpha active cookie ---
+	cookieAlpha := &http.Cookie{
+		Name:  mw.ActiveWorkspaceCookieName,
+		Value: wsAlpha.ID.String(),
+	}
+
+	t.Run("Workspace Alpha Isolation Check", func(t *testing.T) {
+		// 1. Connections
+		req := httptest.NewRequest(http.MethodGet, "/admin/connections", nil)
+		req.AddCookie(cookie)
+		req.AddCookie(cookieAlpha)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("connections: expected 200, got %d", rec.Code)
+		}
+		b := rec.Body.String()
+		if !strings.Contains(b, connAlpha.Name) || !strings.Contains(b, connAlpha.Slug) {
+			t.Errorf("expected Alpha connection %s in body", connAlpha.Name)
+		}
+		if strings.Contains(b, connBeta.Name) || strings.Contains(b, connBeta.Slug) {
+			t.Errorf("cross-tenant leak: found Beta connection in Alpha view")
+		}
+
+		// 2. Tags & Contacts
+		req = httptest.NewRequest(http.MethodGet, "/admin/tags", nil)
+		req.AddCookie(cookie)
+		req.AddCookie(cookieAlpha)
+		rec = httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("tags: expected 200, got %d", rec.Code)
+		}
+		b = rec.Body.String()
+		if !strings.Contains(b, tagAlpha.Name) || !strings.Contains(b, contactAlpha.Name) {
+			t.Errorf("expected Alpha tag and contact in body")
+		}
+		if strings.Contains(b, tagBeta.Name) || strings.Contains(b, contactBeta.Name) {
+			t.Errorf("cross-tenant leak: found Beta tag/contact in Alpha view")
+		}
+
+		// 3. Campaigns
+		req = httptest.NewRequest(http.MethodGet, "/admin/campaigns", nil)
+		req.AddCookie(cookie)
+		req.AddCookie(cookieAlpha)
+		rec = httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("campaigns: expected 200, got %d", rec.Code)
+		}
+		b = rec.Body.String()
+		if !strings.Contains(b, campAlpha.Name) {
+			t.Errorf("expected Alpha campaign %s in body", campAlpha.Name)
+		}
+		if strings.Contains(b, campBeta.Name) {
+			t.Errorf("cross-tenant leak: found Beta campaign in Alpha view")
+		}
+
+		// 4. Webhooks & DLQ
+		req = httptest.NewRequest(http.MethodGet, "/admin/webhooks", nil)
+		req.AddCookie(cookie)
+		req.AddCookie(cookieAlpha)
+		rec = httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("webhooks: expected 200, got %d", rec.Code)
+		}
+		b = rec.Body.String()
+		if !strings.Contains(b, subAlpha.URL) || !strings.Contains(b, reasonAlpha) {
+			t.Errorf("expected Alpha webhook subscription and DLQ error message in body")
+		}
+		if strings.Contains(b, subBeta.URL) || strings.Contains(b, reasonBeta) {
+			t.Errorf("cross-tenant leak: found Beta webhook/DLQ in Alpha view")
+		}
+
+		// 5. Audit Logs
+		req = httptest.NewRequest(http.MethodGet, "/admin/logs/outbound", nil)
+		req.AddCookie(cookie)
+		req.AddCookie(cookieAlpha)
+		rec = httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("logs: expected 200, got %d", rec.Code)
+		}
+		b = rec.Body.String()
+		if !strings.Contains(b, traceAlpha) {
+			t.Errorf("expected Alpha trace %s in body", traceAlpha)
+		}
+		if strings.Contains(b, traceBeta) {
+			t.Errorf("cross-tenant leak: found Beta trace in Alpha view")
+		}
+
+		// 6. Inbox
+		req = httptest.NewRequest(http.MethodGet, "/admin/inbox", nil)
+		req.AddCookie(cookie)
+		req.AddCookie(cookieAlpha)
+		rec = httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("inbox: expected 200, got %d", rec.Code)
+		}
+		b = rec.Body.String()
+		if strings.Contains(b, contactBeta.Name) {
+			t.Errorf("cross-tenant leak: found Beta contact in Alpha inbox")
+		}
+	})
+
+	// --- PHASE B: Alternate active workspace to Beta ---
+	cookieBeta := &http.Cookie{
+		Name:  mw.ActiveWorkspaceCookieName,
+		Value: wsBeta.ID.String(),
+	}
+
+	t.Run("Workspace Beta Isolation Check", func(t *testing.T) {
+		// 1. Connections
+		req := httptest.NewRequest(http.MethodGet, "/admin/connections", nil)
+		req.AddCookie(cookie)
+		req.AddCookie(cookieBeta)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("connections: expected 200, got %d", rec.Code)
+		}
+		b := rec.Body.String()
+		if !strings.Contains(b, connBeta.Name) || !strings.Contains(b, connBeta.Slug) {
+			t.Errorf("expected Beta connection %s in body", connBeta.Name)
+		}
+		if strings.Contains(b, connAlpha.Name) || strings.Contains(b, connAlpha.Slug) {
+			t.Errorf("cross-tenant leak: found Alpha connection in Beta view")
+		}
+
+		// 2. Tags & Contacts
+		req = httptest.NewRequest(http.MethodGet, "/admin/tags", nil)
+		req.AddCookie(cookie)
+		req.AddCookie(cookieBeta)
+		rec = httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("tags: expected 200, got %d", rec.Code)
+		}
+		b = rec.Body.String()
+		if !strings.Contains(b, tagBeta.Name) || !strings.Contains(b, contactBeta.Name) {
+			t.Errorf("expected Beta tag and contact in body")
+		}
+		if strings.Contains(b, tagAlpha.Name) || strings.Contains(b, contactAlpha.Name) {
+			t.Errorf("cross-tenant leak: found Alpha tag/contact in Beta view")
+		}
+
+		// 3. Campaigns
+		req = httptest.NewRequest(http.MethodGet, "/admin/campaigns", nil)
+		req.AddCookie(cookie)
+		req.AddCookie(cookieBeta)
+		rec = httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("campaigns: expected 200, got %d", rec.Code)
+		}
+		b = rec.Body.String()
+		if !strings.Contains(b, campBeta.Name) {
+			t.Errorf("expected Beta campaign %s in body", campBeta.Name)
+		}
+		if strings.Contains(b, campAlpha.Name) {
+			t.Errorf("cross-tenant leak: found Alpha campaign in Beta view")
+		} // 4. Webhooks & DLQ
+		req = httptest.NewRequest(http.MethodGet, "/admin/webhooks", nil)
+		req.AddCookie(cookie)
+		req.AddCookie(cookieBeta)
+		rec = httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("webhooks: expected 200, got %d", rec.Code)
+		}
+		b = rec.Body.String()
+		if !strings.Contains(b, subBeta.URL) || !strings.Contains(b, reasonBeta) {
+			t.Errorf("expected Beta webhook subscription and DLQ error message in body")
+		}
+		if strings.Contains(b, subAlpha.URL) || strings.Contains(b, reasonAlpha) {
+			t.Errorf("cross-tenant leak: found Alpha webhook/DLQ in Beta view")
+		}
+
+		// 5. Audit Logs
+		req = httptest.NewRequest(http.MethodGet, "/admin/logs/outbound", nil)
+		req.AddCookie(cookie)
+		req.AddCookie(cookieBeta)
+		rec = httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("logs: expected 200, got %d", rec.Code)
+		}
+		b = rec.Body.String()
+		if !strings.Contains(b, traceBeta) {
+			t.Errorf("expected Beta trace %s in body", traceBeta)
+		}
+		if strings.Contains(b, traceAlpha) {
+			t.Errorf("cross-tenant leak: found Alpha trace in Beta view")
+		}
+
+		// 6. Inbox
+		req = httptest.NewRequest(http.MethodGet, "/admin/inbox", nil)
+		req.AddCookie(cookie)
+		req.AddCookie(cookieBeta)
+		rec = httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("inbox: expected 200, got %d", rec.Code)
+		}
+		b = rec.Body.String()
+		if strings.Contains(b, contactAlpha.Name) {
+			t.Errorf("cross-tenant leak: found Alpha contact in Beta inbox")
+		}
+	})
+}

@@ -338,3 +338,60 @@ func TestPlaygroundRouteDecommissioned(t *testing.T) {
 	}
 }
 
+// TestAdminSidebar_WorkspaceSelector_RendersAndSwitches tests that workspace selector renders and triggers smart transitions.
+func TestAdminSidebar_WorkspaceSelector_RendersAndSwitches(t *testing.T) {
+	e := setupTestRoutes(t)
+
+	// Log in to get session cookie
+	form := strings.NewReader("password=testpass123")
+	loginReq := httptest.NewRequest(http.MethodPost, "/admin/login", form)
+	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginRec := httptest.NewRecorder()
+	e.ServeHTTP(loginRec, loginReq)
+
+	var sessionCookie *http.Cookie
+	for _, c := range loginRec.Result().Cookies() {
+		if strings.Contains(c.Name, "session") {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("no session cookie found after login")
+	}
+
+	// 1. Check sidebar renders workspace selector
+	req := httptest.NewRequest(http.MethodGet, "/admin/", nil)
+	req.AddCookie(sessionCookie)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "sidebar-workspace-selector") {
+		t.Errorf("expected page to contain #sidebar-workspace-selector, got %s", body)
+	}
+
+	// 2. Test switching active workspace via POST /admin/workspaces/active with smart navigation
+	wsID := "b2000000-0000-0000-0000-000000000002"
+	f := strings.NewReader("workspace_id=" + wsID)
+	switchReq := httptest.NewRequest(http.MethodPost, "/admin/workspaces/active", f)
+	switchReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	switchReq.Header.Set("HX-Request", "true")
+	switchReq.Header.Set("HX-Current-URL", "http://localhost:8080/admin/inbox")
+	switchReq.AddCookie(sessionCookie)
+	switchRec := httptest.NewRecorder()
+
+	// Register route on e if not already present in test setup
+	e.POST("/admin/workspaces/active", (&admin.DashboardHandler{}).SelectWorkspace)
+	e.ServeHTTP(switchRec, switchReq)
+
+	if switchRec.Code != http.StatusOK && switchRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 200/204 on workspace switch, got %d", switchRec.Code)
+	}
+	if refresh := switchRec.Header().Get("HX-Refresh"); refresh != "true" {
+		t.Errorf("expected HX-Refresh 'true' for list view, got %q", refresh)
+	}
+}

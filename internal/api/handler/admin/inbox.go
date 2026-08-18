@@ -14,6 +14,7 @@ import (
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/components"
 	"github.com/pablojhp.pergo/templates/pages"
@@ -26,19 +27,22 @@ type MessagePublisher interface {
 
 // InboxHandler holds dependencies for the conversational inbox.
 type InboxHandler struct {
-	Repo             *repository.AuditRepository
-	Sessions         *repository.RecipientSessionRepository
-	Workspaces       *repository.WorkspaceRepository
-	Connections      *repository.ConnectionRepository
-	Publisher        MessagePublisher
-	Templates        *repository.WABATemplateRepository
-	ContactRepo      *repository.ContactRepository
-	UserActionLogs   *repository.UserActionLogRepository
+	Repo           *repository.AuditRepository
+	Sessions       *repository.RecipientSessionRepository
+	Workspaces     *repository.WorkspaceRepository
+	Connections    *repository.ConnectionRepository
+	Publisher      MessagePublisher
+	Templates      *repository.WABATemplateRepository
+	ContactRepo    *repository.ContactRepository
+	UserActionLogs *repository.UserActionLogRepository
 }
 
-// resolveWorkspaceID reads the active workspace from the cookie.
+// resolveWorkspaceID reads the active workspace from tenant context or cookie.
 // Returns uuid.Nil if not set or invalid; callers should handle gracefully.
 func resolveWorkspaceID(c *echo.Context) uuid.UUID {
+	if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
+		return wsID
+	}
 	cookie, err := c.Cookie("pergo-active-workspace")
 	if err != nil || cookie == nil || cookie.Value == "" {
 		return uuid.Nil
@@ -96,7 +100,7 @@ func (h *InboxHandler) View(c *echo.Context) error {
 	}
 
 	inboxPage := pages.InboxPage(conversations, unreadMap, connectionFilter, unreadCount, nil, connections)
- 
+
 	if mw.IsHTMX(c) {
 		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, connectionFilter, unreadCount, nil, connections))
 	}
@@ -333,8 +337,8 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 	ctx := c.Request().Context()
 	workspaceID := resolveWorkspaceID(c)
 
-	contact := c.FormValue("contact")           // the recipient phone/chat ID (to field)
-	channel := c.FormValue("channel")            // whatsapp / whatsapp_cloud / telegram
+	contact := c.FormValue("contact")                      // the recipient phone/chat ID (to field)
+	channel := c.FormValue("channel")                      // whatsapp / whatsapp_cloud / telegram
 	recipientIdentity := c.FormValue("recipient_identity") // the bot/phone identity (sender_identity)
 	body := strings.TrimSpace(c.FormValue("body"))
 
@@ -522,7 +526,7 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 	}
 
 	traceID := "new-chat-" + uuid.New().String()
-	
+
 	// Create NATS outbound QueueMessage
 	qMsg := domain.QueueMessage{
 		WorkspaceID:    workspaceID,
@@ -635,7 +639,6 @@ func (h *InboxHandler) MergeContacts(c *echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
-
 // escapeHTML performs minimal HTML escaping to prevent XSS in string-concatenated HTML.
 func escapeHTML(s string) string {
 	result := make([]byte, 0, len(s))
@@ -707,4 +710,3 @@ func (h *InboxHandler) ToggleBot(c *echo.Context) error {
 	contact.BotPausedAt = pausedAt
 	return mw.Render(c, http.StatusOK, components.BotStatusBadge(contact))
 }
-

@@ -216,8 +216,7 @@ templ WorkspaceSelector(activeWorkspace *repository.Workspace, workspaces []repo
 			<select name="workspace_id" 
 			        hx-post="/admin/workspaces/active" 
 			        hx-trigger="change" 
-			        hx-swap="none"
-			        onchange="window.location.reload()"
+			        hx-swap="none" 
 			        class="select select-bordered select-xs w-full max-w-xs font-medium text-zinc-800 bg-white border-zinc-200 focus:outline-none">
 				for _, ws := range workspaces {
 					if activeWorkspace != nil && ws.ID == activeWorkspace.ID {

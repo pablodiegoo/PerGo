@@ -24,8 +24,10 @@ func HTMXMiddleware() echo.MiddlewareFunc {
 
 // IsHTMX checks if the request is from HTMX (fragment request).
 func IsHTMX(c *echo.Context) bool {
-	v, _ := c.Request().Context().Value(htmxKey{}).(bool)
-	return v
+	if v, ok := c.Request().Context().Value(htmxKey{}).(bool); ok && v {
+		return true
+	}
+	return c.Request() != nil && c.Request().Header.Get("HX-Request") == "true"
 }
 
 // Render writes a templ component to the Echo response.

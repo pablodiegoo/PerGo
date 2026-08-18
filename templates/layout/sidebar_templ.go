@@ -522,7 +522,7 @@ func WorkspaceSelector(activeWorkspace *repository.Workspace, workspaces []repos
 		}
 		ctx = templ.ClearChildren(ctx)
 		if len(workspaces) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<div id=\"sidebar-workspace-selector\" class=\"px-4 py-2 border-b border-zinc-200\"><label class=\"block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1\">Workspace</label> <select name=\"workspace_id\" hx-post=\"/admin/workspaces/active\" hx-trigger=\"change\" hx-swap=\"none\" onchange=\"window.location.reload()\" class=\"select select-bordered select-xs w-full max-w-xs font-medium text-zinc-800 bg-white border-zinc-200 focus:outline-none\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<div id=\"sidebar-workspace-selector\" class=\"px-4 py-2 border-b border-zinc-200\"><label class=\"block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1\">Workspace</label> <select name=\"workspace_id\" hx-post=\"/admin/workspaces/active\" hx-trigger=\"change\" hx-swap=\"none\" class=\"select select-bordered select-xs w-full max-w-xs font-medium text-zinc-800 bg-white border-zinc-200 focus:outline-none\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -535,7 +535,7 @@ func WorkspaceSelector(activeWorkspace *repository.Workspace, workspaces []repos
 					var templ_7745c5c3_Var35 string
 					templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.ResolveAttributeValue(ws.ID.String())
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 224, Col: 36}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 223, Col: 36}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var35)
 					if templ_7745c5c3_Err != nil {
@@ -548,7 +548,7 @@ func WorkspaceSelector(activeWorkspace *repository.Workspace, workspaces []repos
 					var templ_7745c5c3_Var36 string
 					templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(ws.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 224, Col: 57}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 223, Col: 57}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 					if templ_7745c5c3_Err != nil {
@@ -566,7 +566,7 @@ func WorkspaceSelector(activeWorkspace *repository.Workspace, workspaces []repos
 					var templ_7745c5c3_Var37 string
 					templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.ResolveAttributeValue(ws.ID.String())
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 226, Col: 36}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 225, Col: 36}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
 					if templ_7745c5c3_Err != nil {
@@ -579,7 +579,7 @@ func WorkspaceSelector(activeWorkspace *repository.Workspace, workspaces []repos
 					var templ_7745c5c3_Var38 string
 					templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(ws.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 226, Col: 48}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/layout/sidebar.templ`, Line: 225, Col: 48}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 					if templ_7745c5c3_Err != nil {

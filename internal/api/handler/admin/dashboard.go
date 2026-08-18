@@ -4,6 +4,8 @@ package admin
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -180,7 +182,99 @@ func (h *DashboardHandler) SimulateWebhook(c *echo.Context) error {
 	`)
 }
 
-// SelectWorkspace updates the active workspace cookie.
+// ResolveWorkspaceSwitchTarget determines if a URL is a detail view
+// that should redirect to its parent section root, or a list view that should reload in place.
+func ResolveWorkspaceSwitchTarget(rawURL string) (isDetail bool, targetPath string) {
+	if rawURL == "" {
+		return false, "/admin/"
+	}
+
+	parsed, err := url.Parse(rawURL)
+	var path string
+	if err == nil && parsed.Path != "" {
+		path = parsed.Path
+	} else {
+		path = rawURL
+	}
+
+	trimmed := strings.TrimRight(path, "/")
+	if trimmed == "" {
+		trimmed = "/admin"
+	}
+
+	segments := strings.Split(strings.Trim(trimmed, "/"), "/")
+	if len(segments) == 0 || segments[0] != "admin" {
+		return false, path
+	}
+
+	if len(segments) == 1 { // /admin
+		return false, path
+	}
+
+	section := segments[1]
+
+	switch section {
+	case "workspaces", "workspace":
+		if len(segments) == 2 {
+			return false, path
+		}
+		sub := segments[2]
+		if sub == "new" || sub == "selector" || sub == "active" {
+			return false, path
+		}
+		return true, "/admin/workspaces"
+
+	case "campaigns":
+		if len(segments) == 2 || (len(segments) == 3 && segments[2] == "new") {
+			return false, path
+		}
+		return true, "/admin/campaigns"
+
+	case "webhooks":
+		if len(segments) == 2 {
+			return false, path
+		}
+		if len(segments) >= 3 {
+			sub := segments[2]
+			if sub == "subscriptions" {
+				if len(segments) == 3 || (len(segments) == 4 && segments[3] == "new") {
+					return false, path
+				}
+				return true, "/admin/webhooks"
+			}
+			if sub == "dlq" {
+				if len(segments) == 3 || (len(segments) == 4 && segments[3] == "badge") {
+					return false, path
+				}
+				return true, "/admin/webhooks"
+			}
+		}
+		return false, path
+
+	case "logs", "audit":
+		if len(segments) <= 3 {
+			return false, path
+		}
+		if len(segments) >= 4 && segments[2] == "actions" {
+			return true, "/admin/logs/actions"
+		}
+		return false, path
+
+	case "connections", "devices":
+		if len(segments) == 2 || (len(segments) == 3 && (segments[2] == "pair-form" || segments[2] == "test" || segments[2] == "qr")) {
+			return false, path
+		}
+		return true, "/admin/connections"
+
+	case "tags", "templates", "telemetry", "inbox", "integrations":
+		return false, path
+
+	default:
+		return false, path
+	}
+}
+
+// SelectWorkspace updates the active workspace cookie and triggers smart navigation.
 // POST /admin/workspaces/active
 func (h *DashboardHandler) SelectWorkspace(c *echo.Context) error {
 	wsIDStr := c.FormValue("workspace_id")
@@ -193,7 +287,30 @@ func (h *DashboardHandler) SelectWorkspace(c *echo.Context) error {
 	}
 
 	mw.SetActiveWorkspaceCookie(c, wsID)
-	return c.NoContent(http.StatusNoContent)
+
+	currentURL := c.Request().Header.Get("HX-Current-URL")
+	if currentURL == "" {
+		currentURL = c.FormValue("current_path")
+	}
+	if currentURL == "" {
+		currentURL = c.Request().Referer()
+	}
+
+	isDetail, targetPath := ResolveWorkspaceSwitchTarget(currentURL)
+
+	if mw.IsHTMX(c) {
+		if isDetail {
+			c.Response().Header().Set("HX-Redirect", targetPath)
+		} else {
+			c.Response().Header().Set("HX-Refresh", "true")
+		}
+		return c.NoContent(http.StatusOK)
+	}
+
+	if isDetail {
+		return c.Redirect(http.StatusSeeOther, targetPath)
+	}
+	return c.NoContent(http.StatusOK)
 }
 
 // WorkspaceSelector renders the workspace dropdown selector for the sidebar.
@@ -218,4 +335,3 @@ func (h *DashboardHandler) WorkspaceSelector(c *echo.Context) error {
 
 	return mw.Render(c, http.StatusOK, layout.WorkspaceSelector(ws, workspaces))
 }
-

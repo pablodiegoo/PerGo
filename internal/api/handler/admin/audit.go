@@ -31,9 +31,11 @@ func parseAuditFilters(c *echo.Context) repository.AuditFilters {
 	}
 
 	if wsStr := c.QueryParam("workspace_id"); wsStr != "" {
-		if id, err := uuid.Parse(wsStr); err == nil {
+		if id, err := uuid.Parse(wsStr); err == nil && id != uuid.Nil {
 			filters.WorkspaceID = &id
 		}
+	} else if wsID := resolveWorkspaceID(c); wsID != uuid.Nil {
+		filters.WorkspaceID = &wsID
 	}
 	if traceID := c.QueryParam("trace_id"); traceID != "" {
 		filters.TraceID = traceID
