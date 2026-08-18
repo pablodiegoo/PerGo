@@ -172,6 +172,81 @@ Disconnects the active session, cancels active pairing loops, emits a `connectio
 
 ---
 
+### 2.6 Register WhatsApp Cloud (WABA) Connection
+Registers a Meta WhatsApp Cloud API account instance for the workspace, automatically sanitizing the sender identity and configuring credentials.
+
+* **Method & Path:** `POST /api/v1/connections/waba` (or `POST /api/v1/workspaces/:workspace_id/connections/waba`, alias `POST /api/v1/devices/waba`)
+* **Request Headers:**
+  * `Authorization: Bearer <WORKSPACE_API_KEY>`
+  * `Content-Type: application/json`
+
+#### Request Body
+```json
+{
+  "name": "Acme WhatsApp Cloud",
+  "phone_number_id": "98765432101",
+  "waba_account_id": "12345678901",
+  "token": "EAABbCcDd123...",
+  "verify_token": "custom_verify_token",
+  "app_secret": "meta_app_secret_xyz",
+  "display_phone_number": "+55 11 98888-7777",
+  "verified_name": "Acme Official Support"
+}
+```
+
+#### Response (`201 Created`)
+```json
+{
+  "id": "c2d3e4f5-a6b7-4c8d-9e0f-1a2b3c4d5e6f",
+  "name": "Acme WhatsApp Cloud",
+  "slug": "acme-whatsapp-cloud",
+  "channel": "whatsapp_cloud",
+  "sender_identity": "5511988887777",
+  "status": "connected",
+  "is_default": false,
+  "connected_since": "2026-08-18T15:00:00Z",
+  "created_at": "2026-08-18T15:00:00Z",
+  "updated_at": "2026-08-18T15:00:00Z"
+}
+```
+
+---
+
+### 2.7 Register Telegram Bot Connection
+Registers a Telegram Bot instance by validating the Bot API Token against `https://api.telegram.org/bot<token>/getMe` and registering the webhook automatically when an HTTPS external URL is configured.
+
+* **Method & Path:** `POST /api/v1/connections/telegram` (or `POST /api/v1/workspaces/:workspace_id/connections/telegram`, alias `POST /api/v1/devices/telegram`)
+* **Request Headers:**
+  * `Authorization: Bearer <WORKSPACE_API_KEY>`
+  * `Content-Type: application/json`
+
+#### Request Body
+```json
+{
+  "name": "Acme Telegram Support",
+  "token": "123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ",
+  "secret_token": "optional_custom_secret"
+}
+```
+
+#### Response (`201 Created`)
+```json
+{
+  "id": "d3e4f5a6-b7c8-4d9e-0f1a-2b3c4d5e6f7a",
+  "name": "Acme Telegram Support",
+  "slug": "acme-telegram-support",
+  "channel": "telegram",
+  "sender_identity": "@acme_support_bot",
+  "status": "connected",
+  "is_default": false,
+  "connected_since": "2026-08-18T15:00:00Z",
+  "created_at": "2026-08-18T15:00:00Z",
+  "updated_at": "2026-08-18T15:00:00Z"
+}
+```
+
+---
+
 ## 3. Webhook Subscriptions REST API
 
 Programmatic CRUD for webhook subscribers with automated HMAC-SHA256 signing secret generation and SSRF protection.

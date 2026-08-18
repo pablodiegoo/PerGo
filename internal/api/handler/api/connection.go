@@ -37,6 +37,12 @@ type WABAMetaClient interface {
 	SyncTemplates(ctx context.Context, connectionID uuid.UUID, wabaAccountID, token string, workspaceID uuid.UUID, repo *repository.WABATemplateRepository, bypassRateLimit bool) ([]repository.WABATemplate, error)
 }
 
+// TelegramBotClient defines operations for interacting with Telegram Bot API.
+type TelegramBotClient interface {
+	ValidateToken(ctx context.Context, token string) (string, error)
+	RegisterWebhook(ctx context.Context, token, webhookURL, secretToken string) error
+}
+
 // SessionManager defines the pairing and session methods required by ConnectionAPIHandler.
 type SessionManager interface {
 	StartPairingSession(ctx context.Context, workspaceID uuid.UUID, phone string, existingConnID *uuid.UUID, proxyURL string) (*session.PairingSession, error)
@@ -55,22 +61,59 @@ type ActiveSessions interface {
 	GetClient(jid string) *whatsapp.WhatsAppClient
 }
 
-// ConnectionAPIHandler handles headless REST APIs for connection lifecycle and QR streaming.
-type ConnectionAPIHandler struct {
-	repo          ConnectionRepo
-	manager       SessionManager
-	sessions      ActiveSessions
-	templatesRepo *repository.WABATemplateRepository
-	metaClient    WABAMetaClient
+// ConnectionAPIOption configures optional dependencies on ConnectionAPIHandler.
+type ConnectionAPIOption func(*ConnectionAPIHandler)
+
+// WithWABAMetaClient sets the WABA Meta client.
+func WithWABAMetaClient(metaClient WABAMetaClient) ConnectionAPIOption {
+	return func(h *ConnectionAPIHandler) {
+		h.metaClient = metaClient
+	}
 }
 
-// NewConnectionAPIHandler creates a new ConnectionAPIHandler.
-func NewConnectionAPIHandler(repo ConnectionRepo, manager SessionManager, sessions ActiveSessions) *ConnectionAPIHandler {
-	return &ConnectionAPIHandler{
+// WithWABATemplateRepo sets the WABA template repository.
+func WithWABATemplateRepo(repo *repository.WABATemplateRepository) ConnectionAPIOption {
+	return func(h *ConnectionAPIHandler) {
+		h.templatesRepo = repo
+	}
+}
+
+// WithTelegramClient sets the Telegram Bot client.
+func WithTelegramClient(tgClient TelegramBotClient) ConnectionAPIOption {
+	return func(h *ConnectionAPIHandler) {
+		h.telegramClient = tgClient
+	}
+}
+
+// WithExternalURL sets the external URL for webhook registrations.
+func WithExternalURL(externalURL string) ConnectionAPIOption {
+	return func(h *ConnectionAPIHandler) {
+		h.externalURL = externalURL
+	}
+}
+
+// ConnectionAPIHandler handles headless REST APIs for connection lifecycle and QR streaming.
+type ConnectionAPIHandler struct {
+	repo           ConnectionRepo
+	manager        SessionManager
+	sessions       ActiveSessions
+	templatesRepo  *repository.WABATemplateRepository
+	metaClient     WABAMetaClient
+	telegramClient TelegramBotClient
+	externalURL    string
+}
+
+// NewConnectionAPIHandler creates a new ConnectionAPIHandler with optional configurations.
+func NewConnectionAPIHandler(repo ConnectionRepo, manager SessionManager, sessions ActiveSessions, opts ...ConnectionAPIOption) *ConnectionAPIHandler {
+	h := &ConnectionAPIHandler{
 		repo:     repo,
 		manager:  manager,
 		sessions: sessions,
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // SetTemplateRepo sets the WABA template repository used for template sync.
@@ -83,6 +126,16 @@ func (h *ConnectionAPIHandler) SetMetaClient(metaClient WABAMetaClient) {
 	h.metaClient = metaClient
 }
 
+// SetTelegramClient sets the Telegram client used for Telegram Bot API interactions.
+func (h *ConnectionAPIHandler) SetTelegramClient(tgClient TelegramBotClient) {
+	h.telegramClient = tgClient
+}
+
+// SetExternalURL sets the base external URL for webhook callbacks.
+func (h *ConnectionAPIHandler) SetExternalURL(externalURL string) {
+	h.externalURL = externalURL
+}
+
 // RegisterRoutes registers the connection endpoints on both /api/v1/connections and /api/v1/devices.
 func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	// Canonical routes
@@ -90,6 +143,8 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	connGroup.POST("/pair", h.StartPairing)
 	connGroup.POST("/waba", h.CreateWABA)
 	connGroup.POST("/waba/", h.CreateWABA)
+	connGroup.POST("/telegram", h.CreateTelegram)
+	connGroup.POST("/telegram/", h.CreateTelegram)
 	connGroup.GET("", h.List)
 	connGroup.GET("/", h.List)
 	connGroup.GET("/:id/qr/stream", h.StreamQR)
@@ -100,12 +155,16 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	wsConnGroup := e.Group("/api/v1/workspaces/:workspace_id/connections")
 	wsConnGroup.POST("/waba", h.CreateWABA)
 	wsConnGroup.POST("/waba/", h.CreateWABA)
+	wsConnGroup.POST("/telegram", h.CreateTelegram)
+	wsConnGroup.POST("/telegram/", h.CreateTelegram)
 
 	// Retrocompatible aliases
 	devGroup := e.Group("/api/v1/devices")
 	devGroup.POST("/pair", h.StartPairing)
 	devGroup.POST("/waba", h.CreateWABA)
 	devGroup.POST("/waba/", h.CreateWABA)
+	devGroup.POST("/telegram", h.CreateTelegram)
+	devGroup.POST("/telegram/", h.CreateTelegram)
 	devGroup.GET("", h.List)
 	devGroup.GET("/", h.List)
 	devGroup.GET("/:id/qr/stream", h.StreamQR)
@@ -116,6 +175,8 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	wsDevGroup := e.Group("/api/v1/workspaces/:workspace_id/devices")
 	wsDevGroup.POST("/waba", h.CreateWABA)
 	wsDevGroup.POST("/waba/", h.CreateWABA)
+	wsDevGroup.POST("/telegram", h.CreateTelegram)
+	wsDevGroup.POST("/telegram/", h.CreateTelegram)
 }
 
 func (h *ConnectionAPIHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
@@ -135,6 +196,53 @@ func (h *ConnectionAPIHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, e
 	}
 
 	return ctxID, nil
+}
+
+func sanitizePhoneIdentity(phone string) string {
+	phone = strings.TrimSpace(phone)
+	if phone == "" {
+		return ""
+	}
+	if clean, valid := domain.SanitizePhone(phone); valid {
+		return clean
+	}
+	return phone
+}
+
+func (h *ConnectionAPIHandler) generateUniqueSlug(ctx context.Context, wsID uuid.UUID, name, defaultSlug string) string {
+	baseSlug := slug.Generate(name)
+	if baseSlug == "" {
+		baseSlug = defaultSlug
+	}
+	candidateSlug := baseSlug
+	if h.repo != nil {
+		counter := 1
+		for {
+			existing, err := h.repo.GetBySlug(ctx, wsID, candidateSlug)
+			if errors.Is(err, repository.ErrConnectionNotFound) || existing == nil {
+				break
+			}
+			counter++
+			candidateSlug = fmt.Sprintf("%s-%d", baseSlug, counter)
+		}
+	}
+	return candidateSlug
+}
+
+// StoredWABAConfig represents the credentials stored in the database for a WhatsApp Cloud API connection.
+type StoredWABAConfig struct {
+	PhoneNumberID string `json:"phone_number_id"`
+	Token         string `json:"token"`
+	WABAAccountID string `json:"waba_account_id"`
+	VerifyToken   string `json:"verify_token,omitempty"`
+	AppSecret     string `json:"app_secret,omitempty"`
+}
+
+// StoredTelegramConfig represents the credentials stored in the database for a Telegram Bot connection.
+type StoredTelegramConfig struct {
+	Token       string `json:"token"`
+	SecretToken string `json:"secret_token"`
+	BotUsername string `json:"bot_username"`
 }
 
 // CreateWABAConnectionRequest defines the JSON payload for registering a WhatsApp Cloud API connection.
@@ -190,29 +298,24 @@ func (h *ConnectionAPIHandler) CreateWABA(c *echo.Context) error {
 	var senderIdentity string
 	var verifiedName string = strings.TrimSpace(req.VerifiedName)
 
-	if displayPhone := strings.TrimSpace(req.DisplayPhoneNumber); displayPhone != "" {
-		if clean, valid := domain.SanitizePhone(displayPhone); valid {
-			senderIdentity = clean
-		} else {
-			senderIdentity = displayPhone
-		}
+	if displayPhone := sanitizePhoneIdentity(req.DisplayPhoneNumber); displayPhone != "" {
+		senderIdentity = displayPhone
 	} else if h.metaClient != nil {
 		if details, err := h.metaClient.FetchPhoneNumberDetails(ctx, phoneNumberID, token); err == nil && details != nil {
 			if details.DisplayPhoneNumber != "" {
-				if clean, valid := domain.SanitizePhone(details.DisplayPhoneNumber); valid {
-					senderIdentity = clean
-				} else {
-					senderIdentity = details.DisplayPhoneNumber
-				}
+				senderIdentity = sanitizePhoneIdentity(details.DisplayPhoneNumber)
 			}
 			if verifiedName == "" && details.VerifiedName != "" {
-				verifiedName = details.VerifiedName
+				verifiedName = strings.TrimSpace(details.VerifiedName)
 			}
 		}
 	}
 
 	if senderIdentity == "" {
-		senderIdentity = phoneNumberID
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "display_phone_number is required when Meta phone number details cannot be fetched automatically",
+		})
 	}
 
 	name := strings.TrimSpace(req.Name)
@@ -222,37 +325,13 @@ func (h *ConnectionAPIHandler) CreateWABA(c *echo.Context) error {
 		} else if req.DisplayPhoneNumber != "" {
 			name = req.DisplayPhoneNumber
 		} else {
-			name = "WABA " + phoneNumberID
+			name = "WABA " + senderIdentity
 		}
 	}
 
-	baseSlug := slug.Generate(name)
-	if baseSlug == "" {
-		baseSlug = "waba"
-	}
+	candidateSlug := h.generateUniqueSlug(ctx, wsID, name, "waba")
 
-	candidateSlug := baseSlug
-	if h.repo != nil {
-		counter := 1
-		for {
-			existing, err := h.repo.GetBySlug(ctx, wsID, candidateSlug)
-			if errors.Is(err, repository.ErrConnectionNotFound) || existing == nil {
-				break
-			}
-			counter++
-			candidateSlug = fmt.Sprintf("%s-%d", baseSlug, counter)
-		}
-	}
-
-	type storedWABAConfig struct {
-		PhoneNumberID string `json:"phone_number_id"`
-		Token         string `json:"token"`
-		WABAAccountID string `json:"waba_account_id"`
-		VerifyToken   string `json:"verify_token,omitempty"`
-		AppSecret     string `json:"app_secret,omitempty"`
-	}
-
-	wabaCfg := storedWABAConfig{
+	wabaCfg := StoredWABAConfig{
 		PhoneNumberID: phoneNumberID,
 		Token:         token,
 		WABAAccountID: wabaAccountID,
@@ -302,6 +381,148 @@ func (h *ConnectionAPIHandler) CreateWABA(c *echo.Context) error {
 		if _, err := h.metaClient.SyncTemplates(ctx, conn.ID, wabaAccountID, token, wsID, h.templatesRepo, true); err != nil {
 			slog.Warn("failed to run initial template sync on waba connection creation", "error", err, "connection_id", conn.ID)
 		}
+	}
+
+	if h.manager != nil {
+		_ = h.manager.EmitStatusEvent(ctx, wsID, conn.ID, conn.Channel, conn.SenderIdentity, "connected")
+	}
+
+	resp := ConnectionItem{
+		ID:             conn.ID,
+		Name:           conn.Name,
+		Slug:           conn.Slug,
+		Channel:        conn.Channel,
+		SenderIdentity: conn.SenderIdentity,
+		Status:         conn.Status,
+		IsDefault:      conn.IsDefault,
+		ConnectedSince: conn.ConnectedSince,
+		CreatedAt:      conn.CreatedAt,
+		UpdatedAt:      conn.UpdatedAt,
+	}
+
+	return c.JSON(http.StatusCreated, resp)
+}
+
+// CreateTelegramConnectionRequest defines the JSON payload for registering a Telegram Bot connection.
+type CreateTelegramConnectionRequest struct {
+	Name        string `json:"name,omitempty"`
+	Token       string `json:"token"`
+	SecretToken string `json:"secret_token,omitempty"`
+}
+
+// CreateTelegram registers a new Telegram bot connection headless via REST API.
+// POST /api/v1/connections/telegram & POST /api/v1/workspaces/:workspace_id/connections/telegram
+func (h *ConnectionAPIHandler) CreateTelegram(c *echo.Context) error {
+	wsID, err := h.resolveWorkspaceID(c)
+	if err != nil {
+		if strings.Contains(err.Error(), "mismatch") {
+			return c.JSON(http.StatusForbidden, map[string]string{
+				"code":    "forbidden",
+				"message": err.Error(),
+			})
+		}
+		return c.JSON(http.StatusUnauthorized, map[string]string{
+			"code":    "unauthorized",
+			"message": err.Error(),
+		})
+	}
+
+	var req CreateTelegramConnectionRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "invalid request body",
+		})
+	}
+
+	token := strings.TrimSpace(req.Token)
+	if token == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "token is required for Telegram bot connection",
+		})
+	}
+
+	ctx := c.Request().Context()
+
+	tgClient := h.telegramClient
+	if tgClient == nil {
+		tgClient = client.NewTelegramBotClient(nil, "")
+	}
+
+	botUsername, err := tgClient.ValidateToken(ctx, token)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "invalid_telegram_token",
+			"message": fmt.Sprintf("failed to validate Telegram token: %v", err),
+		})
+	}
+
+	secretToken := strings.TrimSpace(req.SecretToken)
+	if secretToken == "" {
+		if strings.HasPrefix(h.externalURL, "https://") {
+			secretToken = uuid.New().String()
+		} else {
+			secretToken = "pergo_secret_token_" + wsID.String()
+		}
+	}
+
+	if strings.HasPrefix(h.externalURL, "https://") {
+		webhookURL := fmt.Sprintf("%s/webhooks/telegram/%s", h.externalURL, wsID.String())
+		if err := tgClient.RegisterWebhook(ctx, token, webhookURL, secretToken); err != nil {
+			slog.Warn("failed to register Telegram webhook on connection creation", "error", err, "workspace_id", wsID)
+		}
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = "Telegram " + botUsername
+	}
+
+	candidateSlug := h.generateUniqueSlug(ctx, wsID, name, "telegram")
+
+	creds := StoredTelegramConfig{
+		Token:       token,
+		SecretToken: secretToken,
+		BotUsername: botUsername,
+	}
+
+	credentialsJSON, err := json.Marshal(creds)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"code":    "internal_error",
+			"message": "failed to encode credentials",
+		})
+	}
+
+	if h.repo == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"code":    "internal_error",
+			"message": "connection repository not configured",
+		})
+	}
+
+	now := time.Now().UTC()
+	connID := uuid.New()
+	conn := &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    wsID,
+		Name:           name,
+		Slug:           candidateSlug,
+		Channel:        "telegram",
+		SenderIdentity: botUsername,
+		Status:         "connected",
+		Credentials:    credentialsJSON,
+		ConnectedSince: &now,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+
+	if err := h.repo.Create(ctx, conn); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"code":    "internal_error",
+			"message": fmt.Sprintf("failed to save connection: %v", err),
+		})
 	}
 
 	if h.manager != nil {

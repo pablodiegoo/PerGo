@@ -747,6 +747,55 @@ func TestHeadlessCPaaS_EndToEndLifecycle(t *testing.T) {
 		defer func() { _ = s.connRepo.Delete(ctx, wabaConnID) }()
 	}
 
+	// =========================================================================
+	// STEP 7: Headless Telegram Bot Connection Registration
+	// =========================================================================
+	var tgConnID uuid.UUID
+	{
+		tgPayload := `{
+			"name": "Acme Telegram Support",
+			"token": "123456789:AAHeadlessIntegrationTestToken",
+			"secret_token": "tg_custom_secret_123"
+		}`
+
+		// 7.1 Create Telegram connection via POST /api/v1/connections/telegram
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/connections/telegram", strings.NewReader(tgPayload))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		rec := httptest.NewRecorder()
+		s.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+			t.Fatalf("expected 201 Created on Telegram connection creation, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var tgResp apipkg.ConnectionItem
+		if err := json.Unmarshal(rec.Body.Bytes(), &tgResp); err != nil {
+			t.Fatalf("failed to decode Telegram connection response: %v", err)
+		}
+
+		tgConnID = tgResp.ID
+		if tgConnID == uuid.Nil {
+			t.Fatal("expected non-nil connection ID for Telegram connection")
+		}
+		if tgResp.Channel != "telegram" {
+			t.Errorf("expected channel telegram, got %s", tgResp.Channel)
+		}
+		if tgResp.Status != "connected" {
+			t.Errorf("expected status connected, got %s", tgResp.Status)
+		}
+
+		// 7.2 Verify connection is persisted in DB
+		dbConn, err := s.connRepo.GetByID(ctx, tgConnID)
+		if err != nil || dbConn == nil {
+			t.Fatalf("failed to get Telegram connection from repo: %v", err)
+		}
+		if dbConn.WorkspaceID != wsID {
+			t.Errorf("expected connection workspace %s, got %s", wsID, dbConn.WorkspaceID)
+		}
+		defer func() { _ = s.connRepo.Delete(ctx, tgConnID) }()
+	}
+
 	// Cleanup Webhook Subscription
 	_ = s.webhookSubRepo.Delete(ctx, subID)
 }

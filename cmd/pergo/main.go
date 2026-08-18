@@ -491,9 +491,16 @@ func main() {
 
 	// --- Connection & Device REST API handler ---
 	wabaMetaClient := client.NewWABAMetaClient(nil, "")
-	connectionAPIHandler := apipkg.NewConnectionAPIHandler(connectionRepo, sessionManager, sessionRegistry)
-	connectionAPIHandler.SetTemplateRepo(wabaTemplateRepo)
-	connectionAPIHandler.SetMetaClient(wabaMetaClient)
+	telegramBotClient := client.NewTelegramBotClient(nil, "")
+	connectionAPIHandler := apipkg.NewConnectionAPIHandler(
+		connectionRepo,
+		sessionManager,
+		sessionRegistry,
+		apipkg.WithWABAMetaClient(wabaMetaClient),
+		apipkg.WithWABATemplateRepo(wabaTemplateRepo),
+		apipkg.WithTelegramClient(telegramBotClient),
+		apipkg.WithExternalURL(cfg.ExternalURL),
+	)
 	connectionAPIHandler.RegisterRoutes(e)
 
 	// --- WABA Template REST API handler ---

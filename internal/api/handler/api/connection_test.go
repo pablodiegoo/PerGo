@@ -112,6 +112,33 @@ func (m *mockWABAMetaClient) SyncTemplates(ctx context.Context, connectionID uui
 	return []repository.WABATemplate{}, nil
 }
 
+type mockTelegramBotClient struct {
+	mu            sync.Mutex
+	validUsername string
+	validateErr   error
+	webhookErr    error
+	webhookCalled bool
+	registeredURL string
+}
+
+func (m *mockTelegramBotClient) ValidateToken(ctx context.Context, token string) (string, error) {
+	if m.validateErr != nil {
+		return "", m.validateErr
+	}
+	if m.validUsername != "" {
+		return m.validUsername, nil
+	}
+	return "@test_bot", nil
+}
+
+func (m *mockTelegramBotClient) RegisterWebhook(ctx context.Context, token, webhookURL, secretToken string) error {
+	m.mu.Lock()
+	m.webhookCalled = true
+	m.registeredURL = webhookURL
+	m.mu.Unlock()
+	return m.webhookErr
+}
+
 type mockSessionManager struct {
 	mu              sync.RWMutex
 	pairingStates   map[string]*session.QREvent
@@ -807,13 +834,13 @@ func TestConnectionAPIHandler_CreateWABA_MissingRequiredFields(t *testing.T) {
 	}
 }
 
-func TestConnectionAPIHandler_CreateWABA_UnauthorizedAndTenantIsolation(t *testing.T) {
+func TestConnectionAPIHandler_CreateWABA_UnauthorizedAndWorkspaceIsolation(t *testing.T) {
 	wsID := uuid.New()
 	otherWsID := uuid.New()
 	connRepo := newMockConnectionRepo()
 	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
 
-	validPayload := []byte(`{"phone_number_id":"123","waba_account_id":"456","token":"tok"}`)
+	validPayload := []byte(`{"phone_number_id":"123","waba_account_id":"456","token":"tok","display_phone_number":"+5511999998888"}`)
 
 	// 1. Missing workspace context
 	{
@@ -840,7 +867,7 @@ func TestConnectionAPIHandler_CreateWABA_UnauthorizedAndTenantIsolation(t *testi
 		}
 	}
 
-	// 3. Workspace ID in path does not match authenticated context (Tenant Isolation)
+	// 3. Workspace ID in path does not match authenticated context (Workspace Isolation)
 	{
 		_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/workspaces/"+otherWsID.String()+"/connections/waba", validPayload, wsID)
 		c.SetPath("/api/v1/workspaces/:workspace_id/connections/waba")
@@ -860,8 +887,8 @@ func TestConnectionAPIHandler_CreateWABA_SlugGenerationAndConflict(t *testing.T)
 	connRepo := newMockConnectionRepo()
 	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
 
-	payload1 := []byte(`{"name":"Loja Matriz","phone_number_id":"111","waba_account_id":"acc1","token":"tok1"}`)
-	payload2 := []byte(`{"name":"Loja Matriz","phone_number_id":"222","waba_account_id":"acc2","token":"tok2"}`)
+	payload1 := []byte(`{"name":"Loja Matriz","phone_number_id":"111","waba_account_id":"acc1","token":"tok1","display_phone_number":"+5511999991111"}`)
+	payload2 := []byte(`{"name":"Loja Matriz","phone_number_id":"222","waba_account_id":"acc2","token":"tok2","display_phone_number":"+5511999992222"}`)
 
 	// First creation -> slug: loja-matriz
 	_, c1, rec1 := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", payload1, wsID)
@@ -891,10 +918,9 @@ func TestConnectionAPIHandler_CreateWABA_TemplateSyncTrigger(t *testing.T) {
 	connRepo := newMockConnectionRepo()
 	metaClient := &mockWABAMetaClient{}
 
-	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
-	handler.SetMetaClient(metaClient)
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil, api.WithWABAMetaClient(metaClient))
 
-	payload := []byte(`{"name":"Sync Test","phone_number_id":"999","waba_account_id":"acc999","token":"tok999"}`)
+	payload := []byte(`{"name":"Sync Test","phone_number_id":"999","waba_account_id":"acc999","token":"tok999","display_phone_number":"+5511999990000"}`)
 	_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", payload, wsID)
 
 	if err := handler.CreateWABA(c); err != nil {
@@ -910,10 +936,9 @@ func TestConnectionAPIHandler_CreateWABA_TemplateSyncTrigger(t *testing.T) {
 
 	// Even if template sync returns error, connection creation should succeed gracefully
 	metaClientErr := &mockWABAMetaClient{errOnSync: errors.New("Meta API sync timeout")}
-	handlerErr := api.NewConnectionAPIHandler(connRepo, nil, nil)
-	handlerErr.SetMetaClient(metaClientErr)
+	handlerErr := api.NewConnectionAPIHandler(connRepo, nil, nil, api.WithWABAMetaClient(metaClientErr))
 
-	payloadErr := []byte(`{"name":"Sync Err Test","phone_number_id":"888","waba_account_id":"acc888","token":"tok888"}`)
+	payloadErr := []byte(`{"name":"Sync Err Test","phone_number_id":"888","waba_account_id":"acc888","token":"tok888","display_phone_number":"+5511999990001"}`)
 	_, cErr, recErr := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", payloadErr, wsID)
 
 	if err := handlerErr.CreateWABA(cErr); err != nil {
@@ -921,6 +946,151 @@ func TestConnectionAPIHandler_CreateWABA_TemplateSyncTrigger(t *testing.T) {
 	}
 	if recErr.Code != http.StatusCreated && recErr.Code != http.StatusOK {
 		t.Errorf("expected success status even if template sync fails, got %d", recErr.Code)
+	}
+}
+
+func TestConnectionAPIHandler_CreateTelegram_Success(t *testing.T) {
+	wsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+	tgClient := &mockTelegramBotClient{validUsername: "@pergo_support_bot"}
+
+	handler := api.NewConnectionAPIHandler(
+		connRepo,
+		nil,
+		nil,
+		api.WithTelegramClient(tgClient),
+		api.WithExternalURL("https://example.com"),
+	)
+
+	payload := []byte(`{
+		"name": "Suporte PerGo Telegram",
+		"token": "123456789:ABCDefGhIJKlmNoPQR",
+		"secret_token": "custom_tg_secret"
+	}`)
+
+	_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/telegram", payload, wsID)
+
+	if err := handler.CreateTelegram(c); err != nil {
+		t.Fatalf("unexpected handler error: %v", err)
+	}
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res api.ConnectionItem
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("failed to parse response JSON: %v", err)
+	}
+
+	if res.Channel != "telegram" {
+		t.Errorf("expected channel 'telegram', got %q", res.Channel)
+	}
+	if res.SenderIdentity != "@pergo_support_bot" {
+		t.Errorf("expected sender_identity '@pergo_support_bot', got %q", res.SenderIdentity)
+	}
+	if res.Name != "Suporte PerGo Telegram" {
+		t.Errorf("expected name 'Suporte PerGo Telegram', got %q", res.Name)
+	}
+	if res.Slug != "suporte-pergo-telegram" {
+		t.Errorf("expected slug 'suporte-pergo-telegram', got %q", res.Slug)
+	}
+	if res.Status != "connected" {
+		t.Errorf("expected status 'connected', got %q", res.Status)
+	}
+
+	// Verify webhook was registered with HTTPS URL
+	if !tgClient.webhookCalled {
+		t.Errorf("expected webhook registration to be called when HTTPS external URL is set")
+	}
+	expectedWebhookURL := "https://example.com/webhooks/telegram/" + wsID.String()
+	if tgClient.registeredURL != expectedWebhookURL {
+		t.Errorf("expected webhook URL %q, got %q", expectedWebhookURL, tgClient.registeredURL)
+	}
+
+	// Verify credentials in DB
+	saved, err := connRepo.GetByID(context.Background(), res.ID)
+	if err != nil || saved == nil {
+		t.Fatalf("connection not found in repository: %v", err)
+	}
+
+	var creds api.StoredTelegramConfig
+	if err := json.Unmarshal(saved.Credentials, &creds); err != nil {
+		t.Fatalf("failed to decode stored credentials: %v", err)
+	}
+	if creds.Token != "123456789:ABCDefGhIJKlmNoPQR" || creds.SecretToken != "custom_tg_secret" || creds.BotUsername != "@pergo_support_bot" {
+		t.Errorf("stored credentials mismatch: %+v", creds)
+	}
+}
+
+func TestConnectionAPIHandler_CreateTelegram_InvalidToken(t *testing.T) {
+	wsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+	tgClient := &mockTelegramBotClient{validateErr: errors.New("Unauthorized")}
+
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil, api.WithTelegramClient(tgClient))
+
+	payload := []byte(`{"token": "invalid_token_123"}`)
+	_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/telegram", payload, wsID)
+
+	if err := handler.CreateTelegram(c); err != nil {
+		t.Fatalf("unexpected handler error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for invalid token, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestConnectionAPIHandler_CreateTelegram_MissingToken(t *testing.T) {
+	wsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
+
+	payload := []byte(`{"name": "No Token Bot"}`)
+	_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/telegram", payload, wsID)
+
+	if err := handler.CreateTelegram(c); err != nil {
+		t.Fatalf("unexpected handler error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400 Bad Request for missing token, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestConnectionAPIHandler_CreateTelegram_WorkspaceIsolation(t *testing.T) {
+	wsID := uuid.New()
+	otherWsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+	tgClient := &mockTelegramBotClient{validUsername: "@isolation_bot"}
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil, api.WithTelegramClient(tgClient))
+
+	validPayload := []byte(`{"token":"valid_tg_tok"}`)
+
+	// 1. Missing workspace
+	{
+		_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/telegram", validPayload, uuid.Nil)
+		if err := handler.CreateTelegram(c); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 401 Unauthorized, got %d", rec.Code)
+		}
+	}
+
+	// 2. Mismatched workspace in path
+	{
+		_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/workspaces/"+otherWsID.String()+"/connections/telegram", validPayload, wsID)
+		c.SetPath("/api/v1/workspaces/:workspace_id/connections/telegram")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: otherWsID.String()}})
+
+		if err := handler.CreateTelegram(c); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusForbidden && rec.Code != http.StatusUnauthorized {
+			t.Errorf("expected 403 Forbidden, got %d", rec.Code)
+		}
 	}
 }
 
