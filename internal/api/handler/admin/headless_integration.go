@@ -12,7 +12,6 @@ import (
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
-	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -38,23 +37,6 @@ func NewHeadlessAdminHandler(wsRepo *repository.WorkspaceRepository, apiKeyRepo 
 	}
 }
 
-func (h *HeadlessAdminHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
-	if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
-		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
-			return id, nil
-		}
-	}
-	if idStr, err := echo.PathParam[string](c, "id"); err == nil && idStr != "" {
-		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
-			return id, nil
-		}
-	}
-	if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
-		return wsID, nil
-	}
-	return uuid.Nil, fmt.Errorf("invalid or missing workspace ID")
-}
-
 func (h *HeadlessAdminHandler) getBaseURL(c *echo.Context) string {
 	if h.ExternalURL != "" {
 		return strings.TrimRight(h.ExternalURL, "/")
@@ -72,7 +54,7 @@ func (h *HeadlessAdminHandler) getBaseURL(c *echo.Context) string {
 
 // GetPortal renders the Headless Developer & SSO Portal page.
 func (h *HeadlessAdminHandler) GetPortal(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
+	wsID, err := resolveWorkspaceID(c)
 	if err != nil || wsID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -116,7 +98,7 @@ func (h *HeadlessAdminHandler) GetPortal(c *echo.Context) error {
 
 // GenerateSSO handles HTMX requests to generate signed SSO token and URL.
 func (h *HeadlessAdminHandler) GenerateSSO(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
+	wsID, err := resolveWorkspaceID(c)
 	if err != nil || wsID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}

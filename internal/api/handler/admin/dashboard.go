@@ -38,7 +38,7 @@ func (h *DashboardHandler) Index(c *echo.Context) error {
 
 	// 1. Resolve workspace from context (injected by ActiveWorkspaceMiddleware) or fallback
 	var ws *repository.Workspace
-	if wsVal, ok := ctx.Value("active_workspace").(*repository.Workspace); ok && wsVal != nil {
+	if wsVal := mw.ActiveWorkspaceFrom(ctx); wsVal != nil {
 		ws = wsVal
 	} else if wsID, ok := tenant.WorkspaceIDFrom(ctx); ok && h.Workspaces != nil {
 		ws, _ = h.Workspaces.GetByID(ctx, wsID)
@@ -319,7 +319,7 @@ func (h *DashboardHandler) WorkspaceSelector(c *echo.Context) error {
 	ctx := c.Request().Context()
 
 	var ws *repository.Workspace
-	if wsVal, ok := ctx.Value("active_workspace").(*repository.Workspace); ok && wsVal != nil {
+	if wsVal := mw.ActiveWorkspaceFrom(ctx); wsVal != nil {
 		ws = wsVal
 	} else if wsID, ok := tenant.WorkspaceIDFrom(ctx); ok && h.Workspaces != nil {
 		ws, _ = h.Workspaces.GetByID(ctx, wsID)

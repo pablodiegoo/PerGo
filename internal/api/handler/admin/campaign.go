@@ -17,7 +17,6 @@ import (
 	"github.com/labstack/echo/v5"
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
-	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
@@ -47,20 +46,8 @@ func NewCampaignHandler(
 	}
 }
 
-func (h *CampaignHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
-	if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
-		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
-			return id, nil
-		}
-	}
-	if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
-		return wsID, nil
-	}
-	return uuid.Nil, fmt.Errorf("invalid or missing workspace ID")
-}
-
 func (h *CampaignHandler) List(c *echo.Context) error {
-	workspaceID, err := h.resolveWorkspaceID(c)
+	workspaceID, err := resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -87,7 +74,7 @@ func (h *CampaignHandler) List(c *echo.Context) error {
 }
 
 func (h *CampaignHandler) NewForm(c *echo.Context) error {
-	workspaceID, err := h.resolveWorkspaceID(c)
+	workspaceID, err := resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -307,7 +294,7 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		scheduledAt = parsed
 	}
 
-	workspaceID, err := h.resolveWorkspaceID(c)
+	workspaceID, err := resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -698,7 +685,7 @@ type CreateCampaignRequest struct {
 
 // APICreate handles campaign creation via JSON REST API with pre-flight validation.
 func (h *CampaignHandler) APICreate(c *echo.Context) error {
-	workspaceID, err := h.resolveWorkspaceID(c)
+	workspaceID, err := resolveWorkspaceID(c)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
@@ -800,7 +787,7 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 
 // APIList returns campaigns for a workspace as JSON.
 func (h *CampaignHandler) APIList(c *echo.Context) error {
-	workspaceID, err := h.resolveWorkspaceID(c)
+	workspaceID, err := resolveWorkspaceID(c)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}

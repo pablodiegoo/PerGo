@@ -3,18 +3,17 @@ package pages
 import (
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/layout"
 )
 
 // WABATemplatePage renders the full WABA templates list page with base layout.
-templ WABATemplatePage(workspaceID uuid.UUID, templates []repository.WABATemplate) {
-	@layout.Base("WABA Templates", WABATemplateListContent(workspaceID, templates))
+templ WABATemplatePage(templates []repository.WABATemplate) {
+	@layout.Base("WABA Templates", WABATemplateListContent(templates))
 }
 
 // WABATemplateListContent renders the template list content.
-templ WABATemplateListContent(workspaceID uuid.UUID, templates []repository.WABATemplate) {
+templ WABATemplateListContent(templates []repository.WABATemplate) {
 	<div class="page-header">
 		<h1>WABA Templates</h1>
 		<div class="header-actions">
@@ -44,7 +43,7 @@ templ WABATemplateListContent(workspaceID uuid.UUID, templates []repository.WABA
 			</thead>
 			<tbody id="template-list-body">
 				for _, tmpl := range templates {
-					@WABATemplateRow(workspaceID, tmpl)
+					@WABATemplateRow(tmpl)
 				}
 				if len(templates) == 0 {
 					<tr>
@@ -57,7 +56,7 @@ templ WABATemplateListContent(workspaceID uuid.UUID, templates []repository.WABA
 }
 
 // WABATemplateRow renders a single WABA template row.
-templ WABATemplateRow(workspaceID uuid.UUID, tmpl repository.WABATemplate) {
+templ WABATemplateRow(tmpl repository.WABATemplate) {
 	<tr id={ fmt.Sprintf("template-row-%s", tmpl.ID) }>
 		<td><strong>{ tmpl.Name }</strong></td>
 		<td><span class="badge badge-info">{ tmpl.Language }</span></td>
@@ -97,7 +96,7 @@ templ WABATemplateRow(workspaceID uuid.UUID, tmpl repository.WABATemplate) {
 }
 
 // WABATemplateCreateForm renders the creation form.
-templ WABATemplateCreateForm(workspaceID uuid.UUID) {
+templ WABATemplateCreateForm() {
 	<div class="section shadow-lg p-6 rounded-lg bg-card border">
 		<h2 class="text-xl font-bold mb-4">New WABA Template</h2>
 		<form

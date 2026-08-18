@@ -3,7 +3,6 @@ package admin
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 
@@ -11,7 +10,6 @@ import (
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
-	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -28,21 +26,9 @@ func NewChatwootAdminHandler(integrationRepo *repository.IntegrationRepository) 
 	}
 }
 
-func (h *ChatwootAdminHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
-	if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
-		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
-			return id, nil
-		}
-	}
-	if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
-		return wsID, nil
-	}
-	return uuid.Nil, fmt.Errorf("invalid or missing workspace ID")
-}
-
 // GetSettings renders the Chatwoot settings page with current configuration.
 func (h *ChatwootAdminHandler) GetSettings(c *echo.Context) error {
-	workspaceID, err := h.resolveWorkspaceID(c)
+	workspaceID, err := resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
@@ -70,7 +56,7 @@ func (h *ChatwootAdminHandler) GetSettings(c *echo.Context) error {
 
 // PostSettings handles saving Chatwoot integration credentials.
 func (h *ChatwootAdminHandler) PostSettings(c *echo.Context) error {
-	workspaceID, err := h.resolveWorkspaceID(c)
+	workspaceID, err := resolveWorkspaceID(c)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}

@@ -21,6 +21,43 @@ const (
 	ActiveWorkspaceCookieName = "pergo-active-workspace"
 )
 
+type (
+	workspaceContextKey struct{}
+	pathContextKey      struct{}
+)
+
+// WithActiveWorkspace injects the active workspace into the context.
+func WithActiveWorkspace(ctx context.Context, ws *repository.Workspace) context.Context {
+	return context.WithValue(ctx, workspaceContextKey{}, ws)
+}
+
+// ActiveWorkspaceFrom retrieves the active workspace from context.
+func ActiveWorkspaceFrom(ctx context.Context) *repository.Workspace {
+	if ws, ok := ctx.Value(workspaceContextKey{}).(*repository.Workspace); ok {
+		return ws
+	}
+	if ws, ok := ctx.Value("active_workspace").(*repository.Workspace); ok {
+		return ws
+	}
+	return nil
+}
+
+// WithActivePath injects the active URL path into the context.
+func WithActivePath(ctx context.Context, path string) context.Context {
+	return context.WithValue(ctx, pathContextKey{}, path)
+}
+
+// ActivePathFrom retrieves the active URL path from context.
+func ActivePathFrom(ctx context.Context) string {
+	if p, ok := ctx.Value(pathContextKey{}).(string); ok {
+		return p
+	}
+	if p, ok := ctx.Value("active_path").(string); ok {
+		return p
+	}
+	return ""
+}
+
 // ActiveWorkspaceMiddleware returns an Echo v5 middleware that centrally resolves
 // the Active Workspace for every incoming operator request.
 //
@@ -76,7 +113,7 @@ func ActiveWorkspaceMiddleware(wsRepo *repository.WorkspaceRepository) echo.Midd
 			// 3. Handle empty database condition
 			if ws == nil {
 				if isCreateWorkspacePath {
-					ctx = context.WithValue(ctx, "active_path", path)
+					ctx = WithActivePath(ctx, path)
 					c.SetRequest(c.Request().WithContext(ctx))
 					return next(c)
 				}
@@ -91,8 +128,8 @@ func ActiveWorkspaceMiddleware(wsRepo *repository.WorkspaceRepository) echo.Midd
 
 			// 4. Inject workspace into context
 			ctx = tenant.WithWorkspaceID(ctx, ws.ID)
-			ctx = context.WithValue(ctx, "active_workspace", ws)
-			ctx = context.WithValue(ctx, "active_path", path)
+			ctx = WithActiveWorkspace(ctx, ws)
+			ctx = WithActivePath(ctx, path)
 
 			c.SetRequest(c.Request().WithContext(ctx))
 			c.Set("workspace", ws)

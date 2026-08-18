@@ -27,7 +27,7 @@ func NewUserLogsHandler(repo *repository.UserActionLogRepository) *UserLogsHandl
 // GET /admin/user-logs
 func (h *UserLogsHandler) List(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceID(c)
+	workspaceID := resolveWorkspaceIDOrNil(c)
 	if workspaceID == uuid.Nil {
 		return c.Redirect(http.StatusFound, "/admin/")
 	}

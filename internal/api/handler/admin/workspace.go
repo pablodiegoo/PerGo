@@ -21,22 +21,6 @@ type WorkspaceHandler struct {
 	ExternalURL string
 }
 
-func (h *WorkspaceHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
-	if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
-		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
-			return id, nil
-		}
-	}
-	if idStr, err := echo.PathParam[string](c, "id"); err == nil && idStr != "" {
-		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
-			return id, nil
-		}
-	}
-	if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
-		return wsID, nil
-	}
-	return uuid.Nil, fmt.Errorf("invalid or missing workspace ID")
-}
 
 // ActiveWorkspace redirects to the detail page of the active workspace.
 func (h *WorkspaceHandler) ActiveWorkspace(c *echo.Context) error {
@@ -158,7 +142,7 @@ func (h *WorkspaceHandler) Delete(c *echo.Context) error {
 
 // GetWebhookSecret returns the workspace's webhook secret key.
 func (h *WorkspaceHandler) GetWebhookSecret(c *echo.Context) error {
-	id, err := h.resolveWorkspaceID(c)
+	id, err := resolveWorkspaceID(c)
 	if err != nil || id == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
@@ -181,7 +165,7 @@ func (h *WorkspaceHandler) GetWebhookSecret(c *echo.Context) error {
 
 // GenerateWebhookSecret generates or regenerates a workspace's webhook secret key.
 func (h *WorkspaceHandler) GenerateWebhookSecret(c *echo.Context) error {
-	id, err := h.resolveWorkspaceID(c)
+	id, err := resolveWorkspaceID(c)
 	if err != nil || id == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}

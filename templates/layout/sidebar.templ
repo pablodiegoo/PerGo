@@ -3,21 +3,16 @@ package layout
 import (
 	"context"
 	"strings"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
 func getActivePath(ctx context.Context) string {
-	if val, ok := ctx.Value("active_path").(string); ok {
-		return val
-	}
-	return ""
+	return middleware.ActivePathFrom(ctx)
 }
 
 func getActiveWorkspace(ctx context.Context) *repository.Workspace {
-	if val, ok := ctx.Value("active_workspace").(*repository.Workspace); ok {
-		return val
-	}
-	return nil
+	return middleware.ActiveWorkspaceFrom(ctx)
 }
 
 func getWorkspacesList(ctx context.Context) []repository.Workspace {

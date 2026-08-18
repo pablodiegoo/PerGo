@@ -38,7 +38,7 @@ type DeviceHandler struct {
 
 // List renders the unified connection management page or HTMX fragment.
 func (h *DeviceHandler) List(c *echo.Context) error {
-	workspaceID := resolveWorkspaceID(c)
+	workspaceID := resolveWorkspaceIDOrNil(c)
 	connections, err := h.Connections.ListByWorkspace(c.Request().Context(), workspaceID)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to load connections: "+err.Error())
@@ -78,7 +78,7 @@ func (h *DeviceHandler) StartPairing(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "phone number is required")
 	}
 
-	wsID := resolveWorkspaceID(c)
+	wsID := resolveWorkspaceIDOrNil(c)
 
 	_, err := h.Manager.StartPairingSession(c.Request().Context(), wsID, phone, existingConnID, proxyURL)
 	if err != nil {
@@ -139,7 +139,7 @@ func (h *DeviceHandler) Disconnect(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "failed to delete connection")
 	}
 
-	workspaceID := resolveWorkspaceID(c)
+	workspaceID := resolveWorkspaceIDOrNil(c)
 	connections, err := h.Connections.ListByWorkspace(ctx, workspaceID)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to reload connections")
@@ -152,7 +152,7 @@ func (h *DeviceHandler) Disconnect(c *echo.Context) error {
 // POST /admin/devices/create
 func (h *DeviceHandler) Create(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceID(c)
+	workspaceID := resolveWorkspaceIDOrNil(c)
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
@@ -312,7 +312,7 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 // POST /admin/devices/:id/slug
 func (h *DeviceHandler) UpdateSlug(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceID(c)
+	workspaceID := resolveWorkspaceIDOrNil(c)
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
