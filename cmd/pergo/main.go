@@ -114,7 +114,7 @@ func main() {
 
 		sessionRegistry := session.NewActiveSession()
 		dispatcherRegistry := channel.NewRegistry(nil)
-		sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", nil)
+		sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, cfg.WAVersion, nil)
 		sessionManager.SetPublisher(publisher)
 
 		ingestor := outbound.NewProcessor(nil, nil, connectionRepo, publisher)
@@ -287,8 +287,13 @@ func main() {
 	inboundRouter := inbound.NewDefaultRouter(chatwootSyncer, typebotForwarder)
 
 	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo, contactRepo, dispatchRepo, inboundRouter)
-	sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, "2.3000.1025000000", inboundProcessor)
+	sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, cfg.WAVersion, inboundProcessor)
 	sessionManager.SetPublisher(publisher)
+	go func() {
+		if err := sessionManager.ReconnectAll(ctx); err != nil {
+			slog.Error("session manager: startup reconnect failed", "error", err)
+		}
+	}()
 	orchestrator := queue.NewDispatchOrchestrator(dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter, contactRepo, 5, 60*time.Second)
 	orchestrator.SetContactRepository(contactRepo)
 	worker := queue.NewWorker(ctx, consumer, orchestrator)
@@ -673,6 +678,7 @@ func main() {
 		NC:            nc,
 		TemplatesRepo: wabaTemplateRepo,
 		ExternalURL:   cfg.ExternalURL,
+		ContactRepo:   contactRepo,
 	}
 	adminGroup.GET("/devices", deviceHandler.List)
 	adminGroup.GET("/connections", deviceHandler.List)

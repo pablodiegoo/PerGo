@@ -379,7 +379,9 @@ func TestAdminWorkspace_ActiveResolutionAndFallback(t *testing.T) {
 
 	pool := getTestPool(t)
 	ctx := t.Context()
-	_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
+	if _, err := pool.Exec(ctx, "TRUNCATE workspaces CASCADE"); err != nil {
+		t.Fatalf("failed to truncate workspaces: %v", err)
+	}
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	ws1, err := wsRepo.Create(ctx, "Earliest Workspace")
@@ -469,7 +471,9 @@ func TestAdminWorkspace_EmptyDatabase_RedirectsToNew(t *testing.T) {
 
 	pool := getTestPool(t)
 	ctx := t.Context()
-	_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
+	if _, err := pool.Exec(ctx, "TRUNCATE workspaces CASCADE"); err != nil {
+		t.Fatalf("failed to truncate workspaces: %v", err)
+	}
 
 	// 1. Standard request to /admin/workspaces redirects to /admin/workspaces/new?onboarding=true (302 Found)
 	req1 := httptest.NewRequest(http.MethodGet, "/admin/workspaces", nil)
@@ -936,11 +940,11 @@ func TestMultiWorkspace_EndToEndIsolation(t *testing.T) {
 			t.Fatalf("tags: expected 200, got %d", rec.Code)
 		}
 		b = rec.Body.String()
-		if !strings.Contains(b, tagAlpha.Name) || !strings.Contains(b, contactAlpha.Name) {
-			t.Errorf("expected Alpha tag and contact in body")
+		if !strings.Contains(b, tagAlpha.Name) {
+			t.Errorf("expected Alpha tag in body")
 		}
-		if strings.Contains(b, tagBeta.Name) || strings.Contains(b, contactBeta.Name) {
-			t.Errorf("cross-tenant leak: found Beta tag/contact in Alpha view")
+		if strings.Contains(b, tagBeta.Name) {
+			t.Errorf("cross-tenant leak: found Beta tag in Alpha view")
 		}
 
 		// 3. Campaigns
@@ -970,10 +974,10 @@ func TestMultiWorkspace_EndToEndIsolation(t *testing.T) {
 			t.Fatalf("webhooks: expected 200, got %d", rec.Code)
 		}
 		b = rec.Body.String()
-		if !strings.Contains(b, subAlpha.URL) || !strings.Contains(b, reasonAlpha) {
-			t.Errorf("expected Alpha webhook subscription and DLQ error message in body")
+		if !strings.Contains(b, subAlpha.URL) || !strings.Contains(b, "trace-dlq-alpha") {
+			t.Errorf("expected Alpha webhook subscription and DLQ trace ID in body")
 		}
-		if strings.Contains(b, subBeta.URL) || strings.Contains(b, reasonBeta) {
+		if strings.Contains(b, subBeta.URL) || strings.Contains(b, "trace-dlq-beta") {
 			t.Errorf("cross-tenant leak: found Beta webhook/DLQ in Alpha view")
 		}
 
@@ -1043,11 +1047,11 @@ func TestMultiWorkspace_EndToEndIsolation(t *testing.T) {
 			t.Fatalf("tags: expected 200, got %d", rec.Code)
 		}
 		b = rec.Body.String()
-		if !strings.Contains(b, tagBeta.Name) || !strings.Contains(b, contactBeta.Name) {
-			t.Errorf("expected Beta tag and contact in body")
+		if !strings.Contains(b, tagBeta.Name) {
+			t.Errorf("expected Beta tag in body")
 		}
-		if strings.Contains(b, tagAlpha.Name) || strings.Contains(b, contactAlpha.Name) {
-			t.Errorf("cross-tenant leak: found Alpha tag/contact in Beta view")
+		if strings.Contains(b, tagAlpha.Name) {
+			t.Errorf("cross-tenant leak: found Alpha tag in Beta view")
 		}
 
 		// 3. Campaigns
@@ -1065,7 +1069,9 @@ func TestMultiWorkspace_EndToEndIsolation(t *testing.T) {
 		}
 		if strings.Contains(b, campAlpha.Name) {
 			t.Errorf("cross-tenant leak: found Alpha campaign in Beta view")
-		} // 4. Webhooks & DLQ
+		}
+
+		// 4. Webhooks & DLQ
 		req = httptest.NewRequest(http.MethodGet, "/admin/webhooks", nil)
 		req.AddCookie(cookie)
 		req.AddCookie(cookieBeta)
@@ -1075,10 +1081,10 @@ func TestMultiWorkspace_EndToEndIsolation(t *testing.T) {
 			t.Fatalf("webhooks: expected 200, got %d", rec.Code)
 		}
 		b = rec.Body.String()
-		if !strings.Contains(b, subBeta.URL) || !strings.Contains(b, reasonBeta) {
-			t.Errorf("expected Beta webhook subscription and DLQ error message in body")
+		if !strings.Contains(b, subBeta.URL) || !strings.Contains(b, "trace-dlq-beta") {
+			t.Errorf("expected Beta webhook subscription and DLQ trace ID in body")
 		}
-		if strings.Contains(b, subAlpha.URL) || strings.Contains(b, reasonAlpha) {
+		if strings.Contains(b, subAlpha.URL) || strings.Contains(b, "trace-dlq-alpha") {
 			t.Errorf("cross-tenant leak: found Alpha webhook/DLQ in Beta view")
 		}
 

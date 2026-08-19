@@ -34,6 +34,7 @@ type DeviceHandler struct {
 	NC            *nats.Conn
 	TemplatesRepo *repository.WABATemplateRepository
 	ExternalURL   string
+	ContactRepo   *repository.ContactRepository
 }
 
 // List renders the unified connection management page or HTMX fragment.
@@ -57,7 +58,7 @@ func (h *DeviceHandler) PairForm(c *echo.Context) error {
 }
 
 // StartPairing begins the QR pairing flow for a new WhatsApp Web connection.
-// POST /admin/devices/pair — expects form field "phone" or "connection_id"
+// POST /admin/devices/pair — optional form field "phone" or "connection_id"
 func (h *DeviceHandler) StartPairing(c *echo.Context) error {
 	phone := c.FormValue("phone")
 	proxyURL := c.FormValue("proxy_url")
@@ -65,7 +66,7 @@ func (h *DeviceHandler) StartPairing(c *echo.Context) error {
 	if connIDStr := c.FormValue("connection_id"); connIDStr != "" {
 		if u, err := uuid.Parse(connIDStr); err == nil {
 			existingConnID = &u
-			if phone == "" {
+			if phone == "" && h.Connections != nil {
 				dev, err := h.Connections.GetByID(c.Request().Context(), u)
 				if err == nil && dev != nil {
 					phone = dev.SenderIdentity
@@ -74,29 +75,37 @@ func (h *DeviceHandler) StartPairing(c *echo.Context) error {
 		}
 	}
 
-	if phone == "" {
-		return c.String(http.StatusBadRequest, "phone number is required")
-	}
-
 	wsID := resolveWorkspaceIDOrNil(c)
 
-	_, err := h.Manager.StartPairingSession(c.Request().Context(), wsID, phone, existingConnID, proxyURL)
+	ps, err := h.Manager.StartPairingSession(c.Request().Context(), wsID, phone, existingConnID, proxyURL)
 	if err != nil {
-		if errors.Is(err, session.ErrMaxConnectionsExceeded) {
-			return mw.Render(c, http.StatusUnprocessableEntity, pages.QRFragment("", "", phone, "error", err.Error()))
+		ident := phone
+		if ident == "" && existingConnID != nil {
+			ident = existingConnID.String()
 		}
-		return mw.Render(c, http.StatusInternalServerError, pages.QRFragment("", "", phone, "error", err.Error()))
+		if errors.Is(err, session.ErrMaxConnectionsExceeded) {
+			return mw.Render(c, http.StatusUnprocessableEntity, pages.QRFragment("", "", ident, "error", err.Error()))
+		}
+		return mw.Render(c, http.StatusInternalServerError, pages.QRFragment("", "", ident, "error", err.Error()))
 	}
 
-	return mw.Render(c, http.StatusOK, pages.QRFragment("", "", phone, "pending", "Aponte o WhatsApp do seu celular para escanear o QR Code"))
+	ident := ps.ConnectionID().String()
+	if phone != "" {
+		ident = phone
+	}
+
+	return mw.Render(c, http.StatusOK, pages.QRFragment("", "", ident, "pending", "Aponte o WhatsApp do seu celular para escanear o QR Code"))
 }
 
 // GetQR returns the current QR code state as an HTMX fragment.
-// GET /admin/devices/qr?phone=...
+// GET /admin/devices/qr?id=... or GET /admin/devices/qr?phone=...
 func (h *DeviceHandler) GetQR(c *echo.Context) error {
-	phone := c.QueryParam("phone")
-	if phone == "" {
-		return c.String(http.StatusBadRequest, "phone is required")
+	id := c.QueryParam("id")
+	if id == "" {
+		id = c.QueryParam("phone")
+	}
+	if id == "" {
+		return c.String(http.StatusBadRequest, "id or phone is required")
 	}
 
 	workspaceID := resolveWorkspaceIDOrNil(c)
@@ -104,12 +113,12 @@ func (h *DeviceHandler) GetQR(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
 
-	evt, ok := h.Manager.GetPairingStateForWorkspace(workspaceID, phone)
+	evt, ok := h.Manager.GetPairingStateForWorkspace(workspaceID, id)
 	if !ok {
-		return mw.Render(c, http.StatusOK, pages.QRFragment("", "", phone, "error", "Nenhuma sessão de pareamento ativa para este número"))
+		return mw.Render(c, http.StatusOK, pages.QRFragment("", "", id, "error", "Nenhuma sessão de pareamento ativa para este identificador"))
 	}
 
-	return mw.Render(c, http.StatusOK, pages.QRFragment(evt.Code, evt.QRDataURL, phone, evt.Status, evt.Message))
+	return mw.Render(c, http.StatusOK, pages.QRFragment(evt.Code, evt.QRDataURL, id, evt.Status, evt.Message))
 }
 
 // Disconnect deletes a connection from the database and stops its active session if it is WhatsApp Web.
@@ -468,6 +477,10 @@ func (h *DeviceHandler) RunTest(c *echo.Context) error {
 
 	if h.Publisher == nil {
 		return c.HTML(http.StatusServiceUnavailable, `<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Publisher não disponível</div>`)
+	}
+
+	if h.ContactRepo != nil {
+		_, _ = h.ContactRepo.ResolveContact(c.Request().Context(), workspaceID, conn.Channel, to, to, "", "")
 	}
 
 	err = h.Publisher.Publish(c.Request().Context(), "messages.outbound", payload, traceID)

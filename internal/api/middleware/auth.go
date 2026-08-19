@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/platform/crypto"
@@ -18,7 +19,7 @@ func AuthMiddleware(repo *repository.APIKeyRepository) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			path := c.Request().URL.Path
-			if path == "/" || path == "/healthz" || path == "/readyz" || strings.HasPrefix(path, "/admin") || strings.HasPrefix(path, "/webhooks") || strings.HasPrefix(path, "/static") || (path == "/api/v1/workspaces" && c.Request().Method == http.MethodPost) {
+			if path == "/" || path == "/healthz" || path == "/readyz" || strings.HasPrefix(path, "/admin") || strings.HasPrefix(path, "/webhooks") || strings.HasPrefix(path, "/static") || isMasterWorkspacePath(path) {
 				return next(c)
 			}
 
@@ -68,4 +69,31 @@ func AuthMiddleware(repo *repository.APIKeyRepository) echo.MiddlewareFunc {
 			return next(c)
 		}
 	}
+}
+
+func isMasterWorkspacePath(path string) bool {
+	if path == "/api/v1/workspaces" || path == "/api/v1/workspaces/" {
+		return true
+	}
+	if strings.HasPrefix(path, "/api/v1/workspaces/") {
+		trimmed := strings.TrimPrefix(path, "/api/v1/workspaces/")
+		parts := strings.Split(trimmed, "/")
+		if len(parts) == 1 {
+			// /api/v1/workspaces/:id (only if valid UUID)
+			if _, err := uuid.Parse(parts[0]); err == nil {
+				return true
+			}
+			return false
+		}
+		if len(parts) >= 2 {
+			if _, err := uuid.Parse(parts[0]); err == nil {
+				if parts[1] == "api-keys" || parts[1] == "regenerate-key" {
+					return true
+				}
+			}
+			return false
+		}
+		return false
+	}
+	return false
 }

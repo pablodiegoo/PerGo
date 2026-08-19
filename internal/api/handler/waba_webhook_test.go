@@ -100,6 +100,7 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 		Name:           "Test WABA",
 		Channel:        "whatsapp_cloud",
 		SenderIdentity: "123456789",
+		IsDefault:      true,
 		Credentials:    configBytes,
 	}
 	_ = connRepo.Create(ctx, conn)

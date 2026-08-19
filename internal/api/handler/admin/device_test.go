@@ -296,6 +296,13 @@ func TestDeviceHandler_StartPairing_LimitExceeded(t *testing.T) {
 
 	enc, _ := crypto.NewEncryptor(make([]byte, 32))
 	repo := repository.NewConnectionRepository(pool, enc)
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "Test Workspace Limit Exceeded")
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
 	registry := session.NewActiveSession()
 	manager := session.NewManager(
 		sqlDB,
@@ -317,6 +324,7 @@ func TestDeviceHandler_StartPairing_LimitExceeded(t *testing.T) {
 	fValues.Set("phone", "5511999990001")
 	req := httptest.NewRequest(http.MethodPost, "/admin/devices/pair", strings.NewReader(fValues.Encode()))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationForm)
+	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -369,8 +377,8 @@ func TestDeviceHandler_QRFragment_Rendering(t *testing.T) {
 	if !strings.Contains(out, "data:image/png;base64,") {
 		t.Errorf("expected rendered HTML to contain base64 image data URL, got: %s", out)
 	}
-	if !strings.Contains(out, "hx-get=\"/admin/devices/qr?phone=5511999999999\"") {
-		t.Errorf("expected rendered HTML to contain hx-get trigger for phone, got: %s", out)
+	if !strings.Contains(out, "hx-get=\"/admin/devices/qr?id=5511999999999\"") {
+		t.Errorf("expected rendered HTML to contain hx-get trigger for id, got: %s", out)
 	}
 
 	// 2. Paired state
@@ -555,6 +563,7 @@ func TestDeviceHandler_RunTest_TemplateDynamicParamsAndLanguage(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/admin/devices/test", strings.NewReader(fv.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 

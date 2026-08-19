@@ -43,7 +43,6 @@ type CampaignWorker struct {
 	publisher       *JetStreamPublisher
 	auditWriter     audit.Writer
 	tagLister       domain.TagContactLister
-	msgCtx          jetstream.MessagesContext
 }
 
 // NewCampaignWorker creates and starts a new CampaignWorker.
@@ -76,41 +75,7 @@ func NewCampaignWorker(
 func (w *CampaignWorker) run(ctx context.Context) {
 	defer close(w.done)
 
-	msgCtx, err := w.consumer.Messages()
-	if err != nil {
-		slog.Error("campaign_worker: failed to create messages context", "error", err)
-		return
-	}
-	w.msgCtx = msgCtx
-	defer msgCtx.Stop()
-
-	slog.Info("campaign worker started", "consumer", w.consumer.CachedInfo().Config.Name)
-
-	for {
-		msg, err := msgCtx.Next()
-		if err != nil {
-			if ctx.Err() != nil {
-				slog.Info("campaign worker stopped")
-				return
-			}
-			slog.Error("campaign_worker: failed to get next message, recreating messages context", "error", err)
-			msgCtx.Stop()
-
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(1 * time.Second):
-			}
-
-			newMsgCtx, err := w.consumer.Messages()
-			if err != nil {
-				slog.Error("campaign_worker: failed to recreate messages context", "error", err)
-				continue
-			}
-			msgCtx = newMsgCtx
-			continue
-		}
-
+	consumeCtx, err := w.consumer.Consume(func(msg jetstream.Msg) {
 		subject := msg.Subject()
 		switch subject {
 		case "campaigns.start":
@@ -118,7 +83,17 @@ func (w *CampaignWorker) run(ctx context.Context) {
 		default:
 			w.processBatch(ctx, msg)
 		}
+	})
+	if err != nil {
+		slog.Error("campaign_worker: failed to start consume", "error", err)
+		return
 	}
+	defer consumeCtx.Stop()
+
+	slog.Info("campaign worker started", "consumer", w.consumer.CachedInfo().Config.Name)
+
+	<-ctx.Done()
+	slog.Info("campaign worker stopped")
 }
 
 // auditDispatchEvent bundles parameters for emitting an audit log event during campaign dispatch.
@@ -599,8 +574,6 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 // Stop stops the campaign worker loop and blocks until it finishes.
 func (w *CampaignWorker) Stop() {
 	w.cancel()
-	if w.msgCtx != nil {
-		w.msgCtx.Stop()
-	}
 	<-w.done
 }
+

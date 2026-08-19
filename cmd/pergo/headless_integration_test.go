@@ -81,6 +81,16 @@ func (m *headlessMockWhatsAppClient) GetQRChannel(ctx context.Context) (<-chan w
 	return m.qrCh, nil
 }
 
+type headlessMockTelegramClient struct{}
+
+func (m *headlessMockTelegramClient) ValidateToken(ctx context.Context, token string) (string, error) {
+	return "@AcmeSupportBot", nil
+}
+
+func (m *headlessMockTelegramClient) RegisterWebhook(ctx context.Context, token, webhookURL, secretToken string) error {
+	return nil
+}
+
 type headlessMockClientFactory struct {
 	client *headlessMockWhatsAppClient
 }
@@ -145,7 +155,7 @@ func setupHeadlessIntegrationServer(t *testing.T) *headlessTestServer {
 	wsAPIHandler.RegisterRoutes(e, mw.MasterAuth(cfg))
 
 	// 2. Connection API
-	connAPIHandler := apipkg.NewConnectionAPIHandler(connRepo, sessionManager, sessionRegistry)
+	connAPIHandler := apipkg.NewConnectionAPIHandler(connRepo, sessionManager, sessionRegistry, apipkg.WithTelegramClient(&headlessMockTelegramClient{}))
 	connAPIHandler.RegisterRoutes(e)
 
 	// 3. Webhook Subscriptions API

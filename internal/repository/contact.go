@@ -670,6 +670,9 @@ func (r *ContactRepository) FindIdentityForChannel(ctx context.Context, workspac
 				return chatID, true, nil
 			}
 		}
+		if isNumericID(clean) {
+			return clean, true, nil
+		}
 		return "", false, nil
 	}
 
@@ -697,5 +700,18 @@ func (r *ContactRepository) FindIdentityForChannel(ctx context.Context, workspac
 	}
 
 	return "", false, nil
+}
+
+func isNumericID(s string) bool {
+	check := strings.TrimPrefix(s, "-")
+	if check == "" {
+		return false
+	}
+	for _, c := range check {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
 

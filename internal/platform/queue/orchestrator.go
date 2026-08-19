@@ -223,6 +223,9 @@ func (o *DispatchOrchestrator) Process(
 		slog.Info("orchestrator: attempting dispatch", "channel", channelName, "trace_id", traceID, "index", i, "attempt", attempt, "to", resolvedTo)
 		respStr, err := o.dispatchToChannel(ctx, channelName, &qMsgForChannel)
 		if err == nil {
+			if o.contactRepo != nil && workspaceID != (uuid.UUID{}) {
+				_, _ = o.contactRepo.ResolveContact(ctx, workspaceID, channelName, resolvedTo, "", "", "")
+			}
 			if o.dispatchRepo != nil && dispatch != nil {
 				_ = o.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "sent", channelName, i, nil)
 				if channelName == "whatsapp_cloud" && respStr != "" {

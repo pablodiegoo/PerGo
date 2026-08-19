@@ -139,31 +139,21 @@ func (w *WebhookWorker) run(ctx context.Context, cons jetstream.Consumer, mode s
 	defer w.wg.Done()
 	slog.Info("webhook worker thread started", "mode", mode)
 
-	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("webhook worker thread stopping", "mode", mode)
-			return
-		default:
-			msgs, err := cons.Fetch(1, jetstream.FetchMaxWait(5*time.Second))
-			if err != nil {
-				if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-					continue
-				}
-				slog.Error("webhook worker: fetch error", "error", err, "mode", mode)
-				time.Sleep(1 * time.Second)
-				continue
-			}
-
-			for msg := range msgs.Messages() {
-				if mode == "delivery" {
-					w.processDelivery(ctx, msg)
-				} else {
-					w.processEvent(ctx, msg, mode)
-				}
-			}
+	consumeCtx, err := cons.Consume(func(msg jetstream.Msg) {
+		if mode == "delivery" {
+			w.processDelivery(ctx, msg)
+		} else {
+			w.processEvent(ctx, msg, mode)
 		}
+	})
+	if err != nil {
+		slog.Error("webhook worker: failed to start consume", "error", err, "mode", mode)
+		return
 	}
+	defer consumeCtx.Stop()
+
+	<-ctx.Done()
+	slog.Info("webhook worker thread stopping", "mode", mode)
 }
 
 func (w *WebhookWorker) processEvent(ctx context.Context, msg jetstream.Msg, mode string) {

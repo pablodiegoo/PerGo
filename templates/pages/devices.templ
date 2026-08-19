@@ -175,16 +175,24 @@ templ PairForm() {
 			</div>
 			<div class="modal-body space-y-4">
 				<div id="modal-error-container"></div>
-				<form id="new-connection-form" class="space-y-4" hx-indicator="#conn-submit-spinner" hx-on::after-request="if(event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget') && document.getElementById('new-channel-select').value !== 'whatsapp') this.closest('.modal-backdrop').remove()">
+				<form
+					id="new-connection-form"
+					class="space-y-4"
+					hx-post="/admin/devices/pair"
+					hx-target="#qr-area"
+					hx-swap="innerHTML"
+					hx-indicator="#conn-submit-spinner"
+					hx-on::after-request="if(event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget') && document.getElementById('new-channel-select').value !== 'whatsapp') this.closest('.modal-backdrop').remove()"
+				>
 					<div class="flex flex-col gap-1">
 						<label for="new-conn-name" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Nome da Conexão</label>
-						<input type="text" id="new-conn-name" name="name" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="Ex: WhatsApp Suporte, Telegram Bot"/>
+						<input type="text" id="new-conn-name" name="name" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="Ex: WhatsApp Suporte, Telegram Bot"/>
 					</div>
 
 					<div class="flex flex-col gap-1">
 						<label for="new-channel-select" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Canal</label>
-						<select id="new-channel-select" name="channel" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" onchange="updateChannelFields()">
-							<option value="whatsapp">WhatsApp Web (Unofficial)</option>
+						<select id="new-channel-select" name="channel" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" onchange="updateChannelFields(this)">
+							<option value="whatsapp" selected>WhatsApp Web (Unofficial)</option>
 							<option value="whatsapp_cloud">WhatsApp Cloud (WABA)</option>
 							<option value="telegram">Telegram Bot</option>
 						</select>
@@ -193,13 +201,14 @@ templ PairForm() {
 					<!-- WhatsApp Web Fields -->
 					<div id="fields-whatsapp" class="space-y-4">
 						@components.BanWarning()
-						<div class="flex flex-col gap-1">
-							<label for="phone" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Número de Telefone</label>
-							<input type="tel" id="phone" name="phone" data-required="true" required class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="+5511999999999"/>
+						<div class="rounded-md bg-zinc-50 border border-zinc-200 p-3 text-xs text-zinc-600 space-y-1">
+							<p class="font-semibold text-zinc-800">Como parear:</p>
+							<p>Ao clicar no botão abaixo, um QR Code será gerado. Abra o <strong>WhatsApp</strong> no seu celular, acesse <strong>Aparelhos Conectados &gt; Conectar um aparelho</strong> e aponte a câmera. O número será reconhecido automaticamente.</p>
 						</div>
 						<div class="flex flex-col gap-1">
 							<label for="proxy_url" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Proxy URL (Opcional)</label>
-							<input type="text" id="proxy_url" name="proxy_url" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="socks5://user:pass@host:port"/>
+							<input type="text" id="proxy_url" name="proxy_url" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="socks5://user:pass@host:port ou http://host:port"/>
+							<p class="text-[11px] text-zinc-400">Opcional: utilize apenas se seu servidor estiver em Data Center e precisar de um proxy residencial/móvel.</p>
 						</div>
 					</div>
 
@@ -244,65 +253,58 @@ templ PairForm() {
 			</div>
 		</div>
 		<script>
-			(function() {
-				window.updateChannelFields = function() {
-					const channel = document.getElementById('new-channel-select').value;
-					const waWebFields = document.getElementById('fields-whatsapp');
-					const wabaFields = document.getElementById('fields-waba');
-					const tgFields = document.getElementById('fields-telegram');
-					const submitBtn = document.getElementById('new-conn-submit-btn');
-					const submitLabel = document.getElementById('new-conn-submit-label');
+			window.updateChannelFields = function(selectEl) {
+				const channel = selectEl ? selectEl.value : document.getElementById('new-channel-select').value;
+				const form = document.getElementById('new-connection-form');
+				const waWebFields = document.getElementById('fields-whatsapp');
+				const wabaFields = document.getElementById('fields-waba');
+				const tgFields = document.getElementById('fields-telegram');
+				const submitLabel = document.getElementById('new-conn-submit-label');
+				const connNameInput = document.getElementById('new-conn-name');
 
-					const setButtonText = function(text) {
-						if (submitLabel) {
-							submitLabel.innerText = text;
-						} else if (submitBtn) {
-							submitBtn.innerText = text;
-						}
-					};
+				if (!form) return;
 
-					// Hide everything
-					waWebFields.style.display = 'none';
-					wabaFields.style.display = 'none';
-					tgFields.style.display = 'none';
+				// Hide all
+				if (waWebFields) waWebFields.style.display = 'none';
+				if (wabaFields) wabaFields.style.display = 'none';
+				if (tgFields) tgFields.style.display = 'none';
 
-					// Disable required for all dynamic fields
-					wabaFields.querySelectorAll('input').forEach(i => i.required = false);
-					tgFields.querySelectorAll('input').forEach(i => i.required = false);
-					waWebFields.querySelectorAll('input').forEach(i => i.required = false);
+				// Reset required
+				if (wabaFields) wabaFields.querySelectorAll('input').forEach(i => i.required = false);
+				if (tgFields) tgFields.querySelectorAll('input').forEach(i => i.required = false);
 
-					if (channel === 'whatsapp') {
-						waWebFields.style.display = 'block';
-						waWebFields.querySelectorAll('input[data-required="true"]').forEach(i => i.required = true);
-						
-						setButtonText('Começar Emparelhamento');
-						submitBtn.setAttribute('hx-post', '/admin/devices/pair');
-						submitBtn.setAttribute('hx-target', '#qr-area');
-						submitBtn.setAttribute('hx-swap', 'innerHTML');
-						htmx.process(submitBtn);
-					} else if (channel === 'whatsapp_cloud') {
+				if (channel === 'whatsapp') {
+					if (waWebFields) waWebFields.style.display = 'block';
+					if (connNameInput) connNameInput.required = false;
+					if (submitLabel) submitLabel.innerText = 'Começar Emparelhamento';
+					form.setAttribute('hx-post', '/admin/devices/pair');
+					form.setAttribute('hx-target', '#qr-area');
+					form.setAttribute('hx-swap', 'innerHTML');
+				} else if (channel === 'whatsapp_cloud') {
+					if (wabaFields) {
 						wabaFields.style.display = 'block';
 						wabaFields.querySelectorAll('input[data-required="true"]').forEach(i => i.required = true);
-						
-						setButtonText('Salvar Conexão');
-						submitBtn.setAttribute('hx-post', '/admin/devices/create');
-						submitBtn.setAttribute('hx-target', '#connections-table-container');
-						submitBtn.setAttribute('hx-swap', 'innerHTML');
-						htmx.process(submitBtn);
-					} else if (channel === 'telegram') {
+					}
+					if (connNameInput) connNameInput.required = true;
+					if (submitLabel) submitLabel.innerText = 'Salvar Conexão';
+					form.setAttribute('hx-post', '/admin/devices/create');
+					form.setAttribute('hx-target', '#connections-table-container');
+					form.setAttribute('hx-swap', 'innerHTML');
+				} else if (channel === 'telegram') {
+					if (tgFields) {
 						tgFields.style.display = 'block';
 						tgFields.querySelectorAll('input[data-required="true"]').forEach(i => i.required = true);
-						
-						setButtonText('Salvar Conexão');
-						submitBtn.setAttribute('hx-post', '/admin/devices/create');
-						submitBtn.setAttribute('hx-target', '#connections-table-container');
-						submitBtn.setAttribute('hx-swap', 'innerHTML');
-						htmx.process(submitBtn);
 					}
-				};
-
-				updateChannelFields();
-			})();
+					if (connNameInput) connNameInput.required = true;
+					if (submitLabel) submitLabel.innerText = 'Salvar Conexão';
+					form.setAttribute('hx-post', '/admin/devices/create');
+					form.setAttribute('hx-target', '#connections-table-container');
+					form.setAttribute('hx-swap', 'innerHTML');
+				}
+				if (window.htmx) {
+					htmx.process(form);
+				}
+			};
 		</script>
 	</div>
 }
@@ -347,7 +349,7 @@ templ QRFragment(code string, qrPNG string, phone string, status string, message
 					</div>
 				}
 				<div
-					hx-get={ "/admin/devices/qr?phone=" + phone }
+					hx-get={ "/admin/devices/qr?id=" + phone }
 					hx-trigger="every 2s"
 					hx-target="#qr-area"
 					hx-swap="innerHTML"
@@ -358,7 +360,9 @@ templ QRFragment(code string, qrPNG string, phone string, status string, message
 						✓
 					</div>
 					<h3 class="text-base font-bold text-zinc-900 mb-1">Dispositivo Pareado com Sucesso!</h3>
-					<p class="text-xs text-zinc-500 mb-4 font-mono">{ phone }</p>
+					if phone != "" {
+						<p class="text-xs text-zinc-500 mb-4 font-mono">{ phone }</p>
+					}
 					<button
 						class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white px-5 py-2 rounded-md font-semibold text-xs border-none shadow-sm transition"
 						onclick="

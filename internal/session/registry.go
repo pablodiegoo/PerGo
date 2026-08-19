@@ -1,6 +1,7 @@
 package session
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -111,13 +112,30 @@ func (r *ActiveSession) DisconnectByJID(jid string) {
 	delete(r.sessions, jid)
 }
 
-// GetClient retrieves the WhatsAppClient for a given JID string.
-func (r *ActiveSession) GetClient(jid string) *whatsapp.WhatsAppClient {
+// GetClient retrieves the WhatsAppClient for a given identifier (JID string, phone number, or device ID).
+func (r *ActiveSession) GetClient(ident string) *whatsapp.WhatsAppClient {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	s, ok := r.sessions[jid]
-	if !ok {
-		return nil
+
+	// 1. Direct match by JID string
+	if s, ok := r.sessions[ident]; ok {
+		return s.Client
 	}
-	return s.Client
+
+	// 2. Match by phone number (JID.User) or DeviceID
+	cleanIdent := strings.TrimPrefix(ident, "+")
+	for _, s := range r.sessions {
+		if s.JID.User == ident || s.JID.User == cleanIdent || s.DeviceID == ident {
+			return s.Client
+		}
+	}
+
+	// 3. Fallback: if ident is empty and only one session exists, use it
+	if ident == "" && len(r.sessions) == 1 {
+		for _, s := range r.sessions {
+			return s.Client
+		}
+	}
+
+	return nil
 }

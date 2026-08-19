@@ -196,22 +196,44 @@ func (r *AuditRepository) ListConversations(ctx context.Context, workspaceID uui
 		return nil, ErrInvalidWorkspaceID
 	}
 	query := `
-		WITH MsgWithContact AS (
+		WITH AllMessages AS (
 			SELECT 
 				al.id,
 				al.created_at,
-				al.payload->>'body' AS body,
-				al.payload->>'channel' AS channel,
-				al.payload->>'to' AS recipient_identity,
+				COALESCE(al.payload->>'body', '') AS body,
+				COALESCE(al.payload->>'channel', '') AS channel,
+				COALESCE(al.payload->>'to', '') AS recipient_identity,
 				ci.contact_id,
 				c.name AS contact_name
 			FROM audit_logs al
-			LEFT JOIN contact_identities ci ON ci.workspace_id = al.workspace_id 
+			JOIN contact_identities ci ON ci.workspace_id = al.workspace_id 
 				AND ci.channel = al.payload->>'channel' 
 				AND ci.sender_identity = al.payload->>'from'
-			LEFT JOIN contacts c ON c.id = ci.contact_id
+			JOIN contacts c ON c.id = ci.contact_id
 			WHERE al.workspace_id = $1 
 			  AND al.event_type = 'inbound_message'
+
+			UNION ALL
+
+			SELECT 
+				al.id,
+				al.created_at,
+				COALESCE(NULLIF(al.payload->'request'->>'body', ''), al.payload->'request'->>'template_name', '') AS body,
+				COALESCE(al.payload->'request'->>'channel', al.payload->>'channel', '') AS channel,
+				COALESCE(al.payload->'request'->>'sender_identity', '') AS recipient_identity,
+				ci.contact_id,
+				c.name AS contact_name
+			FROM audit_logs al
+			JOIN contact_identities ci ON ci.workspace_id = al.workspace_id 
+				AND ci.channel = COALESCE(al.payload->'request'->>'channel', al.payload->>'channel') 
+				AND ci.sender_identity = al.payload->'request'->>'to'
+			JOIN contacts c ON c.id = ci.contact_id
+			WHERE al.workspace_id = $1 
+			  AND al.event_type = 'outbound_message'
+		),
+		FilteredMessages AS (
+			SELECT * FROM AllMessages
+			WHERE ($2 = '' OR recipient_identity = $2)
 		),
 		RankedConversations AS (
 			SELECT 
@@ -223,10 +245,10 @@ func (r *AuditRepository) ListConversations(ctx context.Context, workspaceID uui
 				created_at,
 				ROW_NUMBER() OVER(PARTITION BY contact_id ORDER BY created_at DESC) as rn,
 				COUNT(*) OVER(PARTITION BY contact_id) as total_count
-			FROM MsgWithContact
+			FROM FilteredMessages
 		)
 		SELECT 
-			COALESCE(contact_id, '00000000-0000-0000-0000-000000000000'::uuid), 
+			contact_id, 
 			COALESCE(contact_name, ''), 
 			channel, 
 			COALESCE(recipient_identity, ''), 
@@ -235,7 +257,6 @@ func (r *AuditRepository) ListConversations(ctx context.Context, workspaceID uui
 			total_count
 		FROM RankedConversations
 		WHERE rn = 1
-		  AND ($2 = '' OR recipient_identity = $2)
 		ORDER BY created_at DESC
 	`
 
@@ -278,7 +299,7 @@ func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID u
 
 		UNION ALL
 
-		SELECT al.id, al.trace_id, 'outbound' AS direction, COALESCE(al.payload->'request'->>'body', '') AS body, al.created_at, md.status AS status,
+		SELECT al.id, al.trace_id, 'outbound' AS direction, COALESCE(NULLIF(al.payload->'request'->>'body', ''), al.payload->'request'->>'template_name', '') AS body, al.created_at, md.status AS status,
 		COALESCE(
 			al.payload->'request'->'metadata',
 			jsonb_build_object(
@@ -288,7 +309,7 @@ func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID u
 		) AS metadata
 		FROM audit_logs al
 		JOIN contact_identities ci ON ci.workspace_id = al.workspace_id 
-			AND ci.channel = al.payload->'request'->>'channel' 
+			AND ci.channel = COALESCE(al.payload->'request'->>'channel', al.payload->>'channel') 
 			AND ci.sender_identity = al.payload->'request'->>'to'
 		LEFT JOIN message_dispatches md ON md.trace_id = al.trace_id
 		WHERE al.workspace_id = $1

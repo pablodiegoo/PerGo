@@ -598,12 +598,6 @@ func (h *ConnectionAPIHandler) StartPairing(c *echo.Context) error {
 	}
 
 	phone := strings.TrimSpace(req.Phone)
-	if phone == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"code":    "bad_request",
-			"message": "phone number is required",
-		})
-	}
 
 	if h.manager == nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{

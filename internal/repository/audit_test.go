@@ -141,8 +141,8 @@ func TestAuditRepository_ConversationsAndThread(t *testing.T) {
 		if conversations[1].LastMessageBody != "Hello bot 2" {
 			t.Errorf("expected last body 'Hello bot 2', got: %s", conversations[1].LastMessageBody)
 		}
-		if conversations[1].TotalMessageCount != 3 {
-			t.Errorf("expected count 3, got: %d", conversations[1].TotalMessageCount)
+		if conversations[1].TotalMessageCount != 4 {
+			t.Errorf("expected count 4 (3 inbound + 1 outbound), got: %d", conversations[1].TotalMessageCount)
 		}
 	})
 
@@ -251,3 +251,145 @@ func TestAuditRepository_ConversationsAndThread(t *testing.T) {
 		}
 	})
 }
+
+func TestAuditRepository_OutboundMessagesInConversationsList(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := NewWorkspaceRepository(pool)
+	auditRepo := NewAuditRepository(pool)
+	contactRepo := NewContactRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "outbound_inbox_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() {
+		_ = wsRepo.Delete(ctx, ws.ID)
+	}()
+
+	senderIdentity1 := "+5511999990001"
+	senderIdentity2 := "+5511999990002"
+
+	// Helper to insert an outbound message into audit_logs
+	insertOutbound := func(to, channel, senderIdentity, body string, createdAt time.Time) {
+		payload := map[string]any{
+			"request": map[string]any{
+				"to":              to,
+				"channel":         channel,
+				"sender_identity": senderIdentity,
+				"body":            body,
+			},
+			"status": "sent",
+		}
+		payloadBytes, _ := json.Marshal(payload)
+		_, err := pool.Exec(ctx, `
+			INSERT INTO audit_logs (id, workspace_id, trace_id, event_type, payload, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, uuid.New(), ws.ID, uuid.New().String(), "outbound_message", payloadBytes, createdAt)
+		if err != nil {
+			t.Fatalf("failed to insert outbound log: %v", err)
+		}
+	}
+
+	// Helper to insert an inbound message into audit_logs
+	insertInbound := func(from, channel, to, body string, createdAt time.Time) {
+		payload := map[string]any{
+			"event":        "inbound_message",
+			"trace_id":     uuid.New().String(),
+			"message_id":   uuid.New().String(),
+			"channel":      channel,
+			"timestamp":    createdAt.Format(time.RFC3339),
+			"workspace_id": ws.ID.String(),
+			"from":         from,
+			"to":           to,
+			"body":         body,
+		}
+		payloadBytes, _ := json.Marshal(payload)
+		_, err := pool.Exec(ctx, `
+			INSERT INTO audit_logs (id, workspace_id, trace_id, event_type, payload, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, uuid.New(), ws.ID, payload["trace_id"], "inbound_message", payloadBytes, createdAt)
+		if err != nil {
+			t.Fatalf("failed to insert inbound log: %v", err)
+		}
+	}
+
+	now := time.Now().UTC()
+
+	// Contact A: ONLY outbound messages (e.g. initiated by operator via test or inbox)
+	contactA, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "+5511888880001", "Contact A OutboundOnly", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact A: %v", err)
+	}
+	insertOutbound("+5511888880001", "whatsapp", senderIdentity1, "Test outgoing msg A", now.Add(-5*time.Minute))
+
+	// Contact B: Inbound message first, then newer Outbound reply
+	contactB, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "contact_b_tg", "Contact B Mixed", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact B: %v", err)
+	}
+	insertInbound("contact_b_tg", "telegram", senderIdentity2, "Inbound msg B", now.Add(-10*time.Minute))
+	insertOutbound("contact_b_tg", "telegram", senderIdentity2, "Latest Outbound reply B", now.Add(-2*time.Minute))
+
+	// 1. Test ListConversations without filter (Todos os canais)
+	t.Run("ListConversations includes outbound-only and outbound-latest conversations", func(t *testing.T) {
+		conversations, err := auditRepo.ListConversations(ctx, ws.ID, "")
+		if err != nil {
+			t.Fatalf("ListConversations failed: %v", err)
+		}
+
+		if len(conversations) != 2 {
+			t.Fatalf("expected 2 conversations (including outbound-only), got %d", len(conversations))
+		}
+
+		// Most recent is Contact B (-2 min > -5 min)
+		if conversations[0].ContactID != contactB.ID {
+			t.Errorf("expected first conversation to be Contact B, got %s", conversations[0].ContactID)
+		}
+		if conversations[0].LastMessageBody != "Latest Outbound reply B" {
+			t.Errorf("expected last message body to be latest outbound 'Latest Outbound reply B', got %q", conversations[0].LastMessageBody)
+		}
+		if conversations[0].TotalMessageCount != 2 {
+			t.Errorf("expected total message count 2 (1 inbound + 1 outbound), got %d", conversations[0].TotalMessageCount)
+		}
+
+		// Second is Contact A (-5 min)
+		if conversations[1].ContactID != contactA.ID {
+			t.Errorf("expected second conversation to be Contact A, got %s", conversations[1].ContactID)
+		}
+		if conversations[1].LastMessageBody != "Test outgoing msg A" {
+			t.Errorf("expected last message body 'Test outgoing msg A', got %q", conversations[1].LastMessageBody)
+		}
+		if conversations[1].TotalMessageCount != 1 {
+			t.Errorf("expected total message count 1, got %d", conversations[1].TotalMessageCount)
+		}
+	})
+
+	// 2. Test ListConversations with connection filter
+	t.Run("ListConversations filters correctly by sender identity for outbound messages", func(t *testing.T) {
+		convsSender1, err := auditRepo.ListConversations(ctx, ws.ID, senderIdentity1)
+		if err != nil {
+			t.Fatalf("ListConversations with filter senderIdentity1 failed: %v", err)
+		}
+		if len(convsSender1) != 1 {
+			t.Fatalf("expected 1 conversation for senderIdentity1, got %d", len(convsSender1))
+		}
+		if convsSender1[0].ContactID != contactA.ID {
+			t.Errorf("expected Contact A, got %s", convsSender1[0].ContactID)
+		}
+
+		convsSender2, err := auditRepo.ListConversations(ctx, ws.ID, senderIdentity2)
+		if err != nil {
+			t.Fatalf("ListConversations with filter senderIdentity2 failed: %v", err)
+		}
+		if len(convsSender2) != 1 {
+			t.Fatalf("expected 1 conversation for senderIdentity2, got %d", len(convsSender2))
+		}
+		if convsSender2[0].ContactID != contactB.ID {
+			t.Errorf("expected Contact B, got %s", convsSender2[0].ContactID)
+		}
+	})
+}
+

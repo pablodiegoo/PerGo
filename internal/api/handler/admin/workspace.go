@@ -140,9 +140,23 @@ func (h *WorkspaceHandler) Delete(c *echo.Context) error {
 	return c.NoContent(http.StatusOK)
 }
 
+func resolveWorkspaceParamOrActive(c *echo.Context) (uuid.UUID, error) {
+	if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
+		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
+			return id, nil
+		}
+	}
+	if idStr, err := echo.PathParam[string](c, "id"); err == nil && idStr != "" {
+		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
+			return id, nil
+		}
+	}
+	return resolveWorkspaceID(c)
+}
+
 // GetWebhookSecret returns the workspace's webhook secret key.
 func (h *WorkspaceHandler) GetWebhookSecret(c *echo.Context) error {
-	id, err := resolveWorkspaceID(c)
+	id, err := resolveWorkspaceParamOrActive(c)
 	if err != nil || id == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
@@ -165,7 +179,7 @@ func (h *WorkspaceHandler) GetWebhookSecret(c *echo.Context) error {
 
 // GenerateWebhookSecret generates or regenerates a workspace's webhook secret key.
 func (h *WorkspaceHandler) GenerateWebhookSecret(c *echo.Context) error {
-	id, err := resolveWorkspaceID(c)
+	id, err := resolveWorkspaceParamOrActive(c)
 	if err != nil || id == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}

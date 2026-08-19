@@ -242,11 +242,16 @@ func (m *Manager) CancelPairing(connectionID uuid.UUID) {
 	}
 	if ps, ok := m.pairingSessions[connectionID.String()]; ok {
 		delete(m.pairingSessions, connectionID.String())
-		delete(m.pairingSessions, ps.phone)
+		if ps.phone != "" {
+			delete(m.pairingSessions, ps.phone)
+		}
 	}
 }
 
 func (m *Manager) CancelPairingByPhone(phone string) {
+	if phone == "" {
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if ps, ok := m.pairingSessions[phone]; ok {
@@ -352,11 +357,16 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection)
 		"jid", *d.JID,
 		"device_id", d.ID,
 	)
-	_ = m.EmitStatusEvent(ctx, d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateReconnecting))
+	jid, err := parseJID(*d.JID)
+	if err != nil {
+		_ = m.EmitStatusEvent(ctx, d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateDisconnected))
+		return fmt.Errorf("parse JID: %w", err)
+	}
 
 	cfg := whatsapp.ClientConfig{
 		DB:        m.db,
 		WAVersion: m.waVersion,
+		JID:       &jid,
 	}
 	if d.ProxyURL != nil {
 		cfg.ProxyURL = *d.ProxyURL
@@ -366,13 +376,6 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection)
 	if err != nil {
 		_ = m.EmitStatusEvent(ctx, d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateDisconnected))
 		return fmt.Errorf("create whatsapp client: %w", err)
-	}
-
-	// Set the JID from the persisted device record
-	jid, err := parseJID(*d.JID)
-	if err != nil {
-		_ = m.EmitStatusEvent(ctx, d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateDisconnected))
-		return fmt.Errorf("parse JID: %w", err)
 	}
 	wc.SetJID(jid)
 

@@ -26,6 +26,7 @@ type Config struct {
 	S3Region       string
 	S3UsePathStyle bool
 	ExternalURL    string
+	WAVersion      string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -47,6 +48,7 @@ func Load() *Config {
 		S3Region:       envOrDefault("PERGO_S3_REGION", envOrDefault("S3_REGION", "us-east-1")),
 		S3UsePathStyle: os.Getenv("PERGO_S3_USE_PATH_STYLE") == "true" || os.Getenv("S3_USE_PATH_STYLE") == "true",
 		ExternalURL:    envOrDefault("PERGO_EXTERNAL_URL", "http://localhost:8080"),
+		WAVersion:      os.Getenv("PERGO_WHATSAPP_VERSION"),
 	}
 
 	if cfg.KEKBase64 != "" {

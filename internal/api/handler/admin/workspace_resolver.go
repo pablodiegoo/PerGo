@@ -19,11 +19,6 @@ func ResolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
 			return id, nil
 		}
 	}
-	if idStr, err := echo.PathParam[string](c, "id"); err == nil && idStr != "" {
-		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
-			return id, nil
-		}
-	}
 	if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
 		return wsID, nil
 	}

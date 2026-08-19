@@ -282,17 +282,26 @@ func TestConnectionAPIHandler_StartPairing_Unauthorized(t *testing.T) {
 	}
 }
 
-func TestConnectionAPIHandler_StartPairing_MissingPhone(t *testing.T) {
+func TestConnectionAPIHandler_StartPairing_OptionalPhone_Success(t *testing.T) {
 	wsID := uuid.New()
-	handler := api.NewConnectionAPIHandler(nil, nil, nil)
+	mgr := newMockSessionManager()
+	handler := api.NewConnectionAPIHandler(nil, mgr, nil)
 	_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/pair", []byte(`{"channel":"whatsapp"}`), wsID)
 
 	err := handler.StartPairing(c)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var res api.PairConnectionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if res.ConnectionID == uuid.Nil {
+		t.Errorf("expected valid ConnectionID, got %v", res.ConnectionID)
 	}
 }
 

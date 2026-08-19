@@ -474,7 +474,7 @@ func PairForm() templ.Component {
 			templ_7745c5c3_Var20 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<div class=\"modal-backdrop\" role=\"presentation\" onclick=\"this.closest('.modal-backdrop').remove()\" onkeydown=\"if(event.key === 'Escape') this.closest('.modal-backdrop').remove()\" tabindex=\"0\"><div class=\"custom-modal w-full max-w-lg\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"pair-modal-title\" onclick=\"event.stopPropagation()\"><div class=\"modal-header border-b pb-3 mb-4\"><h3 id=\"pair-modal-title\" class=\"text-lg font-bold text-zinc-900\">Nova Conexão</h3></div><div class=\"modal-body space-y-4\"><div id=\"modal-error-container\"></div><form id=\"new-connection-form\" class=\"space-y-4\" hx-indicator=\"#conn-submit-spinner\" hx-on::after-request=\"if(event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget') && document.getElementById('new-channel-select').value !== 'whatsapp') this.closest('.modal-backdrop').remove()\"><div class=\"flex flex-col gap-1\"><label for=\"new-conn-name\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Nome da Conexão</label> <input type=\"text\" id=\"new-conn-name\" name=\"name\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" placeholder=\"Ex: WhatsApp Suporte, Telegram Bot\"></div><div class=\"flex flex-col gap-1\"><label for=\"new-channel-select\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Canal</label> <select id=\"new-channel-select\" name=\"channel\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" onchange=\"updateChannelFields()\"><option value=\"whatsapp\">WhatsApp Web (Unofficial)</option> <option value=\"whatsapp_cloud\">WhatsApp Cloud (WABA)</option> <option value=\"telegram\">Telegram Bot</option></select></div><!-- WhatsApp Web Fields --><div id=\"fields-whatsapp\" class=\"space-y-4\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<div class=\"modal-backdrop\" role=\"presentation\" onclick=\"this.closest('.modal-backdrop').remove()\" onkeydown=\"if(event.key === 'Escape') this.closest('.modal-backdrop').remove()\" tabindex=\"0\"><div class=\"custom-modal w-full max-w-lg\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"pair-modal-title\" onclick=\"event.stopPropagation()\"><div class=\"modal-header border-b pb-3 mb-4\"><h3 id=\"pair-modal-title\" class=\"text-lg font-bold text-zinc-900\">Nova Conexão</h3></div><div class=\"modal-body space-y-4\"><div id=\"modal-error-container\"></div><form id=\"new-connection-form\" class=\"space-y-4\" hx-post=\"/admin/devices/pair\" hx-target=\"#qr-area\" hx-swap=\"innerHTML\" hx-indicator=\"#conn-submit-spinner\" hx-on::after-request=\"if(event.detail.successful && !event.detail.xhr.getResponseHeader('HX-Retarget') && document.getElementById('new-channel-select').value !== 'whatsapp') this.closest('.modal-backdrop').remove()\"><div class=\"flex flex-col gap-1\"><label for=\"new-conn-name\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Nome da Conexão</label> <input type=\"text\" id=\"new-conn-name\" name=\"name\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" placeholder=\"Ex: WhatsApp Suporte, Telegram Bot\"></div><div class=\"flex flex-col gap-1\"><label for=\"new-channel-select\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Canal</label> <select id=\"new-channel-select\" name=\"channel\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" onchange=\"updateChannelFields(this)\"><option value=\"whatsapp\" selected>WhatsApp Web (Unofficial)</option> <option value=\"whatsapp_cloud\">WhatsApp Cloud (WABA)</option> <option value=\"telegram\">Telegram Bot</option></select></div><!-- WhatsApp Web Fields --><div id=\"fields-whatsapp\" class=\"space-y-4\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -482,7 +482,7 @@ func PairForm() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<div class=\"flex flex-col gap-1\"><label for=\"phone\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Número de Telefone</label> <input type=\"tel\" id=\"phone\" name=\"phone\" data-required=\"true\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" placeholder=\"+5511999999999\"></div><div class=\"flex flex-col gap-1\"><label for=\"proxy_url\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Proxy URL (Opcional)</label> <input type=\"text\" id=\"proxy_url\" name=\"proxy_url\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" placeholder=\"socks5://user:pass@host:port\"></div></div><!-- WABA Fields --><div id=\"fields-waba\" style=\"display: none;\" class=\"space-y-4\"><div class=\"flex flex-col gap-1\"><label for=\"waba_phone_number_id\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Phone Number ID</label> <input type=\"text\" id=\"waba_phone_number_id\" name=\"phone_number_id\" data-required=\"true\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div><div class=\"flex flex-col gap-1\"><label for=\"waba_account_id\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">WABA Account ID</label> <input type=\"text\" id=\"waba_account_id\" name=\"waba_account_id\" data-required=\"true\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div><div class=\"flex flex-col gap-1\"><label for=\"waba_token\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Meta API Token</label> <input type=\"password\" id=\"waba_token\" name=\"token\" data-required=\"true\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div><div class=\"flex flex-col gap-1\"><label for=\"waba_verify_token\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Verify Token (Optional)</label> <input type=\"text\" id=\"waba_verify_token\" name=\"verify_token\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div></div><!-- Telegram Fields --><div id=\"fields-telegram\" style=\"display: none;\" class=\"space-y-4\"><div class=\"flex flex-col gap-1\"><label for=\"tg_token\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Bot Token</label> <input type=\"password\" id=\"tg_token\" name=\"token\" data-required=\"true\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div></div><div id=\"qr-area\" class=\"qr-area mt-4\"></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button type=\"button\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\" onclick=\"this.closest('.modal-backdrop').remove()\">Cancelar</button> <button type=\"submit\" id=\"new-conn-submit-btn\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center gap-2\"><span id=\"conn-submit-spinner\" class=\"htmx-indicator spinner border-2 border-white border-t-transparent rounded-full w-3.5 h-3.5 animate-spin\" aria-hidden=\"true\"></span> <span id=\"new-conn-submit-label\">Começar Emparelhamento</span></button></div></form></div></div><script>\n\t\t\t(function() {\n\t\t\t\twindow.updateChannelFields = function() {\n\t\t\t\t\tconst channel = document.getElementById('new-channel-select').value;\n\t\t\t\t\tconst waWebFields = document.getElementById('fields-whatsapp');\n\t\t\t\t\tconst wabaFields = document.getElementById('fields-waba');\n\t\t\t\t\tconst tgFields = document.getElementById('fields-telegram');\n\t\t\t\t\tconst submitBtn = document.getElementById('new-conn-submit-btn');\n\t\t\t\t\tconst submitLabel = document.getElementById('new-conn-submit-label');\n\n\t\t\t\t\tconst setButtonText = function(text) {\n\t\t\t\t\t\tif (submitLabel) {\n\t\t\t\t\t\t\tsubmitLabel.innerText = text;\n\t\t\t\t\t\t} else if (submitBtn) {\n\t\t\t\t\t\t\tsubmitBtn.innerText = text;\n\t\t\t\t\t\t}\n\t\t\t\t\t};\n\n\t\t\t\t\t// Hide everything\n\t\t\t\t\twaWebFields.style.display = 'none';\n\t\t\t\t\twabaFields.style.display = 'none';\n\t\t\t\t\ttgFields.style.display = 'none';\n\n\t\t\t\t\t// Disable required for all dynamic fields\n\t\t\t\t\twabaFields.querySelectorAll('input').forEach(i => i.required = false);\n\t\t\t\t\ttgFields.querySelectorAll('input').forEach(i => i.required = false);\n\t\t\t\t\twaWebFields.querySelectorAll('input').forEach(i => i.required = false);\n\n\t\t\t\t\tif (channel === 'whatsapp') {\n\t\t\t\t\t\twaWebFields.style.display = 'block';\n\t\t\t\t\t\twaWebFields.querySelectorAll('input[data-required=\"true\"]').forEach(i => i.required = true);\n\t\t\t\t\t\t\n\t\t\t\t\t\tsetButtonText('Começar Emparelhamento');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-post', '/admin/devices/pair');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-target', '#qr-area');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t\t\thtmx.process(submitBtn);\n\t\t\t\t\t} else if (channel === 'whatsapp_cloud') {\n\t\t\t\t\t\twabaFields.style.display = 'block';\n\t\t\t\t\t\twabaFields.querySelectorAll('input[data-required=\"true\"]').forEach(i => i.required = true);\n\t\t\t\t\t\t\n\t\t\t\t\t\tsetButtonText('Salvar Conexão');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-post', '/admin/devices/create');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-target', '#connections-table-container');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t\t\thtmx.process(submitBtn);\n\t\t\t\t\t} else if (channel === 'telegram') {\n\t\t\t\t\t\ttgFields.style.display = 'block';\n\t\t\t\t\t\ttgFields.querySelectorAll('input[data-required=\"true\"]').forEach(i => i.required = true);\n\t\t\t\t\t\t\n\t\t\t\t\t\tsetButtonText('Salvar Conexão');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-post', '/admin/devices/create');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-target', '#connections-table-container');\n\t\t\t\t\t\tsubmitBtn.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t\t\thtmx.process(submitBtn);\n\t\t\t\t\t}\n\t\t\t\t};\n\n\t\t\t\tupdateChannelFields();\n\t\t\t})();\n\t\t</script></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<div class=\"rounded-md bg-zinc-50 border border-zinc-200 p-3 text-xs text-zinc-600 space-y-1\"><p class=\"font-semibold text-zinc-800\">Como parear:</p><p>Ao clicar no botão abaixo, um QR Code será gerado. Abra o <strong>WhatsApp</strong> no seu celular, acesse <strong>Aparelhos Conectados &gt; Conectar um aparelho</strong> e aponte a câmera. O número será reconhecido automaticamente.</p></div><div class=\"flex flex-col gap-1\"><label for=\"proxy_url\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Proxy URL (Opcional)</label> <input type=\"text\" id=\"proxy_url\" name=\"proxy_url\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" placeholder=\"socks5://user:pass@host:port ou http://host:port\"><p class=\"text-[11px] text-zinc-400\">Opcional: utilize apenas se seu servidor estiver em Data Center e precisar de um proxy residencial/móvel.</p></div></div><!-- WABA Fields --><div id=\"fields-waba\" style=\"display: none;\" class=\"space-y-4\"><div class=\"flex flex-col gap-1\"><label for=\"waba_phone_number_id\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Phone Number ID</label> <input type=\"text\" id=\"waba_phone_number_id\" name=\"phone_number_id\" data-required=\"true\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div><div class=\"flex flex-col gap-1\"><label for=\"waba_account_id\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">WABA Account ID</label> <input type=\"text\" id=\"waba_account_id\" name=\"waba_account_id\" data-required=\"true\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div><div class=\"flex flex-col gap-1\"><label for=\"waba_token\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Meta API Token</label> <input type=\"password\" id=\"waba_token\" name=\"token\" data-required=\"true\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div><div class=\"flex flex-col gap-1\"><label for=\"waba_verify_token\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Verify Token (Optional)</label> <input type=\"text\" id=\"waba_verify_token\" name=\"verify_token\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div></div><!-- Telegram Fields --><div id=\"fields-telegram\" style=\"display: none;\" class=\"space-y-4\"><div class=\"flex flex-col gap-1\"><label for=\"tg_token\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Bot Token</label> <input type=\"password\" id=\"tg_token\" name=\"token\" data-required=\"true\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\"></div></div><div id=\"qr-area\" class=\"qr-area mt-4\"></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button type=\"button\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\" onclick=\"this.closest('.modal-backdrop').remove()\">Cancelar</button> <button type=\"submit\" id=\"new-conn-submit-btn\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center gap-2\"><span id=\"conn-submit-spinner\" class=\"htmx-indicator spinner border-2 border-white border-t-transparent rounded-full w-3.5 h-3.5 animate-spin\" aria-hidden=\"true\"></span> <span id=\"new-conn-submit-label\">Começar Emparelhamento</span></button></div></form></div></div><script>\n\t\t\twindow.updateChannelFields = function(selectEl) {\n\t\t\t\tconst channel = selectEl ? selectEl.value : document.getElementById('new-channel-select').value;\n\t\t\t\tconst form = document.getElementById('new-connection-form');\n\t\t\t\tconst waWebFields = document.getElementById('fields-whatsapp');\n\t\t\t\tconst wabaFields = document.getElementById('fields-waba');\n\t\t\t\tconst tgFields = document.getElementById('fields-telegram');\n\t\t\t\tconst submitLabel = document.getElementById('new-conn-submit-label');\n\t\t\t\tconst connNameInput = document.getElementById('new-conn-name');\n\n\t\t\t\tif (!form) return;\n\n\t\t\t\t// Hide all\n\t\t\t\tif (waWebFields) waWebFields.style.display = 'none';\n\t\t\t\tif (wabaFields) wabaFields.style.display = 'none';\n\t\t\t\tif (tgFields) tgFields.style.display = 'none';\n\n\t\t\t\t// Reset required\n\t\t\t\tif (wabaFields) wabaFields.querySelectorAll('input').forEach(i => i.required = false);\n\t\t\t\tif (tgFields) tgFields.querySelectorAll('input').forEach(i => i.required = false);\n\n\t\t\t\tif (channel === 'whatsapp') {\n\t\t\t\t\tif (waWebFields) waWebFields.style.display = 'block';\n\t\t\t\t\tif (connNameInput) connNameInput.required = false;\n\t\t\t\t\tif (submitLabel) submitLabel.innerText = 'Começar Emparelhamento';\n\t\t\t\t\tform.setAttribute('hx-post', '/admin/devices/pair');\n\t\t\t\t\tform.setAttribute('hx-target', '#qr-area');\n\t\t\t\t\tform.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t} else if (channel === 'whatsapp_cloud') {\n\t\t\t\t\tif (wabaFields) {\n\t\t\t\t\t\twabaFields.style.display = 'block';\n\t\t\t\t\t\twabaFields.querySelectorAll('input[data-required=\"true\"]').forEach(i => i.required = true);\n\t\t\t\t\t}\n\t\t\t\t\tif (connNameInput) connNameInput.required = true;\n\t\t\t\t\tif (submitLabel) submitLabel.innerText = 'Salvar Conexão';\n\t\t\t\t\tform.setAttribute('hx-post', '/admin/devices/create');\n\t\t\t\t\tform.setAttribute('hx-target', '#connections-table-container');\n\t\t\t\t\tform.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t} else if (channel === 'telegram') {\n\t\t\t\t\tif (tgFields) {\n\t\t\t\t\t\ttgFields.style.display = 'block';\n\t\t\t\t\t\ttgFields.querySelectorAll('input[data-required=\"true\"]').forEach(i => i.required = true);\n\t\t\t\t\t}\n\t\t\t\t\tif (connNameInput) connNameInput.required = true;\n\t\t\t\t\tif (submitLabel) submitLabel.innerText = 'Salvar Conexão';\n\t\t\t\t\tform.setAttribute('hx-post', '/admin/devices/create');\n\t\t\t\t\tform.setAttribute('hx-target', '#connections-table-container');\n\t\t\t\t\tform.setAttribute('hx-swap', 'innerHTML');\n\t\t\t\t}\n\t\t\t\tif (window.htmx) {\n\t\t\t\t\thtmx.process(form);\n\t\t\t\t}\n\t\t\t};\n\t\t</script></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -528,7 +528,7 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 315, Col: 117}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 317, Col: 117}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
@@ -549,7 +549,7 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 				var templ_7745c5c3_Var23 string
 				templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.SafeURL(qrPNG))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 323, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 325, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
 				if templ_7745c5c3_Err != nil {
@@ -567,7 +567,7 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 				var templ_7745c5c3_Var24 string
 				templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(code)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 335, Col: 149}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 337, Col: 149}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 				if templ_7745c5c3_Err != nil {
@@ -580,7 +580,7 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 				var templ_7745c5c3_Var25 string
 				templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(code)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 336, Col: 19}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 338, Col: 19}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 				if templ_7745c5c3_Err != nil {
@@ -601,9 +601,9 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var26 string
-			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/devices/qr?phone=" + phone)
+			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/devices/qr?id=" + phone)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 350, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 352, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 			if templ_7745c5c3_Err != nil {
@@ -614,43 +614,53 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 				return templ_7745c5c3_Err
 			}
 		case "paired":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<div class=\"qr-success text-center py-6 bg-emerald-50/50 border border-emerald-100 rounded-xl p-5 max-w-sm mx-auto\" role=\"status\" aria-live=\"polite\"><div class=\"w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold\" aria-hidden=\"true\">✓</div><h3 class=\"text-base font-bold text-zinc-900 mb-1\">Dispositivo Pareado com Sucesso!</h3><p class=\"text-xs text-zinc-500 mb-4 font-mono\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<div class=\"qr-success text-center py-6 bg-emerald-50/50 border border-emerald-100 rounded-xl p-5 max-w-sm mx-auto\" role=\"status\" aria-live=\"polite\"><div class=\"w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold\" aria-hidden=\"true\">✓</div><h3 class=\"text-base font-bold text-zinc-900 mb-1\">Dispositivo Pareado com Sucesso!</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var27 string
-			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(phone)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 361, Col: 60}
+			if phone != "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<p class=\"text-xs text-zinc-500 mb-4 font-mono\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var27 string
+				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(phone)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 364, Col: 61}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</p><button class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white px-5 py-2 rounded-md font-semibold text-xs border-none shadow-sm transition\" onclick=\"\n\t\t\t\t\t\t\tconst table = document.getElementById('connections-table-container');\n\t\t\t\t\t\t\tconst form = document.getElementById('campaign-create-form');\n\t\t\t\t\t\t\tif (table) {\n\t\t\t\t\t\t\t\thtmx.ajax('GET', '/admin/devices', {target: 'main', swap: 'innerHTML'});\n\t\t\t\t\t\t\t} else if (form) {\n\t\t\t\t\t\t\t\tdocument.body.dispatchEvent(new CustomEvent('connection-created', { bubbles: true }));\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\tthis.closest('.modal-backdrop').remove();\n\t\t\t\t\t\t\">Ver Conexões</button></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<button class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white px-5 py-2 rounded-md font-semibold text-xs border-none shadow-sm transition\" onclick=\"\n\t\t\t\t\t\t\tconst table = document.getElementById('connections-table-container');\n\t\t\t\t\t\t\tconst form = document.getElementById('campaign-create-form');\n\t\t\t\t\t\t\tif (table) {\n\t\t\t\t\t\t\t\thtmx.ajax('GET', '/admin/devices', {target: 'main', swap: 'innerHTML'});\n\t\t\t\t\t\t\t} else if (form) {\n\t\t\t\t\t\t\t\tdocument.body.dispatchEvent(new CustomEvent('connection-created', { bubbles: true }));\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\tthis.closest('.modal-backdrop').remove();\n\t\t\t\t\t\t\">Ver Conexões</button></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		case "error":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<div class=\"qr-error text-center py-6 bg-rose-50/50 border border-rose-100 rounded-xl p-5 max-w-sm mx-auto\" role=\"alert\" aria-live=\"assertive\"><div class=\"w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl font-bold\" aria-hidden=\"true\">✕</div><h3 class=\"text-base font-bold text-zinc-900 mb-1\">Falha no Pareamento</h3><p class=\"text-xs text-rose-600 mb-4 font-medium\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<div class=\"qr-error text-center py-6 bg-rose-50/50 border border-rose-100 rounded-xl p-5 max-w-sm mx-auto\" role=\"alert\" aria-live=\"assertive\"><div class=\"w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl font-bold\" aria-hidden=\"true\">✕</div><h3 class=\"text-base font-bold text-zinc-900 mb-1\">Falha no Pareamento</h3><p class=\"text-xs text-rose-600 mb-4 font-medium\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var28 string
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 384, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 388, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</p><button class=\"btn btn-secondary px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-semibold text-xs transition\" onclick=\"\n\t\t\t\t\t\t\tconst modalContainer = document.getElementById('modal-container');\n\t\t\t\t\t\t\tif (modalContainer) {\n\t\t\t\t\t\t\t\thtmx.ajax('GET', '/admin/devices/pair-form', {target: '#modal-container', swap: 'innerHTML'});\n\t\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t\thtmx.ajax('GET', '/admin/devices/pair-form', {target: 'body', swap: 'beforeend'});\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\tthis.closest('.modal-backdrop').remove();\n\t\t\t\t\t\t\">Tentar Novamente</button></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</p><button class=\"btn btn-secondary px-4 py-2 border border-zinc-300 rounded-md text-zinc-700 hover:bg-zinc-50 font-semibold text-xs transition\" onclick=\"\n\t\t\t\t\t\t\tconst modalContainer = document.getElementById('modal-container');\n\t\t\t\t\t\t\tif (modalContainer) {\n\t\t\t\t\t\t\t\thtmx.ajax('GET', '/admin/devices/pair-form', {target: '#modal-container', swap: 'innerHTML'});\n\t\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t\thtmx.ajax('GET', '/admin/devices/pair-form', {target: 'body', swap: 'beforeend'});\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\tthis.closest('.modal-backdrop').remove();\n\t\t\t\t\t\t\">Tentar Novamente</button></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -680,136 +690,136 @@ func TestConnectionModal(conn *repository.Connection, templates []repository.WAB
 			templ_7745c5c3_Var29 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<script src=\"https://unpkg.com/htmx-ext-ws@2.0.1/ws.js\"></script><div class=\"modal-backdrop\" role=\"presentation\" onclick=\"this.closest('.modal-backdrop').remove()\" onkeydown=\"if(event.key === 'Escape') this.closest('.modal-backdrop').remove()\" tabindex=\"0\"><div class=\"custom-modal w-full max-w-4xl\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"test-modal-title\" onclick=\"event.stopPropagation()\"><div class=\"modal-header border-b pb-3 mb-4\"><h3 id=\"test-modal-title\" class=\"text-lg font-bold text-zinc-900\">Testar Conexão: ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<script src=\"https://unpkg.com/htmx-ext-ws@2.0.1/ws.js\"></script><div class=\"modal-backdrop\" role=\"presentation\" onclick=\"this.closest('.modal-backdrop').remove()\" onkeydown=\"if(event.key === 'Escape') this.closest('.modal-backdrop').remove()\" tabindex=\"0\"><div class=\"custom-modal w-full max-w-4xl\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"test-modal-title\" onclick=\"event.stopPropagation()\"><div class=\"modal-header border-b pb-3 mb-4\"><h3 id=\"test-modal-title\" class=\"text-lg font-bold text-zinc-900\">Testar Conexão: ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var30 string
 		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 410, Col: 98}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 414, Col: 98}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</h3></div><div class=\"modal-body grid grid-cols-1 md:grid-cols-2 gap-6\"><!-- Left column: Send form --><div><div id=\"test-form-alert\"></div><form hx-post=\"/admin/devices/test\" hx-target=\"#test-form-alert\" hx-swap=\"innerHTML\" hx-indicator=\"#test-submit-spinner\" class=\"space-y-4\"><input type=\"hidden\" name=\"connection_id\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</h3></div><div class=\"modal-body grid grid-cols-1 md:grid-cols-2 gap-6\"><!-- Left column: Send form --><div><div id=\"test-form-alert\"></div><form hx-post=\"/admin/devices/test\" hx-target=\"#test-form-alert\" hx-swap=\"innerHTML\" hx-indicator=\"#test-submit-spinner\" class=\"space-y-4\"><input type=\"hidden\" name=\"connection_id\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var31 string
 		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.ID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 423, Col: 72}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 427, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var31)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "\"><div class=\"grid grid-cols-2 gap-4 text-xs mb-2 bg-zinc-50 p-3 border border-zinc-200/60 rounded\"><div><span class=\"block text-zinc-400 font-semibold uppercase\">Canal</span> <span class=\"font-medium text-zinc-950\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "\"><div class=\"grid grid-cols-2 gap-4 text-xs mb-2 bg-zinc-50 p-3 border border-zinc-200/60 rounded\"><div><span class=\"block text-zinc-400 font-semibold uppercase\">Canal</span> <span class=\"font-medium text-zinc-950\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Channel)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 428, Col: 62}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 432, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Identidade</span> <span class=\"font-mono text-zinc-950 font-medium\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</span></div><div><span class=\"block text-zinc-400 font-semibold uppercase\">Identidade</span> <span class=\"font-mono text-zinc-950 font-medium\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var33 string
 		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(conn.SenderIdentity)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 432, Col: 79}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 436, Col: 79}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</span></div></div><div class=\"flex flex-col gap-1\"><label for=\"test-to\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Destinatário</label> <input type=\"text\" name=\"to\" id=\"test-to\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" placeholder=\"Ex: 5511999999999 or Telegram chat_id\" required></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</span></div></div><div class=\"flex flex-col gap-1\"><label for=\"test-to\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Destinatário</label> <input type=\"text\" name=\"to\" id=\"test-to\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" placeholder=\"Ex: 5511999999999 or Telegram chat_id\" required></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if conn.Channel == "whatsapp_cloud" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<input type=\"hidden\" name=\"is_template\" value=\"true\"> <input type=\"hidden\" name=\"language\" id=\"test-template-language\" value=\"\"><div class=\"flex flex-col gap-1\"><label for=\"test-template-name\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Template</label> <select name=\"template_name\" id=\"test-template-name\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" required onchange=\"showTestTemplatePreview(this)\"><option value=\"\">Selecione um template...</option> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<input type=\"hidden\" name=\"is_template\" value=\"true\"> <input type=\"hidden\" name=\"language\" id=\"test-template-language\" value=\"\"><div class=\"flex flex-col gap-1\"><label for=\"test-template-name\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Template</label> <select name=\"template_name\" id=\"test-template-name\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full\" required onchange=\"showTestTemplatePreview(this)\"><option value=\"\">Selecione um template...</option> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, t := range templates {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "<option value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<option value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var34 string
 				templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 463, Col: 25}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 467, Col: 25}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var34)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "\" data-language=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "\" data-language=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var35 string
 				templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Language)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 464, Col: 37}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 468, Col: 37}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var35)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "\" data-components=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "\" data-components=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var36 string
 				templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(t.Components))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 465, Col: 49}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 469, Col: 49}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var36)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var37 string
 				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s (%s)", t.Name, t.Language))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 466, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 470, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</option>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "</option>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</select></div><div id=\"test-template-vars\" class=\"flex flex-col gap-3 bg-zinc-50 p-3 rounded border border-zinc-200 hidden\"><p class=\"text-xs font-bold text-zinc-600\">Variáveis do Template</p><div id=\"test-template-vars-content\" class=\"flex flex-col gap-2\"></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "</select></div><div id=\"test-template-vars\" class=\"flex flex-col gap-3 bg-zinc-50 p-3 rounded border border-zinc-200 hidden\"><p class=\"text-xs font-bold text-zinc-600\">Variáveis do Template</p><div id=\"test-template-vars-content\" class=\"flex flex-col gap-2\"></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "<input type=\"hidden\" name=\"is_template\" value=\"false\"><div class=\"flex flex-col gap-1\"><label for=\"test-body\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Corpo da Mensagem</label> <textarea name=\"body\" id=\"test-body\" rows=\"4\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full resize-y\" placeholder=\"Mensagem de teste do PerGo!\" required></textarea></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<input type=\"hidden\" name=\"is_template\" value=\"false\"><div class=\"flex flex-col gap-1\"><label for=\"test-body\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Corpo da Mensagem</label> <textarea name=\"body\" id=\"test-body\" rows=\"4\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full resize-y\" placeholder=\"Mensagem de teste do PerGo!\" required></textarea></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<button type=\"submit\" id=\"test-conn-submit-btn\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none w-full font-semibold py-2 rounded-md transition h-10 flex items-center justify-center gap-2\"><span id=\"test-submit-spinner\" class=\"htmx-indicator spinner border-2 border-white border-t-transparent rounded-full w-4 h-4 animate-spin\" aria-hidden=\"true\"></span> <span>Enviar Mensagem de Teste</span></button></form></div><!-- Right column: Live stream --><div hx-ext=\"ws\" ws-connect=\"/admin/devices/test/ws\" class=\"flex flex-col h-full border border-zinc-200 rounded-lg p-4 bg-zinc-50\"><h4 class=\"text-xs font-bold text-zinc-700 uppercase tracking-wider mb-3 flex items-center gap-2\"><span class=\"w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse\"></span> Atividade em Tempo Real (NATS)</h4><div class=\"event-list flex-1 overflow-y-auto min-h-[250px] max-h-[350px] space-y-2\" id=\"playground-events\" role=\"log\" aria-live=\"polite\"><div class=\"text-center text-zinc-400 italic text-xs py-10\" id=\"playground-empty\">Nenhum evento recebido ainda. Envie um teste para ver logs em tempo real.</div></div></div></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\" onclick=\"this.closest('.modal-backdrop').remove()\">Fechar</button></div></div></div><script>\n\t\tfunction showTestTemplatePreview(selectEl) {\n\t\t\tvar container = document.getElementById('test-template-vars');\n\t\t\tvar contentContainer = document.getElementById('test-template-vars-content');\n\t\t\tvar langInput = document.getElementById('test-template-language');\n\t\t\tif (!selectEl) return;\n\t\t\tvar selectedOption = selectEl.options ? selectEl.options[selectEl.selectedIndex] : null;\n\n\t\t\tif (!selectedOption || !selectedOption.value) {\n\t\t\t\tif (container) container.classList.add('hidden');\n\t\t\t\tif (contentContainer) contentContainer.innerHTML = '';\n\t\t\t\tif (langInput) langInput.value = '';\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tvar lang = selectedOption.getAttribute('data-language') || 'pt_BR';\n\t\t\tif (langInput) langInput.value = lang;\n\n\t\t\tif (container) container.classList.remove('hidden');\n\n\t\t\tvar componentsRaw = selectedOption.getAttribute('data-components');\n\t\t\tif (!componentsRaw) {\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200\">ℹ️ Este template é estático e não requer variáveis.</p>';\n\t\t\t\t}\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\ttry {\n\t\t\t\tvar components = JSON.parse(componentsRaw);\n\t\t\t\tvar matches = [];\n\t\t\t\tif (Array.isArray(components)) {\n\t\t\t\t\tfor (var i = 0; i < components.length; i++) {\n\t\t\t\t\t\tvar c = components[i];\n\t\t\t\t\t\tvar cType = (c.type || '').toUpperCase();\n\t\t\t\t\t\tif ((cType === 'BODY' || cType === 'HEADER') && c.text) {\n\t\t\t\t\t\t\tvar found = c.text.match(/\\{\\{(\\d+)\\}\\}/g);\n\t\t\t\t\t\t\tif (found) {\n\t\t\t\t\t\t\t\tfor (var j = 0; j < found.length; j++) {\n\t\t\t\t\t\t\t\t\tmatches.push(found[j]);\n\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\n\t\t\t\tif (matches.length === 0) {\n\t\t\t\t\tif (contentContainer) {\n\t\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200\">ℹ️ Este template é estático e não requer variáveis.</p>';\n\t\t\t\t\t}\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tvar uniqueMap = {};\n\t\t\t\tfor (var k = 0; k < matches.length; k++) {\n\t\t\t\t\tuniqueMap[matches[k]] = true;\n\t\t\t\t}\n\t\t\t\tvar uniqueParams = Object.keys(uniqueMap).sort(function(a, b) {\n\t\t\t\t\tvar numA = parseInt(a.replace(/[{}]/g, ''));\n\t\t\t\t\tvar numB = parseInt(b.replace(/[{}]/g, ''));\n\t\t\t\t\treturn numA - numB;\n\t\t\t\t});\n\n\t\t\t\tvar html = '';\n\t\t\t\tfor (var idx = 0; idx < uniqueParams.length; idx++) {\n\t\t\t\t\tvar param = uniqueParams[idx];\n\t\t\t\t\tvar paramNum = parseInt(param.replace(/[{}]/g, ''));\n\t\t\t\t\thtml += '<div class=\"flex items-center gap-2\">' +\n\t\t\t\t\t\t'<span class=\"text-xs text-zinc-500 font-mono font-semibold w-12 text-center bg-zinc-200 py-1.5 rounded\">' + param + '</span>' +\n\t\t\t\t\t\t'<input type=\"text\" name=\"param_' + paramNum + '\" required placeholder=\"Valor para ' + param + '\" class=\"flex-1 rounded border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white\" />' +\n\t\t\t\t\t'</div>';\n\t\t\t\t}\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = html;\n\t\t\t\t}\n\t\t\t} catch (e) {\n\t\t\t\tconsole.error(\"Failed to parse template components:\", e);\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200\">ℹ️ Este template é estático e não requer variáveis.</p>';\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "<button type=\"submit\" id=\"test-conn-submit-btn\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none w-full font-semibold py-2 rounded-md transition h-10 flex items-center justify-center gap-2\"><span id=\"test-submit-spinner\" class=\"htmx-indicator spinner border-2 border-white border-t-transparent rounded-full w-4 h-4 animate-spin\" aria-hidden=\"true\"></span> <span>Enviar Mensagem de Teste</span></button></form></div><!-- Right column: Live stream --><div hx-ext=\"ws\" ws-connect=\"/admin/devices/test/ws\" class=\"flex flex-col h-full border border-zinc-200 rounded-lg p-4 bg-zinc-50\"><h4 class=\"text-xs font-bold text-zinc-700 uppercase tracking-wider mb-3 flex items-center gap-2\"><span class=\"w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse\"></span> Atividade em Tempo Real (NATS)</h4><div class=\"event-list flex-1 overflow-y-auto min-h-[250px] max-h-[350px] space-y-2\" id=\"playground-events\" role=\"log\" aria-live=\"polite\"><div class=\"text-center text-zinc-400 italic text-xs py-10\" id=\"playground-empty\">Nenhum evento recebido ainda. Envie um teste para ver logs em tempo real.</div></div></div></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\" onclick=\"this.closest('.modal-backdrop').remove()\">Fechar</button></div></div></div><script>\n\t\tfunction showTestTemplatePreview(selectEl) {\n\t\t\tvar container = document.getElementById('test-template-vars');\n\t\t\tvar contentContainer = document.getElementById('test-template-vars-content');\n\t\t\tvar langInput = document.getElementById('test-template-language');\n\t\t\tif (!selectEl) return;\n\t\t\tvar selectedOption = selectEl.options ? selectEl.options[selectEl.selectedIndex] : null;\n\n\t\t\tif (!selectedOption || !selectedOption.value) {\n\t\t\t\tif (container) container.classList.add('hidden');\n\t\t\t\tif (contentContainer) contentContainer.innerHTML = '';\n\t\t\t\tif (langInput) langInput.value = '';\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tvar lang = selectedOption.getAttribute('data-language') || 'pt_BR';\n\t\t\tif (langInput) langInput.value = lang;\n\n\t\t\tif (container) container.classList.remove('hidden');\n\n\t\t\tvar componentsRaw = selectedOption.getAttribute('data-components');\n\t\t\tif (!componentsRaw) {\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200\">ℹ️ Este template é estático e não requer variáveis.</p>';\n\t\t\t\t}\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\ttry {\n\t\t\t\tvar components = JSON.parse(componentsRaw);\n\t\t\t\tvar matches = [];\n\t\t\t\tif (Array.isArray(components)) {\n\t\t\t\t\tfor (var i = 0; i < components.length; i++) {\n\t\t\t\t\t\tvar c = components[i];\n\t\t\t\t\t\tvar cType = (c.type || '').toUpperCase();\n\t\t\t\t\t\tif ((cType === 'BODY' || cType === 'HEADER') && c.text) {\n\t\t\t\t\t\t\tvar found = c.text.match(/\\{\\{(\\d+)\\}\\}/g);\n\t\t\t\t\t\t\tif (found) {\n\t\t\t\t\t\t\t\tfor (var j = 0; j < found.length; j++) {\n\t\t\t\t\t\t\t\t\tmatches.push(found[j]);\n\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\n\t\t\t\tif (matches.length === 0) {\n\t\t\t\t\tif (contentContainer) {\n\t\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200\">ℹ️ Este template é estático e não requer variáveis.</p>';\n\t\t\t\t\t}\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tvar uniqueMap = {};\n\t\t\t\tfor (var k = 0; k < matches.length; k++) {\n\t\t\t\t\tuniqueMap[matches[k]] = true;\n\t\t\t\t}\n\t\t\t\tvar uniqueParams = Object.keys(uniqueMap).sort(function(a, b) {\n\t\t\t\t\tvar numA = parseInt(a.replace(/[{}]/g, ''));\n\t\t\t\t\tvar numB = parseInt(b.replace(/[{}]/g, ''));\n\t\t\t\t\treturn numA - numB;\n\t\t\t\t});\n\n\t\t\t\tvar html = '';\n\t\t\t\tfor (var idx = 0; idx < uniqueParams.length; idx++) {\n\t\t\t\t\tvar param = uniqueParams[idx];\n\t\t\t\t\tvar paramNum = parseInt(param.replace(/[{}]/g, ''));\n\t\t\t\t\thtml += '<div class=\"flex items-center gap-2\">' +\n\t\t\t\t\t\t'<span class=\"text-xs text-zinc-500 font-mono font-semibold w-12 text-center bg-zinc-200 py-1.5 rounded\">' + param + '</span>' +\n\t\t\t\t\t\t'<input type=\"text\" name=\"param_' + paramNum + '\" required placeholder=\"Valor para ' + param + '\" class=\"flex-1 rounded border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white\" />' +\n\t\t\t\t\t'</div>';\n\t\t\t\t}\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = html;\n\t\t\t\t}\n\t\t\t} catch (e) {\n\t\t\t\tconsole.error(\"Failed to parse template components:\", e);\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200\">ℹ️ Este template é estático e não requer variáveis.</p>';\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -839,7 +849,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 			templ_7745c5c3_Var38 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<div id=\"playground-empty\" hx-swap-oob=\"delete\"></div><div id=\"playground-events\" hx-swap-oob=\"afterbegin\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "<div id=\"playground-empty\" hx-swap-oob=\"delete\"></div><div id=\"playground-events\" hx-swap-oob=\"afterbegin\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -851,7 +861,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "<div class=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<div class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -864,59 +874,59 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "\"><div class=\"flex justify-between items-center mb-1\"><span class=\"font-bold uppercase tracking-wider text-[10px] text-zinc-500\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "\"><div class=\"flex justify-between items-center mb-1\"><span class=\"font-bold uppercase tracking-wider text-[10px] text-zinc-500\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var41 string
 		templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(eventType)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 611, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 615, Col: 90}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "</span> <span class=\"text-zinc-400 text-[10px]\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "</span> <span class=\"text-zinc-400 text-[10px]\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var42 string
 		templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(timeStr)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 612, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 616, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "</span></div><strong class=\"text-zinc-900 block mb-1\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "</span></div><strong class=\"text-zinc-900 block mb-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var43 string
 		templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 614, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 618, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "</strong><pre class=\"bg-zinc-950 text-zinc-200 p-2 rounded text-[10px] overflow-x-auto whitespace-pre-wrap max-h-32\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</strong><pre class=\"bg-zinc-950 text-zinc-200 p-2 rounded text-[10px] overflow-x-auto whitespace-pre-wrap max-h-32\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var44 string
 		templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(details)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 615, Col: 120}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 619, Col: 120}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "</pre></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "</pre></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

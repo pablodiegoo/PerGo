@@ -6,14 +6,13 @@ import (
 	"log/slog"
 	"sync/atomic"
 	"time"
+
 	"github.com/google/uuid"
-	"github.com/pablojhp.pergo/internal/channel"
-	"github.com/pablojhp.pergo/internal/repository"
-
 	"github.com/nats-io/nats.go/jetstream"
-
+	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // Worker reads messages from a JetStream consumer and delegates processing
@@ -69,42 +68,19 @@ func NewWorker(
 func (w *Worker) run(ctx context.Context) {
 	defer close(w.done)
 
-	msgCtx, err := w.consumer.Messages()
+	consumeCtx, err := w.consumer.Consume(func(msg jetstream.Msg) {
+		w.processMessage(ctx, msg)
+	})
 	if err != nil {
-		slog.Error("worker: failed to create messages context", "error", err)
+		slog.Error("worker: failed to start consume", "error", err)
 		return
 	}
-	defer msgCtx.Stop()
+	defer consumeCtx.Stop()
 
 	slog.Info("message worker started", "consumer", w.consumer.CachedInfo().Config.Name)
 
-	for {
-		msg, err := msgCtx.Next()
-		if err != nil {
-			if ctx.Err() != nil {
-				slog.Info("message worker stopped")
-				return
-			}
-			slog.Error("worker: failed to get next message, recreating messages context", "error", err)
-			msgCtx.Stop()
-
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(1 * time.Second):
-			}
-
-			newMsgCtx, err := w.consumer.Messages()
-			if err != nil {
-				slog.Error("worker: failed to recreate messages context", "error", err)
-				continue
-			}
-			msgCtx = newMsgCtx
-			continue
-		}
-
-		w.processMessage(ctx, msg)
-	}
+	<-ctx.Done()
+	slog.Info("message worker stopped")
 }
 
 // processMessage deserializes the JSON payload, enriches the context,

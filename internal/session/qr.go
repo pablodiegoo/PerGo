@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	qrcode "github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/store"
 
 	whatsapp "github.com/pablojhp.pergo/internal/channel/whatsapp"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -275,16 +276,20 @@ func (m *Manager) StartPairingSession(ctx context.Context, workspaceID uuid.UUID
 	}
 
 	m.mu.Lock()
-	if oldPs, ok := m.pairingSessions[phone]; ok {
-		oldPs.cancel()
-		delete(m.pairingCancels, oldPs.connectionID)
-		delete(m.pairingSessions, phone)
-		delete(m.pairingSessions, oldPs.connectionID.String())
+	if phone != "" {
+		if oldPs, ok := m.pairingSessions[phone]; ok {
+			oldPs.cancel()
+			delete(m.pairingCancels, oldPs.connectionID)
+			delete(m.pairingSessions, phone)
+			delete(m.pairingSessions, oldPs.connectionID.String())
+		}
 	}
 	if oldPs, ok := m.pairingSessions[connID.String()]; ok {
 		oldPs.cancel()
 		delete(m.pairingCancels, oldPs.connectionID)
-		delete(m.pairingSessions, oldPs.phone)
+		if oldPs.phone != "" {
+			delete(m.pairingSessions, oldPs.phone)
+		}
 		delete(m.pairingSessions, connID.String())
 	}
 
@@ -302,7 +307,9 @@ func (m *Manager) StartPairingSession(ctx context.Context, workspaceID uuid.UUID
 		cancel:      cancelPair,
 	}
 
-	m.pairingSessions[phone] = ps
+	if phone != "" {
+		m.pairingSessions[phone] = ps
+	}
 	m.pairingSessions[connID.String()] = ps
 	m.pairingCancels[connID] = cancelPair
 	m.mu.Unlock()
@@ -341,7 +348,9 @@ func (m *Manager) StartPairingSession(ctx context.Context, workspaceID uuid.UUID
 func (m *Manager) cleanupSession(phone string, connID uuid.UUID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	delete(m.pairingSessions, phone)
+	if phone != "" {
+		delete(m.pairingSessions, phone)
+	}
 	delete(m.pairingSessions, connID.String())
 	delete(m.pairingCancels, connID)
 }
@@ -441,6 +450,21 @@ func (m *Manager) runPairingLoop(ctx context.Context, ps *PairingSession, wc Wha
 					ConnectionID: &ps.connectionID,
 				})
 				return
+			case "err-client-outdated":
+				wc.Disconnect()
+				go func() {
+					fetchCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+					defer cancel()
+					if latestVer, err := whatsmeow.GetLatestVersion(fetchCtx, nil); err == nil && latestVer != nil {
+						store.SetWAVersion(*latestVer)
+					}
+				}()
+				ps.closeWithEvent(QREvent{
+					Status:       "error",
+					Message:      "Versão do cliente WhatsApp desatualizada. A versão foi atualizada automaticamente para a mais recente. Por favor, gere o QR Code novamente.",
+					ConnectionID: &ps.connectionID,
+				})
+				return
 			default:
 				wc.Disconnect()
 				ps.closeWithEvent(QREvent{
@@ -507,6 +531,14 @@ func (m *Manager) onPairingSuccess(ctx context.Context, wc WhatsAppClientInterfa
 		dID = uuid.New()
 	}
 
+	actualPhone := jid.User
+	if actualPhone == "" {
+		actualPhone = phone
+	}
+	if phone == "" {
+		phone = actualPhone
+	}
+
 	if isExisting && m.db != nil {
 		_, err := m.db.ExecContext(ctx, `
 			UPDATE connections SET
@@ -517,7 +549,7 @@ func (m *Manager) onPairingSuccess(ctx context.Context, wc WhatsAppClientInterfa
 				proxy_url = $6,
 				updated_at = NOW()
 			WHERE id = $1
-		`, dID, jid.String(), phone, string(DeviceStatusConnected), &now, sql.NullString{String: proxyURL, Valid: proxyURL != ""})
+		`, dID, jid.String(), actualPhone, string(DeviceStatusConnected), &now, sql.NullString{String: proxyURL, Valid: proxyURL != ""})
 		if err != nil {
 			return fmt.Errorf("update connection during re-pair: %w", err)
 		}
@@ -527,13 +559,17 @@ func (m *Manager) onPairingSuccess(ctx context.Context, wc WhatsAppClientInterfa
 		if proxyURL != "" {
 			proxyPtr = &proxyURL
 		}
+		displayName := "WhatsApp Web"
+		if actualPhone != "" {
+			displayName = "WhatsApp Web - " + actualPhone
+		}
 		conn := &repository.Connection{
 			ID:             dID,
 			WorkspaceID:    workspaceID,
-			Name:           "WhatsApp Web - " + phone,
+			Name:           displayName,
 			Channel:        "whatsapp",
 			JID:            &jidStr,
-			SenderIdentity: phone,
+			SenderIdentity: actualPhone,
 			Status:         string(DeviceStatusConnected),
 			ConnectedSince: &now,
 			ProxyURL:       proxyPtr,
@@ -549,6 +585,7 @@ func (m *Manager) onPairingSuccess(ctx context.Context, wc WhatsAppClientInterfa
 		var clientPtr *whatsapp.WhatsAppClient
 		if realWC, ok := wc.(*whatsapp.WhatsAppClient); ok {
 			clientPtr = realWC
+			clientPtr.SetJID(jid)
 		}
 		sess := &Session{
 			DeviceID: dID.String(),
@@ -560,20 +597,22 @@ func (m *Manager) onPairingSuccess(ctx context.Context, wc WhatsAppClientInterfa
 
 		// Keep the client running in background.
 		go func() {
-			_ = wc.Run(sessionCtx)
+			if err := wc.Run(sessionCtx); err != nil && sessionCtx.Err() == nil {
+				slog.Error("session manager: paired client run error", "error", err, "jid", jid.String())
+			}
 			if m.repo != nil {
 				_ = m.repo.UpdateStatus(context.Background(), dID, string(DeviceStatusDisconnected))
 			}
-			_ = m.EmitStatusEvent(context.Background(), workspaceID, dID, "whatsapp", phone, string(StateDisconnected))
+			_ = m.EmitStatusEvent(context.Background(), workspaceID, dID, "whatsapp", actualPhone, string(StateDisconnected))
 			m.registry.Remove(jid)
 		}()
 	}
 
-	_ = m.EmitStatusEvent(ctx, workspaceID, dID, "whatsapp", phone, string(StateConnected))
+	_ = m.EmitStatusEvent(ctx, workspaceID, dID, "whatsapp", actualPhone, string(StateConnected))
 
 	slog.Info("session manager: device paired",
 		"jid", jid.String(),
-		"phone", phone,
+		"phone", actualPhone,
 		"workspace_id", workspaceID,
 	)
 	return nil

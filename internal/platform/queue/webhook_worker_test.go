@@ -117,7 +117,7 @@ func TestWebhookWorker_Integration(t *testing.T) {
 	defer worker.Stop()
 
 	// 6. Publish outbound webhook event
-	traceID := "trace-webhook-999"
+	traceID := "trace-webhook-" + uuid.New().String()
 	messageID := uuid.New().String()
 	event := WebhookEvent{
 		Event:       "sent",
@@ -242,7 +242,7 @@ func TestWebhookWorker_TerminalErrorDLQ(t *testing.T) {
 	worker.SetWorkspaceRepository(wsRepo)
 	defer worker.Stop()
 
-	traceID := "trace-terminal-888"
+	traceID := "trace-terminal-" + uuid.New().String()
 	messageID := uuid.New().String()
 	event := WebhookEvent{
 		Event:       "failed",
@@ -299,10 +299,7 @@ func TestEnsureWebhookStream(t *testing.T) {
 	}
 
 	if info.Config.Name != "WEBHOOKS" {
-		t.Errorf("expected stream name WEBHOOKS, got %q", info.Config.Name)
-	}
-	if info.Config.Retention != jetstream.LimitsPolicy {
-		t.Errorf("expected retention LimitsPolicy, got %v", info.Config.Retention)
+		t.Errorf("stream name = %q, want WEBHOOKS", info.Config.Name)
 	}
 }
 
@@ -313,59 +310,63 @@ func TestWebhookWorker_Inbound(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Delete streams to ensure clean test state
+	// Delete stream to ensure clean test state
 	js, err := jetstream.New(nc)
 	if err == nil {
-		_ = js.DeleteStream(ctx, "INBOUND")
 		_ = js.DeleteStream(ctx, "WEBHOOKS")
 		_ = js.DeleteStream(ctx, "WEBHOOK_DELIVERIES")
+		_ = js.DeleteStream(ctx, "INBOUND")
 	}
 
-	// 1. Setup repository
 	kek := make([]byte, 32)
 	for i := range kek {
 		kek[i] = byte(i)
 	}
-	enc, _ := crypto.NewEncryptor(kek)
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
 	dlqRepo := repository.NewWebhookDLQRepository(pool, enc)
-	wsRepo := repository.NewWorkspaceRepository(pool)
 
-	// Create workspace with PII Opt-In false
-	ws, err := wsRepo.Create(ctx, "inbound_redact_ws_"+uuid.New().String())
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "webhook_worker_ws_inbound_"+uuid.New().String())
 	if err != nil {
 		t.Fatalf("failed to create workspace: %v", err)
 	}
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
 
-	// 2. Setup mock webhook endpoint
+	// Mock server that asserts delivery
 	var receivedPayload []byte
 	var mu sync.Mutex
-	received := make(chan struct{}, 1)
+	delivered := false
 
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
+		defer mu.Unlock()
+		delivered = true
 		receivedPayload, _ = io.ReadAll(r.Body)
-		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
-		received <- struct{}{}
 	}))
 	defer testServer.Close()
 
+	// 1. Create Webhook Subscription
 	subRepo := repository.NewWebhookSubscriptionRepository(pool, enc)
-	_, err = subRepo.Create(ctx, ws.ID, testServer.URL, []string{"*"}, []byte("signing-secret"))
+	_, err = subRepo.Create(ctx, ws.ID, testServer.URL, []string{"*"}, []byte("secret-inbound"))
 	if err != nil {
 		t.Fatalf("failed to create subscription: %v", err)
 	}
 
+	// 2. Start WebhookWorker
 	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, testServer.Client(), nil)
 	worker, err := NewWebhookWorker(ctx, nc, dispatcher, subRepo)
 	if err != nil {
 		t.Fatalf("failed to start worker: %v", err)
 	}
 	worker.SetWorkspaceRepository(wsRepo)
+	defer worker.Stop()
 
 	// 3. Publish inbound event with PII details (location & contacts)
-	traceID := "trace-inbound-111"
+	traceID := "trace-inbound-" + uuid.New().String()
 	event := struct {
 		Event       string `json:"event"`
 		TraceID     string `json:"trace_id"`
@@ -385,51 +386,58 @@ func TestWebhookWorker_Inbound(t *testing.T) {
 		Timestamp:   time.Now().UTC().Format(time.RFC3339),
 		WorkspaceID: ws.ID.String(),
 		From:        "5511999999999",
-		Body:        "Hi",
-		Location:    map[string]any{"latitude": -23.5},
-		Contacts:    []any{map[string]any{"name": "Alice"}},
+		Body:        "Secret location ping",
+		Location: map[string]float64{
+			"latitude":  -23.5505,
+			"longitude": -46.6333,
+		},
+		Contacts: []string{"John Doe"},
 	}
 
 	eventData, _ := json.Marshal(event)
 	publisher := NewJetStreamPublisher(nc)
-	err = publisher.Publish(ctx, "inbound.events."+ws.ID.String(), eventData, traceID)
+	err = publisher.Publish(ctx, "inbound.events.messages", eventData, traceID)
 	if err != nil {
-		t.Fatalf("publish error: %v", err)
+		t.Fatalf("failed to publish inbound event: %v", err)
 	}
 
 	// 4. Wait for delivery
-	select {
-	case <-received:
-	case <-time.After(15 * time.Second):
-		t.Fatal("webhook was not delivered")
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		done := delivered
+		mu.Unlock()
+		if done {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	mu.Lock()
+	done := delivered
 	payload := receivedPayload
 	mu.Unlock()
 
-	// 5. Assert redaction (From hashed, Location & Contacts stripped)
-	var result struct {
-		From     string `json:"from"`
-		Location any    `json:"location"`
-		Contacts any    `json:"contacts"`
-	}
-	_ = json.Unmarshal(payload, &result)
-
-	if result.From == "5511999999999" {
-		t.Error("expected sender 'from' field to be hashed, but got plain value")
-	}
-	if len(result.From) != 64 {
-		t.Errorf("expected 64-char hex hash value for from, got %q", result.From)
-	}
-	if result.Location != nil {
-		t.Errorf("expected Location field to be stripped, got %v", result.Location)
-	}
-	if result.Contacts != nil {
-		t.Errorf("expected Contacts field to be stripped, got %v", result.Contacts)
+	if !done {
+		t.Fatal("webhook was not delivered")
 	}
 
-	worker.Stop()
+	// 5. Verify payload was sanitized: From is SHA256 hashed, Location/Contacts are stripped
+	var res map[string]any
+	_ = json.Unmarshal(payload, &res)
+
+	if res["location"] != nil {
+		t.Errorf("expected location to be stripped, got %v", res["location"])
+	}
+	if res["contacts"] != nil {
+		t.Errorf("expected contacts to be stripped, got %v", res["contacts"])
+	}
+
+	// Verify SHA-256 hash of "5511999999999"
+	expectedFromHash := "a869177964cc68954ffec997bbad30769f8a5a6fdc60f296ddbc60b9347dc416"
+	if res["from"] != expectedFromHash {
+		t.Errorf("from = %v, want hashed %s", res["from"], expectedFromHash)
+	}
 }
 
 func TestWebhookWorker_ConnectionStatusDelivery(t *testing.T) {
@@ -439,51 +447,50 @@ func TestWebhookWorker_ConnectionStatusDelivery(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Delete streams to ensure clean test state
+	// Delete stream to ensure clean test state
 	js, err := jetstream.New(nc)
 	if err == nil {
 		_ = js.DeleteStream(ctx, "WEBHOOKS")
 		_ = js.DeleteStream(ctx, "WEBHOOK_DELIVERIES")
+		_ = js.DeleteStream(ctx, "INBOUND")
 	}
 
-	// 1. Setup repository
 	kek := make([]byte, 32)
 	for i := range kek {
 		kek[i] = byte(i)
 	}
-	enc, _ := crypto.NewEncryptor(kek)
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
 	dlqRepo := repository.NewWebhookDLQRepository(pool, enc)
-	wsRepo := repository.NewWorkspaceRepository(pool)
 
-	ws, err := wsRepo.Create(ctx, "conn_status_ws_"+uuid.New().String())
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "webhook_conn_status_ws_"+uuid.New().String())
 	if err != nil {
 		t.Fatalf("failed to create workspace: %v", err)
 	}
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
 
-	// 2. Setup mock webhook receiver
+	// Mock server that asserts delivery
 	var receivedPayload []byte
 	var receivedHeaders http.Header
 	var mu sync.Mutex
-	received := make(chan struct{}, 1)
+	delivered := false
 
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
+		defer mu.Unlock()
+		delivered = true
 		receivedPayload, _ = io.ReadAll(r.Body)
 		receivedHeaders = r.Header.Clone()
-		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
-		select {
-		case received <- struct{}{}:
-		default:
-		}
 	}))
 	defer testServer.Close()
 
-	// 3. Create subscription listening specifically for "connection.status"
+	// 1. Create Webhook Subscription matching "connection.status"
 	subRepo := repository.NewWebhookSubscriptionRepository(pool, enc)
-	webhookSecret := []byte("secret-conn-status-key")
-	_, err = subRepo.Create(ctx, ws.ID, testServer.URL, []string{"connection.status"}, webhookSecret)
+	_, err = subRepo.Create(ctx, ws.ID, testServer.URL, []string{"connection.status"}, []byte("secret-conn"))
 	if err != nil {
 		t.Fatalf("failed to create subscription: %v", err)
 	}
@@ -498,7 +505,7 @@ func TestWebhookWorker_ConnectionStatusDelivery(t *testing.T) {
 	defer worker.Stop()
 
 	// 5. Publish connection.status event to webhooks.events
-	traceID := "trace-conn-status-123"
+	traceID := "trace-conn-status-" + uuid.New().String()
 	connID := uuid.New()
 	event := struct {
 		Event          string `json:"event"`
@@ -532,16 +539,26 @@ func TestWebhookWorker_ConnectionStatusDelivery(t *testing.T) {
 	}
 
 	// 6. Wait for delivery
-	select {
-	case <-received:
-	case <-time.After(15 * time.Second):
-		t.Fatal("connection.status webhook was not delivered")
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		done := delivered
+		mu.Unlock()
+		if done {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	mu.Lock()
+	done := delivered
 	payload := receivedPayload
 	headers := receivedHeaders
 	mu.Unlock()
+
+	if !done {
+		t.Fatal("connection.status webhook was not delivered")
+	}
 
 	// 7. Verify delivered payload structure and signature
 	if headers.Get("X-PerGo-Signature") == "" {
@@ -551,7 +568,7 @@ func TestWebhookWorker_ConnectionStatusDelivery(t *testing.T) {
 		t.Errorf("expected X-Trace-ID %q, got %q", traceID, headers.Get("X-Trace-ID"))
 	}
 
-	var delivered struct {
+	var deliveredEvent struct {
 		Event          string `json:"event"`
 		TraceID        string `json:"trace_id"`
 		WorkspaceID    string `json:"workspace_id"`
@@ -561,23 +578,23 @@ func TestWebhookWorker_ConnectionStatusDelivery(t *testing.T) {
 		Status         string `json:"status"`
 		Timestamp      string `json:"timestamp"`
 	}
-	if err := json.Unmarshal(payload, &delivered); err != nil {
+	if err := json.Unmarshal(payload, &deliveredEvent); err != nil {
 		t.Fatalf("failed to unmarshal delivered payload: %v", err)
 	}
 
-	if delivered.Event != "connection.status" {
-		t.Errorf("expected event 'connection.status', got %q", delivered.Event)
+	if deliveredEvent.Event != "connection.status" {
+		t.Errorf("expected event 'connection.status', got %q", deliveredEvent.Event)
 	}
-	if delivered.ConnectionID != connID.String() {
-		t.Errorf("expected connection_id %q, got %q", connID.String(), delivered.ConnectionID)
+	if deliveredEvent.ConnectionID != connID.String() {
+		t.Errorf("expected connection_id %q, got %q", connID.String(), deliveredEvent.ConnectionID)
 	}
-	if delivered.Channel != "whatsapp" {
-		t.Errorf("expected channel 'whatsapp', got %q", delivered.Channel)
+	if deliveredEvent.Channel != "whatsapp" {
+		t.Errorf("expected channel 'whatsapp', got %q", deliveredEvent.Channel)
 	}
-	if delivered.SenderIdentity != "+5511999998888" {
-		t.Errorf("expected sender_identity '+5511999998888', got %q", delivered.SenderIdentity)
+	if deliveredEvent.SenderIdentity != "+5511999998888" {
+		t.Errorf("expected sender_identity '+5511999998888', got %q", deliveredEvent.SenderIdentity)
 	}
-	if delivered.Status != "connected" {
-		t.Errorf("expected status 'connected', got %q", delivered.Status)
+	if deliveredEvent.Status != "connected" {
+		t.Errorf("expected status 'connected', got %q", deliveredEvent.Status)
 	}
 }

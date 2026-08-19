@@ -256,6 +256,61 @@ func TestPairingPubSub_Success(t *testing.T) {
 	}
 }
 
+func TestPairingPubSub_SuccessWithoutInitialPhone(t *testing.T) {
+	mockCli := newMockWhatsAppClient()
+	parsedJID, _ := types.ParseJID("5511888884321@s.whatsapp.net")
+	mockCli.SetJID(parsedJID)
+
+	factory := &mockClientFactory{client: mockCli}
+	registry := NewActiveSession()
+
+	mgr := NewManager(nil, nil, registry, nil, "", nil)
+	mgr.SetClientFactory(factory)
+
+	ctx := context.Background()
+	wsID := uuid.New()
+
+	// Start pairing with empty phone
+	ps, err := mgr.StartPairingSession(ctx, wsID, "", nil, "")
+	if err != nil {
+		t.Fatalf("StartPairingSession failed: %v", err)
+	}
+
+	connIDStr := ps.ConnectionID().String()
+	sub, unsub := mgr.SubscribeQR(connIDStr)
+	defer unsub()
+
+	// Send success event
+	mockCli.qrCh <- whatsmeow.QRChannelItem{
+		Event: "success",
+	}
+
+	// Wait for paired event
+	var pairedEvt QREvent
+	for evt := range sub {
+		if evt.Status == "paired" {
+			pairedEvt = evt
+			break
+		}
+	}
+
+	if pairedEvt.Status != "paired" {
+		t.Errorf("expected paired status, got %q", pairedEvt.Status)
+	}
+
+	// Verify session registered in ActiveSession with parsed JID
+	sess := registry.Get(parsedJID)
+	if sess == nil {
+		t.Errorf("expected session to be added to ActiveSession registry")
+	}
+
+	// GetPairingState via ConnectionID should return paired
+	state, ok := mgr.GetPairingState(connIDStr)
+	if !ok || state.Status != "paired" {
+		t.Errorf("expected GetPairingState to return paired for connID, got %v", state)
+	}
+}
+
 func TestPairingPubSub_Timeout(t *testing.T) {
 	mockCli := newMockWhatsAppClient()
 	factory := &mockClientFactory{client: mockCli}

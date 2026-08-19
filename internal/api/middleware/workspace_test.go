@@ -85,9 +85,7 @@ func TestActiveWorkspaceMiddleware_ValidResolution(t *testing.T) {
 			return c.String(http.StatusInternalServerError, "id mismatch")
 		}
 		capturedID = id
-		if ws, ok := c.Request().Context().Value("active_workspace").(*repository.Workspace); ok {
-			capturedWs = ws
-		}
+		capturedWs = middleware.ActiveWorkspaceFrom(c.Request().Context())
 		return c.String(http.StatusOK, "ok")
 	})
 
