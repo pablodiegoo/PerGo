@@ -22,6 +22,14 @@ const (
 	StatusFailed    MessageStatus = "failed"
 )
 
+// Standard metadata keys for message events.
+const (
+	MetaIsGroup        = "is_group"
+	MetaParticipant    = "participant"
+	MetaChatJID        = "chat_jid"
+	MetaSenderPushName = "sender_push_name"
+)
+
 // ValidChannels defines the set of accepted channel values.
 var ValidChannels = map[string]bool{
 	"whatsapp":       true,

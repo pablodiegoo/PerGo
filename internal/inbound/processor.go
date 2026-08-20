@@ -95,7 +95,7 @@ func (e *InboundEvent) IsGroup() bool {
 	if e == nil {
 		return false
 	}
-	if e.Metadata != nil && e.Metadata["is_group"] == "true" {
+	if e.Metadata != nil && e.Metadata[domain.MetaIsGroup] == "true" {
 		return true
 	}
 	return strings.HasSuffix(e.From, "@g.us")
@@ -110,10 +110,10 @@ func (e *InboundEvent) SenderDisplayName() string {
 		return e.SenderName
 	}
 	if e.Metadata != nil {
-		if pushName := e.Metadata["sender_push_name"]; pushName != "" {
+		if pushName := e.Metadata[domain.MetaSenderPushName]; pushName != "" {
 			return pushName
 		}
-		if participant := e.Metadata["participant"]; participant != "" {
+		if participant := e.Metadata[domain.MetaParticipant]; participant != "" {
 			return participant
 		}
 	}

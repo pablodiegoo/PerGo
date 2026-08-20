@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/breaker"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -166,10 +167,10 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, task WebhookDeliveryTa
 				inboundPayload.Contacts = nil
 
 				// Hash participant JID in metadata if present to ensure GDPR/LGPD compliance
-				if inboundPayload.Metadata != nil && inboundPayload.Metadata["participant"] != "" {
+				if inboundPayload.Metadata != nil && inboundPayload.Metadata[domain.MetaParticipant] != "" {
 					pHasher := sha256.New()
-					pHasher.Write([]byte(inboundPayload.Metadata["participant"]))
-					inboundPayload.Metadata["participant"] = hex.EncodeToString(pHasher.Sum(nil))
+					pHasher.Write([]byte(inboundPayload.Metadata[domain.MetaParticipant]))
+					inboundPayload.Metadata[domain.MetaParticipant] = hex.EncodeToString(pHasher.Sum(nil))
 				}
 
 				payloadBytes, _ = json.Marshal(inboundPayload)

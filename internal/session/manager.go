@@ -18,6 +18,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/channel"
 	whatsapp "github.com/pablojhp.pergo/internal/channel/whatsapp"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -495,21 +496,14 @@ func (m *Manager) HandleWhatsAppMessage(ctx context.Context, wc WhatsAppClientIn
 			fromJID = v.Info.Sender.String()
 		}
 		metadata = map[string]string{
-			"is_group":         "true",
-			"participant":      v.Info.Sender.String(),
-			"chat_jid":         v.Info.Chat.String(),
-			"sender_push_name": v.Info.PushName,
+			domain.MetaIsGroup:        "true",
+			domain.MetaParticipant:    v.Info.Sender.String(),
+			domain.MetaChatJID:        v.Info.Chat.String(),
+			domain.MetaSenderPushName: v.Info.PushName,
 		}
 	} else {
 		fromJID = v.Info.Sender.String()
 	}
-
-	// Download media from WhatsApp CDN (needs active whatsmeow client)
-	var mediaBytes []byte
-	var mediaType string
-	var mediaFilename string
-	var mediaCaption string
-	hasMedia := false
 
 	var whatsmeowCli *whatsmeow.Client
 	if wc != nil {
@@ -518,55 +512,7 @@ func (m *Manager) HandleWhatsAppMessage(ctx context.Context, wc WhatsAppClientIn
 		}
 	}
 
-	if imageMsg := v.Message.GetImageMessage(); imageMsg != nil {
-		if whatsmeowCli != nil {
-			data, err := whatsmeowCli.Download(ctx, imageMsg)
-			if err == nil {
-				mediaBytes = data
-			}
-		}
-		mediaType = "image"
-		hasMedia = true
-		if imageMsg.Caption != nil {
-			mediaCaption = *imageMsg.Caption
-		}
-	} else if docMsg := v.Message.GetDocumentMessage(); docMsg != nil {
-		if whatsmeowCli != nil {
-			data, err := whatsmeowCli.Download(ctx, docMsg)
-			if err == nil {
-				mediaBytes = data
-			}
-		}
-		mediaType = "document"
-		hasMedia = true
-		if docMsg.FileName != nil {
-			mediaFilename = *docMsg.FileName
-		}
-		if docMsg.Caption != nil {
-			mediaCaption = *docMsg.Caption
-		}
-	} else if audioMsg := v.Message.GetAudioMessage(); audioMsg != nil {
-		if whatsmeowCli != nil {
-			data, err := whatsmeowCli.Download(ctx, audioMsg)
-			if err == nil {
-				mediaBytes = data
-			}
-		}
-		mediaType = "audio"
-		hasMedia = true
-	} else if videoMsg := v.Message.GetVideoMessage(); videoMsg != nil {
-		if whatsmeowCli != nil {
-			data, err := whatsmeowCli.Download(ctx, videoMsg)
-			if err == nil {
-				mediaBytes = data
-			}
-		}
-		mediaType = "video"
-		hasMedia = true
-		if videoMsg.Caption != nil {
-			mediaCaption = *videoMsg.Caption
-		}
-	}
+	inboundMedia := extractWhatsAppMedia(ctx, whatsmeowCli, v)
 
 	m.mu.Lock()
 	proc := m.inboundProcessor
@@ -581,16 +527,6 @@ func (m *Manager) HandleWhatsAppMessage(ctx context.Context, wc WhatsAppClientIn
 			recipientIdentity = d.SenderIdentity
 			if recipientIdentity == "" && d.JID != nil {
 				recipientIdentity = *d.JID
-			}
-		}
-
-		var inboundMedia *inbound.InboundMedia
-		if hasMedia {
-			inboundMedia = &inbound.InboundMedia{
-				Bytes:     mediaBytes,
-				MediaType: mediaType,
-				Filename:  mediaFilename,
-				Caption:   mediaCaption,
 			}
 		}
 
@@ -629,6 +565,82 @@ func (m *Manager) HandleWhatsAppMessage(ctx context.Context, wc WhatsAppClientIn
 
 		_ = proc.Process(ctx, event)
 	}
+}
+
+// extractWhatsAppMedia downloads and constructs InboundMedia from WhatsApp message attachments.
+func extractWhatsAppMedia(ctx context.Context, cli *whatsmeow.Client, v *waEvents.Message) *inbound.InboundMedia {
+	if imageMsg := v.Message.GetImageMessage(); imageMsg != nil {
+		var mediaBytes []byte
+		if cli != nil {
+			if data, err := cli.Download(ctx, imageMsg); err == nil {
+				mediaBytes = data
+			}
+		}
+		var caption string
+		if imageMsg.Caption != nil {
+			caption = *imageMsg.Caption
+		}
+		return &inbound.InboundMedia{
+			Bytes:     mediaBytes,
+			MediaType: "image",
+			Caption:   caption,
+		}
+	}
+
+	if docMsg := v.Message.GetDocumentMessage(); docMsg != nil {
+		var mediaBytes []byte
+		if cli != nil {
+			if data, err := cli.Download(ctx, docMsg); err == nil {
+				mediaBytes = data
+			}
+		}
+		var filename, caption string
+		if docMsg.FileName != nil {
+			filename = *docMsg.FileName
+		}
+		if docMsg.Caption != nil {
+			caption = *docMsg.Caption
+		}
+		return &inbound.InboundMedia{
+			Bytes:     mediaBytes,
+			MediaType: "document",
+			Filename:  filename,
+			Caption:   caption,
+		}
+	}
+
+	if audioMsg := v.Message.GetAudioMessage(); audioMsg != nil {
+		var mediaBytes []byte
+		if cli != nil {
+			if data, err := cli.Download(ctx, audioMsg); err == nil {
+				mediaBytes = data
+			}
+		}
+		return &inbound.InboundMedia{
+			Bytes:     mediaBytes,
+			MediaType: "audio",
+		}
+	}
+
+	if videoMsg := v.Message.GetVideoMessage(); videoMsg != nil {
+		var mediaBytes []byte
+		if cli != nil {
+			if data, err := cli.Download(ctx, videoMsg); err == nil {
+				mediaBytes = data
+			}
+		}
+		var caption string
+		if videoMsg.Caption != nil {
+			caption = *videoMsg.Caption
+		}
+		return &inbound.InboundMedia{
+			Bytes:     mediaBytes,
+			MediaType: "video",
+			Caption:   caption,
+		}
+	}
+
+	return nil
 }
 
 // extractWhatsAppBody pulls the human-readable text from a WhatsApp message.

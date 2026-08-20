@@ -131,9 +131,9 @@ func (s *ChatwootSyncer) SyncInboundMessage(ctx context.Context, contact *domain
 		"pergo_contact_id": contact.ID.String(),
 	}
 	if isGroup {
-		customAttributes["is_group"] = "true"
-		if ev.Metadata != nil && ev.Metadata["chat_jid"] != "" {
-			customAttributes["chat_jid"] = ev.Metadata["chat_jid"]
+		customAttributes[domain.MetaIsGroup] = "true"
+		if ev.Metadata != nil && ev.Metadata[domain.MetaChatJID] != "" {
+			customAttributes[domain.MetaChatJID] = ev.Metadata[domain.MetaChatJID]
 		}
 	}
 

@@ -239,21 +239,28 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 	return string(respJSON), nil
 }
 
-// phoneToJID converts a phone number string to a WhatsApp JID.
-// If the input already contains '@' (e.g. '@g.us' or '@s.whatsapp.net'), it is returned unmodified.
-// Otherwise, strips non-digit characters and appends @s.whatsapp.net.
-func phoneToJID(phone string) string {
-	if strings.Contains(phone, "@") {
-		return phone
+// recipientToJID converts a phone number or recipient identifier to a WhatsApp JID.
+// If the input already contains '@' (e.g. '@g.us' for groups or '@s.whatsapp.net' for users),
+// it is returned unmodified, preserving legacy hyphenated group JIDs (e.g. '551199999999-1582928372@g.us')
+// and modern group JIDs (e.g. '120363024823904@g.us').
+// Otherwise, strips non-digit characters and appends '@s.whatsapp.net'.
+func recipientToJID(recipient string) string {
+	if strings.Contains(recipient, "@") {
+		return recipient
 	}
 	digits := strings.Map(func(r rune) rune {
 		if r >= '0' && r <= '9' {
 			return r
 		}
 		return -1
-	}, phone)
+	}, recipient)
 
 	return digits + "@s.whatsapp.net"
+}
+
+// phoneToJID is an alias to recipientToJID for backwards compatibility.
+func phoneToJID(phone string) string {
+	return recipientToJID(phone)
 }
 
 // isTerminalWhatsAppError classifies whatsmeow errors as terminal

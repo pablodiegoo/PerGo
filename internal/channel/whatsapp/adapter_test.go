@@ -21,12 +21,18 @@ func TestPhoneToJID(t *testing.T) {
 		{"(11) 99999-9999", "11999999999@s.whatsapp.net"},
 		{"1234567890", "1234567890@s.whatsapp.net"},
 		{"120363024823904@g.us", "120363024823904@g.us"},
+		{"551199999999-1582928372@g.us", "551199999999-1582928372@g.us"},
+		{"1234567890-1612345678@g.us", "1234567890-1612345678@g.us"},
 		{"5511999991234@s.whatsapp.net", "5511999991234@s.whatsapp.net"},
 	}
 	for _, tt := range tests {
 		got := phoneToJID(tt.input)
 		if got != tt.want {
 			t.Errorf("phoneToJID(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+		gotRecipient := recipientToJID(tt.input)
+		if gotRecipient != tt.want {
+			t.Errorf("recipientToJID(%q) = %q, want %q", tt.input, gotRecipient, tt.want)
 		}
 	}
 }
