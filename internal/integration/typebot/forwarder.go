@@ -35,8 +35,15 @@ func NewForwarder(
 }
 
 func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Contact, event *inbound.InboundEvent) error {
-	if !contact.BotActive {
-		slog.Debug("Skipping Typebot forward: bot is inactive for contact", "contact_id", contact.ID)
+	if event != nil && event.IsGroup() {
+		slog.Debug("Skipping Typebot forward: group message ignored", "workspace_id", event.WorkspaceID, "from", event.From)
+		return nil
+	}
+
+	if contact == nil || !contact.BotActive {
+		if contact != nil {
+			slog.Debug("Skipping Typebot forward: bot is inactive for contact", "contact_id", contact.ID)
+		}
 		return nil
 	}
 

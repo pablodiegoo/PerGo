@@ -340,4 +340,113 @@ func TestChatwootSyncer(t *testing.T) {
 			t.Errorf("expected mapping conversation ID to be 203, got %d", mapping.ChatwootConversationID)
 		}
 	})
+
+	t.Run("SyncInboundMessage_GroupMessage_CreatesGroupConversationAndPostsWithSender", func(t *testing.T) {
+		var receivedPhone string
+		var receivedContactAttrs map[string]interface{}
+		var receivedContent string
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/api/v1/accounts/1/contacts/search":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"payload": []}`))
+
+			case r.Method == http.MethodPost && r.URL.Path == "/api/v1/accounts/1/contacts":
+				var body struct {
+					Name             string                 `json:"name"`
+					Identifier       string                 `json:"identifier"`
+					PhoneNumber      string                 `json:"phone_number"`
+					CustomAttributes map[string]interface{} `json:"custom_attributes"`
+				}
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				receivedPhone = body.PhoneNumber
+				receivedContactAttrs = body.CustomAttributes
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"payload": {"contact": {"id": 888}}}`))
+
+			case r.Method == http.MethodPost && r.URL.Path == "/api/v1/accounts/1/conversations":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"id": 999}`))
+
+			case r.Method == http.MethodPost && r.URL.Path == "/api/v1/accounts/1/conversations/999/messages":
+				var body struct {
+					Content string `json:"content"`
+				}
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				receivedContent = body.Content
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"id": 1001}`))
+
+			default:
+				t.Errorf("unexpected API call: %s %s", r.Method, r.URL.Path)
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+		}))
+		defer server.Close()
+
+		groupJID := "120363024823904@g.us"
+		groupContact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", groupJID, "Engineering Group", "", "")
+		if err != nil {
+			t.Fatalf("failed to resolve group contact: %v", err)
+		}
+
+		cfg := map[string]interface{}{
+			"api_url":      server.URL,
+			"access_token": "test-token",
+			"inbox_id":     int64(2),
+			"account_id":   int64(1),
+		}
+		cfgBytes, _ := json.Marshal(cfg)
+		integration, err := integrationRepo.GetByProvider(ctx, ws.ID, "chatwoot")
+		if err != nil {
+			t.Fatalf("failed to get integration: %v", err)
+		}
+		integration.Config = cfgBytes
+		if err := integrationRepo.Save(ctx, integration); err != nil {
+			t.Fatalf("failed to save integration: %v", err)
+		}
+
+		syncer := chatwoot.NewChatwootSyncer(integrationRepo, mappingRepo, server.Client())
+
+		ev := &inbound.InboundEvent{
+			WorkspaceID:  ws.ID,
+			ConnectionID: conn.ID,
+			Channel:      "whatsapp",
+			From:         groupJID,
+			To:           "+5511888880001",
+			Body:         "Hello engineering team!",
+			SenderName:   "Alice",
+			Metadata: map[string]string{
+				"is_group":         "true",
+				"participant":      "5511999991234@s.whatsapp.net",
+				"chat_jid":         groupJID,
+				"sender_push_name": "Alice",
+			},
+		}
+
+		err = syncer.SyncInboundMessage(ctx, groupContact, ev)
+		if err != nil {
+			t.Fatalf("SyncInboundMessage failed: %v", err)
+		}
+
+		if receivedPhone != "" {
+			t.Errorf("expected empty phone_number for group contact, got %q", receivedPhone)
+		}
+		if receivedContactAttrs == nil || receivedContactAttrs["is_group"] != "true" {
+			t.Errorf("expected custom_attributes.is_group == 'true', got %+v", receivedContactAttrs)
+		}
+		if receivedContent != "[Alice]: Hello engineering team!" {
+			t.Errorf("expected content '[Alice]: Hello engineering team!', got %q", receivedContent)
+		}
+
+		mapping, err := mappingRepo.GetByContactAndConnection(ctx, ws.ID, groupContact.ID, conn.ID)
+		if err != nil {
+			t.Fatalf("failed to find mapping: %v", err)
+		}
+		if mapping.ChatwootContactID != 888 || mapping.ChatwootConversationID != 999 {
+			t.Errorf("unexpected mapping values: %+v", mapping)
+		}
+	})
 }

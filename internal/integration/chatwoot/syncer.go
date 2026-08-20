@@ -69,7 +69,18 @@ func (s *ChatwootSyncer) SyncInboundMessage(ctx context.Context, contact *domain
 
 	client := NewChatwootClient(cfg.APIURL, cfg.AccessToken, cfg.AccountID, s.httpClient)
 
+	isGroup := ev.IsGroup()
+
 	content := ev.Body
+	if isGroup {
+		if senderInfo := ev.SenderDisplayName(); senderInfo != "" {
+			if content != "" {
+				content = fmt.Sprintf("[%s]: %s", senderInfo, content)
+			} else {
+				content = fmt.Sprintf("[%s]:", senderInfo)
+			}
+		}
+	}
 	if ev.Media != nil && ev.Media.MediaURL != "" {
 		mediaURLText := fmt.Sprintf("\nMedia: %s", ev.Media.MediaURL)
 		if ev.Media.Caption != "" {
@@ -85,7 +96,9 @@ func (s *ChatwootSyncer) SyncInboundMessage(ctx context.Context, contact *domain
 		if err != nil {
 			if errors.Is(err, ErrNotFound) {
 				slog.Warn("Chatwoot conversation not found. Deleting mapping and recreating.", "conversation_id", mapping.ChatwootConversationID)
-				_ = s.mappingRepo.Delete(ctx, ev.WorkspaceID, contact.ID, ev.ConnectionID)
+				if delErr := s.mappingRepo.Delete(ctx, ev.WorkspaceID, contact.ID, ev.ConnectionID); delErr != nil {
+					slog.Error("failed to delete invalid chatwoot mapping", "error", delErr, "conversation_id", mapping.ChatwootConversationID)
+				}
 			} else {
 				return fmt.Errorf("failed to post message to mapped chatwoot conversation: %w", err)
 			}
@@ -100,20 +113,28 @@ func (s *ChatwootSyncer) SyncInboundMessage(ctx context.Context, contact *domain
 	chatwootContactID, err = client.SearchContact(ctx, contact.ID.String())
 
 	var phoneNumber string
-	for _, ident := range contact.Identities {
-		if ident.Channel == "whatsapp" || ident.Channel == "whatsapp_cloud" {
-			phoneNumber = ident.SenderIdentity
-			break
+	if !isGroup {
+		for _, ident := range contact.Identities {
+			if (ident.Channel == "whatsapp" || ident.Channel == "whatsapp_cloud") && !strings.Contains(ident.SenderIdentity, "@g.us") {
+				phoneNumber = ident.SenderIdentity
+				break
+			}
 		}
-	}
-	if phoneNumber == "" {
-		if ev.Channel == "whatsapp" || ev.Channel == "whatsapp_cloud" {
-			phoneNumber = ev.From
+		if phoneNumber == "" {
+			if (ev.Channel == "whatsapp" || ev.Channel == "whatsapp_cloud") && !strings.Contains(ev.From, "@g.us") {
+				phoneNumber = ev.From
+			}
 		}
 	}
 
 	customAttributes := map[string]interface{}{
 		"pergo_contact_id": contact.ID.String(),
+	}
+	if isGroup {
+		customAttributes["is_group"] = "true"
+		if ev.Metadata != nil && ev.Metadata["chat_jid"] != "" {
+			customAttributes["chat_jid"] = ev.Metadata["chat_jid"]
+		}
 	}
 
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -87,6 +88,36 @@ type InboundEvent struct {
 	Story        *InboundStoryEvent
 	SenderName   string
 	Metadata     map[string]string
+}
+
+// IsGroup reports whether the inbound event represents a group chat.
+func (e *InboundEvent) IsGroup() bool {
+	if e == nil {
+		return false
+	}
+	if e.Metadata != nil && e.Metadata["is_group"] == "true" {
+		return true
+	}
+	return strings.HasSuffix(e.From, "@g.us")
+}
+
+// SenderDisplayName resolves the most specific sender name available for the event.
+func (e *InboundEvent) SenderDisplayName() string {
+	if e == nil {
+		return ""
+	}
+	if e.SenderName != "" {
+		return e.SenderName
+	}
+	if e.Metadata != nil {
+		if pushName := e.Metadata["sender_push_name"]; pushName != "" {
+			return pushName
+		}
+		if participant := e.Metadata["participant"]; participant != "" {
+			return participant
+		}
+	}
+	return ""
 }
 
 // InboundEventPayload is the standard format published to NATS and webhooks.
@@ -222,7 +253,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 			username = ev.Metadata["username"]
 			phone = ev.Metadata["phone_number"]
 		}
-		if ev.Channel == "whatsapp" || ev.Channel == "whatsapp_cloud" {
+		if !ev.IsGroup() && (ev.Channel == "whatsapp" || ev.Channel == "whatsapp_cloud") {
 			phone = ev.From
 		}
 		var err error

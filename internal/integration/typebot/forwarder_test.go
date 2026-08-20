@@ -105,6 +105,36 @@ func TestTypebotForwarder_BotInactive(t *testing.T) {
 	}
 }
 
+func TestTypebotForwarder_GroupMessage_SkipsBot(t *testing.T) {
+	pub := &mockPublisher{}
+	f := typebot.NewForwarder(nil, nil, pub)
+
+	contact := &domain.Contact{
+		ID:        uuid.New(),
+		BotActive: true,
+	}
+
+	event := &inbound.InboundEvent{
+		WorkspaceID:  uuid.New(),
+		ConnectionID: uuid.New(),
+		From:         "120363024823904@g.us",
+		Body:         "Hello group bot!",
+		Metadata: map[string]string{
+			"is_group":    "true",
+			"participant": "5511999991234@s.whatsapp.net",
+		},
+	}
+
+	err := f.SyncInboundMessage(context.Background(), contact, event)
+	if err != nil {
+		t.Fatalf("expected nil error, got: %v", err)
+	}
+
+	if pub.called {
+		t.Error("expected publisher to not be called for group message")
+	}
+}
+
 func TestTypebotForwarder_PopulatesRoutingFields(t *testing.T) {
 	pool := getTestPool(t)
 	defer pool.Close()
@@ -268,5 +298,105 @@ func TestTypebotForwarder_PopulatesRoutingFields(t *testing.T) {
 	}
 	if outMsg.TraceID != pub.traceID {
 		t.Errorf("expected QueueMessage TraceID (%s) to match published traceID (%s)", outMsg.TraceID, pub.traceID)
+	}
+}
+
+func TestTypebotForwarder_GroupMessage_WithActiveBot_SkipsExecution(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	sessionRepo := repository.NewTypebotSessionRepository(pool)
+	integrationRepo := repository.NewIntegrationRepository(pool, noOpCryptoProvider{})
+
+	ws, err := wsRepo.Create(ctx, "typebot_group_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	connID := uuid.New()
+	connRepo := repository.NewConnectionRepository(pool, noOpCryptoProvider{})
+	conn := &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    ws.ID,
+		Name:           "WhatsApp Connection",
+		Channel:        "whatsapp",
+		SenderIdentity: "+5511888880001",
+		Status:         "connected",
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("failed to create connection: %v", err)
+	}
+
+	var apiCalled bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiCalled = true
+		t.Errorf("Typebot API should not be called for group messages: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	cfg := typebot.Config{
+		APIURL: server.URL,
+		Bots: []typebot.BotConfig{
+			{
+				ConnectionID: connID.String(),
+				BotID:        "group_bot",
+				PublicToken:  "pub_tok",
+				IsDefault:    true,
+			},
+		},
+	}
+	cfgBytes, _ := json.Marshal(cfg)
+	integration := &repository.Integration{
+		ID:          uuid.New(),
+		WorkspaceID: ws.ID,
+		Name:        "Typebot Test",
+		Provider:    "typebot",
+		Active:      true,
+		Config:      cfgBytes,
+	}
+	if err := integrationRepo.Save(ctx, integration); err != nil {
+		t.Fatalf("failed to save integration: %v", err)
+	}
+
+	pub := &mockPublisher{}
+	f := typebot.NewForwarder(sessionRepo, integrationRepo, pub)
+
+	contactRepo := repository.NewContactRepository(pool)
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "120363024823904@g.us", "My WhatsApp Group", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact: %v", err)
+	}
+	contact.BotActive = true
+
+	ev := &inbound.InboundEvent{
+		WorkspaceID:  ws.ID,
+		ConnectionID: connID,
+		Channel:      "whatsapp",
+		From:         "120363024823904@g.us",
+		To:           "+5511888880001",
+		Body:         "Hello in group chat!",
+		Metadata: map[string]string{
+			"is_group":         "true",
+			"participant":      "5511999991234@s.whatsapp.net",
+			"chat_jid":         "120363024823904@g.us",
+			"sender_push_name": "Alice",
+		},
+	}
+
+	err = f.SyncInboundMessage(ctx, contact, ev)
+	if err != nil {
+		t.Fatalf("SyncInboundMessage failed: %v", err)
+	}
+
+	if apiCalled {
+		t.Error("expected no Typebot API calls for group message")
+	}
+	if pub.called {
+		t.Error("expected publisher to not be called for group message")
 	}
 }

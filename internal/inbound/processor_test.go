@@ -922,6 +922,283 @@ func TestInboundProcessor_GroupMessageProcessing(t *testing.T) {
 	if payload.Media.Caption != "Our group photo" {
 		t.Errorf("expected Media Caption 'Our group photo', got %q", payload.Media.Caption)
 	}
+
+	// Verify Contact Profile resolution
+	var contactID uuid.UUID
+	err = pool.QueryRow(ctx, `
+		SELECT contact_id FROM contact_identities 
+		WHERE workspace_id = $1 AND channel = 'whatsapp' AND sender_identity = $2
+	`, ws.ID, groupJID).Scan(&contactID)
+	if err != nil {
+		t.Fatalf("expected contact identity for group JID %s: %v", groupJID, err)
+	}
+
+	// Verify no invalid 'phone' identity was created for the group JID
+	var phoneIdentityCount int
+	err = pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM contact_identities 
+		WHERE workspace_id = $1 AND channel = 'phone' AND sender_identity = $2
+	`, ws.ID, groupJID).Scan(&phoneIdentityCount)
+	if err != nil {
+		t.Fatalf("failed to query phone identities: %v", err)
+	}
+	if phoneIdentityCount != 0 {
+		t.Errorf("expected 0 'phone' identities for group JID, got %d", phoneIdentityCount)
+	}
+}
+
+func TestInboundProcessor_GroupContactResolution_DistinctGroupsAndIdempotent(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	dedupRepo := repository.NewInboundDedupRepository(pool)
+	sessRepo := repository.NewRecipientSessionRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "group_contact_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	pub := &fakePublisher{}
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, pub, nil, sessRepo, contactRepo, dispatchRepo, nil)
+
+	group1JID := "120363024823901@g.us"
+	group2JID := "120363024823902@g.us"
+
+	// 1. First event from Group 1
+	ev1 := &inbound.InboundEvent{
+		WorkspaceID:  ws.ID,
+		ConnectionID: uuid.New(),
+		MessageID:    "wamid.group1_msg_1",
+		Channel:      "whatsapp",
+		From:         group1JID,
+		To:           "+5511888880001",
+		Body:         "Hello Group 1",
+		SenderName:   "Group One Name",
+		Metadata: map[string]string{
+			"is_group":    "true",
+			"participant": "5511999990001@s.whatsapp.net",
+		},
+	}
+	if err := proc.Process(ctx, ev1); err != nil {
+		t.Fatalf("Process ev1 failed: %v", err)
+	}
+
+	var contact1ID uuid.UUID
+	err = pool.QueryRow(ctx, `
+		SELECT contact_id FROM contact_identities 
+		WHERE workspace_id = $1 AND channel = 'whatsapp' AND sender_identity = $2
+	`, ws.ID, group1JID).Scan(&contact1ID)
+	if err != nil {
+		t.Fatalf("failed to get contact for group 1: %v", err)
+	}
+
+	// 2. Second event from same Group 1 (idempotent resolution)
+	ev1Second := &inbound.InboundEvent{
+		WorkspaceID:  ws.ID,
+		ConnectionID: uuid.New(),
+		MessageID:    "wamid.group1_msg_2",
+		Channel:      "whatsapp",
+		From:         group1JID,
+		To:           "+5511888880001",
+		Body:         "Second message Group 1",
+		SenderName:   "Alice PushName",
+		Metadata: map[string]string{
+			"is_group":    "true",
+			"participant": "5511999990002@s.whatsapp.net",
+		},
+	}
+	if err := proc.Process(ctx, ev1Second); err != nil {
+		t.Fatalf("Process ev1Second failed: %v", err)
+	}
+
+	var contact1SecondID uuid.UUID
+	err = pool.QueryRow(ctx, `
+		SELECT contact_id FROM contact_identities 
+		WHERE workspace_id = $1 AND channel = 'whatsapp' AND sender_identity = $2
+	`, ws.ID, group1JID).Scan(&contact1SecondID)
+	if err != nil {
+		t.Fatalf("failed to get contact for group 1 second time: %v", err)
+	}
+	if contact1ID != contact1SecondID {
+		t.Errorf("expected idempotent contact ID %s, got %s", contact1ID, contact1SecondID)
+	}
+
+	// 3. Event from distinct Group 2
+	ev2 := &inbound.InboundEvent{
+		WorkspaceID:  ws.ID,
+		ConnectionID: uuid.New(),
+		MessageID:    "wamid.group2_msg_1",
+		Channel:      "whatsapp",
+		From:         group2JID,
+		To:           "+5511888880001",
+		Body:         "Hello Group 2",
+		SenderName:   "Group Two Name",
+		Metadata: map[string]string{
+			"is_group":    "true",
+			"participant": "5511999990003@s.whatsapp.net",
+		},
+	}
+	if err := proc.Process(ctx, ev2); err != nil {
+		t.Fatalf("Process ev2 failed: %v", err)
+	}
+
+	var contact2ID uuid.UUID
+	err = pool.QueryRow(ctx, `
+		SELECT contact_id FROM contact_identities 
+		WHERE workspace_id = $1 AND channel = 'whatsapp' AND sender_identity = $2
+	`, ws.ID, group2JID).Scan(&contact2ID)
+	if err != nil {
+		t.Fatalf("failed to get contact for group 2: %v", err)
+	}
+	if contact1ID == contact2ID {
+		t.Errorf("expected distinct contact IDs for distinct groups, but got same ID %s", contact1ID)
+	}
+}
+
+type spyTypebotForwarder struct {
+	invoked chan struct{}
+	called  bool
+	contact *domain.Contact
+	event   *inbound.InboundEvent
+}
+
+func (s *spyTypebotForwarder) SyncInboundMessage(ctx context.Context, contact *domain.Contact, ev *inbound.InboundEvent) error {
+	s.called = true
+	s.contact = contact
+	s.event = ev
+	if ev.Metadata != nil && ev.Metadata["is_group"] == "true" {
+		return nil
+	}
+	close(s.invoked)
+	return nil
+}
+
+func TestInboundProcessor_GroupMessage_BypassesTypebot_RoutesToChatwoot(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	dedupRepo := repository.NewInboundDedupRepository(pool)
+	sessRepo := repository.NewRecipientSessionRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "router_governance_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	pub := &fakePublisher{}
+	cwSyncer := &fakeChatwootSyncer{called: make(chan struct{})}
+	tbForwarder := &spyTypebotForwarder{invoked: make(chan struct{})}
+
+	router := inbound.NewDefaultRouter(cwSyncer, tbForwarder)
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, pub, nil, sessRepo, contactRepo, dispatchRepo, router)
+
+	groupJID := "120363024823904@g.us"
+	connID := uuid.New()
+
+	// 1. Group Inbound Event
+	groupEv := &inbound.InboundEvent{
+		WorkspaceID:  ws.ID,
+		ConnectionID: connID,
+		MessageID:    "wamid.group_governance_1",
+		Channel:      "whatsapp",
+		From:         groupJID,
+		To:           "+5511888880001",
+		Body:         "Group discussion item",
+		SenderName:   "Alice Participant",
+		Metadata: map[string]string{
+			"is_group":         "true",
+			"participant":      "5511999991234@s.whatsapp.net",
+			"chat_jid":         groupJID,
+			"sender_push_name": "Alice Participant",
+		},
+	}
+
+	err = proc.Process(ctx, groupEv)
+	if err != nil {
+		t.Fatalf("Process group event failed: %v", err)
+	}
+
+	// Verify Chatwoot received the group event
+	select {
+	case <-cwSyncer.called:
+		if cwSyncer.event.From != groupJID {
+			t.Errorf("expected Chatwoot event From %q, got %q", groupJID, cwSyncer.event.From)
+		}
+		if cwSyncer.contact == nil {
+			t.Fatal("expected Chatwoot contact to be populated")
+		}
+		var groupIdentityFound bool
+		for _, ident := range cwSyncer.contact.Identities {
+			if ident.SenderIdentity == groupJID {
+				groupIdentityFound = true
+			}
+		}
+		if !groupIdentityFound {
+			t.Errorf("expected group identity %s in resolved contact identities", groupJID)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for ChatwootSyncer on group message")
+	}
+
+	// Verify Typebot was not invoked for bot actions on group message
+	select {
+	case <-tbForwarder.invoked:
+		t.Fatal("TypebotForwarder should not execute bot flow for group messages")
+	case <-time.After(100 * time.Millisecond):
+		// Expected: bot flow was skipped
+	}
+
+	// 2. Direct 1-on-1 Inbound Event
+	cwSyncer2 := &fakeChatwootSyncer{called: make(chan struct{})}
+	tbForwarder2 := &spyTypebotForwarder{invoked: make(chan struct{})}
+	router2 := inbound.NewDefaultRouter(cwSyncer2, tbForwarder2)
+	proc2 := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, pub, nil, sessRepo, contactRepo, dispatchRepo, router2)
+
+	directEv := &inbound.InboundEvent{
+		WorkspaceID:  ws.ID,
+		ConnectionID: connID,
+		MessageID:    "wamid.direct_governance_1",
+		Channel:      "whatsapp",
+		From:         "5511999995555",
+		To:           "+5511888880001",
+		Body:         "Hello 1-on-1 bot",
+		SenderName:   "Bob Direct",
+	}
+
+	err = proc2.Process(ctx, directEv)
+	if err != nil {
+		t.Fatalf("Process direct event failed: %v", err)
+	}
+
+	// Both Chatwoot and Typebot should be invoked for direct messages
+	select {
+	case <-cwSyncer2.called:
+		if cwSyncer2.event.From != "5511999995555" {
+			t.Errorf("expected Chatwoot direct event From 5511999995555, got %q", cwSyncer2.event.From)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for ChatwootSyncer on direct message")
+	}
+
+	select {
+	case <-tbForwarder2.invoked:
+		if tbForwarder2.event.From != "5511999995555" {
+			t.Errorf("expected Typebot direct event From 5511999995555, got %q", tbForwarder2.event.From)
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for TypebotForwarder on direct message")
+	}
 }
 
 
