@@ -20,6 +20,8 @@ func TestPhoneToJID(t *testing.T) {
 		{"+55 11 99999-9999", "5511999999999@s.whatsapp.net"},
 		{"(11) 99999-9999", "11999999999@s.whatsapp.net"},
 		{"1234567890", "1234567890@s.whatsapp.net"},
+		{"120363024823904@g.us", "120363024823904@g.us"},
+		{"5511999991234@s.whatsapp.net", "5511999991234@s.whatsapp.net"},
 	}
 	for _, tt := range tests {
 		got := phoneToJID(tt.input)

@@ -105,6 +105,8 @@ type InboundEventPayload struct {
 	Contacts    []InboundContact    `json:"contacts,omitempty"`
 	Interactive *InboundInteractive `json:"interactive,omitempty"`
 	Story       *InboundStoryEvent  `json:"story_event,omitempty"`
+	SenderName  string              `json:"sender_name,omitempty"`
+	Metadata    map[string]string   `json:"metadata,omitempty"`
 }
 
 // MessageStatusUpdatedPayload is the structure of the message status update event published to NATS.
@@ -293,6 +295,8 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		Body:        ev.Body,
 		Interactive: ev.Interactive,
 		Story:       ev.Story,
+		SenderName:  ev.SenderName,
+		Metadata:    ev.Metadata,
 	}
 
 	// 5. Upload media to S3 if present

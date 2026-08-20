@@ -83,6 +83,11 @@ const (
 	maxReconnectBackoff = 5 * time.Minute
 )
 
+// InboundEventProcessor defines the processor interface for inbound events.
+type InboundEventProcessor interface {
+	Process(ctx context.Context, ev *inbound.InboundEvent) error
+}
+
 // Manager coordinates WhatsApp device lifecycle: startup reconnection,
 // session registration, and graceful shutdown.
 type Manager struct {
@@ -91,7 +96,7 @@ type Manager struct {
 	registry         *ActiveSession
 	dispatchers      *channel.Registry
 	waVersion        string
-	inboundProcessor *inbound.InboundProcessor
+	inboundProcessor InboundEventProcessor
 	clientFactory    ClientFactory
 	publisher        Publisher
 	qrTimeout        time.Duration
@@ -102,6 +107,12 @@ type Manager struct {
 }
 
 // NewManager creates a session manager.
+
+func (m *Manager) SetInboundProcessor(p InboundEventProcessor) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.inboundProcessor = p
+}
 
 func (m *Manager) SetClientFactory(f ClientFactory) {
 	m.mu.Lock()
@@ -268,7 +279,7 @@ func NewManager(
 	registry *ActiveSession,
 	dispatchers *channel.Registry,
 	waVersion string,
-	inboundProcessor *inbound.InboundProcessor,
+	inboundProcessor InboundEventProcessor,
 ) *Manager {
 	return &Manager{
 		db:               db,
@@ -393,122 +404,7 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection)
 	m.registry.Add(sess)
 
 	// Register event handler to update recipient_sessions on incoming messages
-	wc.Client().AddEventHandler(func(evt interface{}) {
-		switch v := evt.(type) {
-		case *waEvents.LoggedOut:
-			slog.Warn("session manager: whatsmeow logged out event received, marking device terminal", "device_id", d.ID)
-			_ = m.repo.UpdateStatus(context.Background(), d.ID, string(DeviceStatusTerminal))
-			_ = m.EmitStatusEvent(context.Background(), d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, "degraded")
-			cancel()
-		case *waEvents.Message:
-			if v.Info.IsFromMe {
-				return
-			}
-
-			senderJID := v.Info.Sender.String()
-			ctxBg := context.Background()
-
-			// Download media from WhatsApp CDN (needs active whatsmeow client)
-			var mediaBytes []byte
-			var mediaType string
-			var mediaFilename string
-			var mediaCaption string
-			hasMedia := false
-
-			if imageMsg := v.Message.GetImageMessage(); imageMsg != nil {
-				data, err := wc.Client().Download(ctxBg, imageMsg)
-				if err == nil {
-					mediaBytes = data
-				}
-				mediaType = "image"
-				hasMedia = true
-				if imageMsg.Caption != nil {
-					mediaCaption = *imageMsg.Caption
-				}
-			} else if docMsg := v.Message.GetDocumentMessage(); docMsg != nil {
-				data, err := wc.Client().Download(ctxBg, docMsg)
-				if err == nil {
-					mediaBytes = data
-				}
-				mediaType = "document"
-				hasMedia = true
-				if docMsg.FileName != nil {
-					mediaFilename = *docMsg.FileName
-				}
-				if docMsg.Caption != nil {
-					mediaCaption = *docMsg.Caption
-				}
-			} else if audioMsg := v.Message.GetAudioMessage(); audioMsg != nil {
-				data, err := wc.Client().Download(ctxBg, audioMsg)
-				if err == nil {
-					mediaBytes = data
-				}
-				mediaType = "audio"
-				hasMedia = true
-			} else if videoMsg := v.Message.GetVideoMessage(); videoMsg != nil {
-				data, err := wc.Client().Download(ctxBg, videoMsg)
-				if err == nil {
-					mediaBytes = data
-				}
-				mediaType = "video"
-				hasMedia = true
-				if videoMsg.Caption != nil {
-					mediaCaption = *videoMsg.Caption
-				}
-			}
-
-			// Delegate to processor
-			if m.inboundProcessor != nil {
-				recipientIdentity := d.SenderIdentity
-				if recipientIdentity == "" && d.JID != nil {
-					recipientIdentity = *d.JID
-				}
-
-				var inboundMedia *inbound.InboundMedia
-				if hasMedia {
-					inboundMedia = &inbound.InboundMedia{
-						Bytes:     mediaBytes,
-						MediaType: mediaType,
-						Filename:  mediaFilename,
-						Caption:   mediaCaption,
-					}
-				}
-
-				var inboundLocation *inbound.InboundLocation
-				if locMsg := v.Message.GetLocationMessage(); locMsg != nil {
-					inboundLocation = &inbound.InboundLocation{
-						Latitude:  *locMsg.DegreesLatitude,
-						Longitude: *locMsg.DegreesLongitude,
-						Name:      locMsg.GetName(),
-						Address:   locMsg.GetAddress(),
-					}
-				}
-
-				var inboundContacts []inbound.InboundContact
-				if contactMsg := v.Message.GetContactMessage(); contactMsg != nil {
-					inboundContacts = append(inboundContacts, inbound.InboundContact{
-						Name:  contactMsg.GetDisplayName(),
-						Phone: contactMsg.GetVcard(),
-					})
-				}
-
-				event := &inbound.InboundEvent{
-					WorkspaceID:  d.WorkspaceID,
-					ConnectionID: d.ID,
-					MessageID:    v.Info.ID,
-					Channel:      "whatsapp",
-					From:         senderJID,
-					To:           recipientIdentity,
-					Body:         extractWhatsAppBody(v),
-					Media:        inboundMedia,
-					Location:     inboundLocation,
-					Contacts:     inboundContacts,
-				}
-
-				_ = m.inboundProcessor.Process(ctxBg, event)
-			}
-		}
-	})
+	m.registerEventHandler(wc, d, cancel)
 
 	// Start the client goroutine
 	go func() {
@@ -541,6 +437,26 @@ func parseJID(jid string) (types.JID, error) {
 	return parsed, nil
 }
 
+func (m *Manager) registerEventHandler(wc WhatsAppClientInterface, d *repository.Connection, cancel context.CancelFunc) {
+	if realWC, ok := wc.(*whatsapp.WhatsAppClient); ok && realWC.Client() != nil {
+		realWC.Client().AddEventHandler(func(evt interface{}) {
+			switch v := evt.(type) {
+			case *waEvents.LoggedOut:
+				slog.Warn("session manager: whatsmeow logged out event received, marking device terminal", "device_id", d.ID)
+				if m.repo != nil {
+					_ = m.repo.UpdateStatus(context.Background(), d.ID, string(DeviceStatusTerminal))
+				}
+				_ = m.EmitStatusEvent(context.Background(), d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, "degraded")
+				if cancel != nil {
+					cancel()
+				}
+			case *waEvents.Message:
+				m.HandleWhatsAppMessage(context.Background(), realWC, d, v)
+			}
+		})
+	}
+}
+
 // StopAll gracefully stops all active sessions.
 func (m *Manager) StopAll() {
 	slog.Info("session manager: stopping all sessions", "count", m.registry.Len())
@@ -563,6 +479,158 @@ func CalcBackoff(attempt int) time.Duration {
 	return time.Duration(backoff + jitter)
 }
 
+// HandleWhatsAppMessage parses incoming whatsmeow message events, downloads media,
+// determines group or direct message routing, builds metadata, and passes the InboundEvent to the processor.
+func (m *Manager) HandleWhatsAppMessage(ctx context.Context, wc WhatsAppClientInterface, d *repository.Connection, v *waEvents.Message) {
+	if v.Info.IsFromMe {
+		return
+	}
+
+	var fromJID string
+	var metadata map[string]string
+
+	if v.Info.IsGroup {
+		fromJID = v.Info.Chat.String()
+		if fromJID == "" {
+			fromJID = v.Info.Sender.String()
+		}
+		metadata = map[string]string{
+			"is_group":         "true",
+			"participant":      v.Info.Sender.String(),
+			"chat_jid":         v.Info.Chat.String(),
+			"sender_push_name": v.Info.PushName,
+		}
+	} else {
+		fromJID = v.Info.Sender.String()
+	}
+
+	// Download media from WhatsApp CDN (needs active whatsmeow client)
+	var mediaBytes []byte
+	var mediaType string
+	var mediaFilename string
+	var mediaCaption string
+	hasMedia := false
+
+	var whatsmeowCli *whatsmeow.Client
+	if wc != nil {
+		if realWC, ok := wc.(*whatsapp.WhatsAppClient); ok {
+			whatsmeowCli = realWC.Client()
+		}
+	}
+
+	if imageMsg := v.Message.GetImageMessage(); imageMsg != nil {
+		if whatsmeowCli != nil {
+			data, err := whatsmeowCli.Download(ctx, imageMsg)
+			if err == nil {
+				mediaBytes = data
+			}
+		}
+		mediaType = "image"
+		hasMedia = true
+		if imageMsg.Caption != nil {
+			mediaCaption = *imageMsg.Caption
+		}
+	} else if docMsg := v.Message.GetDocumentMessage(); docMsg != nil {
+		if whatsmeowCli != nil {
+			data, err := whatsmeowCli.Download(ctx, docMsg)
+			if err == nil {
+				mediaBytes = data
+			}
+		}
+		mediaType = "document"
+		hasMedia = true
+		if docMsg.FileName != nil {
+			mediaFilename = *docMsg.FileName
+		}
+		if docMsg.Caption != nil {
+			mediaCaption = *docMsg.Caption
+		}
+	} else if audioMsg := v.Message.GetAudioMessage(); audioMsg != nil {
+		if whatsmeowCli != nil {
+			data, err := whatsmeowCli.Download(ctx, audioMsg)
+			if err == nil {
+				mediaBytes = data
+			}
+		}
+		mediaType = "audio"
+		hasMedia = true
+	} else if videoMsg := v.Message.GetVideoMessage(); videoMsg != nil {
+		if whatsmeowCli != nil {
+			data, err := whatsmeowCli.Download(ctx, videoMsg)
+			if err == nil {
+				mediaBytes = data
+			}
+		}
+		mediaType = "video"
+		hasMedia = true
+		if videoMsg.Caption != nil {
+			mediaCaption = *videoMsg.Caption
+		}
+	}
+
+	m.mu.Lock()
+	proc := m.inboundProcessor
+	m.mu.Unlock()
+
+	if proc != nil {
+		recipientIdentity := ""
+		var wsID, connID uuid.UUID
+		if d != nil {
+			wsID = d.WorkspaceID
+			connID = d.ID
+			recipientIdentity = d.SenderIdentity
+			if recipientIdentity == "" && d.JID != nil {
+				recipientIdentity = *d.JID
+			}
+		}
+
+		var inboundMedia *inbound.InboundMedia
+		if hasMedia {
+			inboundMedia = &inbound.InboundMedia{
+				Bytes:     mediaBytes,
+				MediaType: mediaType,
+				Filename:  mediaFilename,
+				Caption:   mediaCaption,
+			}
+		}
+
+		var inboundLocation *inbound.InboundLocation
+		if locMsg := v.Message.GetLocationMessage(); locMsg != nil {
+			inboundLocation = &inbound.InboundLocation{
+				Latitude:  *locMsg.DegreesLatitude,
+				Longitude: *locMsg.DegreesLongitude,
+				Name:      locMsg.GetName(),
+				Address:   locMsg.GetAddress(),
+			}
+		}
+
+		var inboundContacts []inbound.InboundContact
+		if contactMsg := v.Message.GetContactMessage(); contactMsg != nil {
+			inboundContacts = append(inboundContacts, inbound.InboundContact{
+				Name:  contactMsg.GetDisplayName(),
+				Phone: contactMsg.GetVcard(),
+			})
+		}
+
+		event := &inbound.InboundEvent{
+			WorkspaceID:  wsID,
+			ConnectionID: connID,
+			MessageID:    v.Info.ID,
+			Channel:      "whatsapp",
+			From:         fromJID,
+			To:           recipientIdentity,
+			Body:         extractWhatsAppBody(v),
+			Media:        inboundMedia,
+			Location:     inboundLocation,
+			Contacts:     inboundContacts,
+			SenderName:   v.Info.PushName,
+			Metadata:     metadata,
+		}
+
+		_ = proc.Process(ctx, event)
+	}
+}
+
 // extractWhatsAppBody pulls the human-readable text from a WhatsApp message.
 func extractWhatsAppBody(v *waEvents.Message) string {
 	if msgText := v.Message.GetConversation(); msgText != "" {
@@ -582,6 +650,3 @@ func extractWhatsAppBody(v *waEvents.Message) string {
 	}
 	return ""
 }
-
-
-

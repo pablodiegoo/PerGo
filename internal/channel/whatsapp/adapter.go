@@ -240,8 +240,12 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 }
 
 // phoneToJID converts a phone number string to a WhatsApp JID.
-// Strips non-digit characters and appends @s.whatsapp.net.
+// If the input already contains '@' (e.g. '@g.us' or '@s.whatsapp.net'), it is returned unmodified.
+// Otherwise, strips non-digit characters and appends @s.whatsapp.net.
 func phoneToJID(phone string) string {
+	if strings.Contains(phone, "@") {
+		return phone
+	}
 	digits := strings.Map(func(r rune) rune {
 		if r >= '0' && r <= '9' {
 			return r

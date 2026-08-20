@@ -819,3 +819,109 @@ func TestInboundProcessor_WhatsAppCloudSessionTracking(t *testing.T) {
 	})
 }
 
+func TestInboundProcessor_GroupMessageProcessing(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	dedupRepo := repository.NewInboundDedupRepository(pool)
+	sessRepo := repository.NewRecipientSessionRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "group_msg_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	pub := &fakePublisher{}
+	me := &fakeMediaEngine{
+		processInboundFn: func(ctx context.Context, workspaceID uuid.UUID, mediaType string, data []byte) (string, error) {
+			return "/media/" + workspaceID.String() + "/group_img.jpg", nil
+		},
+	}
+	aud := &fakeAuditWriter{}
+
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+
+	groupJID := "120363024823904@g.us"
+	participantJID := "5511999991234@s.whatsapp.net"
+	pushName := "Alice GroupMember"
+
+	event := &inbound.InboundEvent{
+		WorkspaceID:  ws.ID,
+		ConnectionID: uuid.New(),
+		MessageID:    "wamid.group_msg_1",
+		Channel:      "whatsapp",
+		From:         groupJID,
+		To:           "+5511888880001",
+		Body:         "Hello from the group!",
+		SenderName:   pushName,
+		Media: &inbound.InboundMedia{
+			Bytes:     []byte("group-image-data"),
+			MediaType: "image",
+			Filename:  "group_pic.jpg",
+			Caption:   "Our group photo",
+		},
+		Metadata: map[string]string{
+			"is_group":         "true",
+			"participant":      participantJID,
+			"chat_jid":         groupJID,
+			"sender_push_name": pushName,
+		},
+	}
+
+	err = proc.Process(ctx, event)
+	if err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+
+	if len(pub.published) != 1 {
+		t.Fatalf("expected 1 published event, got %d", len(pub.published))
+	}
+
+	pubEvent := pub.published[0]
+	if pubEvent.subject != "inbound.events."+ws.ID.String() {
+		t.Errorf("got subject %s, want inbound.events.%s", pubEvent.subject, ws.ID.String())
+	}
+
+	var payload inbound.InboundEventPayload
+	if err := json.Unmarshal(pubEvent.data, &payload); err != nil {
+		t.Fatalf("failed to unmarshal published payload: %v", err)
+	}
+
+	if payload.From != groupJID {
+		t.Errorf("expected payload From %q, got %q", groupJID, payload.From)
+	}
+	if payload.SenderName != pushName {
+		t.Errorf("expected payload SenderName %q, got %q", pushName, payload.SenderName)
+	}
+	if payload.Metadata == nil {
+		t.Fatal("expected payload Metadata to be populated")
+	}
+	if payload.Metadata["is_group"] != "true" {
+		t.Errorf("expected Metadata[is_group] == 'true', got %q", payload.Metadata["is_group"])
+	}
+	if payload.Metadata["participant"] != participantJID {
+		t.Errorf("expected Metadata[participant] == %q, got %q", participantJID, payload.Metadata["participant"])
+	}
+	if payload.Metadata["chat_jid"] != groupJID {
+		t.Errorf("expected Metadata[chat_jid] == %q, got %q", groupJID, payload.Metadata["chat_jid"])
+	}
+	if payload.Metadata["sender_push_name"] != pushName {
+		t.Errorf("expected Metadata[sender_push_name] == %q, got %q", pushName, payload.Metadata["sender_push_name"])
+	}
+	if payload.Media == nil {
+		t.Fatal("expected payload Media to be populated")
+	}
+	if payload.Media.MediaURL != "/media/"+ws.ID.String()+"/group_img.jpg" {
+		t.Errorf("expected MediaURL %s, got %s", "/media/"+ws.ID.String()+"/group_img.jpg", payload.Media.MediaURL)
+	}
+	if payload.Media.Caption != "Our group photo" {
+		t.Errorf("expected Media Caption 'Our group photo', got %q", payload.Media.Caption)
+	}
+}
+
+

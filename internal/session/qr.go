@@ -586,6 +586,14 @@ func (m *Manager) onPairingSuccess(ctx context.Context, wc WhatsAppClientInterfa
 		if realWC, ok := wc.(*whatsapp.WhatsAppClient); ok {
 			clientPtr = realWC
 			clientPtr.SetJID(jid)
+
+			connObj := &repository.Connection{
+				ID:             dID,
+				WorkspaceID:    workspaceID,
+				Channel:        "whatsapp",
+				SenderIdentity: actualPhone,
+			}
+			m.registerEventHandler(realWC, connObj, cancel)
 		}
 		sess := &Session{
 			DeviceID: dID.String(),

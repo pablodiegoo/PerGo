@@ -138,17 +138,22 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, task WebhookDeliveryTa
 
 		if !wsOptIn {
 			var inboundPayload struct {
-				Event       string `json:"event"`
-				TraceID     string `json:"trace_id"`
-				MessageID   string `json:"message_id"`
-				Channel     string `json:"channel"`
-				Timestamp   string `json:"timestamp"`
-				WorkspaceID string `json:"workspace_id"`
-				From        string `json:"from"`
-				Body        string `json:"body,omitempty"`
-				Media       any    `json:"media,omitempty"`
-				Location    any    `json:"location,omitempty"`
-				Contacts    any    `json:"contacts,omitempty"`
+				Event       string            `json:"event"`
+				TraceID     string            `json:"trace_id"`
+				MessageID   string            `json:"message_id"`
+				Channel     string            `json:"channel"`
+				Timestamp   string            `json:"timestamp"`
+				WorkspaceID string            `json:"workspace_id"`
+				From        string            `json:"from"`
+				To          string            `json:"to,omitempty"`
+				Body        string            `json:"body,omitempty"`
+				Media       any               `json:"media,omitempty"`
+				Location    any               `json:"location,omitempty"`
+				Contacts    any               `json:"contacts,omitempty"`
+				Interactive any               `json:"interactive,omitempty"`
+				Story       any               `json:"story_event,omitempty"`
+				SenderName  string            `json:"sender_name,omitempty"`
+				Metadata    map[string]string `json:"metadata,omitempty"`
 			}
 			if err := json.Unmarshal(task.Payload, &inboundPayload); err == nil {
 				// Hash from field
@@ -159,6 +164,13 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, task WebhookDeliveryTa
 				// Strip location and contacts
 				inboundPayload.Location = nil
 				inboundPayload.Contacts = nil
+
+				// Hash participant JID in metadata if present to ensure GDPR/LGPD compliance
+				if inboundPayload.Metadata != nil && inboundPayload.Metadata["participant"] != "" {
+					pHasher := sha256.New()
+					pHasher.Write([]byte(inboundPayload.Metadata["participant"]))
+					inboundPayload.Metadata["participant"] = hex.EncodeToString(pHasher.Sum(nil))
+				}
 
 				payloadBytes, _ = json.Marshal(inboundPayload)
 			}

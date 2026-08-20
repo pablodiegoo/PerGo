@@ -248,6 +248,185 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 			t.Errorf("got status code %d, want 502", httpErr.StatusCode)
 		}
 	})
+
+	t.Run("Group message delivery preserves group JID, sender_name, and metadata", func(t *testing.T) {
+		subStore := &mockSubscriptionStore{sub: sub}
+		dlqStore := &mockDLQStore{}
+		workspaceStore := &mockWorkspaceStore{
+			ws: &repository.Workspace{ID: wsID, PIIOptIn: true},
+		}
+		httpClient := &mockHTTPClient{}
+		d := webhook.NewDefaultDispatcher(subStore, dlqStore, workspaceStore, httpClient, nil)
+
+		groupJID := "120363024823904@g.us"
+		participantJID := "5511999991234@s.whatsapp.net"
+		pushName := "Alice GroupMember"
+
+		inboundEvent := inbound.InboundEventPayload{
+			Event:       "inbound_message",
+			TraceID:     "trace-group-1",
+			MessageID:   "wamid.group_msg_101",
+			Channel:     "whatsapp",
+			Timestamp:   "2026-08-20T12:00:00Z",
+			WorkspaceID: wsID.String(),
+			From:        groupJID,
+			To:          "+5511888880000",
+			Body:        "Group message payload test",
+			SenderName:  pushName,
+			Media: &inbound.EventMedia{
+				MediaURL:  "https://example.com/media/group.jpg",
+				MediaType: "image",
+				Caption:   "Group photo",
+			},
+			Metadata: map[string]string{
+				"is_group":         "true",
+				"participant":      participantJID,
+				"chat_jid":         groupJID,
+				"sender_push_name": pushName,
+			},
+		}
+		rawBytes, _ := json.Marshal(inboundEvent)
+
+		task := webhook.WebhookDeliveryTask{
+			ID:             uuid.New(),
+			SubscriptionID: subID,
+			WorkspaceID:    wsID,
+			Event:          "inbound_message",
+			TraceID:        "trace-group-1",
+			MessageID:      "wamid.group_msg_101",
+			Payload:        rawBytes,
+			Mode:           "inbound",
+		}
+
+		err := d.Dispatch(context.Background(), task)
+		if err != nil {
+			t.Fatalf("Dispatch failed: %v", err)
+		}
+
+		if len(httpClient.requests) != 1 {
+			t.Fatalf("expected 1 HTTP request, got %d", len(httpClient.requests))
+		}
+
+		req := httpClient.requests[0]
+		bodyBytes, _ := io.ReadAll(req.Body)
+		var sentPayload inbound.InboundEventPayload
+		if err := json.Unmarshal(bodyBytes, &sentPayload); err != nil {
+			t.Fatalf("failed to unmarshal delivered payload: %v", err)
+		}
+
+		if sentPayload.From != groupJID {
+			t.Errorf("expected From %q, got %q", groupJID, sentPayload.From)
+		}
+		if sentPayload.SenderName != pushName {
+			t.Errorf("expected SenderName %q, got %q", pushName, sentPayload.SenderName)
+		}
+		if sentPayload.Metadata == nil {
+			t.Fatal("expected Metadata map to be present in delivered payload")
+		}
+		if sentPayload.Metadata["is_group"] != "true" {
+			t.Errorf("expected Metadata[is_group] == 'true', got %q", sentPayload.Metadata["is_group"])
+		}
+		if sentPayload.Metadata["participant"] != participantJID {
+			t.Errorf("expected Metadata[participant] == %q, got %q", participantJID, sentPayload.Metadata["participant"])
+		}
+		if sentPayload.Metadata["chat_jid"] != groupJID {
+			t.Errorf("expected Metadata[chat_jid] == %q, got %q", groupJID, sentPayload.Metadata["chat_jid"])
+		}
+		if sentPayload.Metadata["sender_push_name"] != pushName {
+			t.Errorf("expected Metadata[sender_push_name] == %q, got %q", pushName, sentPayload.Metadata["sender_push_name"])
+		}
+		if sentPayload.Media == nil || sentPayload.Media.MediaURL != "https://example.com/media/group.jpg" {
+			t.Errorf("expected Media with URL https://example.com/media/group.jpg, got %+v", sentPayload.Media)
+		}
+	})
+
+	t.Run("Compliance redaction preserves sender_name and metadata while hashing from", func(t *testing.T) {
+		subStore := &mockSubscriptionStore{sub: sub}
+		dlqStore := &mockDLQStore{}
+		workspaceStore := &mockWorkspaceStore{
+			ws: &repository.Workspace{ID: wsID, PIIOptIn: false},
+		}
+		httpClient := &mockHTTPClient{}
+		d := webhook.NewDefaultDispatcher(subStore, dlqStore, workspaceStore, httpClient, nil)
+
+		groupJID := "120363024823904@g.us"
+		participantJID := "5511999991234@s.whatsapp.net"
+		pushName := "Alice GroupMember"
+
+		inboundEvent := inbound.InboundEventPayload{
+			Event:       "inbound_message",
+			TraceID:     "trace-group-2",
+			MessageID:   "wamid.group_msg_102",
+			Channel:     "whatsapp",
+			Timestamp:   "2026-08-20T12:00:00Z",
+			WorkspaceID: wsID.String(),
+			From:        groupJID,
+			To:          "+5511888880000",
+			Body:        "Group message redaction test",
+			SenderName:  pushName,
+			Location: &inbound.InboundLocation{
+				Latitude: 1.23,
+			},
+			Contacts: []inbound.InboundContact{
+				{Name: "Someone", Phone: "123"},
+			},
+			Metadata: map[string]string{
+				"is_group":         "true",
+				"participant":      participantJID,
+				"chat_jid":         groupJID,
+				"sender_push_name": pushName,
+			},
+		}
+		rawBytes, _ := json.Marshal(inboundEvent)
+
+		task := webhook.WebhookDeliveryTask{
+			ID:             uuid.New(),
+			SubscriptionID: subID,
+			WorkspaceID:    wsID,
+			Event:          "inbound_message",
+			TraceID:        "trace-group-2",
+			MessageID:      "wamid.group_msg_102",
+			Payload:        rawBytes,
+			Mode:           "inbound",
+		}
+
+		err := d.Dispatch(context.Background(), task)
+		if err != nil {
+			t.Fatalf("Dispatch failed: %v", err)
+		}
+
+		req := httpClient.requests[0]
+		bodyBytes, _ := io.ReadAll(req.Body)
+		var sentPayload inbound.InboundEventPayload
+		if err := json.Unmarshal(bodyBytes, &sentPayload); err != nil {
+			t.Fatalf("failed to unmarshal delivered payload: %v", err)
+		}
+
+		if sentPayload.From == groupJID {
+			t.Errorf("expected From to be hashed, got raw %q", sentPayload.From)
+		}
+		if len(sentPayload.From) != 64 {
+			t.Errorf("expected 64-char SHA256 hex for From, got %q", sentPayload.From)
+		}
+		if sentPayload.SenderName != pushName {
+			t.Errorf("expected SenderName %q to be preserved, got %q", pushName, sentPayload.SenderName)
+		}
+		if sentPayload.Location != nil {
+			t.Errorf("expected Location to be stripped, got %+v", sentPayload.Location)
+		}
+		if len(sentPayload.Contacts) != 0 {
+			t.Errorf("expected Contacts to be stripped, got %+v", sentPayload.Contacts)
+		}
+		if sentPayload.Metadata == nil || sentPayload.Metadata["is_group"] != "true" {
+			t.Errorf("expected Metadata to be preserved, got %+v", sentPayload.Metadata)
+		}
+		if sentPayload.Metadata["participant"] == participantJID {
+			t.Errorf("expected participant in Metadata to be hashed, got raw %q", sentPayload.Metadata["participant"])
+		}
+		if len(sentPayload.Metadata["participant"]) != 64 {
+			t.Errorf("expected 64-char SHA256 hex for participant in Metadata, got %q", sentPayload.Metadata["participant"])
+		}
+	})
 }
 
 func TestDefaultDispatcher_WriteToDLQ(t *testing.T) {
