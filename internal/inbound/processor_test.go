@@ -1201,4 +1201,153 @@ func TestInboundProcessor_GroupMessage_BypassesTypebot_RoutesToChatwoot(t *testi
 	}
 }
 
+func TestInboundProcessor_InteractivePayloads_DomainEvents(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	dedupRepo := repository.NewInboundDedupRepository(pool)
+	sessRepo := repository.NewRecipientSessionRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "interactive_events_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	pub := &fakePublisher{}
+	me := &fakeMediaEngine{}
+	aud := &fakeAuditWriter{}
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+
+	t.Run("flow completion publishes flow.completed event and inbound_message", func(t *testing.T) {
+		pub.published = nil
+
+		event := &inbound.InboundEvent{
+			WorkspaceID:  ws.ID,
+			ConnectionID: uuid.New(),
+			MessageID:    "wamid.flow_comp_001",
+			Channel:      "whatsapp_cloud",
+			From:         "5511988887777",
+			To:           "+5511888880001",
+			Body:         "📄 *Form Submitted*\nScreen: SURVEY_1\n- rating: 5",
+			Interactive: &inbound.InboundInteractive{
+				Type: "nfm_reply",
+				NFMReply: &inbound.InboundNFMReply{
+					Name:         "customer_survey",
+					Body:         "Sent",
+					ResponseJSON: `{"flow_token":"tok_123","screen":"SURVEY_1","data":{"rating":5}}`,
+					FlowToken:    "tok_123",
+					Screen:       "SURVEY_1",
+					Data: map[string]interface{}{
+						"rating": 5,
+					},
+				},
+			},
+		}
+
+		err := proc.Process(ctx, event)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+
+		// Should have published both inbound_message and flow.completed
+		var hasInboundMsg, hasFlowCompleted bool
+		for _, p := range pub.published {
+			var raw map[string]interface{}
+			_ = json.Unmarshal(p.data, &raw)
+			if raw["event"] == "inbound_message" {
+				hasInboundMsg = true
+			}
+			if raw["event"] == string(domain.EventTypeFlowCompleted) {
+				hasFlowCompleted = true
+				if raw["screen"] != "SURVEY_1" {
+					t.Errorf("expected screen SURVEY_1, got %v", raw["screen"])
+				}
+				if raw["flow_token"] != "tok_123" {
+					t.Errorf("expected flow_token tok_123, got %v", raw["flow_token"])
+				}
+				if raw["contact_id"] != "5511988887777" {
+					t.Errorf("expected contact_id 5511988887777, got %v", raw["contact_id"])
+				}
+			}
+		}
+
+		if !hasInboundMsg {
+			t.Errorf("expected inbound_message event to be published")
+		}
+		if !hasFlowCompleted {
+			t.Errorf("expected flow.completed event to be published")
+		}
+	})
+
+	t.Run("order message publishes order.created event and inbound_message", func(t *testing.T) {
+		pub.published = nil
+
+		event := &inbound.InboundEvent{
+			WorkspaceID:  ws.ID,
+			ConnectionID: uuid.New(),
+			MessageID:    "wamid.order_proc_001",
+			Channel:      "whatsapp_cloud",
+			From:         "5511988887777",
+			To:           "+5511888880001",
+			Body:         "🛒 Order Received (Catalog: cat_123)\nTotal: 100.00 USD",
+			Interactive: &inbound.InboundInteractive{
+				Type: "order",
+				Order: &inbound.InboundOrder{
+					CatalogID: "cat_123",
+					Text:      "fast delivery",
+					ProductItems: []domain.OrderProductItem{
+						{
+							ProductRetailerID: "ITEM-A",
+							Quantity:          2,
+							ItemPrice:         50.00,
+							Currency:          "USD",
+						},
+					},
+					TotalPrice: 100.00,
+					Currency:   "USD",
+				},
+			},
+		}
+
+		err := proc.Process(ctx, event)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+
+		var hasInboundMsg, hasOrderCreated bool
+		for _, p := range pub.published {
+			var raw map[string]interface{}
+			_ = json.Unmarshal(p.data, &raw)
+			if raw["event"] == "inbound_message" {
+				hasInboundMsg = true
+			}
+			if raw["event"] == string(domain.EventTypeOrderCreated) {
+				hasOrderCreated = true
+				if raw["catalog_id"] != "cat_123" {
+					t.Errorf("expected catalog_id cat_123, got %v", raw["catalog_id"])
+				}
+				if raw["total_price"] != 100.0 {
+					t.Errorf("expected total_price 100, got %v", raw["total_price"])
+				}
+				if raw["currency"] != "USD" {
+					t.Errorf("expected currency USD, got %v", raw["currency"])
+				}
+			}
+		}
+
+		if !hasInboundMsg {
+			t.Errorf("expected inbound_message event to be published")
+		}
+		if !hasOrderCreated {
+			t.Errorf("expected order.created event to be published")
+		}
+	})
+}
+
+
 

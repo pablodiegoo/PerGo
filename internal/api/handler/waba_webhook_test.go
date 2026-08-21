@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,11 @@ import (
 
 func connectNATS(t *testing.T) *nats.Conn {
 	t.Helper()
-	nc, err := nats.Connect(nats.DefaultURL, nats.Timeout(2*time.Second))
+	natsURL := os.Getenv("PERGO_NATS_URL")
+	if natsURL == "" {
+		natsURL = nats.DefaultURL
+	}
+	nc, err := nats.Connect(natsURL, nats.Timeout(2*time.Second))
 	if err != nil {
 		t.Skipf("NATS not available: %v", err)
 	}
@@ -51,13 +56,21 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 	js, err := jetstream.New(nc)
 	if err == nil {
 		_ = js.DeleteStream(ctx, "INBOUND")
+		_ = js.DeleteStream(ctx, "MESSAGES")
 	}
 	_, err = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:     "INBOUND",
 		Subjects: []string{"inbound.events.>"},
 	})
 	if err != nil {
-		t.Fatalf("failed to create NATS stream: %v", err)
+		t.Fatalf("failed to create NATS INBOUND stream: %v", err)
+	}
+	_, err = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+		Name:     "MESSAGES",
+		Subjects: []string{"messages.>"},
+	})
+	if err != nil {
+		t.Fatalf("failed to create NATS MESSAGES stream: %v", err)
 	}
 
 	// Setup S3 Client
@@ -369,6 +382,180 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 
 		if replayOrderCreatedCount != 0 {
 			t.Errorf("expected 0 order.created events on duplicate replay, got %d", replayOrderCreatedCount)
+		}
+	})
+
+	t.Run("POST Flow nfm_reply parsing and flow.completed emission", func(t *testing.T) {
+		sub, err := nc.SubscribeSync(fmt.Sprintf("inbound.events.%s", ws.ID.String()))
+		if err != nil {
+			t.Fatalf("failed to subscribe to NATS: %v", err)
+		}
+		defer sub.Unsubscribe()
+
+		flowBody := `{
+			"object": "whatsapp_business_account",
+			"entry": [
+				{
+					"id": "12345",
+					"changes": [
+						{
+							"field": "messages",
+							"value": {
+								"messaging_product": "whatsapp",
+								"messages": [
+									{
+										"from": "5511977776666",
+										"id": "wamid.flow_webhook_001",
+										"timestamp": "1700000000",
+										"type": "interactive",
+										"interactive": {
+											"type": "nfm_reply",
+											"nfm_reply": {
+												"response_json": "{\"flow_token\":\"flow_tok_99\",\"screen\":\"SCREEN_A\",\"data\":{\"field1\":\"value1\"}}",
+												"name": "flow_webhook_test",
+												"body": "Sent"
+											}
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			]
+		}`
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/waba/%s", ws.ID), strings.NewReader(flowBody))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/webhooks/waba/:workspace_id")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		err = h.HandlePost(c)
+		if err != nil {
+			t.Fatalf("HandlePost flow error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200", rec.Code)
+		}
+
+		// Verify NATS received both inbound_message and flow.completed
+		var flowCompletedCount int
+		var receivedFlowEv domain.FlowCompletedEvent
+
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			msg, err := sub.NextMsg(500 * time.Millisecond)
+			if err != nil {
+				continue
+			}
+
+			var payload struct {
+				Event       string `json:"event"`
+				WorkspaceID string `json:"workspace_id"`
+				domain.FlowCompletedEvent
+			}
+			if err := json.Unmarshal(msg.Data, &payload); err == nil && payload.Event == string(domain.EventTypeFlowCompleted) {
+				flowCompletedCount++
+				receivedFlowEv = payload.FlowCompletedEvent
+			}
+		}
+
+		if flowCompletedCount != 1 {
+			t.Fatalf("expected 1 flow.completed event, got %d", flowCompletedCount)
+		}
+		if receivedFlowEv.Screen != "SCREEN_A" {
+			t.Errorf("expected Screen 'SCREEN_A', got %q", receivedFlowEv.Screen)
+		}
+		if receivedFlowEv.FlowToken != "flow_tok_99" {
+			t.Errorf("expected FlowToken 'flow_tok_99', got %q", receivedFlowEv.FlowToken)
+		}
+		if receivedFlowEv.Data["field1"] != "value1" {
+			t.Errorf("expected Data.field1 'value1', got %v", receivedFlowEv.Data["field1"])
+		}
+	})
+
+	t.Run("POST Button reply parsing and inbound_message emission with dual representation", func(t *testing.T) {
+		sub, err := nc.SubscribeSync(fmt.Sprintf("inbound.events.%s", ws.ID.String()))
+		if err != nil {
+			t.Fatalf("failed to subscribe to NATS: %v", err)
+		}
+		defer sub.Unsubscribe()
+
+		btnBody := `{
+			"object": "whatsapp_business_account",
+			"entry": [
+				{
+					"id": "12345",
+					"changes": [
+						{
+							"field": "messages",
+							"value": {
+								"messaging_product": "whatsapp",
+								"messages": [
+									{
+										"from": "5511977776666",
+										"id": "wamid.btn_webhook_001",
+										"timestamp": "1700000000",
+										"type": "interactive",
+										"interactive": {
+											"type": "button_reply",
+											"button_reply": {
+												"id": "btn_opt_1",
+												"title": "Option One"
+											}
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			]
+		}`
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/waba/%s", ws.ID), strings.NewReader(btnBody))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/webhooks/waba/:workspace_id")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		err = h.HandlePost(c)
+		if err != nil {
+			t.Fatalf("HandlePost button error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200", rec.Code)
+		}
+
+		var receivedPayload inbound.InboundEventPayload
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			msg, err := sub.NextMsg(500 * time.Millisecond)
+			if err != nil {
+				continue
+			}
+
+			var p inbound.InboundEventPayload
+			if err := json.Unmarshal(msg.Data, &p); err == nil && p.Event == "inbound_message" && p.MessageID == "wamid.btn_webhook_001" {
+				receivedPayload = p
+				break
+			}
+		}
+
+		if receivedPayload.MessageID != "wamid.btn_webhook_001" {
+			t.Fatalf("did not receive inbound_message for button reply")
+		}
+		if receivedPayload.Body != "🔘 *Selected*: Option One" {
+			t.Errorf("expected Body '🔘 *Selected*: Option One', got %q", receivedPayload.Body)
+		}
+		if receivedPayload.Interactive == nil || receivedPayload.Interactive.ButtonReply == nil {
+			t.Fatalf("expected Interactive.ButtonReply to be populated, got %+v", receivedPayload.Interactive)
+		}
+		if receivedPayload.Interactive.ButtonReply.ID != "btn_opt_1" || receivedPayload.Interactive.ButtonReply.Title != "Option One" {
+			t.Errorf("unexpected ButtonReply: %+v", receivedPayload.Interactive.ButtonReply)
 		}
 	})
 

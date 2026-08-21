@@ -13,6 +13,7 @@ type FlowCompletedEvent struct {
 	FlowToken string                 `json:"flow_token"`
 	ContactID string                 `json:"contact_id"`
 	Wamid     string                 `json:"wamid"`
+	TraceID   string                 `json:"trace_id,omitempty"`
 }
 
 type OrderProductItem struct {

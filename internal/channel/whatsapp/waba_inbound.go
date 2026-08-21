@@ -2,10 +2,12 @@ package whatsapp
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +15,7 @@ import (
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/media"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -73,6 +76,27 @@ type ValueData struct {
 		Text      *struct {
 			Body string `json:"body"`
 		} `json:"text,omitempty"`
+		Button *struct {
+			Payload string `json:"payload"`
+			Text    string `json:"text"`
+		} `json:"button,omitempty"`
+		Interactive *struct {
+			Type        string `json:"type"`
+			ButtonReply *struct {
+				ID    string `json:"id"`
+				Title string `json:"title"`
+			} `json:"button_reply,omitempty"`
+			ListReply *struct {
+				ID          string `json:"id"`
+				Title       string `json:"title"`
+				Description string `json:"description,omitempty"`
+			} `json:"list_reply,omitempty"`
+			NFMReply *struct {
+				ResponseJSON string `json:"response_json"`
+				Name         string `json:"name,omitempty"`
+				Body         string `json:"body,omitempty"`
+			} `json:"nfm_reply,omitempty"`
+		} `json:"interactive,omitempty"`
 		Order *struct {
 			CatalogID    string `json:"catalog_id"`
 			Text         string `json:"text,omitempty"`
@@ -248,6 +272,142 @@ func (a *WABAInboundAdapter) Parse(
 
 				metadata := map[string]string{"entry_point_type": entryPointType}
 
+				var inboundInteractive *inbound.InboundInteractive
+
+				if msg.Interactive != nil {
+					switch msg.Interactive.Type {
+					case "button_reply":
+						if msg.Interactive.ButtonReply != nil {
+							btnID := msg.Interactive.ButtonReply.ID
+							btnTitle := msg.Interactive.ButtonReply.Title
+							inboundInteractive = &inbound.InboundInteractive{
+								Type: "button_reply",
+								ButtonReply: &inbound.InboundButtonReply{
+									ID:    btnID,
+									Title: btnTitle,
+								},
+							}
+							if btnTitle != "" {
+								body = fmt.Sprintf("🔘 *Selected*: %s", btnTitle)
+							} else {
+								body = fmt.Sprintf("🔘 *Selected*: %s", btnID)
+							}
+							metadata["type"] = "button_reply"
+						}
+					case "list_reply":
+						if msg.Interactive.ListReply != nil {
+							listID := msg.Interactive.ListReply.ID
+							listTitle := msg.Interactive.ListReply.Title
+							listDesc := msg.Interactive.ListReply.Description
+							inboundInteractive = &inbound.InboundInteractive{
+								Type: "list_reply",
+								ListReply: &inbound.InboundListReply{
+									ID:          listID,
+									Title:       listTitle,
+									Description: listDesc,
+								},
+							}
+							if listDesc != "" {
+								body = fmt.Sprintf("🔘 *Selected*: %s\n%s", listTitle, listDesc)
+							} else {
+								body = fmt.Sprintf("🔘 *Selected*: %s", listTitle)
+							}
+							metadata["type"] = "list_reply"
+						}
+					case "nfm_reply":
+						if msg.Interactive.NFMReply != nil {
+							type flowResponseRaw struct {
+								FlowToken         string                 `json:"flow_token"`
+								EncryptedFlowData string                 `json:"encrypted_flow_data"`
+								EncryptedAesKey   string                 `json:"encrypted_aes_key"`
+								InitialVector     string                 `json:"initial_vector"`
+								Screen            string                 `json:"screen"`
+								Data              map[string]interface{} `json:"data"`
+							}
+							var rawFlow flowResponseRaw
+							_ = json.Unmarshal([]byte(msg.Interactive.NFMReply.ResponseJSON), &rawFlow)
+							flowToken := rawFlow.FlowToken
+							screen := rawFlow.Screen
+							formData := rawFlow.Data
+
+							if rawFlow.EncryptedFlowData != "" && conn != nil && len(conn.Credentials) > 0 {
+								privKey, err := crypto.LoadRSAPrivateKey(conn.Credentials, nil)
+								if err == nil && privKey != nil {
+									aesKeyCipher, _ := base64.StdEncoding.DecodeString(rawFlow.EncryptedAesKey)
+									aesKey, err := crypto.DecryptRSA(privKey, aesKeyCipher)
+									if err == nil {
+										flowCipher, _ := base64.StdEncoding.DecodeString(rawFlow.EncryptedFlowData)
+										iv, _ := base64.StdEncoding.DecodeString(rawFlow.InitialVector)
+										tagSize := 16
+										if len(flowCipher) > tagSize {
+											ciphertext := flowCipher[:len(flowCipher)-tagSize]
+											tag := flowCipher[len(flowCipher)-tagSize:]
+											plaintext, err := crypto.DecryptAES128GCM(aesKey, iv, ciphertext, tag)
+											if err == nil {
+												var dec map[string]interface{}
+												if json.Unmarshal(plaintext, &dec) == nil {
+													if s, ok := dec["screen"].(string); ok {
+														screen = s
+													}
+													if d, ok := dec["data"].(map[string]interface{}); ok {
+														formData = d
+													}
+												}
+											}
+										}
+									}
+								}
+							}
+
+							var summaryBuilder strings.Builder
+							summaryBuilder.WriteString("📄 *Form Submitted*")
+							if screen != "" {
+								summaryBuilder.WriteString(fmt.Sprintf("\nScreen: %s", screen))
+							}
+							if len(formData) > 0 {
+								keys := make([]string, 0, len(formData))
+								for k := range formData {
+									keys = append(keys, k)
+								}
+								sort.Strings(keys)
+								for _, k := range keys {
+									summaryBuilder.WriteString(fmt.Sprintf("\n- %s: %v", k, formData[k]))
+								}
+							}
+							body = strings.TrimSpace(summaryBuilder.String())
+
+							inboundInteractive = &inbound.InboundInteractive{
+								Type: "nfm_reply",
+								NFMReply: &inbound.InboundNFMReply{
+									Name:         msg.Interactive.NFMReply.Name,
+									Body:         msg.Interactive.NFMReply.Body,
+									ResponseJSON: msg.Interactive.NFMReply.ResponseJSON,
+									FlowToken:    flowToken,
+									Screen:       screen,
+									Data:         formData,
+								},
+							}
+							metadata["type"] = "nfm_reply"
+						}
+					}
+				} else if msg.Type == "button" && msg.Button != nil {
+					btnID := msg.Button.Payload
+					btnTitle := msg.Button.Text
+					inboundInteractive = &inbound.InboundInteractive{
+						Type: "button_reply",
+						ButtonReply: &inbound.InboundButtonReply{
+							ID:    btnID,
+							Title: btnTitle,
+						},
+					}
+					if btnTitle != "" {
+						body = fmt.Sprintf("🔘 *Selected*: %s", btnTitle)
+					} else {
+						body = fmt.Sprintf("🔘 *Selected*: %s", btnID)
+					}
+					metadata["type"] = "button_reply"
+				}
+
 				if msg.Type == "order" && msg.Order != nil {
 					var orderItems []domain.OrderProductItem
 					var totalPrice float64
@@ -294,6 +454,17 @@ func (a *WABAInboundAdapter) Parse(
 					}
 					summaryBuilder.WriteString(fmt.Sprintf("Total: %.2f %s", totalPrice, currency))
 					body = strings.TrimSpace(summaryBuilder.String())
+
+					inboundInteractive = &inbound.InboundInteractive{
+						Type: "order",
+						Order: &inbound.InboundOrder{
+							CatalogID:    msg.Order.CatalogID,
+							Text:         msg.Order.Text,
+							ProductItems: orderItems,
+							TotalPrice:   totalPrice,
+							Currency:     currency,
+						},
+					}
 				}
 
 				events = append(events, &inbound.InboundEvent{
@@ -307,6 +478,7 @@ func (a *WABAInboundAdapter) Parse(
 					Media:        inboundMedia,
 					Location:     inboundLocation,
 					Contacts:     inboundContacts,
+					Interactive:  inboundInteractive,
 					Metadata:     metadata,
 				})
 			}

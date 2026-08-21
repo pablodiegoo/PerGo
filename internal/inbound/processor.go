@@ -60,10 +60,39 @@ type InboundButtonReply struct {
 	Title string `json:"title"`
 }
 
+// InboundListReply represents a list item selection reply.
+type InboundListReply struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+}
+
+// InboundNFMReply represents a Meta Flow form submission (native flow message reply).
+type InboundNFMReply struct {
+	Name         string                 `json:"name,omitempty"`
+	Body         string                 `json:"body,omitempty"`
+	ResponseJSON string                 `json:"response_json,omitempty"`
+	FlowToken    string                 `json:"flow_token,omitempty"`
+	Screen       string                 `json:"screen,omitempty"`
+	Data         map[string]interface{} `json:"data,omitempty"`
+}
+
+// InboundOrder represents a WhatsApp catalog checkout order.
+type InboundOrder struct {
+	CatalogID    string                   `json:"catalog_id"`
+	Text         string                   `json:"text,omitempty"`
+	ProductItems []domain.OrderProductItem `json:"product_items"`
+	TotalPrice   float64                  `json:"total_price,omitempty"`
+	Currency     string                   `json:"currency,omitempty"`
+}
+
 // InboundInteractive represents the unified inbound interactive payload.
 type InboundInteractive struct {
-	Type        string              `json:"type"` // e.g. "button_reply"
+	Type        string              `json:"type"` // e.g. "button_reply", "list_reply", "nfm_reply", "order"
 	ButtonReply *InboundButtonReply `json:"button_reply,omitempty"`
+	ListReply   *InboundListReply   `json:"list_reply,omitempty"`
+	NFMReply    *InboundNFMReply    `json:"nfm_reply,omitempty"`
+	Order       *InboundOrder       `json:"order,omitempty"`
 }
 
 // InboundStoryEvent represents an Instagram story mention or reply.
@@ -381,6 +410,44 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 				slog.Error("inbound processor: failed to write audit log", "error", err, "trace_id", traceID)
 			}
 		}
+
+		if ev.Interactive != nil {
+			if ev.Interactive.Type == "nfm_reply" && ev.Interactive.NFMReply != nil {
+				flowEv := &domain.FlowCompletedEvent{
+					Screen:    ev.Interactive.NFMReply.Screen,
+					Data:      ev.Interactive.NFMReply.Data,
+					FlowToken: ev.Interactive.NFMReply.FlowToken,
+					ContactID: ev.From,
+					Wamid:     ev.MessageID,
+					TraceID:   traceID,
+				}
+				if pubErr := p.PublishFlowCompleted(ctx, ev.WorkspaceID, flowEv); pubErr != nil {
+					slog.Error("inbound processor: failed to publish flow.completed event", "error", pubErr, "message_id", ev.MessageID)
+				}
+			} else if ev.Interactive.Type == "order" && ev.Interactive.Order != nil {
+				orderEv := &domain.OrderCreatedEvent{
+					OrderID:    ev.MessageID,
+					CatalogID:  ev.Interactive.Order.CatalogID,
+					Items:      ev.Interactive.Order.ProductItems,
+					TotalPrice: ev.Interactive.Order.TotalPrice,
+					Currency:   ev.Interactive.Order.Currency,
+					Wamid:      ev.MessageID,
+					ContactID:  ev.From,
+					TraceID:    traceID,
+				}
+				if pubErr := p.PublishOrderCreated(ctx, ev.WorkspaceID, orderEv); pubErr != nil {
+					slog.Error("inbound processor: failed to publish order.created event", "error", pubErr, "message_id", ev.MessageID)
+				}
+			}
+		} else if ev.Metadata != nil && ev.Metadata["type"] == "order" && ev.Metadata["order_json"] != "" {
+			var orderEv domain.OrderCreatedEvent
+			if err := json.Unmarshal([]byte(ev.Metadata["order_json"]), &orderEv); err == nil {
+				if orderEv.TraceID == "" {
+					orderEv.TraceID = traceID
+				}
+				_ = p.PublishOrderCreated(ctx, ev.WorkspaceID, &orderEv)
+			}
+		}
 	}
 
 	// 9. Route inbound event via InboundRouter
@@ -414,7 +481,11 @@ func (p *InboundProcessor) PublishFlowCompleted(ctx context.Context, workspaceID
 		return err
 	}
 	subject := fmt.Sprintf("inbound.events.%s", workspaceID.String())
-	return p.publisher.Publish(ctx, subject, eventData, uuid.New().String())
+	traceID := ev.TraceID
+	if traceID == "" {
+		traceID = uuid.New().String()
+	}
+	return p.publisher.Publish(ctx, subject, eventData, traceID)
 }
 
 // DedupRepo returns the InboundDedupRepository associated with the processor.

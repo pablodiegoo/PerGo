@@ -449,4 +449,93 @@ func TestChatwootSyncer(t *testing.T) {
 			t.Errorf("unexpected mapping values: %+v", mapping)
 		}
 	})
+
+	t.Run("SyncInboundMessage_InteractiveSummary_PostsFormattedMarkdown", func(t *testing.T) {
+		var receivedContent string
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			switch {
+			case r.Method == http.MethodGet && r.URL.Path == "/api/v1/accounts/1/contacts/search":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"payload": []}`))
+
+			case r.Method == http.MethodPost && r.URL.Path == "/api/v1/accounts/1/contacts":
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"payload": {"contact": {"id": 111}}}`))
+
+			case r.Method == http.MethodPost && r.URL.Path == "/api/v1/accounts/1/conversations":
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"id": 222}`))
+
+			case r.Method == http.MethodPost && r.URL.Path == "/api/v1/accounts/1/conversations/222/messages":
+				var body struct {
+					Content string `json:"content"`
+				}
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				receivedContent = body.Content
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"id": 333}`))
+
+			default:
+				t.Errorf("unexpected API call: %s %s", r.Method, r.URL.Path)
+				w.WriteHeader(http.StatusInternalServerError)
+			}
+		}))
+		defer server.Close()
+
+		interactiveContact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511977778888", "Flow Customer", "", "+5511977778888")
+		if err != nil {
+			t.Fatalf("failed to resolve interactive contact: %v", err)
+		}
+
+		cfg := map[string]interface{}{
+			"api_url":      server.URL,
+			"access_token": "test-token",
+			"inbox_id":     int64(2),
+			"account_id":   int64(1),
+		}
+		cfgBytes, _ := json.Marshal(cfg)
+		integration, err := integrationRepo.GetByProvider(ctx, ws.ID, "chatwoot")
+		if err != nil {
+			t.Fatalf("failed to get integration: %v", err)
+		}
+		integration.Config = cfgBytes
+		if err := integrationRepo.Save(ctx, integration); err != nil {
+			t.Fatalf("failed to save integration: %v", err)
+		}
+
+		syncer := chatwoot.NewChatwootSyncer(integrationRepo, mappingRepo, server.Client())
+
+		ev := &inbound.InboundEvent{
+			WorkspaceID:  ws.ID,
+			ConnectionID: conn.ID,
+			Channel:      "whatsapp_cloud",
+			From:         "+5511977778888",
+			To:           "+5511888880001",
+			Body:         "📄 *Form Submitted*\nScreen: FEEDBACK\n- comment: Outstanding\n- rating: 5",
+			Interactive: &inbound.InboundInteractive{
+				Type: "nfm_reply",
+				NFMReply: &inbound.InboundNFMReply{
+					FlowToken: "tok_xyz",
+					Screen:    "FEEDBACK",
+					Data: map[string]interface{}{
+						"rating":  5,
+						"comment": "Outstanding",
+					},
+				},
+			},
+		}
+
+		err = syncer.SyncInboundMessage(ctx, interactiveContact, ev)
+		if err != nil {
+			t.Fatalf("SyncInboundMessage failed: %v", err)
+		}
+
+		expectedContent := "📄 *Form Submitted*\nScreen: FEEDBACK\n- comment: Outstanding\n- rating: 5"
+		if receivedContent != expectedContent {
+			t.Errorf("expected Chatwoot message %q, got %q", expectedContent, receivedContent)
+		}
+	})
 }
+

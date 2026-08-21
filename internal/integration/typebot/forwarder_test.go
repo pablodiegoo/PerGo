@@ -400,3 +400,219 @@ func TestTypebotForwarder_GroupMessage_WithActiveBot_SkipsExecution(t *testing.T
 		t.Error("expected publisher to not be called for group message")
 	}
 }
+
+func TestTypebotForwarder_InteractiveReplies(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	sessionRepo := repository.NewTypebotSessionRepository(pool)
+	integrationRepo := repository.NewIntegrationRepository(pool, noOpCryptoProvider{})
+
+	ws, err := wsRepo.Create(ctx, "typebot_interactive_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	connID := uuid.New()
+	connRepo := repository.NewConnectionRepository(pool, noOpCryptoProvider{})
+	conn := &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    ws.ID,
+		Name:           "WABA Interactive Connection",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+5511888880001",
+		Status:         "connected",
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("failed to create connection: %v", err)
+	}
+
+	var capturedStartRequest typebot.StartChatRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/api/v1/typebots/bot1/startChat" {
+			_ = json.NewDecoder(r.Body).Decode(&capturedStartRequest)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+			"sessionId": "mock-interactive-session",
+			"messages": [
+				{
+					"id": "msg1",
+					"type": "text",
+					"content": {
+						"type": "richText",
+						"richText": [{"type": "p", "children": [{"text": "Reply received"}]}]
+					}
+				}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	cfg := typebot.Config{
+		APIURL: server.URL,
+		Bots: []typebot.BotConfig{
+			{
+				ConnectionID: connID.String(),
+				BotID:        "bot1",
+				PublicToken:  "pub_tok",
+				IsDefault:    true,
+			},
+		},
+	}
+	cfgBytes, _ := json.Marshal(cfg)
+	integration := &repository.Integration{
+		ID:          uuid.New(),
+		WorkspaceID: ws.ID,
+		Name:        "Typebot Test",
+		Provider:    "typebot",
+		Active:      true,
+		Config:      cfgBytes,
+	}
+	if err := integrationRepo.Save(ctx, integration); err != nil {
+		t.Fatalf("failed to save integration: %v", err)
+	}
+
+	contactRepo := repository.NewContactRepository(pool)
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999991111", "Interactive User", "", "+5511999991111")
+	if err != nil {
+		t.Fatalf("failed to resolve contact: %v", err)
+	}
+	contact.BotActive = true
+
+	pub := &mockPublisher{}
+	f := typebot.NewForwarder(sessionRepo, integrationRepo, pub)
+
+	t.Run("button_reply passes clean button title to typebot", func(t *testing.T) {
+		capturedStartRequest = typebot.StartChatRequest{}
+		c1, _ := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999991111", "Btn User", "", "+5511999991111")
+		c1.BotActive = true
+
+		ev := &inbound.InboundEvent{
+			WorkspaceID:  ws.ID,
+			ConnectionID: connID,
+			Channel:      "whatsapp_cloud",
+			From:         "+5511999991111",
+			To:           "+5511888880001",
+			Body:         "🔘 *Selected*: Schedule Meeting",
+			Interactive: &inbound.InboundInteractive{
+				Type: "button_reply",
+				ButtonReply: &inbound.InboundButtonReply{
+					ID:    "btn_schedule",
+					Title: "Schedule Meeting",
+				},
+			},
+		}
+
+		err = f.SyncInboundMessage(ctx, c1, ev)
+		if err != nil {
+			t.Fatalf("SyncInboundMessage failed: %v", err)
+		}
+
+		if capturedStartRequest.Message != "Schedule Meeting" {
+			t.Errorf("expected clean message 'Schedule Meeting', got %q", capturedStartRequest.Message)
+		}
+		pergoMeta, ok := capturedStartRequest.PrefilledVariables["pergo_metadata"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected pergo_metadata to be map[string]any, got %T", capturedStartRequest.PrefilledVariables["pergo_metadata"])
+		}
+		if pergoMeta["button_id"] != "btn_schedule" {
+			t.Errorf("expected button_id 'btn_schedule', got %v", pergoMeta["button_id"])
+		}
+		if pergoMeta["button_title"] != "Schedule Meeting" {
+			t.Errorf("expected button_title 'Schedule Meeting', got %v", pergoMeta["button_title"])
+		}
+	})
+
+	t.Run("list_reply passes clean list title to typebot", func(t *testing.T) {
+		capturedStartRequest = typebot.StartChatRequest{}
+		c2, _ := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999992222", "List User", "", "+5511999992222")
+		c2.BotActive = true
+
+		ev := &inbound.InboundEvent{
+			WorkspaceID:  ws.ID,
+			ConnectionID: connID,
+			Channel:      "whatsapp_cloud",
+			From:         "+5511999992222",
+			To:           "+5511888880001",
+			Body:         "🔘 *Selected*: Option 1\nDetails here",
+			Interactive: &inbound.InboundInteractive{
+				Type: "list_reply",
+				ListReply: &inbound.InboundListReply{
+					ID:          "opt_1",
+					Title:       "Option 1",
+					Description: "Details here",
+				},
+			},
+		}
+
+		err = f.SyncInboundMessage(ctx, c2, ev)
+		if err != nil {
+			t.Fatalf("SyncInboundMessage failed: %v", err)
+		}
+
+		if capturedStartRequest.Message != "Option 1" {
+			t.Errorf("expected clean message 'Option 1', got %q", capturedStartRequest.Message)
+		}
+		pergoMeta, ok := capturedStartRequest.PrefilledVariables["pergo_metadata"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected pergo_metadata to be map[string]any, got %T", capturedStartRequest.PrefilledVariables["pergo_metadata"])
+		}
+		if pergoMeta["list_id"] != "opt_1" {
+			t.Errorf("expected list_id 'opt_1', got %v", pergoMeta["list_id"])
+		}
+		if pergoMeta["list_title"] != "Option 1" {
+			t.Errorf("expected list_title 'Option 1', got %v", pergoMeta["list_title"])
+		}
+	})
+
+	t.Run("nfm_reply passes flow data in pergo_metadata", func(t *testing.T) {
+		capturedStartRequest = typebot.StartChatRequest{}
+		c3, _ := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999993333", "Flow User", "", "+5511999993333")
+		c3.BotActive = true
+
+		ev := &inbound.InboundEvent{
+			WorkspaceID:  ws.ID,
+			ConnectionID: connID,
+			Channel:      "whatsapp_cloud",
+			From:         "+5511999993333",
+			To:           "+5511888880001",
+			Body:         "📄 *Form Submitted*\nScreen: FORM_1\n- name: Alice",
+			Interactive: &inbound.InboundInteractive{
+				Type: "nfm_reply",
+				NFMReply: &inbound.InboundNFMReply{
+					FlowToken: "tok_abc",
+					Screen:    "FORM_1",
+					Data: map[string]interface{}{
+						"name": "Alice",
+					},
+				},
+			},
+		}
+
+		err = f.SyncInboundMessage(ctx, c3, ev)
+		if err != nil {
+			t.Fatalf("SyncInboundMessage failed: %v", err)
+		}
+
+		if capturedStartRequest.Message != ev.Body {
+			t.Errorf("expected message %q, got %q", ev.Body, capturedStartRequest.Message)
+		}
+		pergoMeta, ok := capturedStartRequest.PrefilledVariables["pergo_metadata"].(map[string]any)
+		if !ok {
+			t.Fatalf("expected pergo_metadata to be map[string]any, got %T", capturedStartRequest.PrefilledVariables["pergo_metadata"])
+		}
+		if pergoMeta["flow_token"] != "tok_abc" {
+			t.Errorf("expected flow_token 'tok_abc', got %v", pergoMeta["flow_token"])
+		}
+		flowData, ok := pergoMeta["flow_data"].(map[string]interface{})
+		if !ok || flowData["name"] != "Alice" {
+			t.Errorf("expected flow_data name Alice, got %+v", flowData)
+		}
+	})
+}
+

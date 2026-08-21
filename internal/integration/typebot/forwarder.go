@@ -102,6 +102,56 @@ func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Cont
 		messageText = "[Unsupported message: location]"
 	} else if len(event.Contacts) > 0 {
 		messageText = "[Unsupported message: contact]"
+	} else if event.Interactive != nil {
+		switch event.Interactive.Type {
+		case "button_reply":
+			if event.Interactive.ButtonReply != nil {
+				if event.Interactive.ButtonReply.Title != "" {
+					messageText = event.Interactive.ButtonReply.Title
+				} else {
+					messageText = event.Interactive.ButtonReply.ID
+				}
+				pergoMetadata = map[string]any{
+					"button_id":    event.Interactive.ButtonReply.ID,
+					"button_title": event.Interactive.ButtonReply.Title,
+				}
+			}
+		case "list_reply":
+			if event.Interactive.ListReply != nil {
+				if event.Interactive.ListReply.Title != "" {
+					messageText = event.Interactive.ListReply.Title
+				} else {
+					messageText = event.Interactive.ListReply.ID
+				}
+				pergoMetadata = map[string]any{
+					"list_id":          event.Interactive.ListReply.ID,
+					"list_title":       event.Interactive.ListReply.Title,
+					"list_description": event.Interactive.ListReply.Description,
+				}
+			}
+		case "nfm_reply":
+			if event.Interactive.NFMReply != nil {
+				messageText = event.Body
+				pergoMetadata = map[string]any{
+					"flow_token": event.Interactive.NFMReply.FlowToken,
+					"screen":     event.Interactive.NFMReply.Screen,
+					"flow_data":  event.Interactive.NFMReply.Data,
+				}
+			}
+		case "order":
+			if event.Interactive.Order != nil {
+				messageText = event.Body
+				pergoMetadata = map[string]any{
+					"catalog_id":    event.Interactive.Order.CatalogID,
+					"product_items": event.Interactive.Order.ProductItems,
+					"total_price":   event.Interactive.Order.TotalPrice,
+					"currency":      event.Interactive.Order.Currency,
+				}
+			}
+		}
+		if messageText == "" {
+			messageText = event.Body
+		}
 	} else {
 		messageText = event.Body
 	}
