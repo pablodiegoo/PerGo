@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -77,6 +78,8 @@ type Campaign struct {
 	MessageBody      *string             `json:"message_body,omitempty"`
 	Channel          *string             `json:"channel,omitempty"`
 	FallbackChannels []string            `json:"fallback_channels,omitempty"`
+	Interactive      *Interactive        `json:"interactive,omitempty"`
+	FallbackBehavior *string             `json:"fallback_behavior,omitempty"`
 	TagID            *uuid.UUID          `json:"tag_id,omitempty"`
 	TagIDs           []uuid.UUID         `json:"tag_ids,omitempty"`
 	TotalRecipients  int                 `json:"total_recipients"`
@@ -422,3 +425,197 @@ func copyVariables(v map[string]string) map[string]string {
 	}
 	return cp
 }
+
+// WhatsApp and Meta interactive message character and structure limits.
+const (
+	MaxButtonTitleRunes        = 20
+	MaxButtonIDRunes           = 256
+	MaxButtonsCount            = 3
+	MaxListButtonTextRunes     = 20
+	MaxListSectionTitleRunes   = 24
+	MaxListRowTitleRunes       = 24
+	MaxListRowDescriptionRunes  = 72
+	MaxListRowIDRunes          = 200
+	MaxListTotalRows           = 10
+	MaxListSectionsCount       = 10
+	MaxFlowCTARunes            = 20
+	MaxHeaderTextRunes         = 60
+	MaxBodyTextRunes           = 1024
+	MaxFooterTextRunes         = 60
+)
+
+// InterpolateInteractive recursively resolves variables in an Interactive payload.
+// Returns a new cloned Interactive object with all template placeholders {{key}}
+// replaced by values from the vars map.
+func InterpolateInteractive(src *Interactive, vars map[string]string) *Interactive {
+	if src == nil {
+		return nil
+	}
+
+	dst := &Interactive{
+		Type: src.Type,
+		Body: TextContent{
+			Text: ResolveVariables(src.Body.Text, vars),
+		},
+	}
+
+	if src.Header != nil {
+		dst.Header = &TextContent{
+			Text: ResolveVariables(src.Header.Text, vars),
+		}
+	}
+
+	if src.Footer != nil {
+		dst.Footer = &TextContent{
+			Text: ResolveVariables(src.Footer.Text, vars),
+		}
+	}
+
+	dst.Action = Action{
+		Button:     ResolveVariables(src.Action.Button, vars),
+		FlowToken:  ResolveVariables(src.Action.FlowToken, vars),
+		FlowID:     ResolveVariables(src.Action.FlowID, vars),
+		FlowCTA:    ResolveVariables(src.Action.FlowCTA, vars),
+		FlowAction: ResolveVariables(src.Action.FlowAction, vars),
+	}
+
+	if len(src.Action.Buttons) > 0 {
+		dst.Action.Buttons = make([]Button, len(src.Action.Buttons))
+		for i, b := range src.Action.Buttons {
+			dst.Action.Buttons[i] = Button{
+				Type: b.Type,
+				Reply: Reply{
+					ID:    ResolveVariables(b.Reply.ID, vars),
+					Title: ResolveVariables(b.Reply.Title, vars),
+				},
+			}
+		}
+	}
+
+	if len(src.Action.Sections) > 0 {
+		dst.Action.Sections = make([]Section, len(src.Action.Sections))
+		for i, s := range src.Action.Sections {
+			sec := Section{
+				Title: ResolveVariables(s.Title, vars),
+			}
+			if len(s.Rows) > 0 {
+				sec.Rows = make([]Row, len(s.Rows))
+				for j, r := range s.Rows {
+					sec.Rows[j] = Row{
+						ID:          ResolveVariables(r.ID, vars),
+						Title:       ResolveVariables(r.Title, vars),
+						Description: ResolveVariables(r.Description, vars),
+					}
+				}
+			}
+			dst.Action.Sections[i] = sec
+		}
+	}
+
+	if src.Action.FlowActionPayload != nil {
+		dst.Action.FlowActionPayload = interpolateMap(src.Action.FlowActionPayload, vars)
+	}
+
+	return dst
+}
+
+func interpolateMap(src map[string]interface{}, vars map[string]string) map[string]interface{} {
+	if src == nil {
+		return nil
+	}
+	dst := make(map[string]interface{}, len(src))
+	for k, v := range src {
+		interpolatedKey := ResolveVariables(k, vars)
+		dst[interpolatedKey] = interpolateValue(v, vars)
+	}
+	return dst
+}
+
+func interpolateValue(val interface{}, vars map[string]string) interface{} {
+	switch v := val.(type) {
+	case string:
+		return ResolveVariables(v, vars)
+	case map[string]interface{}:
+		return interpolateMap(v, vars)
+	case []interface{}:
+		res := make([]interface{}, len(v))
+		for i, item := range v {
+			res[i] = interpolateValue(item, vars)
+		}
+		return res
+	default:
+		return val
+	}
+}
+
+// ValidateInteractiveLimits checks whether an interactive message exceeds Meta / WhatsApp constraints post-interpolation.
+func ValidateInteractiveLimits(i *Interactive) error {
+	if i == nil {
+		return nil
+	}
+
+	if i.Header != nil && utf8.RuneCountInString(i.Header.Text) > MaxHeaderTextRunes {
+		return fmt.Errorf("interactive header exceeds maximum length of %d characters (%d)", MaxHeaderTextRunes, utf8.RuneCountInString(i.Header.Text))
+	}
+
+	if utf8.RuneCountInString(i.Body.Text) > MaxBodyTextRunes {
+		return fmt.Errorf("interactive body exceeds maximum length of %d characters (%d)", MaxBodyTextRunes, utf8.RuneCountInString(i.Body.Text))
+	}
+
+	if i.Footer != nil && utf8.RuneCountInString(i.Footer.Text) > MaxFooterTextRunes {
+		return fmt.Errorf("interactive footer exceeds maximum length of %d characters (%d)", MaxFooterTextRunes, utf8.RuneCountInString(i.Footer.Text))
+	}
+
+	if i.Type == "button" {
+		if len(i.Action.Buttons) > MaxButtonsCount {
+			return fmt.Errorf("interactive button message exceeds maximum of %d buttons (%d)", MaxButtonsCount, len(i.Action.Buttons))
+		}
+		for idx, b := range i.Action.Buttons {
+			titleLen := utf8.RuneCountInString(b.Reply.Title)
+			if titleLen > MaxButtonTitleRunes {
+				return fmt.Errorf("button %d title exceeds maximum length of %d characters (%d)", idx+1, MaxButtonTitleRunes, titleLen)
+			}
+			if utf8.RuneCountInString(b.Reply.ID) > MaxButtonIDRunes {
+				return fmt.Errorf("button %d ID exceeds maximum length of %d characters", idx+1, MaxButtonIDRunes)
+			}
+		}
+	}
+
+	if i.Type == "list" {
+		if i.Action.Button != "" && utf8.RuneCountInString(i.Action.Button) > MaxListButtonTextRunes {
+			return fmt.Errorf("list button title exceeds maximum length of %d characters (%d)", MaxListButtonTextRunes, utf8.RuneCountInString(i.Action.Button))
+		}
+		if len(i.Action.Sections) > MaxListSectionsCount {
+			return fmt.Errorf("interactive list exceeds maximum of %d sections (%d)", MaxListSectionsCount, len(i.Action.Sections))
+		}
+		if i.TotalRows() > MaxListTotalRows {
+			return fmt.Errorf("interactive list exceeds maximum of %d rows total (%d)", MaxListTotalRows, i.TotalRows())
+		}
+		for sIdx, sec := range i.Action.Sections {
+			if utf8.RuneCountInString(sec.Title) > MaxListSectionTitleRunes {
+				return fmt.Errorf("section %d title exceeds maximum length of %d characters (%d)", sIdx+1, MaxListSectionTitleRunes, utf8.RuneCountInString(sec.Title))
+			}
+			for rIdx, r := range sec.Rows {
+				rowTitleLen := utf8.RuneCountInString(r.Title)
+				if rowTitleLen > MaxListRowTitleRunes {
+					return fmt.Errorf("section %d row %d title exceeds maximum length of %d characters (%d)", sIdx+1, rIdx+1, MaxListRowTitleRunes, rowTitleLen)
+				}
+				if utf8.RuneCountInString(r.Description) > MaxListRowDescriptionRunes {
+					return fmt.Errorf("section %d row %d description exceeds maximum length of %d characters (%d)", sIdx+1, rIdx+1, MaxListRowDescriptionRunes, utf8.RuneCountInString(r.Description))
+				}
+				if utf8.RuneCountInString(r.ID) > MaxListRowIDRunes {
+					return fmt.Errorf("section %d row %d ID exceeds maximum length of %d characters", sIdx+1, rIdx+1, MaxListRowIDRunes)
+				}
+			}
+		}
+	}
+
+	if i.Type == "flow" {
+		if i.Action.FlowCTA != "" && utf8.RuneCountInString(i.Action.FlowCTA) > MaxFlowCTARunes {
+			return fmt.Errorf("flow CTA title exceeds maximum length of %d characters (%d)", MaxFlowCTARunes, utf8.RuneCountInString(i.Action.FlowCTA))
+		}
+	}
+
+	return nil
+}
+

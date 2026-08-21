@@ -284,50 +284,43 @@ func buildInteractiveOrOverrideMsg(m *channel.MessagePayload) (*waE2E.Message, e
 		}
 		return &msg, nil
 	} else if m.Interactive != nil {
+		if limitErr := domain.ValidateInteractiveLimits(m.Interactive); limitErr != nil {
+			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
+				return nil, channel.NewTerminalError(fmt.Errorf("whatsapp: %w and fallback_behavior is fail", limitErr))
+			}
+			degraded := m.Interactive.DegradeToText()
+			msg.Conversation = &degraded
+			return &msg, nil
+		}
 		if m.Interactive.Type == "button" {
-			if len(m.Interactive.Action.Buttons) > 3 {
-				if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
-					return nil, channel.NewTerminalError(fmt.Errorf("whatsapp: interactive message exceeds native limits (max 3 buttons) and fallback_behavior is fail"))
-				}
-				degraded := m.Interactive.DegradeToText()
-				msg.Conversation = &degraded
-			} else {
-				var footerText *string
-				if m.Interactive.Footer != nil {
-					footerText = &m.Interactive.Footer.Text
-				}
+			var footerText *string
+			if m.Interactive.Footer != nil {
+				footerText = &m.Interactive.Footer.Text
+			}
 
-				var btns []*waE2E.ButtonsMessage_Button
-				for _, b := range m.Interactive.Action.Buttons {
-					id := b.Reply.ID
-					title := b.Reply.Title
-					btnType := waE2E.ButtonsMessage_Button_RESPONSE
-					btns = append(btns, &waE2E.ButtonsMessage_Button{
-						ButtonID:   &id,
-						ButtonText: &waE2E.ButtonsMessage_Button_ButtonText{DisplayText: &title},
-						Type:       &btnType,
-					})
-				}
-				msg.ButtonsMessage = &waE2E.ButtonsMessage{
-					ContentText: &m.Interactive.Body.Text,
-					HeaderType:  waE2E.ButtonsMessage_TEXT.Enum(),
-					FooterText:  footerText,
-					Buttons:     btns,
-				}
-				if m.Interactive.Header != nil {
-					msg.ButtonsMessage.Header = &waE2E.ButtonsMessage_Text{Text: m.Interactive.Header.Text}
-				}
+			var btns []*waE2E.ButtonsMessage_Button
+			for _, b := range m.Interactive.Action.Buttons {
+				id := b.Reply.ID
+				title := b.Reply.Title
+				btnType := waE2E.ButtonsMessage_Button_RESPONSE
+				btns = append(btns, &waE2E.ButtonsMessage_Button{
+					ButtonID:   &id,
+					ButtonText: &waE2E.ButtonsMessage_Button_ButtonText{DisplayText: &title},
+					Type:       &btnType,
+				})
+			}
+			msg.ButtonsMessage = &waE2E.ButtonsMessage{
+				ContentText: &m.Interactive.Body.Text,
+				HeaderType:  waE2E.ButtonsMessage_TEXT.Enum(),
+				FooterText:  footerText,
+				Buttons:     btns,
+			}
+			if m.Interactive.Header != nil {
+				msg.ButtonsMessage.Header = &waE2E.ButtonsMessage_Text{Text: m.Interactive.Header.Text}
 			}
 			return &msg, nil
 		} else if m.Interactive.Type == "list" {
-			if m.Interactive.TotalRows() > 10 || len(m.Interactive.Action.Sections) > 10 {
-				if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
-					return nil, channel.NewTerminalError(fmt.Errorf("whatsapp: interactive list exceeds native limits (max 10 rows) and fallback_behavior is fail"))
-				}
-				degraded := m.Interactive.DegradeToText()
-				msg.Conversation = &degraded
-			} else {
-				var title, description *string
+			var title, description *string
 				if m.Interactive.Header != nil {
 					title = &m.Interactive.Header.Text
 				}
@@ -369,7 +362,6 @@ func buildInteractiveOrOverrideMsg(m *channel.MessagePayload) (*waE2E.Message, e
 					Sections:    sections,
 					FooterText:  description,
 				}
-			}
 			return &msg, nil
 		} else if m.Interactive.Type == "flow" {
 			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {

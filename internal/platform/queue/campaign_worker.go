@@ -384,6 +384,11 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 			fallbackChannels = campaign.FallbackChannels
 		}
 
+		fallbackBehavior := string(domain.FallbackBehaviorDegrade)
+		if campaign.FallbackBehavior != nil && *campaign.FallbackBehavior != "" {
+			fallbackBehavior = *campaign.FallbackBehavior
+		}
+
 		qMsg := domain.QueueMessage{
 			WorkspaceID:      task.WorkspaceID,
 			ConnectionID:     connID,
@@ -395,10 +400,39 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 			FallbackChannels: fallbackChannels,
 			CampaignID:       &task.CampaignID,
 			VariablesJSON:    variablesJSON,
+			FallbackBehavior: fallbackBehavior,
 		}
 
-		if channel == "whatsapp_cloud" {
-			if campaign.TemplateName != nil {
+		if campaign.Interactive != nil {
+			// 1. Deep variable interpolation across interactive elements
+			interpolated := domain.InterpolateInteractive(campaign.Interactive, recipient.Variables)
+
+			// 2. Post-interpolation character limit validation
+			if limitErr := domain.ValidateInteractiveLimits(interpolated); limitErr != nil {
+				slog.Warn("campaign_worker: interactive message limits exceeded post-interpolation",
+					"campaign_id", task.CampaignID,
+					"recipient", recipient.To,
+					"fallback_behavior", fallbackBehavior,
+					"error", limitErr,
+				)
+
+				if fallbackBehavior == string(domain.FallbackBehaviorFail) {
+					// Pass through interactive payload so downstream channel fails and triggers fallback channels
+					qMsg.Interactive = interpolated
+					qMsg.Body = interpolated.DegradeToText()
+				} else {
+					// Gracefully degrade into plain formatted text
+					qMsg.Body = interpolated.DegradeToText()
+					qMsg.Interactive = nil
+				}
+			} else {
+				qMsg.Interactive = interpolated
+				if qMsg.Body == "" {
+					qMsg.Body = interpolated.Body.Text
+				}
+			}
+		} else {
+			if channel == "whatsapp_cloud" && campaign.TemplateName != nil {
 				templateName = campaign.TemplateName
 				qMsg.TemplateName = *campaign.TemplateName
 				qMsg.Language = "pt_BR" // default language
@@ -423,12 +457,12 @@ func (w *CampaignWorker) processBatch(ctx context.Context, msg jetstream.Msg) {
 					}
 				}
 			}
-		}
 
-		if campaign.MessageBody != nil {
-			qMsg.Body = domain.ResolveVariables(*campaign.MessageBody, recipient.Variables)
-		} else if campaign.TemplateName != nil {
-			qMsg.Body = domain.ResolveVariables(*campaign.TemplateName, recipient.Variables)
+			if campaign.MessageBody != nil {
+				qMsg.Body = domain.ResolveVariables(*campaign.MessageBody, recipient.Variables)
+			} else if campaign.TemplateName != nil {
+				qMsg.Body = domain.ResolveVariables(*campaign.TemplateName, recipient.Variables)
+			}
 		}
 
 		// Create database dispatch record

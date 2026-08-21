@@ -334,6 +334,7 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 	}
 
 	var templateName *string
+	var messageBody *string
 	if channel == "whatsapp_cloud" {
 		tName := c.FormValue("template_select")
 		if tName != "" {
@@ -343,6 +344,7 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		body := c.FormValue("body_template")
 		if body != "" {
 			templateName = &body
+			messageBody = &body
 		}
 	}
 
@@ -437,6 +439,19 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		status = domain.CampaignStatusScheduled
 	}
 
+	var formFallbackBehavior *string
+	if fb := strings.TrimSpace(c.FormValue("fallback_behavior")); fb != "" {
+		formFallbackBehavior = &fb
+	}
+
+	var formInteractive *domain.Interactive
+	if interRaw := strings.TrimSpace(c.FormValue("interactive_data")); interRaw != "" && interRaw != "{}" && interRaw != "null" {
+		var inter domain.Interactive
+		if err := json.Unmarshal([]byte(interRaw), &inter); err == nil && inter.Type != "" {
+			formInteractive = &inter
+		}
+	}
+
 	connSlug := conn.Slug
 	camp := &domain.Campaign{
 		WorkspaceID:      workspaceID,
@@ -449,8 +464,11 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		RateLimitPerMin:  rateLimitPerMin,
 		ScheduledAt:      scheduledAt,
 		TemplateName:     templateName,
+		MessageBody:      messageBody,
 		Channel:          &channel,
 		FallbackChannels: formFallbackChannels,
+		Interactive:      formInteractive,
+		FallbackBehavior: formFallbackBehavior,
 		TagID:            primaryTagID,
 		TagIDs:           formTagIDs,
 		TotalRecipients:  len(recipients),
@@ -669,18 +687,21 @@ func (h *CampaignHandler) GetRow(c *echo.Context) error {
 // REST API Handlers
 
 type CreateCampaignRequest struct {
-	Name            string                     `json:"name"`
-	ConnectionSlug  string                     `json:"connection_slug"`
-	TemplateName    *string                    `json:"template_name,omitempty"`
-	MessageBody     *string                    `json:"message_body,omitempty"`
-	TagID           *uuid.UUID                 `json:"tag_id,omitempty"`
-	TagIDs          []uuid.UUID                `json:"tag_ids,omitempty"`
-	BatchSize       int                        `json:"batch_size,omitempty"`
-	DelaySeconds    int                        `json:"delay_seconds,omitempty"`
-	RateLimitPerMin *int                       `json:"rate_limit_per_min,omitempty"`
-	ScheduledAt     *time.Time                 `json:"scheduled_at,omitempty"`
-	Status          *domain.CampaignStatus     `json:"status,omitempty"`
-	Recipients      []domain.CampaignRecipient `json:"recipients,omitempty"`
+	Name             string                     `json:"name"`
+	ConnectionSlug   string                     `json:"connection_slug"`
+	TemplateName     *string                    `json:"template_name,omitempty"`
+	MessageBody      *string                    `json:"message_body,omitempty"`
+	TagID            *uuid.UUID                 `json:"tag_id,omitempty"`
+	TagIDs           []uuid.UUID                `json:"tag_ids,omitempty"`
+	BatchSize        int                        `json:"batch_size,omitempty"`
+	DelaySeconds     int                        `json:"delay_seconds,omitempty"`
+	RateLimitPerMin  *int                       `json:"rate_limit_per_min,omitempty"`
+	ScheduledAt      *time.Time                 `json:"scheduled_at,omitempty"`
+	Status           *domain.CampaignStatus     `json:"status,omitempty"`
+	Recipients       []domain.CampaignRecipient `json:"recipients,omitempty"`
+	FallbackChannels []string                   `json:"fallback_channels,omitempty"`
+	Interactive      *domain.Interactive        `json:"interactive,omitempty"`
+	FallbackBehavior *string                    `json:"fallback_behavior,omitempty"`
 }
 
 // APICreate handles campaign creation via JSON REST API with pre-flight validation.
@@ -701,6 +722,27 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 
 	if req.RateLimitPerMin != nil && *req.RateLimitPerMin <= 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "rate_limit_per_min must be greater than 0"})
+	}
+
+	if req.FallbackBehavior != nil && *req.FallbackBehavior != "" {
+		if *req.FallbackBehavior != "degrade" && *req.FallbackBehavior != "fail" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": `fallback_behavior must be either "degrade" or "fail"`})
+		}
+	}
+
+	if req.Interactive != nil {
+		if req.Interactive.Type == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "interactive.type is required"})
+		}
+		if req.Interactive.Body.Text == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "interactive.body.text is required"})
+		}
+		if req.Interactive.Type == "button" && len(req.Interactive.Action.Buttons) == 0 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "interactive.action.buttons is required when type is button"})
+		}
+		if req.Interactive.Type == "list" && len(req.Interactive.Action.Sections) == 0 {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "interactive.action.sections is required when type is list"})
+		}
 	}
 
 	// 1. Pre-flight Connection Validation
@@ -759,22 +801,25 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 	}
 
 	camp := &domain.Campaign{
-		WorkspaceID:     workspaceID,
-		ConnectionID:    &connID,
-		ConnectionSlug:  &connSlug,
-		Name:            req.Name,
-		Status:          status,
-		BatchSize:       batchSize,
-		DelaySeconds:    delaySeconds,
-		RateLimitPerMin: req.RateLimitPerMin,
-		ScheduledAt:     req.ScheduledAt,
-		TemplateName:    req.TemplateName,
-		MessageBody:     req.MessageBody,
-		Channel:         &channel,
-		TagID:           primaryTagID,
-		TagIDs:          targetTagIDs,
-		TotalRecipients: len(req.Recipients),
-		Recipients:      req.Recipients,
+		WorkspaceID:      workspaceID,
+		ConnectionID:     &connID,
+		ConnectionSlug:   &connSlug,
+		Name:             req.Name,
+		Status:           status,
+		BatchSize:        batchSize,
+		DelaySeconds:     delaySeconds,
+		RateLimitPerMin:  req.RateLimitPerMin,
+		ScheduledAt:      req.ScheduledAt,
+		TemplateName:     req.TemplateName,
+		MessageBody:      req.MessageBody,
+		Channel:          &channel,
+		FallbackChannels: req.FallbackChannels,
+		Interactive:      req.Interactive,
+		FallbackBehavior: req.FallbackBehavior,
+		TagID:            primaryTagID,
+		TagIDs:           targetTagIDs,
+		TotalRecipients:  len(req.Recipients),
+		Recipients:       req.Recipients,
 	}
 
 	created, err := h.CampaignRepo.Create(c.Request().Context(), camp)

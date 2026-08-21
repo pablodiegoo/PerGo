@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1639,6 +1640,567 @@ func TestCreateRateLimiter(t *testing.T) {
 		})
 	}
 }
+
+func TestCampaignWorker_InteractiveButtons_DeepInterpolation(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	campRepo := repository.NewCampaignRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "camp_inter_worker_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	_, err = EnsureCampaignStream(ctx, nc)
+	if err != nil {
+		t.Fatalf("EnsureCampaignStream failed: %v", err)
+	}
+
+	messagesStream, err := EnsureStream(ctx, nc)
+	if err != nil {
+		t.Fatalf("EnsureStream failed: %v", err)
+	}
+	_ = messagesStream.Purge(ctx)
+
+	js, err := jetstream.New(nc)
+	if err != nil {
+		t.Fatalf("jetstream.New failed: %v", err)
+	}
+
+	consumerName := "test-camp-inter-consumer-" + uuid.New().String()
+	campStream, err := js.Stream(ctx, "CAMPAIGNS")
+	if err != nil {
+		t.Fatalf("get campaigns stream failed: %v", err)
+	}
+	_ = campStream.Purge(ctx)
+
+	consumer, err := EnsureCampaignConsumer(ctx, campStream, consumerName)
+	if err != nil {
+		t.Fatalf("EnsureCampaignConsumer failed: %v", err)
+	}
+
+	outboundConsumer, err := EnsureConsumer(ctx, messagesStream, "test-inter-outbound-"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("EnsureConsumer outbound failed: %v", err)
+	}
+
+	channel := "whatsapp"
+	fb := "degrade"
+	camp := &domain.Campaign{
+		WorkspaceID:      ws.ID,
+		Name:             "Interactive Buttons Worker Camp",
+		Status:           domain.CampaignStatusSending,
+		BatchSize:        1,
+		DelaySeconds:     0,
+		Channel:          &channel,
+		FallbackBehavior: &fb,
+		Interactive: &domain.Interactive{
+			Type:   "button",
+			Header: &domain.TextContent{Text: "Aviso {{name}}"},
+			Body:   domain.TextContent{Text: "Olá {{name}}, sua fatura de R${{valor}} vence em {{data}}."},
+			Footer: &domain.TextContent{Text: "Válido até {{data}}"},
+			Action: domain.Action{
+				Buttons: []domain.Button{
+					{Type: "reply", Reply: domain.Reply{ID: "pay", Title: "Pagar {{valor}}"}},
+					{Type: "reply", Reply: domain.Reply{ID: "copy", Title: "2a Via"}},
+				},
+			},
+		},
+		TotalRecipients: 1,
+		Recipients: []domain.CampaignRecipient{
+			{
+				To: "5511999991111",
+				Variables: map[string]string{
+					"name":  "Alice",
+					"valor": "50,00",
+					"data":  "25/08",
+				},
+			},
+		},
+	}
+
+	camp, err = campRepo.Create(ctx, camp)
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
+
+	publisher := NewJetStreamPublisher(nc)
+	task := CampaignBatchTask{
+		CampaignID:   camp.ID,
+		WorkspaceID:  ws.ID,
+		BatchIndex:   1,
+		TotalBatches: 1,
+		Recipients:   camp.Recipients,
+		DelaySeconds: 0,
+	}
+	taskBytes, _ := json.Marshal(task)
+	err = publisher.Publish(ctx, "campaigns.batches", taskBytes, uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to publish batch task: %v", err)
+	}
+
+	worker := NewCampaignWorker(ctx, consumer, campRepo, connRepo, dispatchRepo, publisher, nil, nil)
+	defer worker.Stop()
+
+	// Wait for campaign completion
+	for i := 0; i < 30; i++ {
+		c, _ := campRepo.GetByID(ctx, camp.ID)
+		if c.Status == domain.CampaignStatusCompleted {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Verify outbound message received with deep variable interpolation
+	msgs, err := outboundConsumer.Messages()
+	if err != nil {
+		t.Fatalf("failed to get outbound messages: %v", err)
+	}
+	defer msgs.Stop()
+
+	msg, err := msgs.Next()
+	if err != nil {
+		t.Fatalf("failed to receive outbound message: %v", err)
+	}
+	var qMsg domain.QueueMessage
+	_ = json.Unmarshal(msg.Data(), &qMsg)
+
+	if qMsg.Interactive == nil {
+		t.Fatalf("expected qMsg.Interactive not to be nil")
+	}
+	if qMsg.Interactive.Header == nil || qMsg.Interactive.Header.Text != "Aviso Alice" {
+		t.Errorf("expected header 'Aviso Alice', got %v", qMsg.Interactive.Header)
+	}
+	if qMsg.Interactive.Body.Text != "Olá Alice, sua fatura de R$50,00 vence em 25/08." {
+		t.Errorf("expected body 'Olá Alice, sua fatura de R$50,00 vence em 25/08.', got %q", qMsg.Interactive.Body.Text)
+	}
+	if len(qMsg.Interactive.Action.Buttons) != 2 {
+		t.Fatalf("expected 2 buttons, got %d", len(qMsg.Interactive.Action.Buttons))
+	}
+	if qMsg.Interactive.Action.Buttons[0].Reply.Title != "Pagar 50,00" {
+		t.Errorf("expected button title 'Pagar 50,00', got %q", qMsg.Interactive.Action.Buttons[0].Reply.Title)
+	}
+	if qMsg.Interactive.Action.Buttons[0].Reply.ID != "pay" {
+		t.Errorf("expected button id 'pay', got %q", qMsg.Interactive.Action.Buttons[0].Reply.ID)
+	}
+	if qMsg.FallbackBehavior != "degrade" {
+		t.Errorf("expected FallbackBehavior degrade, got %q", qMsg.FallbackBehavior)
+	}
+}
+
+func TestCampaignWorker_InteractiveFlow_DeepInterpolation(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	campRepo := repository.NewCampaignRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "camp_flow_worker_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	_, err = EnsureCampaignStream(ctx, nc)
+	if err != nil {
+		t.Fatalf("EnsureCampaignStream failed: %v", err)
+	}
+
+	messagesStream, err := EnsureStream(ctx, nc)
+	if err != nil {
+		t.Fatalf("EnsureStream failed: %v", err)
+	}
+	_ = messagesStream.Purge(ctx)
+
+	js, err := jetstream.New(nc)
+	if err != nil {
+		t.Fatalf("jetstream.New failed: %v", err)
+	}
+
+	consumerName := "test-camp-flow-consumer-" + uuid.New().String()
+	campStream, err := js.Stream(ctx, "CAMPAIGNS")
+	if err != nil {
+		t.Fatalf("get campaigns stream failed: %v", err)
+	}
+	_ = campStream.Purge(ctx)
+
+	consumer, err := EnsureCampaignConsumer(ctx, campStream, consumerName)
+	if err != nil {
+		t.Fatalf("EnsureCampaignConsumer failed: %v", err)
+	}
+
+	outboundConsumer, err := EnsureConsumer(ctx, messagesStream, "test-flow-outbound-"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("EnsureConsumer outbound failed: %v", err)
+	}
+
+	channel := "whatsapp"
+	camp := &domain.Campaign{
+		WorkspaceID: ws.ID,
+		Name:        "Flow Worker Camp",
+		Status:      domain.CampaignStatusSending,
+		BatchSize:   1,
+		Channel:     &channel,
+		Interactive: &domain.Interactive{
+			Type: "flow",
+			Body: domain.TextContent{Text: "Pesquisa de Satisfação"},
+			Action: domain.Action{
+				FlowID:     "123456",
+				FlowCTA:    "Responder {{pesquisa}}",
+				FlowAction: "navigate",
+				FlowActionPayload: map[string]interface{}{
+					"screen": "SURVEY",
+					"data": map[string]interface{}{
+						"user": "{{user_name}}",
+						"ref":  "REF-{{order_id}}",
+					},
+				},
+			},
+		},
+		TotalRecipients: 1,
+		Recipients: []domain.CampaignRecipient{
+			{
+				To: "5511999992222",
+				Variables: map[string]string{
+					"pesquisa":  "NPS 2026",
+					"user_name": "Bob",
+					"order_id":  "9988",
+				},
+			},
+		},
+	}
+
+	camp, err = campRepo.Create(ctx, camp)
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
+
+	publisher := NewJetStreamPublisher(nc)
+	task := CampaignBatchTask{
+		CampaignID:   camp.ID,
+		WorkspaceID:  ws.ID,
+		BatchIndex:   1,
+		TotalBatches: 1,
+		Recipients:   camp.Recipients,
+		DelaySeconds: 0,
+	}
+	taskBytes, _ := json.Marshal(task)
+	_ = publisher.Publish(ctx, "campaigns.batches", taskBytes, uuid.New().String())
+
+	worker := NewCampaignWorker(ctx, consumer, campRepo, connRepo, dispatchRepo, publisher, nil, nil)
+	defer worker.Stop()
+
+	for i := 0; i < 30; i++ {
+		c, _ := campRepo.GetByID(ctx, camp.ID)
+		if c.Status == domain.CampaignStatusCompleted {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	msgs, err := outboundConsumer.Messages()
+	if err != nil {
+		t.Fatalf("failed to get outbound messages: %v", err)
+	}
+	defer msgs.Stop()
+
+	msg, err := msgs.Next()
+	if err != nil {
+		t.Fatalf("failed to receive outbound message: %v", err)
+	}
+	var qMsg domain.QueueMessage
+	_ = json.Unmarshal(msg.Data(), &qMsg)
+
+	if qMsg.Interactive == nil {
+		t.Fatalf("expected qMsg.Interactive not to be nil")
+	}
+	if qMsg.Interactive.Action.FlowCTA != "Responder NPS 2026" {
+		t.Errorf("expected FlowCTA 'Responder NPS 2026', got %q", qMsg.Interactive.Action.FlowCTA)
+	}
+	payloadData, ok := qMsg.Interactive.Action.FlowActionPayload["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected FlowActionPayload data map, got %v", qMsg.Interactive.Action.FlowActionPayload)
+	}
+	if payloadData["user"] != "Bob" || payloadData["ref"] != "REF-9988" {
+		t.Errorf("interpolated payload mismatch: %v", payloadData)
+	}
+}
+
+func TestCampaignWorker_Interactive_LimitValidation_Degrade(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	campRepo := repository.NewCampaignRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "camp_degrade_worker_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	_, err = EnsureCampaignStream(ctx, nc)
+	if err != nil {
+		t.Fatalf("EnsureCampaignStream failed: %v", err)
+	}
+
+	messagesStream, err := EnsureStream(ctx, nc)
+	if err != nil {
+		t.Fatalf("EnsureStream failed: %v", err)
+	}
+	_ = messagesStream.Purge(ctx)
+
+	js, err := jetstream.New(nc)
+	if err != nil {
+		t.Fatalf("jetstream.New failed: %v", err)
+	}
+
+	consumerName := "test-camp-degrade-consumer-" + uuid.New().String()
+	campStream, err := js.Stream(ctx, "CAMPAIGNS")
+	if err != nil {
+		t.Fatalf("get campaigns stream failed: %v", err)
+	}
+	_ = campStream.Purge(ctx)
+
+	consumer, err := EnsureCampaignConsumer(ctx, campStream, consumerName)
+	if err != nil {
+		t.Fatalf("EnsureCampaignConsumer failed: %v", err)
+	}
+
+	outboundConsumer, err := EnsureConsumer(ctx, messagesStream, "test-degrade-outbound-"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("EnsureConsumer outbound failed: %v", err)
+	}
+
+	channel := "whatsapp"
+	fb := "degrade"
+	camp := &domain.Campaign{
+		WorkspaceID:      ws.ID,
+		Name:             "Degrade Worker Camp",
+		Status:           domain.CampaignStatusSending,
+		BatchSize:        1,
+		Channel:          &channel,
+		FallbackBehavior: &fb,
+		Interactive: &domain.Interactive{
+			Type: "button",
+			Body: domain.TextContent{Text: "Escolha:"},
+			Action: domain.Action{
+				Buttons: []domain.Button{
+					// Variable will exceed 20 chars post-interpolation!
+					{Type: "reply", Reply: domain.Reply{ID: "btn_1", Title: "Clique em {{long_btn_name}}"}},
+				},
+			},
+		},
+		TotalRecipients: 1,
+		Recipients: []domain.CampaignRecipient{
+			{
+				To: "5511999993333",
+				Variables: map[string]string{
+					"long_btn_name": "Opção com nome muito longo que excede limite",
+				},
+			},
+		},
+	}
+
+	camp, err = campRepo.Create(ctx, camp)
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
+
+	publisher := NewJetStreamPublisher(nc)
+	task := CampaignBatchTask{
+		CampaignID:   camp.ID,
+		WorkspaceID:  ws.ID,
+		BatchIndex:   1,
+		TotalBatches: 1,
+		Recipients:   camp.Recipients,
+		DelaySeconds: 0,
+	}
+	taskBytes, _ := json.Marshal(task)
+	_ = publisher.Publish(ctx, "campaigns.batches", taskBytes, uuid.New().String())
+
+	worker := NewCampaignWorker(ctx, consumer, campRepo, connRepo, dispatchRepo, publisher, nil, nil)
+	defer worker.Stop()
+
+	for i := 0; i < 30; i++ {
+		c, _ := campRepo.GetByID(ctx, camp.ID)
+		if c.Status == domain.CampaignStatusCompleted {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	msgs, err := outboundConsumer.Messages()
+	if err != nil {
+		t.Fatalf("failed to get outbound messages: %v", err)
+	}
+	defer msgs.Stop()
+
+	msg, err := msgs.Next()
+	if err != nil {
+		t.Fatalf("failed to receive outbound message: %v", err)
+	}
+	var qMsg domain.QueueMessage
+	_ = json.Unmarshal(msg.Data(), &qMsg)
+
+	// Since limit was exceeded and fallback_behavior is degrade, Interactive must be nil and Body degraded
+	if qMsg.Interactive != nil {
+		t.Errorf("expected qMsg.Interactive to be nil after degradation, got %+v", qMsg.Interactive)
+	}
+	if qMsg.Body == "" || !strings.Contains(qMsg.Body, "Opção com nome muito longo") {
+		t.Errorf("expected qMsg.Body to contain degraded menu text, got %q", qMsg.Body)
+	}
+}
+
+func TestCampaignWorker_Interactive_LimitValidation_Fail(t *testing.T) {
+	nc := connectNATS(t)
+	pool := getTestPool(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	campRepo := repository.NewCampaignRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "camp_fail_worker_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	_, err = EnsureCampaignStream(ctx, nc)
+	if err != nil {
+		t.Fatalf("EnsureCampaignStream failed: %v", err)
+	}
+
+	messagesStream, err := EnsureStream(ctx, nc)
+	if err != nil {
+		t.Fatalf("EnsureStream failed: %v", err)
+	}
+	_ = messagesStream.Purge(ctx)
+
+	js, err := jetstream.New(nc)
+	if err != nil {
+		t.Fatalf("jetstream.New failed: %v", err)
+	}
+
+	consumerName := "test-camp-fail-consumer-" + uuid.New().String()
+	campStream, err := js.Stream(ctx, "CAMPAIGNS")
+	if err != nil {
+		t.Fatalf("get campaigns stream failed: %v", err)
+	}
+	_ = campStream.Purge(ctx)
+
+	consumer, err := EnsureCampaignConsumer(ctx, campStream, consumerName)
+	if err != nil {
+		t.Fatalf("EnsureCampaignConsumer failed: %v", err)
+	}
+
+	outboundConsumer, err := EnsureConsumer(ctx, messagesStream, "test-fail-outbound-"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("EnsureConsumer outbound failed: %v", err)
+	}
+
+	channel := "whatsapp"
+	fb := "fail"
+	camp := &domain.Campaign{
+		WorkspaceID:      ws.ID,
+		Name:             "Fail Worker Camp",
+		Status:           domain.CampaignStatusSending,
+		BatchSize:        1,
+		Channel:          &channel,
+		FallbackBehavior: &fb,
+		Interactive: &domain.Interactive{
+			Type: "button",
+			Body: domain.TextContent{Text: "Escolha:"},
+			Action: domain.Action{
+				Buttons: []domain.Button{
+					// Variable will exceed 20 chars post-interpolation!
+					{Type: "reply", Reply: domain.Reply{ID: "btn_1", Title: "Clique em {{long_btn_name}}"}},
+				},
+			},
+		},
+		TotalRecipients: 1,
+		Recipients: []domain.CampaignRecipient{
+			{
+				To: "5511999994444",
+				Variables: map[string]string{
+					"long_btn_name": "Opção com nome muito longo que excede limite",
+				},
+			},
+		},
+	}
+
+	camp, err = campRepo.Create(ctx, camp)
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
+
+	publisher := NewJetStreamPublisher(nc)
+	task := CampaignBatchTask{
+		CampaignID:   camp.ID,
+		WorkspaceID:  ws.ID,
+		BatchIndex:   1,
+		TotalBatches: 1,
+		Recipients:   camp.Recipients,
+		DelaySeconds: 0,
+	}
+	taskBytes, _ := json.Marshal(task)
+	_ = publisher.Publish(ctx, "campaigns.batches", taskBytes, uuid.New().String())
+
+	worker := NewCampaignWorker(ctx, consumer, campRepo, connRepo, dispatchRepo, publisher, nil, nil)
+	defer worker.Stop()
+
+	for i := 0; i < 30; i++ {
+		c, _ := campRepo.GetByID(ctx, camp.ID)
+		if c.Status == domain.CampaignStatusCompleted {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	msgs, err := outboundConsumer.Messages()
+	if err != nil {
+		t.Fatalf("failed to get outbound messages: %v", err)
+	}
+	defer msgs.Stop()
+
+	msg, err := msgs.Next()
+	if err != nil {
+		t.Fatalf("failed to receive outbound message: %v", err)
+	}
+	var qMsg domain.QueueMessage
+	_ = json.Unmarshal(msg.Data(), &qMsg)
+
+	// In fail mode, Interactive is kept and FallbackBehavior is fail
+	if qMsg.Interactive == nil {
+		t.Errorf("expected qMsg.Interactive to be preserved in fail mode")
+	}
+	if qMsg.FallbackBehavior != "fail" {
+		t.Errorf("expected FallbackBehavior fail, got %q", qMsg.FallbackBehavior)
+	}
+}
+
 
 
 

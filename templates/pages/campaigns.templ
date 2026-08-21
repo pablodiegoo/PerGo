@@ -289,6 +289,15 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 					/>
 				</div>
 
+				<div class="flex flex-col gap-1">
+					<label for="msg_type_selector" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Tipo de Conteúdo</label>
+					<select id="msg_type_selector" name="msg_type_selector" onchange="toggleMessageType()" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full">
+						<option value="plain_text">Texto Customizado (Plain Text)</option>
+						<option value="interactive">Mensagem Interativa (Botões, Lista, Flow)</option>
+						<option value="waba_template">Template WABA</option>
+					</select>
+				</div>
+
 				<div class="flex flex-col gap-1" id="template-selector-container" style="display: none;">
 					<label for="template_select" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Selecione o Template WABA</label>
 					<select id="template_select" name="template_select" onchange="renderWABAVariables()" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full">
@@ -300,8 +309,181 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 				</div>
 
 				<div class="flex flex-col gap-1" id="body-text-container">
-					<label for="body_template" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Mensagem Customizada (Plain Text)</label>
-					<textarea id="body_template" name="body_template" rows="3" placeholder="Ex: Ola nome, seu pedido foi postado!" onkeyup="estimateDuration()" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full font-mono resize-y"></textarea>
+					<div class="flex justify-between items-center">
+						<label for="body_template" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Mensagem Customizada (Plain Text)</label>
+					</div>
+					<textarea id="body_template" name="body_template" rows="3" placeholder="Ex: Olá {{name}}, seu pedido foi postado!" onfocus="setActiveInput(this)" onkeyup="estimateDuration()" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full font-mono resize-y"></textarea>
+				</div>
+			</div>
+
+			<!-- Interactive Message Builder Section -->
+			<div id="interactive-builder-container" class="border border-zinc-200 rounded-lg p-5 bg-zinc-50/50 space-y-4" style="display: none;">
+				<div class="flex items-center justify-between border-b border-zinc-200 pb-3">
+					<div>
+						<h3 class="text-sm font-bold text-zinc-900 flex items-center gap-2">
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-zinc-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+							Construtor de Mensagem Interativa
+						</h3>
+						<p class="text-xs text-zinc-500 mt-0.5">Configure botões de resposta rápida, listas de opções ou Meta Flows com interpolação dinâmica.</p>
+					</div>
+					<div class="flex items-center gap-2">
+						<label for="interactive_type_select" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Subtipo:</label>
+						<select id="interactive_type_select" onchange="toggleInteractiveSubtype(); syncInteractiveJSON();" class="form-input border border-zinc-300 rounded-md px-2.5 py-1 text-xs font-medium bg-white focus:ring-2 focus:ring-zinc-950">
+							<option value="button">Botões de Resposta (Reply Buttons)</option>
+							<option value="list">Menu de Lista (List Menu)</option>
+							<option value="flow">Meta Flow CTA</option>
+						</select>
+					</div>
+				</div>
+
+				<!-- Tag & Attribute Pill Indicators Bar -->
+				<div class="bg-white border border-zinc-200 rounded-md p-3">
+					<span class="text-[11px] font-semibold text-zinc-500 uppercase tracking-wider block mb-1.5">Variáveis Disponíveis (Clique para Inserir no Campo Ativo):</span>
+					<div id="variable-pills-bar" class="flex flex-wrap gap-1.5 items-center">
+						<button type="button" onclick="insertVariable('name')" class="px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-300 transition-colors">
+							{"{{name}}"}
+						</button>
+						<button type="button" onclick="insertVariable('phone')" class="px-2 py-0.5 rounded-full text-xs font-medium bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border border-zinc-300 transition-colors">
+							{"{{phone}}"}
+						</button>
+						for _, tag := range tags {
+							{{ color := tagColorOrDefault(tag.Color) }}
+							<button
+								type="button"
+								data-var={ tag.Name }
+								onclick="insertVariable(this.getAttribute('data-var'))"
+								class="px-2 py-0.5 rounded-full text-xs font-medium border transition-all"
+								style={ fmt.Sprintf("border-color: %s; color: %s; background-color: %s15", color, color, color) }
+							>
+								{ fmt.Sprintf("{{%s}}", tag.Name) }
+							</button>
+						}
+					</div>
+				</div>
+
+				<!-- Common Header, Body, Footer -->
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+					<div class="flex flex-col gap-1">
+						<label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex justify-between">
+							<span>Cabeçalho (Opcional - máx 60 car.)</span>
+							<span id="inter_header_len" class="text-[10px] text-zinc-400 font-mono">0/60</span>
+						</label>
+						<input type="text" id="inter_header" placeholder="Ex: Novidade para {{name}}" maxlength="60" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded-md px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-zinc-950"/>
+					</div>
+
+					<div class="flex flex-col gap-1">
+						<label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex justify-between">
+							<span>Rodapé (Opcional - máx 60 car.)</span>
+							<span id="inter_footer_len" class="text-[10px] text-zinc-400 font-mono">0/60</span>
+						</label>
+						<input type="text" id="inter_footer" placeholder="Ex: Responda para interagir" maxlength="60" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded-md px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-zinc-950"/>
+					</div>
+				</div>
+
+				<div class="flex flex-col gap-1">
+					<label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider flex justify-between">
+						<span>Corpo da Mensagem (Obrigatório - máx 1024 car.)</span>
+						<span id="inter_body_len" class="text-[10px] text-zinc-400 font-mono">0/1024</span>
+					</label>
+					<textarea id="inter_body" rows="3" placeholder="Olá {{name}}, temos uma condição especial para seu plano {{plano}}!" maxlength="1024" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-zinc-950 font-mono resize-y"></textarea>
+				</div>
+
+				<!-- Subtype: Buttons (Reply Buttons) -->
+				<div id="inter-buttons-section" class="space-y-3 pt-2 border-t border-zinc-200">
+					<div class="flex justify-between items-center">
+						<span class="text-xs font-bold text-zinc-700 uppercase tracking-wider">Botões de Resposta Rápida (Máximo 3 - título máx 20 car.)</span>
+					</div>
+					<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+						<div class="bg-white p-3 rounded-md border border-zinc-200 space-y-2">
+							<span class="text-[11px] font-semibold text-zinc-500">Botão 1</span>
+							<input type="text" id="btn_1_title" placeholder="Título (máx 20)" maxlength="20" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full"/>
+							<input type="text" id="btn_1_id" placeholder="ID (ex: opt_sim)" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full font-mono text-zinc-600"/>
+						</div>
+						<div class="bg-white p-3 rounded-md border border-zinc-200 space-y-2">
+							<span class="text-[11px] font-semibold text-zinc-500">Botão 2</span>
+							<input type="text" id="btn_2_title" placeholder="Título (máx 20)" maxlength="20" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full"/>
+							<input type="text" id="btn_2_id" placeholder="ID (ex: opt_nao)" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full font-mono text-zinc-600"/>
+						</div>
+						<div class="bg-white p-3 rounded-md border border-zinc-200 space-y-2">
+							<span class="text-[11px] font-semibold text-zinc-500">Botão 3</span>
+							<input type="text" id="btn_3_title" placeholder="Título (máx 20)" maxlength="20" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full"/>
+							<input type="text" id="btn_3_id" placeholder="ID (ex: opt_mais)" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full font-mono text-zinc-600"/>
+						</div>
+					</div>
+				</div>
+
+				<!-- Subtype: List (List Menu) -->
+				<div id="inter-list-section" class="space-y-3 pt-2 border-t border-zinc-200" style="display: none;">
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+						<div class="flex flex-col gap-1">
+							<label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Texto do Botão da Lista (máx 20 car.)</label>
+							<input type="text" id="list_btn_text" placeholder="Ex: Ver Opções" maxlength="20" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-3 py-1.5 text-xs bg-white"/>
+						</div>
+						<div class="flex flex-col gap-1">
+							<label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Título da Seção (máx 24 car.)</label>
+							<input type="text" id="list_section_title" placeholder="Ex: Itens Disponíveis" maxlength="24" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-3 py-1.5 text-xs bg-white"/>
+						</div>
+					</div>
+					<div class="space-y-2">
+						<span class="text-xs font-bold text-zinc-700 uppercase tracking-wider">Linhas da Seção</span>
+						<div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+							<div class="bg-white p-3 rounded-md border border-zinc-200 space-y-1.5">
+								<span class="text-[11px] font-semibold text-zinc-500">Linha 1</span>
+								<input type="text" id="row_1_title" placeholder="Título (máx 24)" maxlength="24" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full"/>
+								<input type="text" id="row_1_desc" placeholder="Descrição (máx 72)" maxlength="72" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full"/>
+								<input type="text" id="row_1_id" placeholder="ID (ex: row_1)" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full font-mono text-zinc-600"/>
+							</div>
+							<div class="bg-white p-3 rounded-md border border-zinc-200 space-y-1.5">
+								<span class="text-[11px] font-semibold text-zinc-500">Linha 2</span>
+								<input type="text" id="row_2_title" placeholder="Título (máx 24)" maxlength="24" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full"/>
+								<input type="text" id="row_2_desc" placeholder="Descrição (máx 72)" maxlength="72" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full"/>
+								<input type="text" id="row_2_id" placeholder="ID (ex: row_2)" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full font-mono text-zinc-600"/>
+							</div>
+							<div class="bg-white p-3 rounded-md border border-zinc-200 space-y-1.5">
+								<span class="text-[11px] font-semibold text-zinc-500">Linha 3</span>
+								<input type="text" id="row_3_title" placeholder="Título (máx 24)" maxlength="24" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full"/>
+								<input type="text" id="row_3_desc" placeholder="Descrição (máx 72)" maxlength="72" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full"/>
+								<input type="text" id="row_3_id" placeholder="ID (ex: row_3)" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs w-full font-mono text-zinc-600"/>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Subtype: Flow (Meta Flow) -->
+				<div id="inter-flow-section" class="space-y-3 pt-2 border-t border-zinc-200" style="display: none;">
+					<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+						<div class="flex flex-col gap-1">
+							<label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Flow ID</label>
+							<input type="text" id="flow_id" placeholder="Ex: 3847291038" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-3 py-1.5 text-xs bg-white font-mono"/>
+						</div>
+						<div class="flex flex-col gap-1">
+							<label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Texto do Botão CTA (máx 20 car.)</label>
+							<input type="text" id="flow_cta" placeholder="Ex: Preencher Cadastro" maxlength="20" onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-3 py-1.5 text-xs bg-white"/>
+						</div>
+						<div class="flex flex-col gap-1">
+							<label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Ação do Flow</label>
+							<select id="flow_action" onchange="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-3 py-1.5 text-xs bg-white">
+								<option value="navigate">navigate</option>
+								<option value="data_exchange">data_exchange</option>
+							</select>
+						</div>
+					</div>
+					<div class="flex flex-col gap-1">
+						<label class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Payload Inicial do Flow (JSON com tags)</label>
+						<textarea id="flow_payload" rows="3" placeholder='{"screen": "START", "data": {"name": "{{name}}"}}' onfocus="setActiveInput(this)" oninput="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded px-3 py-2 text-xs bg-white font-mono resize-y"></textarea>
+					</div>
+				</div>
+
+				<!-- Fallback Behavior Policy -->
+				<div class="pt-3 border-t border-zinc-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+					<div>
+						<label for="fallback_behavior_select" class="text-xs font-semibold text-zinc-700 uppercase tracking-wider block">Política de Fallback / Degradação</label>
+						<span class="text-[11px] text-zinc-400">Ação tomada se o canal não suportar elementos ricos ou os limites forem excedidos pós-interpolação.</span>
+					</div>
+					<select id="fallback_behavior_select" name="fallback_behavior" onchange="syncInteractiveJSON()" class="form-input border border-zinc-300 rounded-md px-3 py-1.5 text-xs font-medium bg-white focus:ring-2 focus:ring-zinc-950">
+						<option value="degrade" selected>Degradar para Texto Formatado (Recomendado)</option>
+						<option value="fail">Falhar Envio / Tentar Canal Fallback</option>
+					</select>
 				</div>
 			</div>
 
@@ -383,6 +565,7 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 			<!-- Hidden inputs for validation data -->
 			<input type="hidden" id="recipients_data" name="recipients_data" value="[]"/>
 			<input type="hidden" id="skipped_data" name="skipped_data" value="[]"/>
+			<input type="hidden" id="interactive_data" name="interactive_data" value=""/>
 
 			<div class="form-actions flex justify-end gap-3 border-t border-zinc-200 pt-6 mt-6">
 				<button
@@ -400,8 +583,36 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 	</div>
 
 	<script>
-		// Global counts
+		// Global counts & active input tracking
 		let globalValidCount = 0;
+		let currentActiveInput = null;
+
+		function setActiveInput(el) {
+			currentActiveInput = el;
+		}
+
+		function insertVariable(varName) {
+			if (!currentActiveInput) {
+				const body = document.getElementById('inter_body');
+				if (body && body.offsetParent !== null) {
+					currentActiveInput = body;
+				} else {
+					currentActiveInput = document.getElementById('body_template');
+				}
+			}
+			if (!currentActiveInput) return;
+
+			const valToInsert = "{{" + varName.toLowerCase() + "}}";
+			const start = currentActiveInput.selectionStart || currentActiveInput.value.length;
+			const end = currentActiveInput.selectionEnd || currentActiveInput.value.length;
+			const text = currentActiveInput.value;
+			currentActiveInput.value = text.substring(0, start) + valToInsert + text.substring(end);
+			currentActiveInput.focus();
+			currentActiveInput.selectionStart = currentActiveInput.selectionEnd = start + valToInsert.length;
+			
+			syncInteractiveJSON();
+			estimateDuration();
+		}
 
 		function handleConnectionChange() {
 			const select = document.getElementById('channel');
@@ -411,21 +622,139 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 			}
 		}
 
+		function toggleMessageType() {
+			const typeSelect = document.getElementById('msg_type_selector');
+			const type = typeSelect ? typeSelect.value : 'plain_text';
+
+			const tempSelect = document.getElementById('template-selector-container');
+			const bodyText = document.getElementById('body-text-container');
+			const varContainer = document.getElementById('variable-mapping-container');
+			const interBuilder = document.getElementById('interactive-builder-container');
+
+			if (type === 'waba_template') {
+				tempSelect.style.display = 'block';
+				bodyText.style.display = 'none';
+				varContainer.style.display = 'block';
+				interBuilder.style.display = 'none';
+				renderWABAVariables();
+			} else if (type === 'interactive') {
+				tempSelect.style.display = 'none';
+				bodyText.style.display = 'none';
+				varContainer.style.display = 'none';
+				interBuilder.style.display = 'block';
+				toggleInteractiveSubtype();
+				syncInteractiveJSON();
+			} else {
+				tempSelect.style.display = 'none';
+				bodyText.style.display = 'block';
+				varContainer.style.display = 'none';
+				interBuilder.style.display = 'none';
+				document.getElementById('interactive_data').value = '';
+			}
+			estimateDuration();
+		}
+
+		function toggleInteractiveSubtype() {
+			const subtype = document.getElementById('interactive_type_select').value;
+			document.getElementById('inter-buttons-section').style.display = (subtype === 'button') ? 'block' : 'none';
+			document.getElementById('inter-list-section').style.display = (subtype === 'list') ? 'block' : 'none';
+			document.getElementById('inter-flow-section').style.display = (subtype === 'flow') ? 'block' : 'none';
+		}
+
+		function syncInteractiveJSON() {
+			const typeSelect = document.getElementById('msg_type_selector');
+			if (typeSelect && typeSelect.value !== 'interactive') {
+				document.getElementById('interactive_data').value = '';
+				return;
+			}
+
+			const headerVal = document.getElementById('inter_header').value.trim();
+			const bodyVal = document.getElementById('inter_body').value.trim();
+			const footerVal = document.getElementById('inter_footer').value.trim();
+			const subtype = document.getElementById('interactive_type_select').value;
+
+			document.getElementById('inter_header_len').innerText = `${headerVal.length}/60`;
+			document.getElementById('inter_body_len').innerText = `${bodyVal.length}/1024`;
+			document.getElementById('inter_footer_len').innerText = `${footerVal.length}/60`;
+
+			const interObj = {
+				type: subtype,
+				body: { text: bodyVal },
+				action: {}
+			};
+
+			if (headerVal !== '') {
+				interObj.header = { text: headerVal };
+			}
+			if (footerVal !== '') {
+				interObj.footer = { text: footerVal };
+			}
+
+			if (subtype === 'button') {
+				const buttons = [];
+				for (let i = 1; i <= 3; i++) {
+					const t = document.getElementById(`btn_${i}_title`).value.trim();
+					const id = document.getElementById(`btn_${i}_id`).value.trim() || `btn_${i}`;
+					if (t !== '') {
+						buttons.push({
+							type: 'reply',
+							reply: { id: id, title: t }
+						});
+					}
+				}
+				interObj.action.buttons = buttons;
+			} else if (subtype === 'list') {
+				const btnText = document.getElementById('list_btn_text').value.trim() || 'Opções';
+				const secTitle = document.getElementById('list_section_title').value.trim() || 'Menu';
+				interObj.action.button = btnText;
+
+				const rows = [];
+				for (let i = 1; i <= 3; i++) {
+					const t = document.getElementById(`row_${i}_title`).value.trim();
+					const d = document.getElementById(`row_${i}_desc`).value.trim();
+					const id = document.getElementById(`row_${i}_id`).value.trim() || `row_${i}`;
+					if (t !== '') {
+						rows.push({ id: id, title: t, description: d });
+					}
+				}
+				interObj.action.sections = [{
+					title: secTitle,
+					rows: rows
+				}];
+			} else if (subtype === 'flow') {
+				const fId = document.getElementById('flow_id').value.trim();
+				const fCTA = document.getElementById('flow_cta').value.trim();
+				const fAct = document.getElementById('flow_action').value;
+				const fPayloadRaw = document.getElementById('flow_payload').value.trim();
+
+				interObj.action.flow_id = fId;
+				interObj.action.flow_cta = fCTA;
+				interObj.action.flow_action = fAct;
+
+				if (fPayloadRaw !== '') {
+					try {
+						interObj.action.flow_action_payload = JSON.parse(fPayloadRaw);
+					} catch(e) {
+						interObj.action.flow_action_payload = { raw: fPayloadRaw };
+					}
+				}
+			}
+
+			document.getElementById('interactive_data').value = JSON.stringify(interObj);
+		}
+
 		function toggleTemplateSelector() {
 			const select = document.getElementById('channel');
 			const selectedOption = select.options[select.selectedIndex];
 			const channel = selectedOption ? selectedOption.getAttribute('data-channel') : '';
 			const connId = select.value;
-
-			const tempSelect = document.getElementById('template-selector-container');
-			const bodyText = document.getElementById('body-text-container');
-			const varContainer = document.getElementById('variable-mapping-container');
+			const msgTypeSelect = document.getElementById('msg_type_selector');
 
 			if (channel === 'whatsapp_cloud') {
-				tempSelect.style.display = 'block';
-				bodyText.style.display = 'none';
-				varContainer.style.display = 'block';
-
+				// Show template option
+				if (msgTypeSelect.options.length >= 3) {
+					msgTypeSelect.options[2].style.display = 'block';
+				}
 				// Filter template options by connection
 				const templateSelect = document.getElementById('template_select');
 				for (let i = 0; i < templateSelect.options.length; i++) {
@@ -441,15 +770,15 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 						opt.style.display = 'none';
 					}
 				}
-				// Reset selection
-				templateSelect.value = '';
-				renderWABAVariables();
 			} else {
-				tempSelect.style.display = 'none';
-				bodyText.style.display = 'block';
-				varContainer.style.display = 'none';
-				estimateDuration();
+				if (msgTypeSelect.options.length >= 3) {
+					msgTypeSelect.options[2].style.display = 'none';
+				}
+				if (msgTypeSelect.value === 'waba_template') {
+					msgTypeSelect.value = 'plain_text';
+				}
 			}
+			toggleMessageType();
 		}
 
 		function renderWABAVariables() {
@@ -509,7 +838,7 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 
 		function renderShortcutButtons() {
 			// Find all header inputs from the CSV preview
-			const headers = Array.from(document.querySelectorAll('.csv-header-cell')).map(th => th.innerText.trim());
+			const headers = Array.from(document.querySelectorAll('.csv-header-cell')).map(th => th.innerText.trim()).filter(h => h.length > 0);
 			const varGroups = document.querySelectorAll('.waba-var-input-group');
 
 			varGroups.forEach(group => {
@@ -532,6 +861,23 @@ templ CampaignCreateForm(workspaceID uuid.UUID, templates []repository.WABATempl
 					container.appendChild(btn);
 				});
 			});
+
+			// Update interactive pills bar with dynamic CSV header pills
+			const pillsBar = document.getElementById('variable-pills-bar');
+			if (pillsBar) {
+				pillsBar.querySelectorAll('.dynamic-csv-pill').forEach(el => el.remove());
+				headers.forEach(h => {
+					const lower = h.toLowerCase();
+					if (lower === 'name' || lower === 'phone') return;
+					const btn = document.createElement('button');
+					btn.type = 'button';
+					btn.className = 'dynamic-csv-pill px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 transition-colors';
+					btn.innerText = "{{" + lower + "}}";
+					btn.setAttribute('data-var', lower);
+					btn.onclick = () => insertVariable(lower);
+					pillsBar.appendChild(btn);
+				});
+			}
 		}
 
 		function estimateDuration() {

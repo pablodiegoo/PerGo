@@ -502,3 +502,260 @@ func TestMergeTagAndCSVRecipients(t *testing.T) {
 		t.Errorf("Carol not added as sanitized pending recipient: %v", allRecords[2])
 	}
 }
+
+func TestInterpolateInteractive_Buttons(t *testing.T) {
+	tmpl := &Interactive{
+		Type: "button",
+		Header: &TextContent{Text: "Aviso {{nome}}"},
+		Body:   TextContent{Text: "Olá {{nome}}, seu plano {{plano}} está ativo."},
+		Footer: &TextContent{Text: "Cupom: {{cupom}}"},
+		Action: Action{
+			Buttons: []Button{
+				{
+					Type: "reply",
+					Reply: Reply{
+						ID:    "btn_{{id}}",
+						Title: "Ver {{plano}}",
+					},
+				},
+				{
+					Type: "reply",
+					Reply: Reply{
+						ID:    "opt_out",
+						Title: "Cancelar",
+					},
+				},
+			},
+		},
+	}
+
+	vars := map[string]string{
+		"nome":  "Carlos",
+		"plano": "Premium",
+		"cupom": "OFF50",
+		"id":    "123",
+	}
+
+	interpolated := InterpolateInteractive(tmpl, vars)
+
+	if interpolated.Header == nil || interpolated.Header.Text != "Aviso Carlos" {
+		t.Errorf("expected header 'Aviso Carlos', got %v", interpolated.Header)
+	}
+	if interpolated.Body.Text != "Olá Carlos, seu plano Premium está ativo." {
+		t.Errorf("expected body interpolation, got %s", interpolated.Body.Text)
+	}
+	if interpolated.Footer == nil || interpolated.Footer.Text != "Cupom: OFF50" {
+		t.Errorf("expected footer 'Cupom: OFF50', got %v", interpolated.Footer)
+	}
+	if len(interpolated.Action.Buttons) != 2 {
+		t.Fatalf("expected 2 buttons, got %d", len(interpolated.Action.Buttons))
+	}
+	if interpolated.Action.Buttons[0].Reply.ID != "btn_123" {
+		t.Errorf("expected button 1 ID 'btn_123', got %s", interpolated.Action.Buttons[0].Reply.ID)
+	}
+	if interpolated.Action.Buttons[0].Reply.Title != "Ver Premium" {
+		t.Errorf("expected button 1 Title 'Ver Premium', got %s", interpolated.Action.Buttons[0].Reply.Title)
+	}
+
+	// Verify original tmpl was not mutated
+	if tmpl.Body.Text != "Olá {{nome}}, seu plano {{plano}} está ativo." {
+		t.Errorf("original template was mutated: %s", tmpl.Body.Text)
+	}
+}
+
+func TestInterpolateInteractive_Lists(t *testing.T) {
+	tmpl := &Interactive{
+		Type: "list",
+		Header: &TextContent{Text: "Cardápio para {{nome}}"},
+		Body:   TextContent{Text: "Escolha seu item em {{cidade}}:"},
+		Action: Action{
+			Button: "Menu {{dia}}",
+			Sections: []Section{
+				{
+					Title: "Pratos {{categoria}}",
+					Rows: []Row{
+						{
+							ID:          "item_{{codigo}}",
+							Title:       "Combo {{nome_combo}}",
+							Description: "Preço especial para {{cidade}}: R$ {{preco}}",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	vars := map[string]string{
+		"nome":       "Beatriz",
+		"cidade":     "Curitiba",
+		"dia":        "Hoje",
+		"categoria":  "Almoço",
+		"codigo":     "42",
+		"nome_combo": "Executivo",
+		"preco":      "29,90",
+	}
+
+	interpolated := InterpolateInteractive(tmpl, vars)
+
+	if interpolated.Header.Text != "Cardápio para Beatriz" {
+		t.Errorf("expected header 'Cardápio para Beatriz', got %s", interpolated.Header.Text)
+	}
+	if interpolated.Action.Button != "Menu Hoje" {
+		t.Errorf("expected action button 'Menu Hoje', got %s", interpolated.Action.Button)
+	}
+	sec := interpolated.Action.Sections[0]
+	if sec.Title != "Pratos Almoço" {
+		t.Errorf("expected section title 'Pratos Almoço', got %s", sec.Title)
+	}
+	row := sec.Rows[0]
+	if row.ID != "item_42" || row.Title != "Combo Executivo" || row.Description != "Preço especial para Curitiba: R$ 29,90" {
+		t.Errorf("row not interpolated correctly: %+v", row)
+	}
+}
+
+func TestInterpolateInteractive_FlowPayload(t *testing.T) {
+	tmpl := &Interactive{
+		Type: "flow",
+		Body: TextContent{Text: "Preencha o formulário {{nome}}"},
+		Action: Action{
+			FlowID:     "flow_12345",
+			FlowToken:  "token_{{user_id}}",
+			FlowCTA:    "Iniciar {{servico}}",
+			FlowAction: "data_exchange",
+			FlowActionPayload: map[string]interface{}{
+				"screen": "REGISTER",
+				"data": map[string]interface{}{
+					"customer_name": "{{nome}}",
+					"account_id":    "acc_{{user_id}}",
+					"tags":          []interface{}{"vip", "{{tag}}"},
+					"numeric_val":   100,
+				},
+			},
+		},
+	}
+
+	vars := map[string]string{
+		"nome":    "Diego",
+		"user_id": "9988",
+		"servico": "Cadastro",
+		"tag":     "gold_tier",
+	}
+
+	interpolated := InterpolateInteractive(tmpl, vars)
+
+	if interpolated.Action.FlowToken != "token_9988" {
+		t.Errorf("expected flow token 'token_9988', got %s", interpolated.Action.FlowToken)
+	}
+	if interpolated.Action.FlowCTA != "Iniciar Cadastro" {
+		t.Errorf("expected flow CTA 'Iniciar Cadastro', got %s", interpolated.Action.FlowCTA)
+	}
+
+	payload := interpolated.Action.FlowActionPayload
+	if payload["screen"] != "REGISTER" {
+		t.Errorf("expected screen REGISTER, got %v", payload["screen"])
+	}
+	data, ok := payload["data"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected data map, got %T", payload["data"])
+	}
+	if data["customer_name"] != "Diego" {
+		t.Errorf("expected customer_name Diego, got %v", data["customer_name"])
+	}
+	if data["account_id"] != "acc_9988" {
+		t.Errorf("expected account_id acc_9988, got %v", data["account_id"])
+	}
+	if data["numeric_val"] != 100 {
+		t.Errorf("expected numeric_val 100, got %v", data["numeric_val"])
+	}
+	tags, ok := data["tags"].([]interface{})
+	if !ok || len(tags) != 2 || tags[0] != "vip" || tags[1] != "gold_tier" {
+		t.Errorf("expected tags ['vip', 'gold_tier'], got %v", tags)
+	}
+}
+
+func TestValidateInteractiveLimits(t *testing.T) {
+	t.Run("Valid Button Message", func(t *testing.T) {
+		msg := &Interactive{
+			Type: "button",
+			Body: TextContent{Text: "Texto válido"},
+			Action: Action{
+				Buttons: []Button{
+					{Type: "reply", Reply: Reply{ID: "1", Title: "Aceitar"}},
+					{Type: "reply", Reply: Reply{ID: "2", Title: "12345678901234567890"}}, // 20 chars
+				},
+			},
+		}
+		if err := ValidateInteractiveLimits(msg); err != nil {
+			t.Errorf("expected valid, got %v", err)
+		}
+	})
+
+	t.Run("Exceeded Button Title Limit (>20 chars)", func(t *testing.T) {
+		msg := &Interactive{
+			Type: "button",
+			Body: TextContent{Text: "Texto válido"},
+			Action: Action{
+				Buttons: []Button{
+					{Type: "reply", Reply: Reply{ID: "1", Title: "123456789012345678901"}}, // 21 chars
+				},
+			},
+		}
+		if err := ValidateInteractiveLimits(msg); err == nil {
+			t.Error("expected error for button title > 20 chars, got nil")
+		}
+	})
+
+	t.Run("Exceeded Button Count (>3 buttons)", func(t *testing.T) {
+		msg := &Interactive{
+			Type: "button",
+			Body: TextContent{Text: "Texto válido"},
+			Action: Action{
+				Buttons: []Button{
+					{Type: "reply", Reply: Reply{ID: "1", Title: "B1"}},
+					{Type: "reply", Reply: Reply{ID: "2", Title: "B2"}},
+					{Type: "reply", Reply: Reply{ID: "3", Title: "B3"}},
+					{Type: "reply", Reply: Reply{ID: "4", Title: "B4"}},
+				},
+			},
+		}
+		if err := ValidateInteractiveLimits(msg); err == nil {
+			t.Error("expected error for button count > 3, got nil")
+		}
+	})
+
+	t.Run("Exceeded List Row Title Limit (>24 chars)", func(t *testing.T) {
+		msg := &Interactive{
+			Type: "list",
+			Body: TextContent{Text: "Texto"},
+			Action: Action{
+				Button: "Ver",
+				Sections: []Section{
+					{
+						Title: "Seção",
+						Rows: []Row{
+							{ID: "1", Title: "1234567890123456789012345"}, // 25 chars
+						},
+					},
+				},
+			},
+		}
+		if err := ValidateInteractiveLimits(msg); err == nil {
+			t.Error("expected error for list row title > 24 chars, got nil")
+		}
+	})
+
+	t.Run("Exceeded Flow CTA Limit (>20 chars)", func(t *testing.T) {
+		msg := &Interactive{
+			Type: "flow",
+			Body: TextContent{Text: "Texto"},
+			Action: Action{
+				FlowID:  "123",
+				FlowCTA: "Abrir Formulário Agora Mesmo", // 28 chars
+			},
+		}
+		if err := ValidateInteractiveLimits(msg); err == nil {
+			t.Error("expected error for flow CTA > 20 chars, got nil")
+		}
+	})
+}
+

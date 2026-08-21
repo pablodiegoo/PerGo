@@ -1221,6 +1221,236 @@ func TestCampaignHandler_ScheduledCampaigns(t *testing.T) {
 	})
 }
 
+func TestCampaignHandler_InteractiveCampaigns(t *testing.T) {
+	e := echo.New()
+	pool := getTestPool(t)
+	nc := connectNATS(t)
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	kek := make([]byte, 32)
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	connRepo := repository.NewConnectionRepository(pool, enc)
+	campaignRepo := repository.NewCampaignRepository(pool)
+	publisher := queue.NewJetStreamPublisher(nc)
+
+	h := admin.NewCampaignHandler(campaignRepo, nil, connRepo, nil, publisher)
+
+	ws, err := wsRepo.Create(ctx, "ws_inter_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	connID := uuid.New()
+	connSlug := "wa_inter_" + uuid.New().String()[:8]
+	err = connRepo.Create(ctx, &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    ws.ID,
+		Name:           "Interactive WA Connection",
+		Channel:        "whatsapp",
+		Slug:           connSlug,
+		SenderIdentity: "5511999990000",
+		Status:         "active",
+	})
+	if err != nil {
+		t.Fatalf("failed to create test connection: %v", err)
+	}
+
+	t.Run("APICreate_Interactive_Buttons", func(t *testing.T) {
+		payload := fmt.Sprintf(`{
+			"name": "Interactive Buttons Campaign",
+			"connection_slug": "%s",
+			"fallback_behavior": "degrade",
+			"fallback_channels": ["telegram"],
+			"interactive": {
+				"type": "button",
+				"header": {"text": "Aviso {{name}}"},
+				"body": {"text": "Olá {{name}}, escolha uma opção:"},
+				"footer": {"text": "Válido hoje"},
+				"action": {
+					"buttons": [
+						{"type": "reply", "reply": {"id": "btn_yes", "title": "Sim {{name}}"}},
+						{"type": "reply", "reply": {"id": "btn_no", "title": "Não"}}
+					]
+				}
+			},
+			"recipients": [
+				{"to": "5511999991111", "variables": {"name": "Alice"}}
+			]
+		}`, connSlug)
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), strings.NewReader(payload))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.APICreate(c); err != nil {
+			t.Fatalf("APICreate returned error: %v", err)
+		}
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected status 201 Created, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var created domain.Campaign
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatalf("failed to unmarshal campaign: %v", err)
+		}
+
+		if created.Interactive == nil || created.Interactive.Type != "button" {
+			t.Fatalf("expected interactive button payload, got %v", created.Interactive)
+		}
+		if len(created.Interactive.Action.Buttons) != 2 {
+			t.Errorf("expected 2 buttons, got %d", len(created.Interactive.Action.Buttons))
+		}
+		if created.FallbackBehavior == nil || *created.FallbackBehavior != "degrade" {
+			t.Errorf("expected fallback_behavior degrade, got %v", created.FallbackBehavior)
+		}
+
+		// Verify retrieval from DB
+		dbCamp, err := campaignRepo.GetByID(ctx, created.ID)
+		if err != nil {
+			t.Fatalf("failed to get campaign from DB: %v", err)
+		}
+		if dbCamp.Interactive == nil || dbCamp.Interactive.Body.Text != "Olá {{name}}, escolha uma opção:" {
+			t.Errorf("dbCamp interactive mismatch: %+v", dbCamp.Interactive)
+		}
+	})
+
+	t.Run("APICreate_Interactive_Flow", func(t *testing.T) {
+		payload := fmt.Sprintf(`{
+			"name": "Interactive Flow Campaign",
+			"connection_slug": "%s",
+			"fallback_behavior": "fail",
+			"interactive": {
+				"type": "flow",
+				"body": {"text": "Formulário de Cadastro"},
+				"action": {
+					"flow_id": "3847291038",
+					"flow_cta": "Iniciar {{servico}}",
+					"flow_action": "data_exchange",
+					"flow_action_payload": {
+						"screen": "START",
+						"data": {"user": "{{name}}"}
+					}
+				}
+			},
+			"recipients": [
+				{"to": "5511999992222", "variables": {"name": "Bob", "servico": "Assinatura"}}
+			]
+		}`, connSlug)
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), strings.NewReader(payload))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.APICreate(c); err != nil {
+			t.Fatalf("APICreate returned error: %v", err)
+		}
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected status 201 Created, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var created domain.Campaign
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatalf("failed to unmarshal campaign: %v", err)
+		}
+
+		if created.Interactive == nil || created.Interactive.Type != "flow" {
+			t.Fatalf("expected interactive flow payload, got %v", created.Interactive)
+		}
+		if created.FallbackBehavior == nil || *created.FallbackBehavior != "fail" {
+			t.Errorf("expected fallback_behavior fail, got %v", created.FallbackBehavior)
+		}
+	})
+
+	t.Run("APICreate_Interactive_InvalidFallbackBehavior_Returns_400", func(t *testing.T) {
+		payload := fmt.Sprintf(`{
+			"name": "Invalid Fallback Behavior",
+			"connection_slug": "%s",
+			"fallback_behavior": "unknown_strategy",
+			"interactive": {
+				"type": "button",
+				"body": {"text": "Olá"},
+				"action": {"buttons": [{"type": "reply", "reply": {"id": "1", "title": "Ok"}}]}
+			},
+			"recipients": [{"to": "5511999993333"}]
+		}`, connSlug)
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns", ws.ID), strings.NewReader(payload))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		if err := h.APICreate(c); err != nil {
+			t.Fatalf("APICreate returned unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 Bad Request, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Create_Form_With_InteractiveData", func(t *testing.T) {
+		interJSON := `{"type":"button","body":{"text":"Corpo interativo"},"action":{"buttons":[{"type":"reply","reply":{"id":"b1","title":"Opção 1"}}]}}`
+		form := url.Values{}
+		form.Set("name", "Form Interactive Camp")
+		form.Set("channel", connID.String())
+		form.Set("batch_size", "50")
+		form.Set("delay_seconds", "2")
+		form.Set("fallback_behavior", "degrade")
+		form.Set("interactive_data", interJSON)
+		form.Set("recipients_data", `[{"to":"5511988887777","variables":{"name":"Carol"}}]`)
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns", ws.ID), strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+		})
+
+		if err := h.Create(c); err != nil {
+			t.Fatalf("Create returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		camps, err := campaignRepo.ListByWorkspace(ctx, ws.ID)
+		if err != nil {
+			t.Fatalf("failed to list campaigns: %v", err)
+		}
+		var found *domain.Campaign
+		for _, c := range camps {
+			if c.Name == "Form Interactive Camp" {
+				found = &c
+				break
+			}
+		}
+		if found == nil {
+			t.Fatalf("created campaign not found in list")
+		}
+		if found.Interactive == nil || found.Interactive.Type != "button" {
+			t.Errorf("expected interactive button payload in DB, got %+v", found.Interactive)
+		}
+		if found.FallbackBehavior == nil || *found.FallbackBehavior != "degrade" {
+			t.Errorf("expected fallback_behavior degrade, got %v", found.FallbackBehavior)
+		}
+	})
+}
+
+
 
 
 

@@ -400,18 +400,9 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 			Action: action,
 		}
 	} else if m.Interactive != nil {
-		if m.Interactive.Type == "button" && len(m.Interactive.Action.Buttons) > 3 {
+		if limitErr := domain.ValidateInteractiveLimits(m.Interactive); limitErr != nil {
 			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
-				return "", channel.NewTerminalError(fmt.Errorf("whatsapp_cloud: interactive message exceeds native limits (max 3 buttons) and fallback_behavior is fail"))
-			}
-			reqPayload.Type = "text"
-			reqPayload.Text = &wabaText{
-				PreviewURL: false,
-				Body:       m.Interactive.DegradeToText(),
-			}
-		} else if m.Interactive.Type == "list" && (m.Interactive.TotalRows() > 10 || len(m.Interactive.Action.Sections) > 10) {
-			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
-				return "", channel.NewTerminalError(fmt.Errorf("whatsapp_cloud: interactive list exceeds native limits (max 10 rows) and fallback_behavior is fail"))
+				return "", channel.NewTerminalError(fmt.Errorf("whatsapp_cloud: %w and fallback_behavior is fail", limitErr))
 			}
 			reqPayload.Type = "text"
 			reqPayload.Text = &wabaText{
