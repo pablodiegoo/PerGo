@@ -297,6 +297,11 @@ func (p *Processor) Ingest(
 		}
 	}
 
+	fallbackBehavior := req.FallbackBehavior
+	if fallbackBehavior == "" {
+		fallbackBehavior = string(domain.FallbackBehaviorDegrade)
+	}
+
 	// 5. Construct and Publish QueueMessage
 	qMsg := &domain.QueueMessage{
 		WorkspaceID:      workspaceID,
@@ -316,7 +321,7 @@ func (p *Processor) Ingest(
 		Components:       req.Components,
 		Interactive:      req.Interactive,
 		ChannelOverrides: req.ChannelOverrides,
-		FallbackBehavior: req.FallbackBehavior,
+		FallbackBehavior: fallbackBehavior,
 		Type:             req.Type,
 		Product:          req.Product,
 	}

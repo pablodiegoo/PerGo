@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/storage"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
@@ -135,29 +136,26 @@ func (a *TelegramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 			}
 		}
 
-		// Set reply_markup
-		if m.Interactive != nil && m.Interactive.Type == "button" {
-			var keyboard [][]inlineKeyboardButton
-			for _, b := range m.Interactive.Action.Buttons {
-				keyboard = append(keyboard, []inlineKeyboardButton{
-					{
-						Text:         b.Reply.Title,
-						CallbackData: b.Reply.ID,
-					},
-				})
-			}
-			if len(keyboard) > 0 {
-				rm := inlineKeyboardMarkup{InlineKeyboard: keyboard}
-				rmBytes, _ := json.Marshal(rm)
-				if err := writer.WriteField("reply_markup", string(rmBytes)); err != nil {
-					return "", err
-				}
+		// Set reply_markup and caption from interactive / media
+		text, replyMarkup, interErr := buildTelegramInteractive(m)
+		if interErr != nil {
+			return "", interErr
+		}
+
+		if replyMarkup != nil {
+			rmBytes, _ := json.Marshal(replyMarkup)
+			if err := writer.WriteField("reply_markup", string(rmBytes)); err != nil {
+				return "", err
 			}
 		}
 
 		// Set caption
-		if m.Media.Caption != "" {
-			if err := writer.WriteField("caption", m.Media.Caption); err != nil {
+		caption := m.Media.Caption
+		if caption == "" && text != "" {
+			caption = text
+		}
+		if caption != "" {
+			if err := writer.WriteField("caption", caption); err != nil {
 				return "", err
 			}
 		}
@@ -208,35 +206,14 @@ func (a *TelegramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 		return a.executeRequest(req)
 	}
 
-	var replyMarkup *inlineKeyboardMarkup
-	if m.Interactive != nil && m.Interactive.Type == "button" {
-		var keyboard [][]inlineKeyboardButton
-		for _, b := range m.Interactive.Action.Buttons {
-			keyboard = append(keyboard, []inlineKeyboardButton{
-				{
-					Text:         b.Reply.Title,
-					CallbackData: b.Reply.ID,
-				},
-			})
-		}
-		if len(keyboard) > 0 {
-			replyMarkup = &inlineKeyboardMarkup{
-				InlineKeyboard: keyboard,
-			}
-		}
+	text, replyMarkup, interErr := buildTelegramInteractive(m)
+	if interErr != nil {
+		return "", interErr
 	}
 
 	var messageThreadID string
 	if m.Metadata != nil {
 		messageThreadID = m.Metadata["thread_id"]
-	}
-
-	text := m.Body
-	if m.Interactive != nil {
-		if text != "" {
-			text += "\n"
-		}
-		text += m.Interactive.Body.Text
 	}
 
 	reqPayload := telegramMessageRequest{
@@ -318,4 +295,131 @@ func (a *TelegramAdapter) classifyError(statusCode int, errResp *TelegramErrorRe
 	}
 
 	return err
+}
+
+func buildTelegramInteractive(m *channel.MessagePayload) (string, *inlineKeyboardMarkup, error) {
+	if m.Product != nil || m.Type == domain.MessageTypeProduct || m.Type == domain.MessageTypeProductList {
+		if m.FallbackBehavior == "fail" {
+			return "", nil, channel.NewTerminalError(fmt.Errorf("telegram: product catalog is not natively supported and fallback_behavior is fail"))
+		}
+		var sb strings.Builder
+		if m.Product != nil && m.Product.Header != "" {
+			sb.WriteString(m.Product.Header)
+			sb.WriteString("\n\n")
+		}
+		if m.Product != nil && m.Product.Body != "" {
+			sb.WriteString(m.Product.Body)
+		} else if m.Body != "" {
+			sb.WriteString(m.Body)
+		}
+		if m.Product != nil {
+			if m.Product.ProductRetailerID != "" {
+				sb.WriteString(fmt.Sprintf("\n- Product: %s", m.Product.ProductRetailerID))
+			}
+			for _, s := range m.Product.Sections {
+				if s.Title != "" {
+					sb.WriteString(fmt.Sprintf("\n\n*%s*", s.Title))
+				}
+				for _, item := range s.ProductItems {
+					sb.WriteString(fmt.Sprintf("\n- %s", item.ProductRetailerID))
+				}
+			}
+			if m.Product.Footer != "" {
+				sb.WriteString("\n\n")
+				sb.WriteString(m.Product.Footer)
+			}
+		}
+		return sb.String(), nil, nil
+	}
+
+	if m.Interactive == nil {
+		return m.Body, nil, nil
+	}
+
+	switch m.Interactive.Type {
+	case "button":
+		var keyboard [][]inlineKeyboardButton
+		for _, b := range m.Interactive.Action.Buttons {
+			keyboard = append(keyboard, []inlineKeyboardButton{
+				{
+					Text:         b.Reply.Title,
+					CallbackData: b.Reply.ID,
+				},
+			})
+		}
+		var replyMarkup *inlineKeyboardMarkup
+		if len(keyboard) > 0 {
+			replyMarkup = &inlineKeyboardMarkup{InlineKeyboard: keyboard}
+		}
+
+		var sb strings.Builder
+		if m.Interactive.Header != nil && m.Interactive.Header.Text != "" {
+			sb.WriteString(m.Interactive.Header.Text)
+			sb.WriteString("\n\n")
+		}
+		if m.Interactive.Body.Text != "" {
+			sb.WriteString(m.Interactive.Body.Text)
+		} else if m.Body != "" {
+			sb.WriteString(m.Body)
+		}
+		if m.Interactive.Footer != nil && m.Interactive.Footer.Text != "" {
+			sb.WriteString("\n\n")
+			sb.WriteString(m.Interactive.Footer.Text)
+		}
+		return sb.String(), replyMarkup, nil
+
+	case "list":
+		if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
+			return "", nil, channel.NewTerminalError(fmt.Errorf("telegram: interactive list is not natively supported and fallback_behavior is fail"))
+		}
+		var keyboard [][]inlineKeyboardButton
+		var sb strings.Builder
+		if m.Interactive.Header != nil && m.Interactive.Header.Text != "" {
+			sb.WriteString(m.Interactive.Header.Text)
+			sb.WriteString("\n\n")
+		}
+		if m.Interactive.Body.Text != "" {
+			sb.WriteString(m.Interactive.Body.Text)
+		} else if m.Body != "" {
+			sb.WriteString(m.Body)
+		}
+
+		for _, s := range m.Interactive.Action.Sections {
+			if s.Title != "" {
+				sb.WriteString(fmt.Sprintf("\n\n*%s*", s.Title))
+			}
+			for _, r := range s.Rows {
+				btnText := r.Title
+				keyboard = append(keyboard, []inlineKeyboardButton{
+					{
+						Text:         btnText,
+						CallbackData: r.ID,
+					},
+				})
+			}
+		}
+
+		if m.Interactive.Footer != nil && m.Interactive.Footer.Text != "" {
+			sb.WriteString("\n\n")
+			sb.WriteString(m.Interactive.Footer.Text)
+		}
+
+		var replyMarkup *inlineKeyboardMarkup
+		if len(keyboard) > 0 {
+			replyMarkup = &inlineKeyboardMarkup{InlineKeyboard: keyboard}
+		}
+		return sb.String(), replyMarkup, nil
+
+	case "flow":
+		if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
+			return "", nil, channel.NewTerminalError(fmt.Errorf("telegram: interactive flow is not supported on telegram and fallback_behavior is fail"))
+		}
+		return m.Interactive.DegradeToText(), nil, nil
+
+	default:
+		if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
+			return "", nil, channel.NewTerminalError(fmt.Errorf("telegram: interactive type %q is not supported on telegram and fallback_behavior is fail", m.Interactive.Type))
+		}
+		return m.Interactive.DegradeToText(), nil, nil
+	}
 }

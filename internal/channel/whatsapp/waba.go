@@ -404,97 +404,117 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 			Action: action,
 		}
 	} else if m.Interactive != nil {
-		reqPayload.Type = "interactive"
-
-		var header, footer *wabaInteractiveText
-		if m.Interactive.Header != nil {
-			header = &wabaInteractiveText{
-				Type: "text",
-				Text: m.Interactive.Header.Text,
+		if m.Interactive.Type == "button" && len(m.Interactive.Action.Buttons) > 3 {
+			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
+				return "", channel.NewTerminalError(fmt.Errorf("whatsapp_cloud: interactive message exceeds native limits (max 3 buttons) and fallback_behavior is fail"))
 			}
-		}
-		if m.Interactive.Footer != nil {
-			footer = &wabaInteractiveText{
-				Text: m.Interactive.Footer.Text,
+			reqPayload.Type = "text"
+			reqPayload.Text = &wabaText{
+				PreviewURL: false,
+				Body:       m.Interactive.DegradeToText(),
 			}
-		}
-
-		action := wabaInteractiveAction{
-			Button: m.Interactive.Action.Button,
-		}
-
-		if m.Interactive.Type == "flow" {
-			action.Name = "flow"
-			flowToken := m.Interactive.Action.FlowToken
-			if flowToken == "" {
-				type tokenPayload struct {
-					WorkspaceID    uuid.UUID `json:"workspace_id"`
-					RecipientPhone string    `json:"recipient_phone"`
-					FlowID         string    `json:"flow_id"`
-					Timestamp      int64     `json:"timestamp"`
-					Nonce          string    `json:"nonce"`
-				}
-				b := make([]byte, 16)
-				rand.Read(b)
-				nonce := hex.EncodeToString(b)
-				payload := tokenPayload{
-					WorkspaceID:    workspaceID,
-					RecipientPhone: m.To,
-					FlowID:         m.Interactive.Action.FlowID,
-					Timestamp:      time.Now().Unix(),
-					Nonce:          nonce,
-				}
-				payloadBytes, _ := json.Marshal(payload)
-				h := hmac.New(sha256.New, []byte(workspaceID.String()))
-				h.Write(payloadBytes)
-				signature := h.Sum(nil)
-				
-				finalPayload := fmt.Sprintf("%s.%s", base64.RawURLEncoding.EncodeToString(payloadBytes), base64.RawURLEncoding.EncodeToString(signature))
-				flowToken = finalPayload
+		} else if m.Interactive.Type == "list" && (m.Interactive.TotalRows() > 10 || len(m.Interactive.Action.Sections) > 10) {
+			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
+				return "", channel.NewTerminalError(fmt.Errorf("whatsapp_cloud: interactive list exceeds native limits (max 10 rows) and fallback_behavior is fail"))
 			}
-
-			action.Parameters = &wabaFlowParameters{
-				FlowMessageVersion: "3",
-				FlowToken:          flowToken,
-				FlowID:             m.Interactive.Action.FlowID,
-				FlowCTA:            m.Interactive.Action.FlowCTA,
-				FlowAction:         m.Interactive.Action.FlowAction,
-				FlowActionPayload:  m.Interactive.Action.FlowActionPayload,
+			reqPayload.Type = "text"
+			reqPayload.Text = &wabaText{
+				PreviewURL: false,
+				Body:       m.Interactive.DegradeToText(),
 			}
 		} else {
-			for _, b := range m.Interactive.Action.Buttons {
-				action.Buttons = append(action.Buttons, wabaInteractiveReplyButton{
-					Type: "reply",
-					Reply: wabaInteractiveButtonReply{
-						ID:    b.Reply.ID,
-						Title: b.Reply.Title,
-					},
-				})
+			reqPayload.Type = "interactive"
+
+			var header, footer *wabaInteractiveText
+			if m.Interactive.Header != nil {
+				header = &wabaInteractiveText{
+					Type: "text",
+					Text: m.Interactive.Header.Text,
+				}
+			}
+			if m.Interactive.Footer != nil {
+				footer = &wabaInteractiveText{
+					Text: m.Interactive.Footer.Text,
+				}
 			}
 
-			for _, s := range m.Interactive.Action.Sections {
-				section := wabaInteractiveSection{Title: s.Title}
-				for _, r := range s.Rows {
-					section.Rows = append(section.Rows, wabaInteractiveSectionRow{
-						ID:          r.ID,
-						Title:       r.Title,
-						Description: r.Description,
+			action := wabaInteractiveAction{
+				Button: m.Interactive.Action.Button,
+			}
+
+			if m.Interactive.Type == "flow" {
+				action.Name = "flow"
+				flowToken := m.Interactive.Action.FlowToken
+				if flowToken == "" {
+					type tokenPayload struct {
+						WorkspaceID    uuid.UUID `json:"workspace_id"`
+						RecipientPhone string    `json:"recipient_phone"`
+						FlowID         string    `json:"flow_id"`
+						Timestamp      int64     `json:"timestamp"`
+						Nonce          string    `json:"nonce"`
+					}
+					b := make([]byte, 16)
+					rand.Read(b)
+					nonce := hex.EncodeToString(b)
+					payload := tokenPayload{
+						WorkspaceID:    workspaceID,
+						RecipientPhone: m.To,
+						FlowID:         m.Interactive.Action.FlowID,
+						Timestamp:      time.Now().Unix(),
+						Nonce:          nonce,
+					}
+					payloadBytes, _ := json.Marshal(payload)
+					h := hmac.New(sha256.New, []byte(workspaceID.String()))
+					h.Write(payloadBytes)
+					signature := h.Sum(nil)
+					
+					finalPayload := fmt.Sprintf("%s.%s", base64.RawURLEncoding.EncodeToString(payloadBytes), base64.RawURLEncoding.EncodeToString(signature))
+					flowToken = finalPayload
+				}
+
+				action.Parameters = &wabaFlowParameters{
+					FlowMessageVersion: "3",
+					FlowToken:          flowToken,
+					FlowID:             m.Interactive.Action.FlowID,
+					FlowCTA:            m.Interactive.Action.FlowCTA,
+					FlowAction:         m.Interactive.Action.FlowAction,
+					FlowActionPayload:  m.Interactive.Action.FlowActionPayload,
+				}
+			} else {
+				for _, b := range m.Interactive.Action.Buttons {
+					action.Buttons = append(action.Buttons, wabaInteractiveReplyButton{
+						Type: "reply",
+						Reply: wabaInteractiveButtonReply{
+							ID:    b.Reply.ID,
+							Title: b.Reply.Title,
+						},
 					})
 				}
-				action.Sections = append(action.Sections, section)
-			}
-		}
 
-		var body *wabaInteractiveText
-		if m.Interactive.Body.Text != "" {
-			body = &wabaInteractiveText{Text: m.Interactive.Body.Text}
-		}
-		reqPayload.Interactive = &wabaInteractive{
-			Type:   m.Interactive.Type,
-			Header: header,
-			Body:   body,
-			Footer: footer,
-			Action: action,
+				for _, s := range m.Interactive.Action.Sections {
+					section := wabaInteractiveSection{Title: s.Title}
+					for _, r := range s.Rows {
+						section.Rows = append(section.Rows, wabaInteractiveSectionRow{
+							ID:          r.ID,
+							Title:       r.Title,
+							Description: r.Description,
+						})
+					}
+					action.Sections = append(action.Sections, section)
+				}
+			}
+
+			var body *wabaInteractiveText
+			if m.Interactive.Body.Text != "" {
+				body = &wabaInteractiveText{Text: m.Interactive.Body.Text}
+			}
+			reqPayload.Interactive = &wabaInteractive{
+				Type:   m.Interactive.Type,
+				Header: header,
+				Body:   body,
+				Footer: footer,
+				Action: action,
+			}
 		}
 	} else {
 		reqPayload.Type = "text"

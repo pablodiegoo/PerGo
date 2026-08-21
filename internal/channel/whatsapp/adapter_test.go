@@ -170,3 +170,130 @@ func TestBuildInteractiveOrOverrideMsg_Fail(t *testing.T) {
 		t.Errorf("expected TerminalError, got %T: %v", err, err)
 	}
 }
+
+func TestBuildInteractiveOrOverrideMsg_List_Degrade(t *testing.T) {
+	var rows []domain.Row
+	for i := 1; i <= 11; i++ {
+		rows = append(rows, domain.Row{
+			ID:          strings.Repeat("r", i),
+			Title:       strings.Repeat("Item ", 1) + string(rune('0'+i)),
+			Description: "Desc",
+		})
+	}
+	payload := &channel.MessagePayload{
+		FallbackBehavior: "degrade",
+		Interactive: &domain.Interactive{
+			Type:   "list",
+			Header: &domain.TextContent{Text: "List Header"},
+			Body:   domain.TextContent{Text: "Please choose:"},
+			Footer: &domain.TextContent{Text: "List Footer"},
+			Action: domain.Action{
+				Button: "Menu",
+				Sections: []domain.Section{
+					{
+						Title: "Section 1",
+						Rows:  rows,
+					},
+				},
+			},
+		},
+	}
+
+	msg, err := buildInteractiveOrOverrideMsg(payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if msg == nil || msg.Conversation == nil {
+		t.Fatalf("expected degraded text conversation")
+	}
+	text := *msg.Conversation
+	if !strings.Contains(text, "List Header") || !strings.Contains(text, "Please choose:") || !strings.Contains(text, "List Footer") {
+		t.Errorf("expected header, body, and footer in degraded text, got: %s", text)
+	}
+	if !strings.Contains(text, "11.") {
+		t.Errorf("expected 11 numbered items in degraded text, got: %s", text)
+	}
+}
+
+func TestBuildInteractiveOrOverrideMsg_List_Fail(t *testing.T) {
+	var rows []domain.Row
+	for i := 1; i <= 11; i++ {
+		rows = append(rows, domain.Row{
+			ID:    "r",
+			Title: "Item",
+		})
+	}
+	payload := &channel.MessagePayload{
+		FallbackBehavior: "fail",
+		Interactive: &domain.Interactive{
+			Type: "list",
+			Body: domain.TextContent{Text: "Please choose:"},
+			Action: domain.Action{
+				Sections: []domain.Section{
+					{
+						Title: "Section 1",
+						Rows:  rows,
+					},
+				},
+			},
+		},
+	}
+
+	_, err := buildInteractiveOrOverrideMsg(payload)
+	if err == nil {
+		t.Fatalf("expected error on fallback fail for >10 list rows")
+	}
+	if !channel.IsTerminal(err) {
+		t.Errorf("expected terminal error, got: %v", err)
+	}
+}
+
+func TestBuildInteractiveOrOverrideMsg_Flow_Degrade(t *testing.T) {
+	payload := &channel.MessagePayload{
+		FallbackBehavior: "degrade",
+		Interactive: &domain.Interactive{
+			Type:   "flow",
+			Header: &domain.TextContent{Text: "Survey"},
+			Body:   domain.TextContent{Text: "Please fill out this survey"},
+			Action: domain.Action{
+				FlowCTA: "Open Form",
+				FlowID:  "flow_123",
+			},
+		},
+	}
+
+	msg, err := buildInteractiveOrOverrideMsg(payload)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if msg == nil || msg.Conversation == nil {
+		t.Fatalf("expected degraded text conversation")
+	}
+	text := *msg.Conversation
+	if !strings.Contains(text, "Survey") || !strings.Contains(text, "Please fill out this survey") {
+		t.Errorf("expected text to contain survey body, got: %s", text)
+	}
+}
+
+func TestBuildInteractiveOrOverrideMsg_Flow_Fail(t *testing.T) {
+	payload := &channel.MessagePayload{
+		FallbackBehavior: "fail",
+		Interactive: &domain.Interactive{
+			Type: "flow",
+			Body: domain.TextContent{Text: "Please fill out this survey"},
+			Action: domain.Action{
+				FlowCTA: "Open Form",
+				FlowID:  "flow_123",
+			},
+		},
+	}
+
+	_, err := buildInteractiveOrOverrideMsg(payload)
+	if err == nil {
+		t.Fatalf("expected error on fallback fail for flow")
+	}
+	if !channel.IsTerminal(err) {
+		t.Errorf("expected terminal error, got: %v", err)
+	}
+}
+

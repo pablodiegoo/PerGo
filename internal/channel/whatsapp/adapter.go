@@ -16,6 +16,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 
 	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/storage"
 )
 
@@ -285,15 +286,11 @@ func buildInteractiveOrOverrideMsg(m *channel.MessagePayload) (*waE2E.Message, e
 	} else if m.Interactive != nil {
 		if m.Interactive.Type == "button" {
 			if len(m.Interactive.Action.Buttons) > 3 {
-				if m.FallbackBehavior == "fail" {
+				if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
 					return nil, channel.NewTerminalError(fmt.Errorf("whatsapp: interactive message exceeds native limits (max 3 buttons) and fallback_behavior is fail"))
 				}
-				// Degrade to text
-				body := m.Interactive.Body.Text
-				for i, b := range m.Interactive.Action.Buttons {
-					body += fmt.Sprintf("\n%d. %s", i+1, b.Reply.Title)
-				}
-				msg.Conversation = &body
+				degraded := m.Interactive.DegradeToText()
+				msg.Conversation = &degraded
 			} else {
 				var footerText *string
 				if m.Interactive.Footer != nil {
@@ -323,15 +320,12 @@ func buildInteractiveOrOverrideMsg(m *channel.MessagePayload) (*waE2E.Message, e
 			}
 			return &msg, nil
 		} else if m.Interactive.Type == "list" {
-			if len(m.Interactive.Action.Sections) > 10 {
-				if m.FallbackBehavior == "fail" {
-					return nil, channel.NewTerminalError(fmt.Errorf("whatsapp: interactive list exceeds native limits and fallback_behavior is fail"))
+			if m.Interactive.TotalRows() > 10 || len(m.Interactive.Action.Sections) > 10 {
+				if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
+					return nil, channel.NewTerminalError(fmt.Errorf("whatsapp: interactive list exceeds native limits (max 10 rows) and fallback_behavior is fail"))
 				}
-				body := m.Interactive.Body.Text
-				for i, s := range m.Interactive.Action.Sections {
-					body += fmt.Sprintf("\n%d. %s", i+1, s.Title)
-				}
-				msg.Conversation = &body
+				degraded := m.Interactive.DegradeToText()
+				msg.Conversation = &degraded
 			} else {
 				var title, description *string
 				if m.Interactive.Header != nil {
@@ -376,6 +370,20 @@ func buildInteractiveOrOverrideMsg(m *channel.MessagePayload) (*waE2E.Message, e
 					FooterText:  description,
 				}
 			}
+			return &msg, nil
+		} else if m.Interactive.Type == "flow" {
+			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
+				return nil, channel.NewTerminalError(fmt.Errorf("whatsapp: interactive flow is not supported on whatsapp web and fallback_behavior is fail"))
+			}
+			degraded := m.Interactive.DegradeToText()
+			msg.Conversation = &degraded
+			return &msg, nil
+		} else {
+			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
+				return nil, channel.NewTerminalError(fmt.Errorf("whatsapp: interactive type %q is not supported on whatsapp web and fallback_behavior is fail", m.Interactive.Type))
+			}
+			degraded := m.Interactive.DegradeToText()
+			msg.Conversation = &degraded
 			return &msg, nil
 		}
 	}

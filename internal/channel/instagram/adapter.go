@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -141,41 +142,63 @@ func (a *InstagramAdapter) Dispatch(ctx context.Context, m *channel.MessagePaylo
 	reqPayload.Recipient.ID = m.To
 
 	if m.Interactive != nil {
-		reqPayload.Message.Interactive = &instagramInteractive{
-			Type: m.Interactive.Type,
-		}
-		if m.Interactive.Header != nil {
-			reqPayload.Message.Interactive.Header = &instagramInteractiveText{Text: m.Interactive.Header.Text}
-		}
-		reqPayload.Message.Interactive.Body = &instagramInteractiveText{Text: m.Interactive.Body.Text}
-		if m.Interactive.Footer != nil {
-			reqPayload.Message.Interactive.Footer = &instagramInteractiveText{Text: m.Interactive.Footer.Text}
-		}
-		
-		action := instagramAction{
-			Button: m.Interactive.Action.Button,
-		}
-		for _, b := range m.Interactive.Action.Buttons {
-			action.Buttons = append(action.Buttons, instagramInteractiveReplyButton{
-				Type: "reply",
-				Reply: instagramInteractiveButtonReply{
-					ID:    b.Reply.ID,
-					Title: b.Reply.Title,
-				},
-			})
-		}
-		for _, s := range m.Interactive.Action.Sections {
-			section := instagramInteractiveSection{Title: s.Title}
-			for _, r := range s.Rows {
-				section.Rows = append(section.Rows, instagramInteractiveSectionRow{
-					ID:          r.ID,
-					Title:       r.Title,
-					Description: r.Description,
+		if m.Interactive.Type == "button" && len(m.Interactive.Action.Buttons) > 3 {
+			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
+				return "", channel.NewTerminalError(fmt.Errorf("instagram: interactive message exceeds native limits (max 3 buttons) and fallback_behavior is fail"))
+			}
+			reqPayload.Message.Text = m.Interactive.DegradeToText()
+		} else if m.Interactive.Type == "list" && (m.Interactive.TotalRows() > 10 || len(m.Interactive.Action.Sections) > 10) {
+			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
+				return "", channel.NewTerminalError(fmt.Errorf("instagram: interactive list exceeds native limits (max 10 rows) and fallback_behavior is fail"))
+			}
+			reqPayload.Message.Text = m.Interactive.DegradeToText()
+		} else if m.Interactive.Type == "flow" {
+			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
+				return "", channel.NewTerminalError(fmt.Errorf("instagram: interactive flow is not supported on instagram and fallback_behavior is fail"))
+			}
+			reqPayload.Message.Text = m.Interactive.DegradeToText()
+		} else if m.Interactive.Type == "button" || m.Interactive.Type == "list" {
+			reqPayload.Message.Interactive = &instagramInteractive{
+				Type: m.Interactive.Type,
+			}
+			if m.Interactive.Header != nil {
+				reqPayload.Message.Interactive.Header = &instagramInteractiveText{Text: m.Interactive.Header.Text}
+			}
+			reqPayload.Message.Interactive.Body = &instagramInteractiveText{Text: m.Interactive.Body.Text}
+			if m.Interactive.Footer != nil {
+				reqPayload.Message.Interactive.Footer = &instagramInteractiveText{Text: m.Interactive.Footer.Text}
+			}
+			
+			action := instagramAction{
+				Button: m.Interactive.Action.Button,
+			}
+			for _, b := range m.Interactive.Action.Buttons {
+				action.Buttons = append(action.Buttons, instagramInteractiveReplyButton{
+					Type: "reply",
+					Reply: instagramInteractiveButtonReply{
+						ID:    b.Reply.ID,
+						Title: b.Reply.Title,
+					},
 				})
 			}
-			action.Sections = append(action.Sections, section)
+			for _, s := range m.Interactive.Action.Sections {
+				section := instagramInteractiveSection{Title: s.Title}
+				for _, r := range s.Rows {
+					section.Rows = append(section.Rows, instagramInteractiveSectionRow{
+						ID:          r.ID,
+						Title:       r.Title,
+						Description: r.Description,
+					})
+				}
+				action.Sections = append(action.Sections, section)
+			}
+			reqPayload.Message.Interactive.Action = &action
+		} else {
+			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
+				return "", channel.NewTerminalError(fmt.Errorf("instagram: interactive type %q is not supported on instagram and fallback_behavior is fail", m.Interactive.Type))
+			}
+			reqPayload.Message.Text = m.Interactive.DegradeToText()
 		}
-		reqPayload.Message.Interactive.Action = &action
 	} else if m.Media != nil {
 		mediaURL := m.Media.MediaURL
 		if len(mediaURL) > 0 && mediaURL[0] == '/' && a.externalBaseURL != "" {

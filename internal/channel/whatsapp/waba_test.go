@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -493,6 +494,194 @@ func TestWABADispatch(t *testing.T) {
 		}
 		if resp != "wamid.interactive_test_123" {
 			t.Errorf("expected wamid 'wamid.interactive_test_123', got %q", resp)
+		}
+	})
+
+	t.Run("WABA Interactive Button Degrade (>3 buttons)", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			var req struct {
+				Type string `json:"type"`
+				Text struct {
+					Body string `json:"body"`
+				} `json:"text"`
+			}
+			_ = json.Unmarshal(bodyBytes, &req)
+
+			if req.Type != "text" {
+				t.Errorf("expected degraded message type text, got %s", req.Type)
+			}
+			if !strings.Contains(req.Text.Body, "Choose one:") || !strings.Contains(req.Text.Body, "4. Four") {
+				t.Errorf("expected degraded text body to contain options, got: %s", req.Text.Body)
+			}
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.degraded_btn_123"}]}`))
+		}))
+		defer server.Close()
+
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter.SetBaseURL(server.URL)
+
+		payload := &channel.MessagePayload{
+			ConnectionID:     connID,
+			SenderIdentity:   "+12345_phone_id",
+			To:               "+5511999999999",
+			FallbackBehavior: "degrade",
+			Interactive: &domain.Interactive{
+				Type: "button",
+				Body: domain.TextContent{Text: "Choose one:"},
+				Action: domain.Action{
+					Buttons: []domain.Button{
+						{Type: "reply", Reply: domain.Reply{ID: "btn1", Title: "One"}},
+						{Type: "reply", Reply: domain.Reply{ID: "btn2", Title: "Two"}},
+						{Type: "reply", Reply: domain.Reply{ID: "btn3", Title: "Three"}},
+						{Type: "reply", Reply: domain.Reply{ID: "btn4", Title: "Four"}},
+					},
+				},
+			},
+		}
+
+		resp, err := adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on degraded button dispatch, got: %v", err)
+		}
+		if resp != "wamid.degraded_btn_123" {
+			t.Errorf("expected wamid 'wamid.degraded_btn_123', got %q", resp)
+		}
+	})
+
+	t.Run("WABA Interactive Button Fail (>3 buttons & fallback_behavior fail)", func(t *testing.T) {
+		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+
+		payload := &channel.MessagePayload{
+			ConnectionID:     connID,
+			SenderIdentity:   "+12345_phone_id",
+			To:               "+5511999999999",
+			FallbackBehavior: "fail",
+			Interactive: &domain.Interactive{
+				Type: "button",
+				Body: domain.TextContent{Text: "Choose one:"},
+				Action: domain.Action{
+					Buttons: []domain.Button{
+						{Type: "reply", Reply: domain.Reply{ID: "btn1", Title: "One"}},
+						{Type: "reply", Reply: domain.Reply{ID: "btn2", Title: "Two"}},
+						{Type: "reply", Reply: domain.Reply{ID: "btn3", Title: "Three"}},
+						{Type: "reply", Reply: domain.Reply{ID: "btn4", Title: "Four"}},
+					},
+				},
+			},
+		}
+
+		_, err := adapter.Dispatch(tenantCtx, payload)
+		if err == nil {
+			t.Fatal("expected error on fallback fail, got nil")
+		}
+		if !channel.IsTerminal(err) {
+			t.Errorf("expected terminal error, got: %v", err)
+		}
+	})
+
+	t.Run("WABA Interactive List Degrade (>10 list rows)", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			var req struct {
+				Type string `json:"type"`
+				Text struct {
+					Body string `json:"body"`
+				} `json:"text"`
+			}
+			_ = json.Unmarshal(bodyBytes, &req)
+
+			if req.Type != "text" {
+				t.Errorf("expected degraded message type text, got %s", req.Type)
+			}
+			if !strings.Contains(req.Text.Body, "11. Item 11") {
+				t.Errorf("expected degraded text body to contain 11. Item 11, got: %s", req.Text.Body)
+			}
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.degraded_list_123"}]}`))
+		}))
+		defer server.Close()
+
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter.SetBaseURL(server.URL)
+
+		var rows []domain.Row
+		for i := 1; i <= 11; i++ {
+			rows = append(rows, domain.Row{
+				ID:    fmt.Sprintf("r_%d", i),
+				Title: fmt.Sprintf("Item %d", i),
+			})
+		}
+
+		payload := &channel.MessagePayload{
+			ConnectionID:     connID,
+			SenderIdentity:   "+12345_phone_id",
+			To:               "+5511999999999",
+			FallbackBehavior: "degrade",
+			Interactive: &domain.Interactive{
+				Type: "list",
+				Body: domain.TextContent{Text: "Please choose an item:"},
+				Action: domain.Action{
+					Button: "Items",
+					Sections: []domain.Section{
+						{
+							Title: "Section 1",
+							Rows:  rows,
+						},
+					},
+				},
+			},
+		}
+
+		resp, err := adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on degraded list dispatch, got: %v", err)
+		}
+		if resp != "wamid.degraded_list_123" {
+			t.Errorf("expected wamid 'wamid.degraded_list_123', got %q", resp)
+		}
+	})
+
+	t.Run("WABA Interactive List Fail (>10 list rows & fallback_behavior fail)", func(t *testing.T) {
+		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+
+		var rows []domain.Row
+		for i := 1; i <= 11; i++ {
+			rows = append(rows, domain.Row{
+				ID:    fmt.Sprintf("r_%d", i),
+				Title: fmt.Sprintf("Item %d", i),
+			})
+		}
+
+		payload := &channel.MessagePayload{
+			ConnectionID:     connID,
+			SenderIdentity:   "+12345_phone_id",
+			To:               "+5511999999999",
+			FallbackBehavior: "fail",
+			Interactive: &domain.Interactive{
+				Type: "list",
+				Body: domain.TextContent{Text: "Please choose an item:"},
+				Action: domain.Action{
+					Button: "Items",
+					Sections: []domain.Section{
+						{
+							Title: "Section 1",
+							Rows:  rows,
+						},
+					},
+				},
+			},
+		}
+
+		_, err := adapter.Dispatch(tenantCtx, payload)
+		if err == nil {
+			t.Fatal("expected error on fallback fail for list, got nil")
+		}
+		if !channel.IsTerminal(err) {
+			t.Errorf("expected terminal error, got: %v", err)
 		}
 	})
 

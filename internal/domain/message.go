@@ -59,6 +59,60 @@ type Interactive struct {
 	Action Action       `json:"action"`
 }
 
+// TotalRows returns the total count of rows across all sections.
+func (i *Interactive) TotalRows() int {
+	count := 0
+	for _, s := range i.Action.Sections {
+		count += len(s.Rows)
+	}
+	return count
+}
+
+// DegradeToText converts an interactive component into a formatted numbered text menu.
+func (i *Interactive) DegradeToText() string {
+	var sb strings.Builder
+	if i.Header != nil && i.Header.Text != "" {
+		sb.WriteString(i.Header.Text)
+		sb.WriteString("\n\n")
+	}
+	sb.WriteString(i.Body.Text)
+
+	if len(i.Action.Buttons) > 0 {
+		for idx, b := range i.Action.Buttons {
+			sb.WriteString(fmt.Sprintf("\n%d. %s", idx+1, b.Reply.Title))
+		}
+	}
+
+	if len(i.Action.Sections) > 0 {
+		rowNum := 1
+		for _, s := range i.Action.Sections {
+			if s.Title != "" {
+				sb.WriteString("\n\n*")
+				sb.WriteString(s.Title)
+				sb.WriteString("*")
+			}
+			for _, r := range s.Rows {
+				sb.WriteString(fmt.Sprintf("\n%d. %s", rowNum, r.Title))
+				if r.Description != "" {
+					sb.WriteString(fmt.Sprintf(" - %s", r.Description))
+				}
+				rowNum++
+			}
+		}
+	}
+
+	if i.Type == "flow" && i.Action.FlowCTA != "" {
+		sb.WriteString(fmt.Sprintf("\n\n[%s]", i.Action.FlowCTA))
+	}
+
+	if i.Footer != nil && i.Footer.Text != "" {
+		sb.WriteString("\n\n")
+		sb.WriteString(i.Footer.Text)
+	}
+
+	return sb.String()
+}
+
 // TextContent represents text within an interactive component.
 type TextContent struct {
 	Text string `json:"text"`

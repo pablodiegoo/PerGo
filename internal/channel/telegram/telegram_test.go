@@ -357,6 +357,167 @@ func TestTelegramDispatch(t *testing.T) {
 		}
 	})
 
+	t.Run("Telegram Interactive List Degrade to Inline Keyboard and Menu", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			var req telegramMessageRequest
+			if err := json.Unmarshal(bodyBytes, &req); err != nil {
+				t.Fatalf("failed to unmarshal request body: %v", err)
+			}
+
+			if !strings.Contains(req.Text, "Menu Header") || !strings.Contains(req.Text, "Choose an option") {
+				t.Errorf("expected text to contain Header and Body, got: %s", req.Text)
+			}
+
+			if req.ReplyMarkup == nil || len(req.ReplyMarkup.InlineKeyboard) != 2 {
+				t.Fatalf("expected 2 inline keyboard rows, got: %+v", req.ReplyMarkup)
+			}
+
+			if req.ReplyMarkup.InlineKeyboard[0][0].Text != "Option 1" || req.ReplyMarkup.InlineKeyboard[0][0].CallbackData != "opt_1" {
+				t.Errorf("unexpected button 0: %+v", req.ReplyMarkup.InlineKeyboard[0][0])
+			}
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":12347}}`))
+		}))
+		defer server.Close()
+
+		adapter := NewTelegramAdapter(connectionsRepo, server.Client(), nil)
+		adapter.SetBaseURL(server.URL)
+
+		payload := &channel.MessagePayload{
+			ConnectionID:     connID,
+			SenderIdentity:   "@test_bot",
+			To:               "987654321",
+			FallbackBehavior: "degrade",
+			Interactive: &domain.Interactive{
+				Type:   "list",
+				Header: &domain.TextContent{Text: "Menu Header"},
+				Body:   domain.TextContent{Text: "Choose an option"},
+				Action: domain.Action{
+					Button: "Options",
+					Sections: []domain.Section{
+						{
+							Title: "Main Options",
+							Rows: []domain.Row{
+								{ID: "opt_1", Title: "Option 1"},
+								{ID: "opt_2", Title: "Option 2"},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		_, err := adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on degrade, got: %v", err)
+		}
+	})
+
+	t.Run("Telegram Interactive List Fail on fallback_behavior fail", func(t *testing.T) {
+		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
+
+		payload := &channel.MessagePayload{
+			ConnectionID:     connID,
+			SenderIdentity:   "@test_bot",
+			To:               "987654321",
+			FallbackBehavior: "fail",
+			Interactive: &domain.Interactive{
+				Type: "list",
+				Body: domain.TextContent{Text: "Choose an option"},
+				Action: domain.Action{
+					Button: "Options",
+					Sections: []domain.Section{
+						{
+							Title: "Main Options",
+							Rows: []domain.Row{
+								{ID: "opt_1", Title: "Option 1"},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		_, err := adapter.Dispatch(tenantCtx, payload)
+		if err == nil {
+			t.Fatal("expected error on fallback_behavior fail for list, got nil")
+		}
+		if !channel.IsTerminal(err) {
+			t.Errorf("expected terminal error, got: %v", err)
+		}
+	})
+
+	t.Run("Telegram Interactive Flow Degrade", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			var req telegramMessageRequest
+			if err := json.Unmarshal(bodyBytes, &req); err != nil {
+				t.Fatalf("failed to unmarshal request body: %v", err)
+			}
+
+			if !strings.Contains(req.Text, "Survey Title") || !strings.Contains(req.Text, "Please fill survey") {
+				t.Errorf("expected text to contain survey, got: %s", req.Text)
+			}
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":12348}}`))
+		}))
+		defer server.Close()
+
+		adapter := NewTelegramAdapter(connectionsRepo, server.Client(), nil)
+		adapter.SetBaseURL(server.URL)
+
+		payload := &channel.MessagePayload{
+			ConnectionID:     connID,
+			SenderIdentity:   "@test_bot",
+			To:               "987654321",
+			FallbackBehavior: "degrade",
+			Interactive: &domain.Interactive{
+				Type:   "flow",
+				Header: &domain.TextContent{Text: "Survey Title"},
+				Body:   domain.TextContent{Text: "Please fill survey"},
+				Action: domain.Action{
+					FlowCTA: "Open Survey",
+					FlowID:  "flow_1",
+				},
+			},
+		}
+
+		_, err := adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on degrade, got: %v", err)
+		}
+	})
+
+	t.Run("Telegram Interactive Flow Fail on fallback_behavior fail", func(t *testing.T) {
+		adapter := NewTelegramAdapter(connectionsRepo, nil, nil)
+
+		payload := &channel.MessagePayload{
+			ConnectionID:     connID,
+			SenderIdentity:   "@test_bot",
+			To:               "987654321",
+			FallbackBehavior: "fail",
+			Interactive: &domain.Interactive{
+				Type: "flow",
+				Body: domain.TextContent{Text: "Please fill survey"},
+				Action: domain.Action{
+					FlowCTA: "Open Survey",
+					FlowID:  "flow_1",
+				},
+			},
+		}
+
+		_, err := adapter.Dispatch(tenantCtx, payload)
+		if err == nil {
+			t.Fatal("expected error on fallback_behavior fail for flow, got nil")
+		}
+		if !channel.IsTerminal(err) {
+			t.Errorf("expected terminal error, got: %v", err)
+		}
+	})
+
 	t.Run("Telegram Response Body > 5MB Returns Error", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
