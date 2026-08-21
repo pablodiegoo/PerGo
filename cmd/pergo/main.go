@@ -517,7 +517,7 @@ func main() {
 	webhookSubscriptionAPIHandler.RegisterRoutes(e)
 
 	// --- WABA Meta Flows Data Exchange endpoint ---
-	flowDataExchangeHandler := handler.NewFlowDataExchangeHandler(connectionRepo)
+	flowDataExchangeHandler := handler.NewFlowDataExchangeHandler(connectionRepo, wsRepo)
 	e.POST("/api/v1/waba/flows/data-exchange", flowDataExchangeHandler.HandleFlowDataExchange)
 
 	// --- Chatwoot Inbound Webhook handler ---
@@ -613,6 +613,8 @@ func main() {
 	adminGroup.DELETE("/workspaces/:id", workspaceHandler.Delete)
 	adminGroup.GET("/workspaces/:id/webhook-secret", workspaceHandler.GetWebhookSecret)
 	adminGroup.POST("/workspaces/:id/webhook-secret", workspaceHandler.GenerateWebhookSecret)
+	adminGroup.POST("/workspaces/:id/flow-webhook-url", workspaceHandler.SetFlowWebhookURL)
+	adminGroup.POST("/workspace/:id/flow-webhook-url", workspaceHandler.SetFlowWebhookURL)
 
 	// API key management routes
 	apiKeyHandler := &admin.APIKeyHandler{Repo: apiKeyRepo, Workspaces: wsRepo}
@@ -891,11 +893,13 @@ func main() {
 	v1Group.POST("/workspaces/:workspace_id/contacts/import", tagAdminHandler.ImportContactsCSV)
 	v1Group.GET("/workspaces/:workspace_id/contacts/export", tagAdminHandler.ExportContactsCSV)
 
-	// Webhook Secret API routes (v1)
+	// Webhook Secret & Flow Webhook API routes (v1)
 	v1Group.POST("/workspaces/webhook-secret", workspaceHandler.GenerateWebhookSecret)
 	v1Group.POST("/workspaces/:workspace_id/webhook-secret", workspaceHandler.GenerateWebhookSecret)
 	v1Group.GET("/workspaces/webhook-secret", workspaceHandler.GetWebhookSecret)
 	v1Group.GET("/workspaces/:workspace_id/webhook-secret", workspaceHandler.GetWebhookSecret)
+	v1Group.POST("/workspaces/flow-webhook-url", workspaceHandler.SetFlowWebhookURL)
+	v1Group.POST("/workspaces/:workspace_id/flow-webhook-url", workspaceHandler.SetFlowWebhookURL)
 
 	// Static files
 	e.Static("/static", "static")

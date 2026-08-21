@@ -16,6 +16,7 @@ import (
 type WorkspaceRepo interface {
 	Create(ctx context.Context, name string) (*repository.Workspace, error)
 	GenerateWebhookSecret(ctx context.Context, id uuid.UUID) (string, error)
+	SetFlowWebhookURL(ctx context.Context, id uuid.UUID, flowWebhookURL *string) error
 	List(ctx context.Context, limit int) ([]repository.Workspace, error)
 }
 
@@ -52,12 +53,13 @@ func (h *WorkspaceAPIHandler) RegisterRoutes(e *echo.Echo, masterAuth echo.Middl
 
 // WorkspaceItem defines the JSON representation of a workspace entity in list responses.
 type WorkspaceItem struct {
-	ID            uuid.UUID `json:"id"`
-	Name          string    `json:"name"`
-	PIIOptIn      bool      `json:"pii_opt_in"`
-	WebhookSecret *string   `json:"webhook_secret,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID             uuid.UUID `json:"id"`
+	Name           string    `json:"name"`
+	PIIOptIn       bool      `json:"pii_opt_in"`
+	WebhookSecret  *string   `json:"webhook_secret,omitempty"`
+	FlowWebhookURL *string   `json:"flow_webhook_url,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // ListWorkspacesResponse defines the JSON response returned by GET /api/v1/workspaces.
@@ -67,18 +69,20 @@ type ListWorkspacesResponse struct {
 
 // CreateWorkspaceRequest defines the JSON payload for workspace provisioning.
 type CreateWorkspaceRequest struct {
-	Name                  string `json:"name"`
-	GenerateAPIKey        *bool  `json:"generate_api_key,omitempty"`
-	GenerateWebhookSecret *bool  `json:"generate_webhook_secret,omitempty"`
+	Name                  string  `json:"name"`
+	FlowWebhookURL        *string `json:"flow_webhook_url,omitempty"`
+	GenerateAPIKey        *bool   `json:"generate_api_key,omitempty"`
+	GenerateWebhookSecret *bool   `json:"generate_webhook_secret,omitempty"`
 }
 
 // CreateWorkspaceResponse defines the JSON response returned upon successful workspace provisioning.
 type CreateWorkspaceResponse struct {
-	ID            uuid.UUID `json:"id"`
-	Name          string    `json:"name"`
-	APIKey        *string   `json:"api_key,omitempty"`
-	WebhookSecret *string   `json:"webhook_secret,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
+	ID             uuid.UUID `json:"id"`
+	Name           string    `json:"name"`
+	APIKey         *string   `json:"api_key,omitempty"`
+	WebhookSecret  *string   `json:"webhook_secret,omitempty"`
+	FlowWebhookURL *string   `json:"flow_webhook_url,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // Create handles POST /api/v1/workspaces to provision a new workspace, default API key, and webhook secret.
@@ -108,6 +112,12 @@ func (h *WorkspaceAPIHandler) Create(c *echo.Context) error {
 		})
 	}
 
+	if req.FlowWebhookURL != nil && *req.FlowWebhookURL != "" {
+		if err := h.wsRepo.SetFlowWebhookURL(ctx, ws.ID, req.FlowWebhookURL); err == nil {
+			ws.FlowWebhookURL = req.FlowWebhookURL
+		}
+	}
+
 	var rawAPIKey *string
 	genKey := req.GenerateAPIKey == nil || *req.GenerateAPIKey
 	if genKey && h.apiKeyRepo != nil {
@@ -135,11 +145,12 @@ func (h *WorkspaceAPIHandler) Create(c *echo.Context) error {
 	}
 
 	res := CreateWorkspaceResponse{
-		ID:            ws.ID,
-		Name:          ws.Name,
-		APIKey:        rawAPIKey,
-		WebhookSecret: webhookSec,
-		CreatedAt:     ws.CreatedAt,
+		ID:             ws.ID,
+		Name:           ws.Name,
+		APIKey:         rawAPIKey,
+		WebhookSecret:  webhookSec,
+		FlowWebhookURL: ws.FlowWebhookURL,
+		CreatedAt:      ws.CreatedAt,
 	}
 
 	return c.JSON(http.StatusCreated, res)
@@ -169,12 +180,13 @@ func (h *WorkspaceAPIHandler) List(c *echo.Context) error {
 	items := make([]WorkspaceItem, 0, len(workspaces))
 	for _, ws := range workspaces {
 		items = append(items, WorkspaceItem{
-			ID:            ws.ID,
-			Name:          ws.Name,
-			PIIOptIn:      ws.PIIOptIn,
-			WebhookSecret: ws.WebhookSecret,
-			CreatedAt:     ws.CreatedAt,
-			UpdatedAt:     ws.UpdatedAt,
+			ID:             ws.ID,
+			Name:           ws.Name,
+			PIIOptIn:       ws.PIIOptIn,
+			WebhookSecret:  ws.WebhookSecret,
+			FlowWebhookURL: ws.FlowWebhookURL,
+			CreatedAt:      ws.CreatedAt,
+			UpdatedAt:      ws.UpdatedAt,
 		})
 	}
 

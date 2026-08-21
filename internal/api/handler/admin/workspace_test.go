@@ -181,3 +181,86 @@ func TestWorkspaceHandler_WebhookSecret(t *testing.T) {
 		}
 	})
 }
+
+func TestWorkspaceHandler_SetFlowWebhookURL(t *testing.T) {
+	dbURL := testDBURL
+	if dbURL == "" {
+		dbURL = os.Getenv("PERGO_DATABASE_URL")
+	}
+	if dbURL == "" {
+		t.Skip("testcontainers postgres not available")
+	}
+
+	ctx := context.Background()
+	pool, err := postgres.NewPool(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("failed to create pgxpool: %v", err)
+	}
+	defer pool.Close()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	apiKeyRepo := repository.NewAPIKeyRepository(pool)
+	handler := &admin.WorkspaceHandler{
+		Repo:    wsRepo,
+		APIKeys: apiKeyRepo,
+	}
+
+	ws, err := wsRepo.Create(ctx, "flow_handler_ws_"+uuid.New().String()[:8])
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	e := echo.New()
+
+	t.Run("Set flow webhook URL via JSON", func(t *testing.T) {
+		flowURL := "https://backend.example.com/flow/endpoint"
+		body := fmt.Sprintf(`{"flow_webhook_url": "%s"}`, flowURL)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/workspaces/%s/flow-webhook-url", ws.ID), strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/workspaces/:id/flow-webhook-url")
+		c.SetPathValues(echo.PathValues{{Name: "id", Value: ws.ID.String()}})
+
+		if err := handler.SetFlowWebhookURL(c); err != nil {
+			t.Fatalf("SetFlowWebhookURL failed: %v", err)
+		}
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", rec.Code)
+		}
+
+		fetched, err := wsRepo.GetByID(ctx, ws.ID)
+		if err != nil {
+			t.Fatalf("GetByID failed: %v", err)
+		}
+		if fetched.FlowWebhookURL == nil || *fetched.FlowWebhookURL != flowURL {
+			t.Errorf("expected flow_webhook_url %q, got %v", flowURL, fetched.FlowWebhookURL)
+		}
+	})
+
+	t.Run("Set flow webhook URL via Form and HTMX", func(t *testing.T) {
+		flowURL := "https://crm.partner.io/flows"
+		form := strings.NewReader(fmt.Sprintf("flow_webhook_url=%s", flowURL))
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/workspaces/%s/flow-webhook-url", ws.ID), form)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/workspaces/:id/flow-webhook-url")
+		c.SetPathValues(echo.PathValues{{Name: "id", Value: ws.ID.String()}})
+
+		if err := handler.SetFlowWebhookURL(c); err != nil {
+			t.Fatalf("SetFlowWebhookURL failed: %v", err)
+		}
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status 200, got %d", rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "flow-webhook-card") {
+			t.Errorf("expected rendered HTMX card in response, got %s", rec.Body.String())
+		}
+	})
+}
+

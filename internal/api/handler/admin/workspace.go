@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
@@ -216,6 +217,56 @@ func (h *WorkspaceHandler) GenerateWebhookSecret(c *echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{
 		"workspace_id":   id.String(),
 		"webhook_secret": secret,
+	})
+}
+
+// SetFlowWebhookURL sets or updates a workspace's Meta Flow webhook URL.
+func (h *WorkspaceHandler) SetFlowWebhookURL(c *echo.Context) error {
+	id, err := resolveWorkspaceParamOrActive(c)
+	if err != nil || id == uuid.Nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	}
+
+	var flowURL *string
+	// Check JSON body first if JSON
+	if strings.Contains(c.Request().Header.Get("Content-Type"), "application/json") {
+		var req struct {
+			FlowWebhookURL *string `json:"flow_webhook_url"`
+		}
+		if err := c.Bind(&req); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request payload"})
+		}
+		if req.FlowWebhookURL != nil {
+			val := strings.TrimSpace(*req.FlowWebhookURL)
+			if val != "" {
+				flowURL = &val
+			}
+		}
+	} else {
+		// Form value
+		val := strings.TrimSpace(c.FormValue("flow_webhook_url"))
+		if val != "" {
+			flowURL = &val
+		}
+	}
+
+	if err := h.Repo.SetFlowWebhookURL(c.Request().Context(), id, flowURL); err != nil {
+		if errors.Is(err, repository.ErrWorkspaceNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "workspace not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to set flow webhook url"})
+	}
+
+	if mw.IsHTMX(c) {
+		ws, err := h.Repo.GetByID(c.Request().Context(), id)
+		if err == nil && ws != nil {
+			return mw.Render(c, http.StatusOK, pages.FlowWebhookSettingsCard(*ws, true))
+		}
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"workspace_id":     id.String(),
+		"flow_webhook_url": flowURL,
 	})
 }
 

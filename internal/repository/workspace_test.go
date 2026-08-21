@@ -131,5 +131,40 @@ func TestWorkspaceRepository_CreateWithID_And_GetByName(t *testing.T) {
 			t.Errorf("expected earliest workspace name 'First Workspace', got %s", earliest.Name)
 		}
 	})
+
+	t.Run("SetFlowWebhookURL updates and retrieves flow_webhook_url correctly", func(t *testing.T) {
+		ws, err := repo.Create(ctx, "Flow Workspace")
+		if err != nil {
+			t.Fatalf("failed to create workspace: %v", err)
+		}
+		if ws.FlowWebhookURL != nil {
+			t.Fatalf("expected initial flow_webhook_url to be nil, got %v", ws.FlowWebhookURL)
+		}
+
+		flowURL := "https://example.com/api/flows/webhook"
+		if err := repo.SetFlowWebhookURL(ctx, ws.ID, &flowURL); err != nil {
+			t.Fatalf("SetFlowWebhookURL failed: %v", err)
+		}
+
+		fetched, err := repo.GetByID(ctx, ws.ID)
+		if err != nil {
+			t.Fatalf("GetByID failed: %v", err)
+		}
+		if fetched.FlowWebhookURL == nil || *fetched.FlowWebhookURL != flowURL {
+			t.Errorf("expected FlowWebhookURL %q, got %v", flowURL, fetched.FlowWebhookURL)
+		}
+
+		// Clear URL
+		if err := repo.SetFlowWebhookURL(ctx, ws.ID, nil); err != nil {
+			t.Fatalf("SetFlowWebhookURL nil failed: %v", err)
+		}
+		cleared, err := repo.GetByID(ctx, ws.ID)
+		if err != nil {
+			t.Fatalf("GetByID failed: %v", err)
+		}
+		if cleared.FlowWebhookURL != nil {
+			t.Errorf("expected FlowWebhookURL to be nil after clearing, got %v", cleared.FlowWebhookURL)
+		}
+	})
 }
 

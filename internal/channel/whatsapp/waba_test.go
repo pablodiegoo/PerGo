@@ -1462,3 +1462,128 @@ func TestWABAInboundAdapter_SenderIdentityStamping(t *testing.T) {
 	})
 }
 
+func TestWABAAdapter_DispatchFlowMessage(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+
+	kek := make([]byte, 32)
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	connectionsRepo := repository.NewConnectionRepository(pool, enc)
+	wsRepo := repository.NewWorkspaceRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "waba_flow_test_ws_"+uuid.New().String()[:8])
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	var interceptedBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		interceptedBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"messages": [{"id": "wamid.flow_test_123"}]}`))
+	}))
+	defer server.Close()
+
+	wabaConfig := WABAConfig{
+		PhoneNumberID: "12345_phone_id",
+		Token:         "test_access_token",
+	}
+	configBytes, _ := json.Marshal(wabaConfig)
+	connID := uuid.New()
+	err = connectionsRepo.Create(ctx, &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    ws.ID,
+		Name:           "WABA Flow Connection",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+12345_phone_id",
+		Status:         "active",
+		Credentials:    configBytes,
+	})
+	if err != nil {
+		t.Fatalf("failed to create connection: %v", err)
+	}
+
+	adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+	adapter.SetBaseURL(server.URL)
+
+	payload := &channel.MessagePayload{
+		ConnectionID:   connID,
+		SenderIdentity: "+12345_phone_id",
+		To:             "5511999998888",
+		Interactive: &domain.Interactive{
+			Type: "flow",
+			Body: domain.TextContent{Text: "Please fill out our flow"},
+			Action: domain.Action{
+				FlowID:     "flow_id_abc",
+				FlowCTA:    "Open Flow",
+				FlowAction: "navigate",
+				FlowActionPayload: map[string]interface{}{
+					"screen": "INIT",
+				},
+			},
+		},
+	}
+
+	ctxTenant := tenant.WithWorkspaceID(ctx, ws.ID)
+	resp, err := adapter.Dispatch(ctxTenant, payload)
+	if err != nil {
+		t.Fatalf("Dispatch failed: %v", err)
+	}
+
+	if !strings.Contains(resp, "wamid.flow_test_123") {
+		t.Errorf("expected wamid.flow_test_123 in response, got %s", resp)
+	}
+
+	var reqPayload struct {
+		Type        string `json:"type"`
+		Interactive struct {
+			Type   string `json:"type"`
+			Action struct {
+				Name       string `json:"name"`
+				Parameters struct {
+					FlowToken string `json:"flow_token"`
+					FlowID    string `json:"flow_id"`
+					FlowCTA   string `json:"flow_cta"`
+				} `json:"parameters"`
+			} `json:"action"`
+		} `json:"interactive"`
+	}
+	if err := json.Unmarshal(interceptedBody, &reqPayload); err != nil {
+		t.Fatalf("failed to parse intercepted body: %v", err)
+	}
+
+	if reqPayload.Interactive.Type != "flow" {
+		t.Errorf("expected interactive type 'flow', got %q", reqPayload.Interactive.Type)
+	}
+	if reqPayload.Interactive.Action.Parameters.FlowID != "flow_id_abc" {
+		t.Errorf("expected FlowID 'flow_id_abc', got %q", reqPayload.Interactive.Action.Parameters.FlowID)
+	}
+	flowToken := reqPayload.Interactive.Action.Parameters.FlowToken
+	if flowToken == "" {
+		t.Fatalf("expected non-empty flow_token")
+	}
+
+	// Validate generated flow token
+	parsed, err := crypto.ParseAndValidateFlowToken(flowToken, []byte(ws.ID.String()))
+	if err != nil {
+		t.Fatalf("ParseAndValidateFlowToken failed on generated flow_token: %v", err)
+	}
+	if parsed.WorkspaceID != ws.ID {
+		t.Errorf("expected token WorkspaceID %s, got %s", ws.ID, parsed.WorkspaceID)
+	}
+	if parsed.FlowID != "flow_id_abc" {
+		t.Errorf("expected token FlowID 'flow_id_abc', got %q", parsed.FlowID)
+	}
+	if parsed.ContactID != "5511999998888" {
+		t.Errorf("expected token ContactID '5511999998888', got %q", parsed.ContactID)
+	}
+}
+
+

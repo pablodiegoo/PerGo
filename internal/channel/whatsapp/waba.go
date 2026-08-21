@@ -3,11 +3,6 @@ package whatsapp
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,8 +13,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
-	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -446,30 +442,18 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 				action.Name = "flow"
 				flowToken := m.Interactive.Action.FlowToken
 				if flowToken == "" {
-					type tokenPayload struct {
-						WorkspaceID    uuid.UUID `json:"workspace_id"`
-						RecipientPhone string    `json:"recipient_phone"`
-						FlowID         string    `json:"flow_id"`
-						Timestamp      int64     `json:"timestamp"`
-						Nonce          string    `json:"nonce"`
+					tokenPayload := crypto.FlowTokenPayload{
+						WorkspaceID:  workspaceID,
+						ConnectionID: m.ConnectionID,
+						ContactID:    m.To,
+						FlowID:       m.Interactive.Action.FlowID,
+						ExpiresAt:    time.Now().Add(crypto.DefaultFlowTokenTTL).Unix(),
 					}
-					b := make([]byte, 16)
-					rand.Read(b)
-					nonce := hex.EncodeToString(b)
-					payload := tokenPayload{
-						WorkspaceID:    workspaceID,
-						RecipientPhone: m.To,
-						FlowID:         m.Interactive.Action.FlowID,
-						Timestamp:      time.Now().Unix(),
-						Nonce:          nonce,
+					signingSecret := []byte(workspaceID.String())
+					generated, err := crypto.GenerateFlowToken(tokenPayload, signingSecret)
+					if err == nil {
+						flowToken = generated
 					}
-					payloadBytes, _ := json.Marshal(payload)
-					h := hmac.New(sha256.New, []byte(workspaceID.String()))
-					h.Write(payloadBytes)
-					signature := h.Sum(nil)
-					
-					finalPayload := fmt.Sprintf("%s.%s", base64.RawURLEncoding.EncodeToString(payloadBytes), base64.RawURLEncoding.EncodeToString(signature))
-					flowToken = finalPayload
 				}
 
 				action.Parameters = &wabaFlowParameters{

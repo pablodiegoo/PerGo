@@ -167,6 +167,8 @@ templ WorkspaceDetailContent(ws repository.Workspace, keys []repository.APIKey) 
 		</div>
 	</div>
 
+	@FlowWebhookSettingsCard(ws)
+
 	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6">
 		<div class="flex items-center justify-between mb-4">
 			<h2 class="text-lg font-semibold text-zinc-900">API Keys</h2>
@@ -203,6 +205,52 @@ templ WorkspaceDetailContent(ws repository.Workspace, keys []repository.APIKey) 
 				</tbody>
 			</table>
 		</div>
+	</div>
+}
+
+// FlowWebhookSettingsCard renders the workspace flow webhook configuration card.
+templ FlowWebhookSettingsCard(ws repository.Workspace, saved ...bool) {
+	<div id="flow-webhook-card" class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8">
+		<div class="flex items-center justify-between mb-4">
+			<div>
+				<h2 class="text-lg font-semibold text-zinc-900 font-bold">Meta Flow Webhook Delegation</h2>
+				<p class="text-xs text-zinc-500 mt-1">Endpoint de destino para encaminhamento síncrono de requisições de telas descriptografadas de Meta Flows.</p>
+			</div>
+			if len(saved) > 0 && saved[0] {
+				<span class="badge badge-sm bg-emerald-50 text-emerald-700 border-emerald-200 px-2 py-0.5 text-xs font-semibold">Salvo com sucesso</span>
+			}
+		</div>
+		<form
+			hx-post={ fmt.Sprintf("/admin/workspaces/%s/flow-webhook-url", ws.ID) }
+			hx-target="#flow-webhook-card"
+			hx-swap="outerHTML"
+			class="space-y-4 max-w-xl"
+		>
+			<div class="flex flex-col gap-1.5">
+				<label for="flow_webhook_url" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Flow Webhook URL</label>
+				<input
+					type="url"
+					id="flow_webhook_url"
+					name="flow_webhook_url"
+					if ws.FlowWebhookURL != nil {
+						value={ *ws.FlowWebhookURL }
+					}
+					placeholder="https://seu-backend.com/api/flows/data-exchange"
+					class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 bg-white w-full font-mono text-xs"
+				/>
+				<p class="text-xs text-zinc-400">
+					As requisições serão enviadas via POST com assinatura HMAC <code class="font-mono bg-zinc-100 px-1 py-0.5 rounded text-zinc-800">X-PerGo-Signature</code> e timeout de 2500ms.
+				</p>
+			</div>
+			<div class="flex justify-start">
+				<button
+					type="submit"
+					class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center cursor-pointer"
+				>
+					Salvar Flow Webhook
+				</button>
+			</div>
+		</form>
 	</div>
 }
 

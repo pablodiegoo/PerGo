@@ -20,6 +20,7 @@ import (
 type mockWorkspaceRepo struct {
 	createFunc         func(ctx context.Context, name string) (*repository.Workspace, error)
 	generateSecretFunc func(ctx context.Context, id uuid.UUID) (string, error)
+	setFlowURLFunc     func(ctx context.Context, id uuid.UUID, flowWebhookURL *string) error
 	listFunc           func(ctx context.Context, limit int) ([]repository.Workspace, error)
 }
 
@@ -40,6 +41,13 @@ func (m *mockWorkspaceRepo) GenerateWebhookSecret(ctx context.Context, id uuid.U
 		return m.generateSecretFunc(ctx, id)
 	}
 	return "whsec_mocked1234567890abcdef1234567890abcdef", nil
+}
+
+func (m *mockWorkspaceRepo) SetFlowWebhookURL(ctx context.Context, id uuid.UUID, flowWebhookURL *string) error {
+	if m.setFlowURLFunc != nil {
+		return m.setFlowURLFunc(ctx, id, flowWebhookURL)
+	}
+	return nil
 }
 
 func (m *mockWorkspaceRepo) List(ctx context.Context, limit int) ([]repository.Workspace, error) {
@@ -150,6 +158,53 @@ func TestWorkspaceAPIHandler_Create_CustomFlags(t *testing.T) {
 	}
 	if res.WebhookSecret != nil {
 		t.Errorf("expected nil webhook_secret, got %v", *res.WebhookSecret)
+	}
+}
+
+func TestWorkspaceAPIHandler_Create_WithFlowWebhookURL(t *testing.T) {
+	e := echo.New()
+	var setCalled bool
+	var setURL string
+	wsRepo := &mockWorkspaceRepo{
+		setFlowURLFunc: func(ctx context.Context, id uuid.UUID, flowWebhookURL *string) error {
+			setCalled = true
+			if flowWebhookURL != nil {
+				setURL = *flowWebhookURL
+			}
+			return nil
+		},
+	}
+	apiKeyRepo := &mockAPIKeyRepo{}
+	h := apipkg.NewWorkspaceAPIHandler(wsRepo, apiKeyRepo)
+
+	flowURL := "https://crm.partner.io/flows/webhook"
+	body := `{"name": "Flow Tenant", "flow_webhook_url": "` + flowURL + `"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/workspaces", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Create(c); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res apipkg.CreateWorkspaceResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if !setCalled {
+		t.Errorf("expected SetFlowWebhookURL to be called")
+	}
+	if setURL != flowURL {
+		t.Errorf("expected URL %q, got %q", flowURL, setURL)
+	}
+	if res.FlowWebhookURL == nil || *res.FlowWebhookURL != flowURL {
+		t.Errorf("expected response FlowWebhookURL %q, got %v", flowURL, res.FlowWebhookURL)
 	}
 }
 
