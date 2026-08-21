@@ -1103,4 +1103,271 @@ func TestConnectionAPIHandler_CreateTelegram_WorkspaceIsolation(t *testing.T) {
 	}
 }
 
+func TestConnectionAPIHandler_CreateWABA_AutoGeneratesRSAKey(t *testing.T) {
+	wsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+	metaClient := &mockWABAMetaClient{}
+
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
+	handler.SetMetaClient(metaClient)
+
+	reqPayload := map[string]interface{}{
+		"name":                 "WABA Flow Test",
+		"phone_number_id":      "11223344",
+		"waba_account_id":      "55667788",
+		"token":                "EAABbCcDdFlow",
+		"display_phone_number": "+55 11 98888-0000",
+	}
+	payloadBytes, _ := json.Marshal(reqPayload)
+
+	_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", payloadBytes, wsID)
+
+	if err := handler.CreateWABA(c); err != nil {
+		t.Fatalf("unexpected handler error: %v", err)
+	}
+
+	if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+		t.Fatalf("expected status 201 or 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res api.ConnectionItem
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("failed to decode response JSON: %v", err)
+	}
+
+	saved, err := connRepo.GetByID(context.Background(), res.ID)
+	if err != nil || saved == nil {
+		t.Fatalf("connection not found in repo: %v", err)
+	}
+
+	type credsStruct struct {
+		PrivateKey string `json:"private_key"`
+	}
+	var creds credsStruct
+	if err := json.Unmarshal(saved.Credentials, &creds); err != nil {
+		t.Fatalf("failed to unmarshal credentials: %v", err)
+	}
+
+	if creds.PrivateKey == "" {
+		t.Fatalf("expected auto-generated private_key in stored credentials")
+	}
+
+	if !strings.Contains(creds.PrivateKey, "BEGIN RSA PRIVATE KEY") && !strings.Contains(creds.PrivateKey, "BEGIN PRIVATE KEY") {
+		t.Errorf("expected PEM-encoded private key, got %s", creds.PrivateKey)
+	}
+}
+
+func TestConnectionAPIHandler_CreateWABA_CustomRSAKey(t *testing.T) {
+	wsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+	metaClient := &mockWABAMetaClient{}
+
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
+	handler.SetMetaClient(metaClient)
+
+	// Pre-generate custom RSA key
+	customPrivPEM, _, err := crypto.GenerateRSAKeyPair2048()
+	if err != nil {
+		t.Fatalf("failed to generate custom key: %v", err)
+	}
+
+	reqPayload := map[string]interface{}{
+		"name":                 "WABA Custom Key",
+		"phone_number_id":      "11223355",
+		"waba_account_id":      "55667799",
+		"token":                "EAABbCcDdFlowCustom",
+		"display_phone_number": "+55 11 98888-0001",
+		"private_key":          customPrivPEM,
+	}
+	payloadBytes, _ := json.Marshal(reqPayload)
+
+	_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", payloadBytes, wsID)
+
+	if err := handler.CreateWABA(c); err != nil {
+		t.Fatalf("unexpected handler error: %v", err)
+	}
+
+	if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+		t.Fatalf("expected status 201 or 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var res api.ConnectionItem
+	if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+		t.Fatalf("failed to decode response JSON: %v", err)
+	}
+
+	saved, err := connRepo.GetByID(context.Background(), res.ID)
+	if err != nil || saved == nil {
+		t.Fatalf("connection not found in repo: %v", err)
+	}
+
+	type credsStruct struct {
+		PrivateKey string `json:"private_key"`
+	}
+	var creds credsStruct
+	if err := json.Unmarshal(saved.Credentials, &creds); err != nil {
+		t.Fatalf("failed to unmarshal credentials: %v", err)
+	}
+
+	if creds.PrivateKey != customPrivPEM {
+		t.Errorf("expected stored private_key to match custom private key, got %q", creds.PrivateKey)
+	}
+}
+
+func TestConnectionAPIHandler_CreateWABA_InvalidRSAKey(t *testing.T) {
+	wsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
+
+	reqPayload := map[string]interface{}{
+		"name":                 "WABA Invalid Key",
+		"phone_number_id":      "11223366",
+		"waba_account_id":      "55667700",
+		"token":                "EAABbCcDdFlowInvalid",
+		"display_phone_number": "+55 11 98888-0002",
+		"private_key":          "not-a-valid-rsa-pem",
+	}
+	payloadBytes, _ := json.Marshal(reqPayload)
+
+	_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/connections/waba", payloadBytes, wsID)
+
+	if err := handler.CreateWABA(c); err != nil {
+		t.Fatalf("unexpected handler error: %v", err)
+	}
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400 Bad Request for invalid RSA key, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestConnectionAPIHandler_GetFlowPublicKey(t *testing.T) {
+	wsID := uuid.New()
+	otherWsID := uuid.New()
+	connRepo := newMockConnectionRepo()
+
+	privPEM, pubPEM, err := crypto.GenerateRSAKeyPair2048()
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+
+	wabaCreds, _ := json.Marshal(map[string]string{
+		"phone_number_id": "112233",
+		"token":           "tok",
+		"waba_account_id": "acc",
+		"private_key":     privPEM,
+	})
+
+	wabaConnID := uuid.New()
+	connRepo.connections[wabaConnID] = &repository.Connection{
+		ID:             wabaConnID,
+		WorkspaceID:    wsID,
+		Name:           "WABA Flows Conn",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+5511999990000",
+		Status:         "connected",
+		Credentials:    wabaCreds,
+	}
+
+	tgConnID := uuid.New()
+	connRepo.connections[tgConnID] = &repository.Connection{
+		ID:             tgConnID,
+		WorkspaceID:    wsID,
+		Name:           "TG Conn",
+		Channel:        "telegram",
+		SenderIdentity: "@Bot",
+		Status:         "connected",
+	}
+
+	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
+
+	// 1. Success for WABA connection
+	{
+		_, c, rec := setupEchoWithTenant(http.MethodGet, "/api/v1/connections/"+wabaConnID.String()+"/flow-public-key", nil, wsID)
+		c.SetPath("/api/v1/connections/:id/flow-public-key")
+		c.SetPathValues(echo.PathValues{{Name: "id", Value: wabaConnID.String()}})
+
+		if err := handler.GetFlowPublicKey(c); err != nil {
+			t.Fatalf("GetFlowPublicKey failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var res struct {
+			PublicKeyPEM string `json:"public_key_pem"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &res); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+		if res.PublicKeyPEM != pubPEM {
+			t.Errorf("expected public key %q, got %q", pubPEM, res.PublicKeyPEM)
+		}
+		if !strings.HasPrefix(res.PublicKeyPEM, "-----BEGIN PUBLIC KEY-----") {
+			t.Errorf("expected PEM formatted public key header, got %s", res.PublicKeyPEM)
+		}
+	}
+
+	// 2. Workspace-scoped route with path parameter
+	{
+		_, c, rec := setupEchoWithTenant(http.MethodGet, "/api/v1/workspaces/"+wsID.String()+"/connections/"+wabaConnID.String()+"/flow-public-key", nil, wsID)
+		c.SetPath("/api/v1/workspaces/:workspace_id/connections/:id/flow-public-key")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: wsID.String()},
+			{Name: "id", Value: wabaConnID.String()},
+		})
+
+		if err := handler.GetFlowPublicKey(c); err != nil {
+			t.Fatalf("GetFlowPublicKey failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+	}
+
+	// 3. Non-WABA connection returns 400 Bad Request
+	{
+		_, c, rec := setupEchoWithTenant(http.MethodGet, "/api/v1/connections/"+tgConnID.String()+"/flow-public-key", nil, wsID)
+		c.SetPath("/api/v1/connections/:id/flow-public-key")
+		c.SetPathValues(echo.PathValues{{Name: "id", Value: tgConnID.String()}})
+
+		if err := handler.GetFlowPublicKey(c); err != nil {
+			t.Fatalf("GetFlowPublicKey failed: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400 for Telegram connection, got %d: %s", rec.Code, rec.Body.String())
+		}
+	}
+
+	// 4. Non-existent connection returns 404 Not Found
+	{
+		nonExistentID := uuid.New()
+		_, c, rec := setupEchoWithTenant(http.MethodGet, "/api/v1/connections/"+nonExistentID.String()+"/flow-public-key", nil, wsID)
+		c.SetPath("/api/v1/connections/:id/flow-public-key")
+		c.SetPathValues(echo.PathValues{{Name: "id", Value: nonExistentID.String()}})
+
+		if err := handler.GetFlowPublicKey(c); err != nil {
+			t.Fatalf("GetFlowPublicKey failed: %v", err)
+		}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected status 404 for non-existent connection, got %d", rec.Code)
+		}
+	}
+
+	// 5. Cross-tenant isolation (Tenant B requesting connection of Tenant A)
+	{
+		_, c, rec := setupEchoWithTenant(http.MethodGet, "/api/v1/connections/"+wabaConnID.String()+"/flow-public-key", nil, otherWsID)
+		c.SetPath("/api/v1/connections/:id/flow-public-key")
+		c.SetPathValues(echo.PathValues{{Name: "id", Value: wabaConnID.String()}})
+
+		if err := handler.GetFlowPublicKey(c); err != nil {
+			t.Fatalf("GetFlowPublicKey failed: %v", err)
+		}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected status 404 for cross-tenant request, got %d", rec.Code)
+		}
+	}
+}
+
+
 
