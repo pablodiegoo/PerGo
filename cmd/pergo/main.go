@@ -691,6 +691,9 @@ func main() {
 	adminGroup.GET("/devices/test", deviceHandler.TestForm)
 	adminGroup.POST("/devices/test", deviceHandler.RunTest)
 	adminGroup.GET("/devices/test/ws", deviceHandler.WS)
+	adminGroup.GET("/devices/flow-key", deviceHandler.FlowKey)
+	adminGroup.GET("/connections/flow-key", deviceHandler.FlowKey)
+
 
 	// Telemetry page (system health: sessions, NATS, uptime)
 	telemetryHandler := &admin.TelemetryHandler{

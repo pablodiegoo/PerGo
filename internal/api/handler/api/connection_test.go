@@ -18,10 +18,12 @@ import (
 	"github.com/pablojhp.pergo/internal/api/handler/api"
 	whatsapp "github.com/pablojhp.pergo/internal/channel/whatsapp"
 	"github.com/pablojhp.pergo/internal/client"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
 )
+
 
 type mockConnectionRepo struct {
 	mu          sync.RWMutex
@@ -1209,10 +1211,11 @@ func TestConnectionAPIHandler_CreateWABA_CustomRSAKey(t *testing.T) {
 		t.Fatalf("failed to unmarshal credentials: %v", err)
 	}
 
-	if creds.PrivateKey != customPrivPEM {
+	if strings.TrimSpace(creds.PrivateKey) != strings.TrimSpace(customPrivPEM) {
 		t.Errorf("expected stored private_key to match custom private key, got %q", creds.PrivateKey)
 	}
 }
+
 
 func TestConnectionAPIHandler_CreateWABA_InvalidRSAKey(t *testing.T) {
 	wsID := uuid.New()

@@ -799,9 +799,43 @@ func TestHeadlessCPaaS_EndToEndLifecycle(t *testing.T) {
 		if err := json.Unmarshal(recAlias.Body.Bytes(), &wabaAliasResp); err != nil {
 			t.Fatalf("failed to decode WABA alias response: %v", err)
 		}
+
+		// 6.4 Verify RSA key generation, encrypted persistence, and public key retrieval
+		{
+			type wabaCreds struct {
+				PrivateKey string `json:"private_key"`
+			}
+			var creds wabaCreds
+			if err := json.Unmarshal(dbConn.Credentials, &creds); err != nil {
+				t.Fatalf("failed to unmarshal db credentials: %v", err)
+			}
+			if creds.PrivateKey == "" {
+				t.Fatalf("expected auto-generated RSA private_key in stored credentials")
+			}
+
+			// Verify GET /api/v1/connections/:id/flow-public-key
+			reqKey := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/connections/%s/flow-public-key", wabaConnID), nil)
+			reqKey.Header.Set("Authorization", "Bearer "+apiKey)
+			recKey := httptest.NewRecorder()
+			s.e.ServeHTTP(recKey, reqKey)
+
+			if recKey.Code != http.StatusOK {
+				t.Fatalf("expected 200 OK on GET /api/v1/connections/:id/flow-public-key, got %d: %s", recKey.Code, recKey.Body.String())
+			}
+
+			var keyResp apipkg.FlowPublicKeyResponse
+			if err := json.Unmarshal(recKey.Body.Bytes(), &keyResp); err != nil {
+				t.Fatalf("failed to decode flow public key response: %v", err)
+			}
+			if !strings.HasPrefix(keyResp.PublicKeyPEM, "-----BEGIN PUBLIC KEY-----") {
+				t.Errorf("expected PEM formatted public key, got %q", keyResp.PublicKeyPEM)
+			}
+		}
+
 		defer func() { _ = s.connRepo.Delete(ctx, wabaAliasResp.ID) }()
 		defer func() { _ = s.connRepo.Delete(ctx, wabaConnID) }()
 	}
+
 
 	// =========================================================================
 	// STEP 7: Headless Telegram Bot Connection Registration

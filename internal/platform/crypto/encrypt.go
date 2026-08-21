@@ -6,10 +6,9 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
-	"encoding/pem"
 	"errors"
 )
+
 
 // Encryptor provides AES-256-GCM envelope encryption with a Key Encryption Key (KEK).
 type Encryptor struct {
@@ -142,37 +141,13 @@ func DecryptRSA(privateKey *rsa.PrivateKey, ciphertext []byte) ([]byte, error) {
 
 // DecryptRSAPem decrypts ciphertext using RSA-OAEP with SHA-256 from a PEM-encoded key.
 func DecryptRSAPem(privateKeyPem []byte, ciphertext []byte) ([]byte, error) {
-	block, _ := pem.Decode(privateKeyPem)
-	if block == nil {
-		return nil, errors.New("failed to parse PEM block containing the key")
-	}
-
-	var priv *rsa.PrivateKey
-	var err error
-
-	if block.Type == "RSA PRIVATE KEY" {
-		priv, err = x509.ParsePKCS1PrivateKey(block.Bytes)
-	} else if block.Type == "PRIVATE KEY" {
-		key, parseErr := x509.ParsePKCS8PrivateKey(block.Bytes)
-		if parseErr == nil {
-			var ok bool
-			priv, ok = key.(*rsa.PrivateKey)
-			if !ok {
-				err = errors.New("not an RSA private key")
-			}
-		} else {
-			err = parseErr
-		}
-	} else {
-		return nil, errors.New("unsupported PEM block type: " + block.Type)
-	}
-
+	priv, err := ParseRSAPrivateKeyFromPEM(privateKeyPem)
 	if err != nil {
 		return nil, err
 	}
-
 	return DecryptRSA(priv, ciphertext)
 }
+
 
 // DecryptAES128GCM decrypts ciphertext using AES-GCM.
 func DecryptAES128GCM(key, iv, ciphertext, tag []byte) ([]byte, error) {

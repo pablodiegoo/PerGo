@@ -17,10 +17,12 @@ import (
 	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/pkg/slug"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
 )
+
 
 // ConnectionRepo defines the repository methods required by ConnectionAPIHandler.
 type ConnectionRepo interface {
@@ -149,6 +151,7 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	connGroup.GET("/", h.List)
 	connGroup.GET("/:id/qr/stream", h.StreamQR)
 	connGroup.GET("/:id/qr", h.GetQR)
+	connGroup.GET("/:id/flow-public-key", h.GetFlowPublicKey)
 	connGroup.DELETE("/:id", h.Disconnect)
 
 	// Workspace-scoped canonical routes
@@ -162,6 +165,7 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	wsConnGroup.GET("/", h.List)
 	wsConnGroup.GET("/:id/qr/stream", h.StreamQR)
 	wsConnGroup.GET("/:id/qr", h.GetQR)
+	wsConnGroup.GET("/:id/flow-public-key", h.GetFlowPublicKey)
 	wsConnGroup.DELETE("/:id", h.Disconnect)
 
 	// Retrocompatible aliases
@@ -175,6 +179,7 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	devGroup.GET("/", h.List)
 	devGroup.GET("/:id/qr/stream", h.StreamQR)
 	devGroup.GET("/:id/qr", h.GetQR)
+	devGroup.GET("/:id/flow-public-key", h.GetFlowPublicKey)
 	devGroup.DELETE("/:id", h.Disconnect)
 
 	// Workspace-scoped aliases
@@ -188,6 +193,7 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	wsDevGroup.GET("/", h.List)
 	wsDevGroup.GET("/:id/qr/stream", h.StreamQR)
 	wsDevGroup.GET("/:id/qr", h.GetQR)
+	wsDevGroup.GET("/:id/flow-public-key", h.GetFlowPublicKey)
 	wsDevGroup.DELETE("/:id", h.Disconnect)
 }
 
@@ -248,6 +254,7 @@ type StoredWABAConfig struct {
 	WABAAccountID string `json:"waba_account_id"`
 	VerifyToken   string `json:"verify_token,omitempty"`
 	AppSecret     string `json:"app_secret,omitempty"`
+	PrivateKey    string `json:"private_key,omitempty"`
 }
 
 // StoredTelegramConfig represents the credentials stored in the database for a Telegram Bot connection.
@@ -267,7 +274,9 @@ type CreateWABAConnectionRequest struct {
 	AppSecret          string `json:"app_secret,omitempty"`
 	DisplayPhoneNumber string `json:"display_phone_number,omitempty"`
 	VerifiedName       string `json:"verified_name,omitempty"`
+	PrivateKey         string `json:"private_key,omitempty"`
 }
+
 
 // CreateWABA registers a new WhatsApp Cloud (WABA) connection headless via REST API.
 // POST /api/v1/connections/waba & POST /api/v1/workspaces/:workspace_id/connections/waba
@@ -343,13 +352,34 @@ func (h *ConnectionAPIHandler) CreateWABA(c *echo.Context) error {
 
 	candidateSlug := h.generateUniqueSlug(ctx, wsID, name, "waba")
 
+	privateKeyPEM := strings.TrimSpace(req.PrivateKey)
+	if privateKeyPEM != "" {
+		if _, err := crypto.ParseRSAPrivateKeyFromPEM([]byte(privateKeyPEM)); err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"code":    "bad_request",
+				"message": fmt.Sprintf("invalid private_key: %v", err),
+			})
+		}
+	} else {
+		privPEM, _, err := crypto.GenerateRSAKeyPair2048()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"code":    "internal_error",
+				"message": fmt.Sprintf("failed to generate RSA keypair: %v", err),
+			})
+		}
+		privateKeyPEM = privPEM
+	}
+
 	wabaCfg := StoredWABAConfig{
 		PhoneNumberID: phoneNumberID,
 		Token:         token,
 		WABAAccountID: wabaAccountID,
 		VerifyToken:   strings.TrimSpace(req.VerifyToken),
 		AppSecret:     strings.TrimSpace(req.AppSecret),
+		PrivateKey:    privateKeyPEM,
 	}
+
 
 	credentialsJSON, err := json.Marshal(wabaCfg)
 	if err != nil {
@@ -932,3 +962,85 @@ func (h *ConnectionAPIHandler) Disconnect(c *echo.Context) error {
 		"connection_id": id,
 	})
 }
+
+// FlowPublicKeyResponse defines the response returned by GetFlowPublicKey.
+type FlowPublicKeyResponse struct {
+	PublicKeyPEM string `json:"public_key_pem"`
+}
+
+// GetFlowPublicKey returns the PEM-encoded 2048-bit RSA public key formatted for Meta Flow Builder registration.
+// GET /api/v1/connections/:id/flow-public-key & GET /api/v1/workspaces/:workspace_id/connections/:id/flow-public-key
+func (h *ConnectionAPIHandler) GetFlowPublicKey(c *echo.Context) error {
+	wsID, err := h.resolveWorkspaceID(c)
+	if err != nil {
+		if strings.Contains(err.Error(), "mismatch") {
+			return c.JSON(http.StatusForbidden, map[string]string{
+				"code":    "forbidden",
+				"message": err.Error(),
+			})
+		}
+		return c.JSON(http.StatusUnauthorized, map[string]string{
+			"code":    "unauthorized",
+			"message": err.Error(),
+		})
+	}
+
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil || idStr == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "connection ID is required",
+		})
+	}
+
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "invalid connection ID format",
+		})
+	}
+
+	if h.repo == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"code":    "internal_error",
+			"message": "connection repository not configured",
+		})
+	}
+
+	conn, err := h.repo.GetByID(c.Request().Context(), id)
+	if err != nil || conn == nil || conn.WorkspaceID != wsID {
+		return c.JSON(http.StatusNotFound, map[string]string{
+			"code":    "not_found",
+			"message": "connection not found",
+		})
+	}
+
+	if conn.Channel != "whatsapp_cloud" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "connection is not a WhatsApp Cloud connection",
+		})
+	}
+
+	privKey, err := crypto.LoadRSAPrivateKey(conn.Credentials, nil)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": fmt.Sprintf("failed to load flow RSA key: %v", err),
+		})
+	}
+
+	pubPEM, err := crypto.ExportRSAPublicKeyPEM(privKey)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"code":    "internal_error",
+			"message": fmt.Sprintf("failed to export flow public key: %v", err),
+		})
+	}
+
+	return c.JSON(http.StatusOK, FlowPublicKeyResponse{
+		PublicKeyPEM: pubPEM,
+	})
+}
+

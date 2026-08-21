@@ -106,6 +106,16 @@ templ ConnectionRow(conn *repository.Connection) {
 				>
 					Inbox
 				</a>
+				if conn.Channel == "whatsapp_cloud" {
+					<button
+						class="btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold"
+						hx-get={ "/admin/devices/flow-key?id=" + conn.ID.String() }
+						hx-target="body"
+						hx-swap="beforeend"
+					>
+						Chave Flows
+					</button>
+				}
 				<button
 					class="btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold"
 					hx-get={ "/admin/devices/test?id=" + conn.ID.String() }
@@ -230,7 +240,13 @@ templ PairForm() {
 							<label for="waba_verify_token" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Verify Token (Optional)</label>
 							<input type="text" id="waba_verify_token" name="verify_token" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full"/>
 						</div>
+						<div class="flex flex-col gap-1">
+							<label for="waba_private_key" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Flows Private Key PEM (Opcional)</label>
+							<textarea id="waba_private_key" name="private_key" rows="3" class="form-input border border-zinc-300 rounded-md px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white w-full" placeholder="-----BEGIN RSA PRIVATE KEY-----&#10;...&#10;-----END RSA PRIVATE KEY-----&#10;(deixe em branco para gerar automaticamente)"></textarea>
+							<p class="text-[11px] text-zinc-400">Chave RSA de 2048 bits para Meta Flows. Se deixada em branco, um par de chaves será gerado automaticamente.</p>
+						</div>
 					</div>
+
 
 					<!-- Telegram Fields -->
 					<div id="fields-telegram" style="display: none;" class="space-y-4">
@@ -620,3 +636,75 @@ templ TestEventRow(eventType string, badgeClass string, title string, timeStr st
 		</div>
 	</div>
 }
+
+// FlowKeyModal renders a modal displaying the Meta Flows 2048-bit RSA public key with a copy button.
+templ FlowKeyModal(conn *repository.Connection, publicKeyPEM string) {
+	<div class="modal-backdrop" role="presentation" onclick="this.closest('.modal-backdrop').remove()" onkeydown="if(event.key === 'Escape') this.closest('.modal-backdrop').remove()" tabindex="0">
+		<div class="custom-modal w-full max-w-lg" role="dialog" aria-modal="true" aria-labelledby="flow-key-modal-title" onclick="event.stopPropagation()">
+			<div class="modal-header border-b pb-3 mb-4 flex items-center justify-between">
+				<div>
+					<h3 id="flow-key-modal-title" class="text-lg font-bold text-zinc-900">Meta Flows: Chave Pública</h3>
+					<p class="text-xs text-zinc-500 font-mono mt-0.5">{ conn.Name } ({ conn.SenderIdentity })</p>
+				</div>
+				<button type="button" class="text-zinc-400 hover:text-zinc-600 text-lg font-bold p-1 leading-none" onclick="this.closest('.modal-backdrop').remove()">&times;</button>
+			</div>
+			<div class="modal-body space-y-4">
+				<div class="rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1">
+					<p class="font-semibold">Como usar no Meta Flow Builder:</p>
+					<p>Copie a chave pública abaixo e cole no seu WhatsApp Flow (no Meta Business Manager ou Flow Builder em <strong>Flow Settings &gt; Endpoint encryption</strong>) para registrar este endpoint.</p>
+				</div>
+
+				<div class="flex flex-col gap-1.5">
+					<div class="flex items-center justify-between">
+						<label for="flow-pub-key-textarea" class="text-xs font-semibold text-zinc-600 uppercase tracking-wider">Chave Pública RSA (2048 bits PEM)</label>
+						<button
+							type="button"
+							id="copy-flow-key-btn"
+							class="text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer"
+							onclick="
+								const textarea = document.getElementById('flow-pub-key-textarea');
+								if (textarea) {
+									navigator.clipboard.writeText(textarea.value);
+									this.innerText = '✓ Copiado!';
+									setTimeout(() => this.innerText = 'Copiar Chave', 2000);
+								}
+							"
+						>
+							Copiar Chave
+						</button>
+					</div>
+					<textarea
+						id="flow-pub-key-textarea"
+						readonly
+						rows="8"
+						class="form-input border border-zinc-300 rounded-md p-2.5 text-xs font-mono bg-zinc-50 text-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent w-full select-all"
+					>{ publicKeyPEM }</textarea>
+				</div>
+			</div>
+			<div class="modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6">
+				<button
+					type="button"
+					class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center"
+					onclick="this.closest('.modal-backdrop').remove()"
+				>
+					Fechar
+				</button>
+				<button
+					type="button"
+					class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5"
+					onclick="
+						const textarea = document.getElementById('flow-pub-key-textarea');
+						if (textarea) {
+							navigator.clipboard.writeText(textarea.value);
+							this.innerText = '✓ Copiado com Sucesso!';
+							setTimeout(() => this.innerText = 'Copiar e Fechar', 2000);
+						}
+					"
+				>
+					Copiar e Fechar
+				</button>
+			</div>
+		</div>
+	</div>
+}
+

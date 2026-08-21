@@ -693,3 +693,204 @@ func TestDeviceHandler_TestConnectionModal_DynamicTemplateAttributes(t *testing.
 	}
 }
 
+// TestDeviceHandler_FlowKeyModal_Rendering verifies that FlowKeyModal renders public key PEM and copy button.
+func TestDeviceHandler_FlowKeyModal_Rendering(t *testing.T) {
+	_, pubPEM, err := crypto.GenerateRSAKeyPair2048()
+	if err != nil {
+		t.Fatalf("failed to generate RSA key: %v", err)
+	}
+
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    uuid.New(),
+		Name:           "WABA Flows Test",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+5511999990000",
+		Status:         "connected",
+	}
+
+	var buf strings.Builder
+	comp := pages.FlowKeyModal(conn, pubPEM)
+	if err := comp.Render(context.Background(), &buf); err != nil {
+		t.Fatalf("failed to render FlowKeyModal: %v", err)
+	}
+
+	html := buf.String()
+
+	if !strings.Contains(html, "Meta Flows: Chave Pública") {
+		t.Errorf("expected modal title in rendered HTML")
+	}
+	if !strings.Contains(html, "WABA Flows Test") {
+		t.Errorf("expected connection name in rendered HTML")
+	}
+	if !strings.Contains(html, "BEGIN PUBLIC KEY") {
+		t.Errorf("expected public key PEM in rendered HTML")
+	}
+	if !strings.Contains(html, "flow-pub-key-textarea") {
+		t.Errorf("expected flow-pub-key-textarea in rendered HTML")
+	}
+	if !strings.Contains(html, "navigator.clipboard.writeText") {
+		t.Errorf("expected clipboard copy JS in rendered HTML")
+	}
+}
+
+// TestDeviceHandler_WABA_FlowKey_Integration tests WABA RSA key provisioning and the FlowKey handler.
+func TestDeviceHandler_WABA_FlowKey_Integration(t *testing.T) {
+	dsn := os.Getenv("PERGO_DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		dsnFallback := "postgres://postgres:postgres@localhost:5433/pergo?sslmode=disable"
+		pool, err = pgxpool.New(ctx, dsnFallback)
+		if err != nil {
+			t.Skip("PostgreSQL not available for testing")
+		}
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		t.Skip("PostgreSQL ping failed")
+	}
+
+	enc, err := crypto.NewEncryptor([]byte("dev-development-key-32-bytes-kek"))
+	if err != nil {
+		t.Fatalf("failed to init encryptor: %v", err)
+	}
+	connRepo := repository.NewConnectionRepository(pool, enc)
+	wsRepo := repository.NewWorkspaceRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "Test Workspace WABA Flows")
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	otherWS, err := wsRepo.Create(ctx, "Other Workspace WABA Flows")
+	if err != nil {
+		t.Fatalf("failed to create other workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, otherWS.ID) }()
+
+	h := &admin.DeviceHandler{
+		Connections: connRepo,
+	}
+
+	e := echo.New()
+
+	privPEM, pubPEM, err := crypto.GenerateRSAKeyPair2048()
+	if err != nil {
+		t.Fatalf("failed to generate RSA key: %v", err)
+	}
+
+	wabaCreds, _ := json.Marshal(map[string]string{
+		"phone_number_id": "11223344",
+		"token":           "tok123",
+		"waba_account_id": "acc123",
+		"private_key":     privPEM,
+	})
+
+	conn := &repository.Connection{
+		WorkspaceID:    ws.ID,
+		Name:           "WABA Cloud Flow Device",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+5511999990001",
+		Status:         "connected",
+		Credentials:    wabaCreds,
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("failed to create connection: %v", err)
+	}
+
+	t.Run("FlowKey - Success returns 200 with public key modal", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/admin/devices/flow-key?id="+conn.ID.String(), nil)
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := h.FlowKey(c); err != nil {
+			t.Fatalf("FlowKey returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d", rec.Code)
+		}
+		body := rec.Body.String()
+		if !strings.Contains(body, pubPEM) && !strings.Contains(body, "BEGIN PUBLIC KEY") {
+			t.Errorf("expected body to contain public key PEM, got: %s", body)
+		}
+		if !strings.Contains(body, "Meta Flows: Chave Pública") {
+			t.Errorf("expected body to contain modal header")
+		}
+	})
+
+	t.Run("FlowKey - Cross-tenant returns 404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/admin/devices/flow-key?id="+conn.ID.String(), nil)
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: otherWS.ID.String()})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := h.FlowKey(c); err != nil {
+			t.Fatalf("FlowKey returned error: %v", err)
+		}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected status 404 for cross-tenant, got %d", rec.Code)
+		}
+	})
+
+	t.Run("FlowKey - Non-WABA returns 400", func(t *testing.T) {
+		tgConn := &repository.Connection{
+			WorkspaceID:    ws.ID,
+			Name:           "TG Device",
+			Channel:        "telegram",
+			SenderIdentity: "@TestBot",
+			Status:         "connected",
+		}
+		if err := connRepo.Create(ctx, tgConn); err != nil {
+			t.Fatalf("failed to create TG connection: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/admin/devices/flow-key?id="+tgConn.ID.String(), nil)
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := h.FlowKey(c); err != nil {
+			t.Fatalf("FlowKey returned error: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected status 400 for Telegram channel, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Create WABA - Rejects invalid RSA key", func(t *testing.T) {
+		fValues := make(url.Values)
+		fValues.Set("name", "Test WABA Invalid RSA")
+		fValues.Set("channel", "whatsapp_cloud")
+		fValues.Set("phone_number_id", "123456789")
+		fValues.Set("waba_account_id", "987654321")
+		fValues.Set("token", "dummy_token")
+		fValues.Set("private_key", "invalid-pem-data")
+
+		req := httptest.NewRequest(http.MethodPost, "/admin/devices/create", strings.NewReader(fValues.Encode()))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationForm)
+		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := h.Create(c); err != nil {
+			t.Fatalf("Create returned error: %v", err)
+		}
+
+		retarget := rec.Header().Get("HX-Retarget")
+		if retarget != "#modal-error-container" {
+			t.Errorf("expected HX-Retarget header, got %s", retarget)
+		}
+		if !strings.Contains(rec.Body.String(), "chave privada RSA inválida") {
+			t.Errorf("expected error message in response body, got %s", rec.Body.String())
+		}
+	})
+}
+
+

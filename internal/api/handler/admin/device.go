@@ -20,10 +20,12 @@ import (
 	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/pkg/slug"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
 	"github.com/pablojhp.pergo/templates/pages"
 )
+
 
 // DeviceHandler handles admin operations for unified connections management.
 type DeviceHandler struct {
@@ -230,9 +232,23 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 		wabaAccountID := c.FormValue("waba_account_id")
 		token := c.FormValue("token")
 		verifyToken := c.FormValue("verify_token")
+		privateKey := strings.TrimSpace(c.FormValue("private_key"))
 
 		if phoneNumberID == "" || wabaAccountID == "" || token == "" {
 			return c.String(http.StatusBadRequest, "phone_number_id, waba_account_id, and token are required")
+		}
+
+		if privateKey != "" {
+			if _, err := crypto.ParseRSAPrivateKeyFromPEM([]byte(privateKey)); err != nil {
+				validationErr = fmt.Errorf("chave privada RSA inválida: %w", err)
+			}
+		} else {
+			privPEM, _, err := crypto.GenerateRSAKeyPair2048()
+			if err != nil {
+				validationErr = fmt.Errorf("falha ao gerar par de chaves RSA: %w", err)
+			} else {
+				privateKey = privPEM
+			}
 		}
 
 		senderIdentity = phoneNumberID
@@ -250,16 +266,20 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 			Token:         token,
 			WABAAccountID: wabaAccountID,
 			VerifyToken:   verifyToken,
+			PrivateKey:    privateKey,
 		}
 
 		connID = uuid.New()
-		validationErr = h.syncTemplatesFromMeta(ctx, workspaceID, connID, wabaCfg, false)
+		if validationErr == nil {
+			validationErr = h.syncTemplatesFromMeta(ctx, workspaceID, connID, wabaCfg, false)
+		}
 		if validationErr == nil {
 			credentialsJSON, _ = json.Marshal(wabaCfg)
 		}
 	} else {
 		return c.String(http.StatusBadRequest, "unsupported channel type for synchronous creation")
 	}
+
 
 	if validationErr != nil {
 		c.Response().Header().Set("HX-Retarget", "#modal-error-container")
@@ -405,6 +425,43 @@ func (h *DeviceHandler) TestForm(c *echo.Context) error {
 
 	return mw.Render(c, http.StatusOK, pages.TestConnectionModal(conn, templates))
 }
+
+// FlowKey renders the modal with the Meta Flows RSA public key.
+// GET /admin/devices/flow-key?id={id}
+func (h *DeviceHandler) FlowKey(c *echo.Context) error {
+	workspaceID := resolveWorkspaceIDOrNil(c)
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	idStr := c.QueryParam("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid connection ID")
+	}
+
+	conn, err := h.Connections.GetByID(c.Request().Context(), id)
+	if err != nil || conn == nil || conn.WorkspaceID != workspaceID {
+		return c.String(http.StatusNotFound, "connection not found")
+	}
+
+	if conn.Channel != "whatsapp_cloud" {
+		return c.String(http.StatusBadRequest, "connection is not a WhatsApp Cloud connection")
+	}
+
+	privKey, err := crypto.LoadRSAPrivateKey(conn.Credentials, nil)
+	if err != nil {
+		return c.String(http.StatusBadRequest, fmt.Sprintf("falha ao carregar chave RSA: %v", err))
+	}
+
+	pubPEM, err := crypto.ExportRSAPublicKeyPEM(privKey)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, fmt.Sprintf("falha ao exportar chave pública RSA: %v", err))
+	}
+
+	return mw.Render(c, http.StatusOK, pages.FlowKeyModal(conn, pubPEM))
+}
+
 
 // RunTest publishes a test outbound message to the messages.outbound JetStream subject.
 // POST /admin/devices/test

@@ -21,6 +21,7 @@ type WABAConfig struct {
 	Token         string `json:"token"`
 	WABAAccountID string `json:"waba_account_id"`
 	VerifyToken   string `json:"verify_token"`
+	PrivateKey    string `json:"private_key,omitempty"`
 }
 
 type TelegramConfig struct {
@@ -139,7 +140,7 @@ func WorkspaceRow(ws repository.Workspace) templ.Component {
 		var templ_7745c5c3_Var4 templ.SafeURL
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/admin/workspaces/%s", ws.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 80, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 82, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
@@ -152,7 +153,7 @@ func WorkspaceRow(ws repository.Workspace) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(ws.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 80, Col: 120}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 82, Col: 120}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
@@ -165,7 +166,7 @@ func WorkspaceRow(ws repository.Workspace) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(ws.CreatedAt.Format("02/01/2006 15:04"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 82, Col: 97}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 84, Col: 97}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
@@ -178,7 +179,7 @@ func WorkspaceRow(ws repository.Workspace) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/confirm-delete", ws.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 86, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 88, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 		if templ_7745c5c3_Err != nil {
@@ -291,7 +292,7 @@ func WorkspaceDetailContent(ws repository.Workspace, keys []repository.APIKey) t
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(ws.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 139, Col: 72}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 141, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {
@@ -304,7 +305,7 @@ func WorkspaceDetailContent(ws repository.Workspace, keys []repository.APIKey) t
 		var templ_7745c5c3_Var12 string
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(ws.ID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 155, Col: 80}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 157, Col: 80}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 		if templ_7745c5c3_Err != nil {
@@ -317,7 +318,7 @@ func WorkspaceDetailContent(ws repository.Workspace, keys []repository.APIKey) t
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(ws.CreatedAt.Format("02/01/2006 15:04:05"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 159, Col: 88}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 161, Col: 88}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -330,7 +331,7 @@ func WorkspaceDetailContent(ws repository.Workspace, keys []repository.APIKey) t
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(ws.UpdatedAt.Format("02/01/2006 15:04:05"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 163, Col: 88}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 165, Col: 88}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -343,7 +344,7 @@ func WorkspaceDetailContent(ws repository.Workspace, keys []repository.APIKey) t
 		var templ_7745c5c3_Var15 string
 		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/workspaces/%s/keys/new", ws.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 173, Col: 64}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/workspaces.templ`, Line: 175, Col: 64}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 		if templ_7745c5c3_Err != nil {
