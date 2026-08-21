@@ -1,0 +1,1033 @@
+openapi: 3.1.0
+info:
+  title: PerGo Omnichannel CPaaS API
+  version: 1.9.0
+  description: |
+    PerGo is a self-hosted, open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go.
+    It exposes a single unified REST API (`POST /messages`) that abstracts away multiple messaging providers
+    (WhatsApp Web via whatsmeow, WhatsApp Cloud WABA, Telegram, Instagram, and Email) with automatic fallback,
+    stateless Meta Flow execution, rich interactive components (buttons, lists, catalog products), and webhook signatures.
+servers:
+  - url: /
+    description: Current PerGo Instance Server
+security:
+  - BearerAuth: []
+
+paths:
+  /messages:
+    post:
+      summary: Send unified message
+      description: Dispatches an omnichannel message across WhatsApp, WhatsApp Cloud, Telegram, Instagram, or Email with optional automatic fallback, interactive menus, media, and templates.
+      operationId: sendMessage
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMessageRequest'
+      responses:
+        '202':
+          description: Message accepted and queued for asynchronous dispatch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateMessageResponse'
+        '400':
+          description: Invalid payload or validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Missing or invalid API key
+        '422':
+          description: Unprocessable entity or session window expired
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Rate limit or queue depth backpressure exceeded
+
+  /health:
+    get:
+      summary: Health check
+      description: Returns overall system health status.
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: System is healthy
+        '503':
+          description: System is unhealthy
+
+  /health/ready:
+    get:
+      summary: Readiness check
+      description: Verifies database and NATS JetStream connectivity.
+      operationId: getReadiness
+      security: []
+      responses:
+        '200':
+          description: System is ready to accept traffic
+        '503':
+          description: Underlying services are not ready
+
+  /health/live:
+    get:
+      summary: Liveness check
+      description: Fast liveness check for container orchestrators.
+      operationId: getLiveness
+      security: []
+      responses:
+        '200':
+          description: Process is running
+
+  /docs:
+    get:
+      summary: Developer documentation portal
+      description: Renders the embedded standalone Scalar developer documentation portal.
+      operationId: getDocs
+      security: []
+      responses:
+        '200':
+          description: Scalar API documentation HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /docs/openapi.yaml:
+    get:
+      summary: OpenAPI 3.1 YAML Specification
+      description: Returns the raw OpenAPI 3.1 YAML specification directly from embedded binary assets.
+      operationId: getOpenAPISpec
+      security: []
+      responses:
+        '200':
+          description: OpenAPI 3.1 YAML document
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /openapi.yaml:
+    get:
+      summary: OpenAPI specification alias
+      description: Alias endpoint delivering the OpenAPI 3.1 specification.
+      operationId: getOpenAPIAlias
+      security: []
+      responses:
+        '200':
+          description: OpenAPI 3.1 YAML document
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /docs/scalar.js:
+    get:
+      summary: Standalone Scalar JavaScript asset
+      description: Delivers the offline compiled Scalar JavaScript bundle.
+      operationId: getScalarJS
+      security: []
+      responses:
+        '200':
+          description: JavaScript bundle
+          content:
+            application/javascript:
+              schema:
+                type: string
+
+  /api/v1/me:
+    get:
+      summary: Authenticated workspace profile
+      description: Returns the active workspace ID resolved from the Bearer API key or session.
+      operationId: getMe
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Workspace identity details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  workspace_id:
+                    type: string
+                    format: uuid
+
+  /api/v1/waba/flows/data-exchange:
+    post:
+      summary: Meta Flow Data Exchange Termination
+      description: |
+        Terminates Meta Flow asymmetric RSA and AES-128-GCM encryption, validates the stateless HMAC-SHA256 flow_token,
+        synchronously delegates decrypted screen transition requests to the workspace's flow_webhook_url, and returns
+        encrypted responses to Meta.
+      operationId: handleFlowDataExchange
+      security: []
+      parameters:
+        - name: connection_id
+          in: query
+          required: true
+          description: Connection UUID of the WhatsApp Cloud API provider
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlowDataExchangeRequest'
+      responses:
+        '200':
+          description: Encrypted base64 response payload returned to Meta
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Invalid request, malformed base64, or decryption failure
+        '500':
+          description: Cryptographic or internal server error
+
+  /api/v1/connections:
+    get:
+      summary: List connections
+      description: Returns all active messaging connections for the authenticated workspace.
+      operationId: listConnections
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of connections
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListConnectionsResponse'
+
+  /api/v1/connections/pair:
+    post:
+      summary: Start WhatsApp Web QR pairing
+      description: Initiates a new multi-device pairing session for WhatsApp Web via whatsmeow.
+      operationId: startPairing
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PairConnectionRequest'
+      responses:
+        '200':
+          description: Pairing session initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PairConnectionResponse'
+
+  /api/v1/connections/waba:
+    post:
+      summary: Create WhatsApp Cloud (WABA) connection
+      description: Registers a new WhatsApp Cloud API connection, generating or validating an RSA 2048-bit keypair for Meta Flows.
+      operationId: createWABAConnection
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWABAConnectionRequest'
+      responses:
+        '201':
+          description: WABA connection created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionItem'
+
+  /api/v1/connections/telegram:
+    post:
+      summary: Create Telegram connection
+      description: Registers a new Telegram Bot connection and registers the inbound webhook callback.
+      operationId: createTelegramConnection
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTelegramConnectionRequest'
+      responses:
+        '201':
+          description: Telegram connection created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionItem'
+
+  /api/v1/connections/{id}:
+    delete:
+      summary: Disconnect and delete connection
+      description: Closes active session sockets and removes the connection from the workspace.
+      operationId: deleteConnection
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Connection UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Connection deleted
+
+  /api/v1/connections/{id}/qr:
+    get:
+      summary: Get QR pairing status
+      description: Returns the latest QR pairing event or connection status.
+      operationId: getQR
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Connection UUID or phone identity
+          schema:
+            type: string
+      responses:
+        '200':
+          description: QR event status
+
+  /api/v1/connections/{id}/qr/stream:
+    get:
+      summary: Real-time QR SSE Stream
+      description: Streams real-time QR pairing updates via Server-Sent Events (SSE).
+      operationId: streamQR
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Connection UUID or phone identity
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Server-sent event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /api/v1/connections/{id}/flow-public-key:
+    get:
+      summary: Retrieve Meta Flow RSA public key
+      description: Returns the 2048-bit RSA public key formatted in PEM format for Meta Flow Builder registration.
+      operationId: getFlowPublicKey
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Connection UUID of the WhatsApp Cloud API provider
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: RSA public key in PEM format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlowPublicKeyResponse'
+
+  /api/v1/workspaces/webhook-secret:
+    get:
+      summary: Get workspace webhook secret
+      description: Returns the current HMAC-SHA256 webhook signing secret for the active workspace.
+      operationId: getWebhookSecret
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Webhook secret details
+    post:
+      summary: Generate or rotate webhook secret
+      description: Rotates the HMAC-SHA256 signing secret for the workspace.
+      operationId: rotateWebhookSecret
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Webhook secret rotated successfully
+
+  /api/v1/workspaces/flow-webhook-url:
+    post:
+      summary: Set Meta Flow downstream webhook URL
+      description: Configures the HTTP endpoint that receives decrypted Meta Flow dynamic screen requests.
+      operationId: setFlowWebhookURL
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                flow_webhook_url:
+                  type: string
+                  format: uri
+      responses:
+        '200':
+          description: Flow webhook URL configured successfully
+
+  /api/v1/webhooks/subscriptions:
+    get:
+      summary: List webhook subscriptions
+      description: Returns all configured webhook subscriptions for the workspace.
+      operationId: listWebhookSubscriptions
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of webhook subscriptions
+    post:
+      summary: Create webhook subscription
+      description: Subscribes a URL to specific messaging and connection events with HMAC signatures.
+      operationId: createWebhookSubscription
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+                - events
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Subscription created
+
+  /api/v1/campaigns:
+    get:
+      summary: List broadcast campaigns
+      description: Returns all broadcast campaigns in the workspace.
+      operationId: listCampaigns
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of campaigns
+    post:
+      summary: Create broadcast campaign
+      description: Schedules or creates a bulk messaging campaign with deep variable interpolation.
+      operationId: createCampaign
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - connection_id
+              properties:
+                name:
+                  type: string
+                connection_id:
+                  type: string
+                  format: uuid
+                body:
+                  type: string
+                interactive:
+                  $ref: '#/components/schemas/Interactive'
+      responses:
+        '201':
+          description: Campaign created
+
+  /api/v1/waba/templates:
+    get:
+      summary: List WABA templates
+      description: Returns all synced WhatsApp Business Cloud templates in the workspace.
+      operationId: listWABATemplates
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of templates
+    post:
+      summary: Create WABA template
+      description: Submits a new template to Meta for review and approval.
+      operationId: createWABATemplate
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - category
+                - language
+                - components
+              properties:
+                name:
+                  type: string
+                category:
+                  type: string
+                language:
+                  type: string
+                components:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/TemplateComponent'
+      responses:
+        '201':
+          description: Template submitted
+
+  /api/v1/workspaces:
+    get:
+      summary: List workspaces
+      description: Returns workspaces accessible to the authenticated caller.
+      operationId: listWorkspaces
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of workspaces
+    post:
+      summary: Provision workspace
+      description: Provisions a new multi-tenant workspace with isolated data and credentials.
+      operationId: createWorkspace
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Workspace provisioned
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: APIKey
+      description: Workspace API Key generated from the admin or developer console.
+
+  schemas:
+    CreateMessageRequest:
+      type: object
+      required:
+        - to
+        - channel
+      properties:
+        to:
+          type: string
+          description: Recipient phone number in E.164 format or Telegram chat ID.
+          example: "+5511999998888"
+        from:
+          type: string
+          description: Sender identity or connection slug override.
+          example: "+5511988887777"
+        channel:
+          type: string
+          enum: [whatsapp, whatsapp_cloud, telegram, instagram, email, email_ses, email_smtp, email_mautic]
+          example: "whatsapp_cloud"
+        body:
+          type: string
+          description: Plain text body content (required if media, template, interactive, or product are omitted).
+          example: "Olá! Como podemos ajudar hoje?"
+        type:
+          type: string
+          enum: [text, media, template, interactive, product, product_list]
+          description: Optional explicit message type identifier.
+        media:
+          $ref: '#/components/schemas/Media'
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+          description: Arbitrary key-value metadata preserved in trace logs and inbound correlation.
+        ttl_seconds:
+          type: integer
+          minimum: 1
+          description: Time-to-live in seconds before queue expiry.
+          example: 3600
+        template_name:
+          type: string
+          description: Approved Meta WABA template name.
+        language:
+          type: string
+          description: Template language code (e.g. pt_BR, en_US).
+          example: "pt_BR"
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateComponent'
+        fallback_channels:
+          type: array
+          items:
+            type: string
+          description: Ordered list of fallback channel identifiers.
+          example: ["whatsapp", "telegram"]
+        fallback_behavior:
+          type: string
+          enum: [degrade, fail]
+          default: degrade
+          description: Degradation policy when target channel lacks native interactive capabilities.
+        interactive:
+          $ref: '#/components/schemas/Interactive'
+        product:
+          $ref: '#/components/schemas/ProductPayload'
+        channel_overrides:
+          type: object
+          additionalProperties: true
+          description: Channel-specific native parameters passed directly to downstream adapters.
+
+    CreateMessageResponse:
+      type: object
+      required:
+        - message_id
+        - status
+        - queued_at
+      properties:
+        message_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued, sent, delivered, read, failed]
+          example: "queued"
+        queued_at:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          example: "invalid_payload"
+        message:
+          type: string
+          example: "request body validation failed"
+        more_info:
+          type: string
+          format: uri
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+
+    FieldError:
+      type: object
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+          example: "to"
+        message:
+          type: string
+          example: "is required and must be in E.164 format"
+
+    Media:
+      type: object
+      required:
+        - media_url
+        - media_type
+      properties:
+        media_url:
+          type: string
+          format: uri
+          example: "https://example.com/files/invoice.pdf"
+        media_type:
+          type: string
+          enum: [image, document, audio, video]
+          example: "document"
+        filename:
+          type: string
+          example: "invoice.pdf"
+        caption:
+          type: string
+          example: "Sua fatura do mês de agosto."
+
+    TemplateComponent:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [header, body, button]
+        parameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateParameter'
+
+    TemplateParameter:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [text, currency, date_time, image, document, video]
+        text:
+          type: string
+          example: "Carlos"
+
+    Interactive:
+      type: object
+      required:
+        - type
+        - body
+        - action
+      properties:
+        type:
+          type: string
+          enum: [button, list, flow]
+          description: Interactive message component type.
+        header:
+          $ref: '#/components/schemas/TextContent'
+        body:
+          $ref: '#/components/schemas/TextContent'
+        footer:
+          $ref: '#/components/schemas/TextContent'
+        action:
+          $ref: '#/components/schemas/Action'
+
+    TextContent:
+      type: object
+      required:
+        - text
+      properties:
+        text:
+          type: string
+          example: "Escolha uma das opções abaixo:"
+
+    Action:
+      type: object
+      properties:
+        button:
+          type: string
+          description: Label text for the main list menu button.
+          example: "Ver Serviços"
+        buttons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Button'
+          description: Up to 3 quick reply buttons.
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/Section'
+          description: Up to 10 list sections containing selectable rows.
+        flow_token:
+          type: string
+          description: Optional custom flow token; auto-generated with HMAC-SHA256 if omitted.
+        flow_id:
+          type: string
+          description: Meta Flow ID configured in WhatsApp Business Manager.
+          example: "123456789012345"
+        flow_cta:
+          type: string
+          description: CTA button label displayed on the WhatsApp Flow bubble.
+          example: "Abrir Cadastro"
+        flow_action:
+          type: string
+          enum: [navigate, data_exchange]
+          default: navigate
+        flow_action_payload:
+          type: object
+          additionalProperties: true
+          description: Initial screen parameters and pre-populated form fields.
+
+    Button:
+      type: object
+      required:
+        - type
+        - reply
+      properties:
+        type:
+          type: string
+          enum: [reply]
+          default: reply
+        reply:
+          $ref: '#/components/schemas/Reply'
+
+    Reply:
+      type: object
+      required:
+        - id
+        - title
+      properties:
+        id:
+          type: string
+          example: "btn_suporte"
+        title:
+          type: string
+          example: "Suporte Técnico"
+
+    Section:
+      type: object
+      required:
+        - rows
+      properties:
+        title:
+          type: string
+          example: "Planos Disponíveis"
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/Row'
+
+    Row:
+      type: object
+      required:
+        - id
+        - title
+      properties:
+        id:
+          type: string
+          example: "row_pro"
+        title:
+          type: string
+          example: "Plano Pro"
+        description:
+          type: string
+          example: "Acesso total a todas as integrações"
+
+    ProductPayload:
+      type: object
+      properties:
+        catalog_id:
+          type: string
+          example: "cat_987654321"
+        product_retailer_id:
+          type: string
+          example: "sku_prod_001"
+        header:
+          type: string
+        body:
+          type: string
+        footer:
+          type: string
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductSection'
+
+    ProductSection:
+      type: object
+      properties:
+        title:
+          type: string
+          example: "Lançamentos"
+        product_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductItem'
+
+    ProductItem:
+      type: object
+      required:
+        - product_retailer_id
+      properties:
+        product_retailer_id:
+          type: string
+          example: "prod_camisa_azul"
+        item_price:
+          type: number
+          example: 89.90
+        currency:
+          type: string
+          example: "BRL"
+        quantity:
+          type: integer
+          example: 1
+
+    FlowDataExchangeRequest:
+      type: object
+      required:
+        - encrypted_flow_data
+        - encrypted_aes_key
+        - initial_vector
+      properties:
+        encrypted_flow_data:
+          type: string
+          description: Base64-encoded ciphertext and 16-byte GCM authentication tag.
+        encrypted_aes_key:
+          type: string
+          description: Base64-encoded 128-bit AES session key encrypted with connection RSA public key.
+        initial_vector:
+          type: string
+          description: Base64-encoded 12-byte initialization vector.
+
+    FlowPublicKeyResponse:
+      type: object
+      required:
+        - public_key_pem
+      properties:
+        public_key_pem:
+          type: string
+          description: 2048-bit RSA public key formatted in standard PEM encoding.
+
+    ConnectionItem:
+      type: object
+      required:
+        - id
+        - name
+        - slug
+        - channel
+        - sender_identity
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        channel:
+          type: string
+        sender_identity:
+          type: string
+        status:
+          type: string
+        is_default:
+          type: boolean
+        connected_since:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListConnectionsResponse:
+      type: object
+      required:
+        - connections
+      properties:
+        connections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectionItem'
+
+    PairConnectionRequest:
+      type: object
+      required:
+        - channel
+      properties:
+        channel:
+          type: string
+          enum: [whatsapp]
+        phone:
+          type: string
+        name:
+          type: string
+        proxy_url:
+          type: string
+
+    PairConnectionResponse:
+      type: object
+      required:
+        - connection_id
+        - status
+        - message
+      properties:
+        connection_id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+
+    CreateWABAConnectionRequest:
+      type: object
+      required:
+        - phone_number_id
+        - waba_account_id
+        - token
+      properties:
+        name:
+          type: string
+        phone_number_id:
+          type: string
+        waba_account_id:
+          type: string
+        token:
+          type: string
+        verify_token:
+          type: string
+        app_secret:
+          type: string
+        display_phone_number:
+          type: string
+        verified_name:
+          type: string
+        private_key:
+          type: string
+          description: Optional RSA private key PEM override. If omitted, PerGo auto-generates a 2048-bit keypair.
+
+    CreateTelegramConnectionRequest:
+      type: object
+      required:
+        - token
+      properties:
+        name:
+          type: string
+        token:
+          type: string
+        secret_token:
+          type: string

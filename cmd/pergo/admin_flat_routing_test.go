@@ -231,7 +231,7 @@ func setupFlatRoutingEcho(t *testing.T) (*echo.Echo, *repository.Workspace) {
 
 	// Handlers
 	wabaTemplateHandler := admin.NewWABATemplateHandler(wabaTemplateRepo, connRepo)
-	headlessAdminHandler := admin.NewHeadlessAdminHandler(wsRepo, apiKeyRepo, []byte("testsecret"), "http://localhost:8080")
+	developerHandler := admin.NewDeveloperHandler(wsRepo, apiKeyRepo, []byte("testsecret"), "http://localhost:8080")
 	chatwootAdminHandler := admin.NewChatwootAdminHandler(integrationRepo)
 	typebotAdminHandler := admin.NewTypebotSettingsHandler(integrationRepo, connRepo)
 	webhookHandler := admin.NewWebhookDLQHandler(webhookDLQRepo, webhookSubRepo, wsRepo, nil)
@@ -246,8 +246,15 @@ func setupFlatRoutingEcho(t *testing.T) (*echo.Echo, *repository.Workspace) {
 	adminGroup.DELETE("/templates/:template_id", wabaTemplateHandler.Delete)
 	adminGroup.POST("/templates/preview", wabaTemplateHandler.Preview)
 
-	adminGroup.GET("/integrations/headless", headlessAdminHandler.GetPortal)
-	adminGroup.POST("/integrations/headless/sso-generate", headlessAdminHandler.GenerateSSO)
+	adminGroup.GET("/developers", developerHandler.GetPortal)
+	adminGroup.POST("/developers/keys", developerHandler.CreateAPIKey)
+	adminGroup.DELETE("/developers/keys/:key_id", developerHandler.RevokeAPIKey)
+	adminGroup.POST("/developers/webhook-secret/rotate", developerHandler.RotateWebhookSecret)
+	adminGroup.POST("/developers/sandbox/test", developerHandler.SandboxTest)
+	adminGroup.POST("/developers/sso-generate", developerHandler.GenerateSSO)
+
+	adminGroup.GET("/integrations/headless", developerHandler.GetPortal)
+	adminGroup.POST("/integrations/headless/sso-generate", developerHandler.GenerateSSO)
 	adminGroup.GET("/integrations/chatwoot", chatwootAdminHandler.GetSettings)
 	adminGroup.POST("/integrations/chatwoot", chatwootAdminHandler.PostSettings)
 	adminGroup.GET("/integrations/typebot", typebotAdminHandler.GetSettings)
@@ -297,6 +304,7 @@ func TestFlatAdminRouting_Render200(t *testing.T) {
 		"/admin/templates/new",
 		"/admin/webhooks",
 		"/admin/webhooks/subscriptions/new",
+		"/admin/developers",
 		"/admin/integrations/headless",
 		"/admin/integrations/chatwoot",
 		"/admin/integrations/typebot",

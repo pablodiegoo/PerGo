@@ -1,0 +1,696 @@
+package pages
+
+import (
+	"fmt"
+
+	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/layout"
+)
+
+type DeveloperPortalData struct {
+	Workspace       repository.Workspace
+	APIKeys         []repository.APIKey
+	BaseURL         string
+	SSOInitialURL   string
+	SSOInitialToken string
+	ErrorMessage    string
+	SuccessMessage  string
+}
+
+type SandboxResultData struct {
+	Status         string // "valid" | "invalid" | "error"
+	ErrorMessage   string
+	FieldErrors    []domain.FieldError
+	Channel        string
+	Recipient      string
+	MessageType    string
+	DegradedText   string
+	RawJSON        string
+	FallbackPolicy string
+}
+
+templ DeveloperTabs(workspaceID uuid.UUID, activeTab string) {
+	<div class="flex border-b border-zinc-200 mb-8 space-x-8">
+		<a
+			href="/admin/developers"
+			class={ "pb-4 text-sm font-semibold transition-colors border-b-2 flex items-center gap-2", 
+				templ.KV("border-zinc-950 text-zinc-950", activeTab == "developers"), 
+				templ.KV("border-transparent text-zinc-500 hover:text-zinc-800 hover:border-zinc-300", activeTab != "developers") }
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+			</svg>
+			<span>Console de Desenvolvedores & Sandbox</span>
+		</a>
+		<a
+			href="/admin/integrations/chatwoot"
+			class={ "pb-4 text-sm font-semibold transition-colors border-b-2 flex items-center gap-2", 
+				templ.KV("border-zinc-950 text-zinc-950", activeTab == "chatwoot"), 
+				templ.KV("border-transparent text-zinc-500 hover:text-zinc-800 hover:border-zinc-300", activeTab != "chatwoot") }
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+			</svg>
+			<span>Chatwoot</span>
+		</a>
+		<a
+			href="/admin/integrations/typebot"
+			class={ "pb-4 text-sm font-semibold transition-colors border-b-2 flex items-center gap-2", 
+				templ.KV("border-zinc-950 text-zinc-950", activeTab == "typebot"), 
+				templ.KV("border-transparent text-zinc-500 hover:text-zinc-800 hover:border-zinc-300", activeTab != "typebot") }
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+			</svg>
+			<span>Typebot</span>
+		</a>
+	</div>
+}
+
+// DeveloperPage renders the full developer page with layout.
+templ DeveloperPage(data DeveloperPortalData) {
+	@layout.Base(fmt.Sprintf("%s - Desenvolvedores & API", data.Workspace.Name), DeveloperContent(data))
+}
+
+// DeveloperContent renders the developer console content.
+templ DeveloperContent(data DeveloperPortalData) {
+	<div class="border-b border-zinc-200 pb-5 mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+		<div>
+			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Desenvolvedores: { data.Workspace.Name }</h1>
+			<p class="text-zinc-500 text-sm mt-1">Gerencie chaves de API, rotacione segredos de webhook, teste payloads interativos e acesse a documentação OpenAPI 3.1.</p>
+		</div>
+		<div class="flex items-center gap-3">
+			<a
+				href="/docs"
+				target="_blank"
+				class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5 shadow-sm"
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+				</svg>
+				<span>Abrir Scalar Docs (/docs) ↗</span>
+			</a>
+			<a
+				href="/docs/openapi.yaml"
+				target="_blank"
+				download="openapi.yaml"
+				class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-3 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5"
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+				</svg>
+				<span>OpenAPI 3.1 (YAML)</span>
+			</a>
+		</div>
+	</div>
+
+	@DeveloperTabs(data.Workspace.ID, "developers")
+
+	if data.ErrorMessage != "" {
+		<div class="alert bg-rose-50 text-rose-800 border border-rose-200 rounded-lg p-4 mb-6 flex flex-col items-start gap-1">
+			<h3 class="text-sm font-bold">Erro</h3>
+			<p class="text-xs text-rose-700">{ data.ErrorMessage }</p>
+		</div>
+	}
+	if data.SuccessMessage != "" {
+		<div class="alert bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg p-4 mb-6 flex flex-col items-start gap-1">
+			<h3 class="text-sm font-bold">Sucesso</h3>
+			<p class="text-xs text-emerald-700">{ data.SuccessMessage }</p>
+		</div>
+	}
+
+	<!-- Top Grid: Identifiers & API Keys -->
+	<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+		<!-- Workspace Credentials & Webhook Secret Card -->
+		<div class="lg:col-span-2 bg-white border border-zinc-200 rounded-lg p-6 shadow-sm flex flex-col justify-between">
+			<div>
+				<div class="flex items-center justify-between pb-4 mb-4 border-b border-zinc-100">
+					<div class="flex items-center gap-2">
+						<div class="p-2 rounded-md bg-zinc-900 text-white">
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+							</svg>
+						</div>
+						<div>
+							<h2 class="text-base font-bold text-zinc-900">Credenciais do Workspace & Webhook Secret</h2>
+							<p class="text-xs text-zinc-500">Parâmetros essenciais de autenticação e verificação de assinatura HMAC.</p>
+						</div>
+					</div>
+					<span class="badge badge-sm bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold px-2 py-0.5 text-xs">Ativo</span>
+				</div>
+
+				<div class="space-y-4 text-sm">
+					<div>
+						<label class="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Workspace ID</label>
+						<div class="flex items-center gap-2 bg-zinc-50 border border-zinc-200 rounded-md p-2">
+							<code id="workspace-id-val" class="text-xs font-mono text-zinc-800 font-medium flex-1 truncate">{ data.Workspace.ID.String() }</code>
+							<button
+								type="button"
+								class="btn btn-xs bg-zinc-900 hover:bg-zinc-800 text-white border-none rounded px-2.5 py-1 text-xs font-medium cursor-pointer transition"
+								onclick="navigator.clipboard.writeText(document.getElementById('workspace-id-val').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })"
+							>
+								Copiar
+							</button>
+						</div>
+					</div>
+
+					<div>
+						<label class="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">API Base URL</label>
+						<div class="flex items-center gap-2 bg-zinc-50 border border-zinc-200 rounded-md p-2">
+							<code id="base-url-val" class="text-xs font-mono text-zinc-800 font-medium flex-1 truncate">{ data.BaseURL }</code>
+							<button
+								type="button"
+								class="btn btn-xs bg-zinc-900 hover:bg-zinc-800 text-white border-none rounded px-2.5 py-1 text-xs font-medium cursor-pointer transition"
+								onclick="navigator.clipboard.writeText(document.getElementById('base-url-val').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })"
+							>
+								Copiar
+							</button>
+						</div>
+					</div>
+
+					<!-- Webhook Secret with In-Place Rotation -->
+					<div id="webhook-secret-container">
+						@WebhookSecretRow(data.Workspace.WebhookSecret)
+					</div>
+				</div>
+			</div>
+
+			<div class="mt-6 pt-4 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-500">
+				<span>Autenticação Bearer Token: <code class="font-mono bg-zinc-100 px-1 py-0.5 rounded text-zinc-800">Authorization: Bearer &lt;API_KEY&gt;</code></span>
+			</div>
+		</div>
+
+		<!-- API Keys Management Card -->
+		<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm flex flex-col justify-between">
+			<div>
+				<div class="flex items-center justify-between pb-4 mb-4 border-b border-zinc-100">
+					<div class="flex items-center gap-2">
+						<div class="p-2 rounded-md bg-zinc-100 text-zinc-800">
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+							</svg>
+						</div>
+						<h2 class="text-base font-bold text-zinc-900">Chaves de API</h2>
+					</div>
+					<span class="text-xs font-semibold text-zinc-500">{ fmt.Sprintf("%d ativa(s)", len(data.APIKeys)) }</span>
+				</div>
+
+				<p class="text-xs text-zinc-600 mb-3">
+					Chaves protegidas com hash SHA-256 no banco de dados.
+				</p>
+
+				<!-- API Keys List -->
+				<div id="api-keys-list-container" class="space-y-2 mb-4 max-h-44 overflow-y-auto">
+					@APIKeysList(data.APIKeys)
+				</div>
+			</div>
+
+			<!-- Generate API Key Form -->
+			<div class="pt-3 border-t border-zinc-100">
+				<form
+					hx-post="/admin/developers/keys"
+					hx-target="#api-keys-list-container"
+					hx-swap="innerHTML"
+					class="flex gap-2"
+				>
+					<input
+						type="text"
+						name="name"
+						placeholder="Nome da chave (ex: CRM Pro)"
+						required
+						class="form-input border border-zinc-300 rounded px-2.5 py-1 text-xs focus:ring-zinc-950 bg-white flex-1"
+					/>
+					<button
+						type="submit"
+						class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-xs font-semibold px-3 py-1.5 rounded transition shrink-0 flex items-center gap-1 cursor-pointer"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+						</svg>
+						<span>Criar Chave</span>
+					</button>
+				</form>
+			</div>
+		</div>
+	</div>
+
+	<!-- Interactive Payload Sandbox Testing -->
+	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8">
+		<div class="border-b border-zinc-100 pb-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+			<div>
+				<div class="flex items-center gap-2">
+					<span class="p-1.5 rounded bg-blue-100 text-blue-900">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+						</svg>
+					</span>
+					<h2 class="text-lg font-bold text-zinc-900">Sandbox de Teste de Payloads Interativos</h2>
+				</div>
+				<p class="text-xs text-zinc-500 mt-1">
+					Valide e simule a renderização e degradação de mensagens interativas (botões, listas, Meta Flows, catálogo) contra o contrato OpenAPI 3.1.
+				</p>
+			</div>
+			<div class="flex items-center gap-2">
+				<label for="sandbox-preset" class="text-xs font-semibold text-zinc-500">Preset:</label>
+				<select
+					id="sandbox-preset"
+					onchange="loadSandboxPreset(this.value)"
+					class="select select-bordered select-xs font-medium text-zinc-800 bg-zinc-50 border-zinc-300 rounded"
+				>
+					<option value="buttons" selected>Botões de Resposta Rápida (Reply Buttons)</option>
+					<option value="list">Menu de Lista (Interactive List)</option>
+					<option value="flow">Meta Flow CTA (Formulário Nativo)</option>
+					<option value="product">WhatsApp Produto Individual</option>
+					<option value="product_list">WhatsApp Lista Multi-Produtos</option>
+					<option value="text">Texto Simples com Fallback</option>
+				</select>
+			</div>
+		</div>
+
+		<form
+			hx-post="/admin/developers/sandbox/test"
+			hx-target="#sandbox-result-area"
+			hx-swap="innerHTML"
+			class="space-y-4"
+		>
+			<div>
+				<div class="flex items-center justify-between mb-1.5">
+					<label for="sandbox-payload" class="text-xs font-semibold text-zinc-600 uppercase tracking-wider">Payload JSON (POST /messages)</label>
+					<span class="text-[11px] text-zinc-400 font-mono">domain.CreateMessageRequest</span>
+				</div>
+				<textarea
+					id="sandbox-payload"
+					name="payload"
+					rows="12"
+					required
+					class="form-input font-mono text-xs text-zinc-800 bg-zinc-900 text-zinc-100 p-3.5 rounded-md border border-zinc-800 w-full leading-relaxed focus:ring-2 focus:ring-zinc-950"
+				></textarea>
+			</div>
+
+			<div class="flex items-center justify-between pt-2">
+				<div class="text-xs text-zinc-500 flex items-center gap-1.5">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<span>Validação sintática e semântica com verificação de regras de canal.</span>
+				</div>
+				<button
+					type="submit"
+					class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none btn-sm font-semibold px-5 py-2 rounded-md transition h-9 flex items-center gap-2 cursor-pointer"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					<span>Validar & Simular Payload</span>
+				</button>
+			</div>
+		</form>
+
+		<!-- Sandbox Validation Results Area -->
+		<div id="sandbox-result-area" class="mt-6"></div>
+	</div>
+
+	<!-- Interactive HMAC-SHA256 SSO URL Generator Tool -->
+	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8">
+		<div class="border-b border-zinc-100 pb-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+			<div>
+				<div class="flex items-center gap-2">
+					<span class="p-1.5 rounded bg-amber-100 text-amber-900">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+						</svg>
+					</span>
+					<h2 class="text-lg font-bold text-zinc-900">Gerador de Links de Single Sign-On (SSO)</h2>
+				</div>
+				<p class="text-xs text-zinc-500 mt-1">
+					Gere URLs assinadas com HMAC-SHA256 para embutir o console nativo do PerGo no seu CRM ou ERP.
+				</p>
+			</div>
+			<div class="flex items-center gap-2 text-xs font-medium text-amber-700 bg-amber-50 px-3 py-1.5 rounded-md border border-amber-200">
+				<span>TTL máximo: 120s (com proteção contra replay)</span>
+			</div>
+		</div>
+
+		<form
+			hx-post="/admin/developers/sso-generate"
+			hx-target="#sso-result-area"
+			hx-swap="innerHTML"
+			class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6"
+		>
+			<div class="flex flex-col gap-1.5 md:col-span-2">
+				<label for="sso-sub" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Identificador do Operador (sub/email)</label>
+				<input
+					type="text"
+					id="sso-sub"
+					name="sub"
+					value="operador@crm.local"
+					required
+					placeholder="ex: operador@empresa.com"
+					class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:ring-zinc-950 bg-white w-full"
+				/>
+			</div>
+
+			<div class="flex flex-col gap-1.5">
+				<label for="sso-redirect" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Página de Destino</label>
+				<select
+					id="sso-redirect"
+					name="redirect"
+					class="select select-bordered select-sm w-full font-medium text-zinc-800 bg-white border-zinc-300 h-9 rounded-md"
+				>
+					<option value="/admin/connections" selected>Conexões (/admin/connections)</option>
+					<option value="/admin/inbox">Live Inbox (/admin/inbox)</option>
+					<option value="/admin/campaigns">Campanhas (/admin/campaigns)</option>
+					<option value="/admin/developers">Desenvolvedores (/admin/developers)</option>
+					<option value="/admin/webhooks">Webhooks (/admin/webhooks)</option>
+					<option value="/admin/">Visão Geral (/admin/)</option>
+				</select>
+			</div>
+
+			<div class="flex flex-col gap-1.5">
+				<label for="sso-ttl" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Expiração / TTL (Segundos)</label>
+				<div class="flex gap-2">
+					<input
+						type="number"
+						id="sso-ttl"
+						name="ttl_seconds"
+						value="60"
+						min="5"
+						max="120"
+						required
+						class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:ring-zinc-950 bg-white w-24"
+					/>
+					<button
+						type="submit"
+						class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex-1 flex items-center justify-center gap-1.5 cursor-pointer"
+					>
+						<span>Gerar SSO</span>
+					</button>
+				</div>
+			</div>
+		</form>
+
+		<div id="sso-result-area">
+			if data.SSOInitialURL != "" {
+				@SSOGeneratorResult(SSOGeneratorResultData{
+					Token:       data.SSOInitialToken,
+					FullURL:     data.SSOInitialURL,
+					Subject:     "operador@crm.local",
+					Redirect:    "/admin/connections",
+					ExpiresAt:   "em 60 segundos",
+					TTLSeconds:  60,
+					CurlCommand: fmt.Sprintf(`curl -i -L "%s"`, data.SSOInitialURL),
+				})
+			}
+		</div>
+	</div>
+
+	<!-- Preset Loader Script -->
+	<script>
+		const SANDBOX_PRESETS = {
+			buttons: JSON.stringify({
+				"to": "+5511999998888",
+				"channel": "whatsapp_cloud",
+				"type": "interactive",
+				"fallback_behavior": "degrade",
+				"interactive": {
+					"type": "button",
+					"header": { "text": "Confirmação de Agendamento" },
+					"body": { "text": "Olá Carlos! Você confirma sua consulta para amanhã às 14:00?" },
+					"footer": { "text": "Clínica PerGo Saúde" },
+					"action": {
+						"buttons": [
+							{ "type": "reply", "reply": { "id": "btn_sim", "title": "Confirmar Sim" } },
+							{ "type": "reply", "reply": { "id": "btn_nao", "title": "Reagendar" } }
+						]
+					}
+				}
+			}, null, 2),
+			list: JSON.stringify({
+				"to": "+5511999998888",
+				"channel": "whatsapp_cloud",
+				"type": "interactive",
+				"fallback_behavior": "degrade",
+				"interactive": {
+					"type": "list",
+					"header": { "text": "Central de Atendimento" },
+					"body": { "text": "Escolha o departamento desejado no menu abaixo:" },
+					"footer": { "text": "Horário: 08h às 18h" },
+					"action": {
+						"button": "Ver Opções",
+						"sections": [
+							{
+								"title": "Suporte",
+								"rows": [
+									{ "id": "row_tec", "title": "Suporte Técnico", "description": "Problemas de conexão e bugs" },
+									{ "id": "row_fin", "title": "Financeiro", "description": "2ª via de faturas e pagamentos" }
+								]
+							},
+							{
+								"title": "Comercial",
+								"rows": [
+									{ "id": "row_upg", "title": "Upgrade de Plano", "description": "Conheça nossos planos corporativos" }
+								]
+							}
+						]
+					}
+				}
+			}, null, 2),
+			flow: JSON.stringify({
+				"to": "+5511999998888",
+				"channel": "whatsapp_cloud",
+				"type": "interactive",
+				"interactive": {
+					"type": "flow",
+					"header": { "text": "Cadastro de Paciente" },
+					"body": { "text": "Preencha seus dados cadastrais diretamente pelo WhatsApp:" },
+					"footer": { "text": "Formulário Seguro Criptografado" },
+					"action": {
+						"flow_id": "123456789012345",
+						"flow_cta": "Iniciar Formulário",
+						"flow_action": "navigate",
+						"flow_action_payload": {
+							"screen": "APPOINTMENT_SCREEN",
+							"data": { "patient_name": "Carlos Silva" }
+						}
+					}
+				}
+			}, null, 2),
+			product: JSON.stringify({
+				"to": "+5511999998888",
+				"channel": "whatsapp_cloud",
+				"type": "product",
+				"product": {
+					"catalog_id": "cat_987654321",
+					"product_retailer_id": "sku_camiseta_pergo_01",
+					"body": "Confira nosso lançamento oficial!"
+				}
+			}, null, 2),
+			product_list: JSON.stringify({
+				"to": "+5511999998888",
+				"channel": "whatsapp_cloud",
+				"type": "product_list",
+				"product": {
+					"catalog_id": "cat_987654321",
+					"header": "Catálogo de Ofertas",
+					"body": "Selecione produtos para seu carrinho:",
+					"footer": "Frete grátis para todo o Brasil",
+					"sections": [
+						{
+							"title": "Vestuário",
+							"product_items": [
+								{ "product_retailer_id": "sku_camiseta_azul" },
+								{ "product_retailer_id": "sku_moletom_preto" }
+							]
+						}
+					]
+				}
+			}, null, 2),
+			text: JSON.stringify({
+				"to": "+5511999998888",
+				"channel": "whatsapp",
+				"body": "Olá! Sua mensagem foi recebida com sucesso.",
+				"fallback_channels": ["telegram", "email"],
+				"ttl_seconds": 3600
+			}, null, 2)
+		};
+
+		function loadSandboxPreset(preset) {
+			const textarea = document.getElementById('sandbox-payload');
+			if (textarea && SANDBOX_PRESETS[preset]) {
+				textarea.value = SANDBOX_PRESETS[preset];
+			}
+		}
+
+		// Initial load of default preset
+		document.addEventListener('DOMContentLoaded', () => {
+			loadSandboxPreset('buttons');
+		});
+		if (document.readyState !== 'loading') {
+			loadSandboxPreset('buttons');
+		}
+	</script>
+}
+
+// WebhookSecretRow renders the webhook secret display and rotation trigger.
+templ WebhookSecretRow(secret *string) {
+	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+		<label class="block text-xs font-semibold text-zinc-500 uppercase tracking-wider">Webhook Signing Secret (HMAC-SHA256)</label>
+		<button
+			type="button"
+			hx-post="/admin/developers/webhook-secret/rotate"
+			hx-target="#webhook-secret-container"
+			hx-swap="innerHTML"
+			hx-confirm="Tem certeza de que deseja rotacionar o segredo de webhook? Aplicações externas deverão ser atualizadas com o novo segredo."
+			class="btn btn-xs bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 rounded px-2 py-0.5 font-medium cursor-pointer transition flex items-center gap-1 self-start sm:self-auto"
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+			</svg>
+			<span>Rotacionar Segredo</span>
+		</button>
+	</div>
+	<div class="flex items-center gap-2 bg-zinc-50 border border-zinc-200 rounded-md p-2 mt-1">
+		if secret != nil && *secret != "" {
+			<code id="webhook-sec-val" class="text-xs font-mono text-zinc-800 font-medium flex-1 truncate">{ *secret }</code>
+			<button
+				type="button"
+				class="btn btn-xs bg-zinc-900 hover:bg-zinc-800 text-white border-none rounded px-2.5 py-1 text-xs font-medium cursor-pointer transition"
+				onclick="navigator.clipboard.writeText(document.getElementById('webhook-sec-val').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })"
+			>
+				Copiar
+			</button>
+		} else {
+			<span class="text-xs text-zinc-400 italic flex-1">Nenhum segredo configurado</span>
+			<button
+				type="button"
+				hx-post="/admin/developers/webhook-secret/rotate"
+				hx-target="#webhook-secret-container"
+				hx-swap="innerHTML"
+				class="btn btn-xs btn-outline border-zinc-300 text-zinc-700 hover:bg-zinc-100 rounded px-2.5 py-1 text-xs font-medium"
+			>
+				Gerar Segredo
+			</button>
+		}
+	</div>
+}
+
+// APIKeysList renders the list of active/revoked API keys.
+templ APIKeysList(keys []repository.APIKey) {
+	for _, key := range keys {
+		<div class="flex items-center justify-between p-2 rounded bg-zinc-50 border border-zinc-200 text-xs">
+			<div>
+				<div class="font-semibold text-zinc-900">{ key.Name }</div>
+				<div class="font-mono text-zinc-500 text-[11px]"><code>{ key.KeyPrefix }...</code></div>
+			</div>
+			<div class="flex items-center gap-2">
+				if key.RevokedAt != nil {
+					<span class="badge badge-xs bg-rose-50 text-rose-700 border-rose-200">Revogada</span>
+				} else {
+					<span class="badge badge-xs bg-emerald-50 text-emerald-700 border-emerald-200">Ativa</span>
+					<button
+						type="button"
+						hx-delete={ fmt.Sprintf("/admin/developers/keys/%s", key.ID.String()) }
+						hx-target="#api-keys-list-container"
+						hx-swap="innerHTML"
+						hx-confirm={ fmt.Sprintf("Deseja realmente revogar a chave '%s'?", key.Name) }
+						class="text-xs text-rose-600 hover:text-rose-800 font-medium cursor-pointer ml-1"
+					>
+						Revogar
+					</button>
+				}
+			</div>
+		</div>
+	}
+	if len(keys) == 0 {
+		<div class="text-center py-6 text-xs text-zinc-400">
+			Nenhuma chave cadastrada.
+		</div>
+	}
+}
+
+// APIKeyCreatedResult renders newly generated API key for one-time display.
+templ APIKeyCreatedResult(keys []repository.APIKey, newRawKey string, keyName string) {
+	if newRawKey != "" {
+		<div class="p-3 mb-2 rounded-md bg-emerald-50 border border-emerald-300 text-xs animate-fadeIn">
+			<div class="font-bold text-emerald-800 mb-1">Chave "{ keyName }" criada com sucesso!</div>
+			<p class="text-emerald-700 text-[11px] mb-2">Copie sua chave agora. Ela não poderá ser exibida novamente:</p>
+			<div class="flex items-center gap-2 bg-white p-1.5 rounded border border-emerald-200">
+				<code id="new-key-raw-val" class="font-mono text-emerald-950 font-semibold flex-1 truncate select-all">{ newRawKey }</code>
+				<button
+					type="button"
+					class="btn btn-xs bg-emerald-700 hover:bg-emerald-800 text-white border-none rounded px-2 py-1 text-xs font-semibold cursor-pointer"
+					onclick="navigator.clipboard.writeText(document.getElementById('new-key-raw-val').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })"
+				>
+					Copiar
+				</button>
+			</div>
+		</div>
+	}
+	@APIKeysList(keys)
+}
+
+// SandboxValidationResult renders the result of interactive payload validation & simulation.
+templ SandboxValidationResult(res SandboxResultData) {
+	if res.Status == "valid" {
+		<div class="border border-emerald-200 bg-emerald-50/60 rounded-lg p-4 space-y-3 animate-fadeIn">
+			<div class="flex items-center justify-between border-b border-emerald-200/80 pb-2.5">
+				<div class="flex items-center gap-2">
+					<span class="badge badge-sm bg-emerald-600 text-white font-bold px-2 py-0.5 rounded">✓ Payload Válido</span>
+					<span class="text-xs font-semibold text-emerald-900">Em conformidade com a especificação OpenAPI 3.1</span>
+				</div>
+				<span class="text-xs font-mono text-emerald-700">Canal: <strong>{ res.Channel }</strong></span>
+			</div>
+
+			<div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+				<div class="bg-white p-2.5 rounded border border-emerald-100">
+					<span class="text-zinc-500 block text-[11px] uppercase font-semibold">Destinatário</span>
+					<span class="font-mono text-zinc-800 font-bold">{ res.Recipient }</span>
+				</div>
+				<div class="bg-white p-2.5 rounded border border-emerald-100">
+					<span class="text-zinc-500 block text-[11px] uppercase font-semibold">Tipo de Mensagem</span>
+					<span class="font-semibold text-zinc-800">{ res.MessageType }</span>
+				</div>
+				<div class="bg-white p-2.5 rounded border border-emerald-100">
+					<span class="text-zinc-500 block text-[11px] uppercase font-semibold">Política de Fallback</span>
+					<span class="font-semibold text-zinc-800">{ res.FallbackPolicy }</span>
+				</div>
+			</div>
+
+			if res.DegradedText != "" {
+				<div class="pt-2">
+					<div class="text-xs font-bold text-zinc-800 mb-1 flex items-center gap-1.5">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+						</svg>
+						<span>Simulação de Degradação Automática em Canais de Texto (ex: WhatsApp Web / whatsmeow):</span>
+					</div>
+					<pre class="bg-zinc-900 text-zinc-100 p-3 rounded text-xs font-mono whitespace-pre-wrap leading-relaxed">{ res.DegradedText }</pre>
+				</div>
+			}
+		</div>
+	} else {
+		<div class="border border-rose-200 bg-rose-50/70 rounded-lg p-4 space-y-3 animate-fadeIn">
+			<div class="flex items-center justify-between border-b border-rose-200 pb-2.5">
+				<div class="flex items-center gap-2">
+					<span class="badge badge-sm bg-rose-600 text-white font-bold px-2 py-0.5 rounded">✕ Payload Inválido</span>
+					<span class="text-xs font-bold text-rose-900">{ res.ErrorMessage }</span>
+				</div>
+			</div>
+
+			if len(res.FieldErrors) > 0 {
+				<div class="space-y-1.5">
+					<div class="text-xs font-bold text-rose-800">Erros de validação por campo:</div>
+					<ul class="list-disc list-inside space-y-1 text-xs text-rose-700 bg-white p-3 rounded border border-rose-100">
+						for _, fe := range res.FieldErrors {
+							<li>
+								<code class="font-mono font-bold text-rose-900 bg-rose-100/60 px-1 py-0.5 rounded">{ fe.Field }</code>: { fe.Message }
+							</li>
+						}
+					</ul>
+				</div>
+			}
+		</div>
+	}
+}

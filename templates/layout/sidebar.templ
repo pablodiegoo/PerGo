@@ -36,6 +36,7 @@ func isSettingsActive(activePath string) bool {
 		"/admin/webhooks",
 		"/admin/telemetry",
 		"/admin/integrations",
+		"/admin/developers",
 	}
 	for _, p := range prefixes {
 		if strings.HasPrefix(activePath, p) {
@@ -46,6 +47,9 @@ func isSettingsActive(activePath string) bool {
 }
 
 func isSubmenuActive(activePath, target string) bool {
+	if target == "/admin/developers" || strings.Contains(target, "/developers") {
+		return strings.HasPrefix(activePath, "/admin/developers")
+	}
 	if strings.Contains(target, "/integrations/chatwoot") {
 		return strings.Contains(activePath, "/integrations/chatwoot")
 	}
@@ -67,6 +71,7 @@ func isSubmenuActive(activePath, target string) bool {
 			!strings.Contains(activePath, "/webhooks") &&
 			!strings.Contains(activePath, "/campaigns") &&
 			!strings.Contains(activePath, "/integrations") &&
+			!strings.Contains(activePath, "/developers") &&
 			!strings.Contains(activePath, "/templates") &&
 			!strings.Contains(activePath, "/tags")
 	}
@@ -145,6 +150,9 @@ templ Sidebar() {
 						<a href="/admin/connections" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/connections")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/connections")) }>Conexões</a>
 					</li>
 					<li>
+						<a href="/admin/developers" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/developers")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/developers")) }>Desenvolvedores & Sandbox</a>
+					</li>
+					<li>
 						<a href="/admin/logs" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/logs")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/logs")) }>Logs</a>
 					</li>
 					<li>
@@ -161,9 +169,6 @@ templ Sidebar() {
 					</li>
 					<li>
 						<a href="/admin/telemetry" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/admin/telemetry")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/admin/telemetry")) }>Telemetry</a>
-					</li>
-					<li>
-						<a href="/admin/integrations/headless" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/headless")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/headless")) }>Headless API & SSO</a>
 					</li>
 					<li>
 						<a href="/admin/integrations/chatwoot" class={ "block px-3 py-1.5 text-xs font-medium rounded-md transition-all", templ.KV("bg-zinc-200/60 text-zinc-900 font-semibold", isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")), templ.KV("text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-900", !isSubmenuActive(getActivePath(ctx), "/integrations/chatwoot")) }>Chatwoot</a>

@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,11 +43,17 @@ func TestFlowDataExchange_E2E(t *testing.T) {
 	rand.Read(iv)
 
 	// Mock partner flow webhook backend
+	var mu sync.Mutex
 	var receivedPartnerPayload []byte
 	var receivedPartnerSig string
 	partnerServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedPartnerSig = r.Header.Get("X-PerGo-Signature")
-		receivedPartnerPayload, _ = io.ReadAll(r.Body)
+		sig := r.Header.Get("X-PerGo-Signature")
+		body, _ := io.ReadAll(r.Body)
+
+		mu.Lock()
+		receivedPartnerSig = sig
+		receivedPartnerPayload = body
+		mu.Unlock()
 
 		if r.URL.Path == "/timeout" {
 			time.Sleep(3 * time.Second)
@@ -191,7 +198,12 @@ func TestFlowDataExchange_E2E(t *testing.T) {
 		}
 
 		// Verify partner webhook received request with valid HMAC signature
-		if !webhook.VerifyPerGoSignature(receivedPartnerPayload, receivedPartnerSig, secret) {
+		mu.Lock()
+		payloadCopy := append([]byte(nil), receivedPartnerPayload...)
+		sigCopy := receivedPartnerSig
+		mu.Unlock()
+
+		if !webhook.VerifyPerGoSignature(payloadCopy, sigCopy, secret) {
 			t.Errorf("partner webhook X-PerGo-Signature validation failed")
 		}
 

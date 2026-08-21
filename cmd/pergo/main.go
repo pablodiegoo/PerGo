@@ -424,7 +424,7 @@ func main() {
 	userLogsHandler := admin.NewUserLogsHandler(userActionLogRepo)
 	chatwootAdminHandler := admin.NewChatwootAdminHandler(integrationRepo)
 	typebotAdminHandler := admin.NewTypebotSettingsHandler(integrationRepo, connectionRepo)
-	headlessAdminHandler := admin.NewHeadlessAdminHandler(wsRepo, apiKeyRepo, []byte(cfg.SessionSecret), cfg.ExternalURL)
+	developerHandler := admin.NewDeveloperHandler(wsRepo, apiKeyRepo, []byte(cfg.SessionSecret), cfg.ExternalURL)
 
 	// --- Echo HTTP server ---
 	e := echosrv.New()
@@ -449,6 +449,10 @@ func main() {
 		NATS: &natsConn{nc: nc},
 	}
 	healthHandler.RegisterRoutes(e)
+
+	// Documentation endpoints (embedded Scalar at /docs)
+	docsHandler := handler.NewDocsHandler()
+	docsHandler.RegisterRoutes(e)
 
 	// --- Message handler (POST /messages) ---
 	outboundProcessor := outbound.NewProcessor(queueDepth, mediaEngine, connectionRepo, publisher)
@@ -726,12 +730,20 @@ func main() {
 	adminGroup.POST("/workspaces/:workspace_id/templates/:template_id/sync", wabaTemplateHandler.Sync)
 	adminGroup.DELETE("/workspaces/:workspace_id/templates/:template_id", wabaTemplateHandler.Delete)
 
-	// Headless CPaaS & Developer Integration routes (flat admin routes)
+	// Developer Console & Sandbox routes (flat admin routes)
+	adminGroup.GET("/developers", developerHandler.GetPortal)
+	adminGroup.POST("/developers/keys", developerHandler.CreateAPIKey)
+	adminGroup.DELETE("/developers/keys/:key_id", developerHandler.RevokeAPIKey)
+	adminGroup.POST("/developers/webhook-secret/rotate", developerHandler.RotateWebhookSecret)
+	adminGroup.POST("/developers/sandbox/test", developerHandler.SandboxTest)
+	adminGroup.POST("/developers/sso-generate", developerHandler.GenerateSSO)
+
+	// Headless CPaaS & Developer Integration routes (flat admin routes / backward compatibility)
 	adminGroup.GET("/integrations", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/integrations/headless")
+		return c.Redirect(http.StatusFound, "/admin/developers")
 	})
-	adminGroup.GET("/integrations/headless", headlessAdminHandler.GetPortal)
-	adminGroup.POST("/integrations/headless/sso-generate", headlessAdminHandler.GenerateSSO)
+	adminGroup.GET("/integrations/headless", developerHandler.GetPortal)
+	adminGroup.POST("/integrations/headless/sso-generate", developerHandler.GenerateSSO)
 
 	// Chatwoot integration routes (flat admin routes)
 	adminGroup.GET("/integrations/chatwoot", chatwootAdminHandler.GetSettings)
@@ -743,12 +755,12 @@ func main() {
 
 	// Legacy integration routes (302 redirects / backward compatibility)
 	adminGroup.GET("/workspaces/:workspace_id/integrations", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/integrations/headless")
+		return c.Redirect(http.StatusFound, "/admin/developers")
 	})
 	adminGroup.GET("/workspaces/:workspace_id/integrations/headless", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/integrations/headless")
+		return c.Redirect(http.StatusFound, "/admin/developers")
 	})
-	adminGroup.POST("/workspaces/:workspace_id/integrations/headless/sso-generate", headlessAdminHandler.GenerateSSO)
+	adminGroup.POST("/workspaces/:workspace_id/integrations/headless/sso-generate", developerHandler.GenerateSSO)
 	adminGroup.GET("/workspaces/:workspace_id/integrations/chatwoot", func(c *echo.Context) error {
 		return c.Redirect(http.StatusFound, "/admin/integrations/chatwoot")
 	})
