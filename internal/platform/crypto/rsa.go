@@ -1,6 +1,7 @@
 package crypto
 
 import (
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/json"
@@ -31,7 +32,13 @@ func LoadRSAPrivateKey(connectionCredentials json.RawMessage, encryptor *Encrypt
 		return nil, errors.New("private_key not found in credentials or environment")
 	}
 
-	block, _ := pem.Decode([]byte(pemString))
+	return ParseRSAPrivateKeyFromPEM([]byte(pemString))
+}
+
+// ParseRSAPrivateKeyFromPEM parses and validates a 2048-bit RSA private key from PEM bytes.
+func ParseRSAPrivateKeyFromPEM(pemBytes []byte) (*rsa.PrivateKey, error) {
+
+	block, _ := pem.Decode(pemBytes)
 	if block == nil {
 		return nil, errors.New("failed to parse PEM block")
 	}
@@ -65,3 +72,50 @@ func LoadRSAPrivateKey(connectionCredentials json.RawMessage, encryptor *Encrypt
 
 	return priv, nil
 }
+
+// GenerateRSAKeyPair2048 generates a new 2048-bit RSA keypair and returns both in PEM encoding.
+func GenerateRSAKeyPair2048() (privateKeyPEM string, publicKeyPEM string, err error) {
+	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return "", "", err
+	}
+
+	privBytes := x509.MarshalPKCS1PrivateKey(privKey)
+	privPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: privBytes,
+	})
+
+	pubPEM, err := ExportRSAPublicKeyPEM(privKey)
+	if err != nil {
+		return "", "", err
+	}
+
+	return string(privPEM), pubPEM, nil
+}
+
+// ExportRSAPublicKeyPEM converts an RSA public key to PKIX PEM format ("PUBLIC KEY").
+func ExportRSAPublicKeyPEM(privKey *rsa.PrivateKey) (string, error) {
+	if privKey == nil {
+		return "", errors.New("nil private key")
+	}
+	pubBytes, err := x509.MarshalPKIXPublicKey(&privKey.PublicKey)
+	if err != nil {
+		return "", err
+	}
+	pubPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: pubBytes,
+	})
+	return string(pubPEM), nil
+}
+
+// ExportRSAPublicKeyPEMFromPrivatePEM parses a PEM private key and exports its public key in PKIX PEM format.
+func ExportRSAPublicKeyPEMFromPrivatePEM(privKeyPEM string) (string, error) {
+	privKey, err := ParseRSAPrivateKeyFromPEM([]byte(privKeyPEM))
+	if err != nil {
+		return "", err
+	}
+	return ExportRSAPublicKeyPEM(privKey)
+}
+

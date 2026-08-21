@@ -83,3 +83,19 @@ _Avoid_: Session timer, 24h rule, chat timeout
 **Webhook Signature**:
 An HMAC-SHA256 digest generated using a workspace-scoped secret key and attached to outbound webhooks for cryptographic payload verification.
 _Avoid_: Token header, SHA hash, auth HMAC
+
+**Flow Token**:
+A stateless, cryptographically signed token generated during interactive flow message dispatch, carrying workspace, connection, contact, flow ID, and expiration metadata for Meta Flow data exchange validation.
+_Avoid_: Session ID, form token, flow ticket
+
+**Flow Endpoint**:
+An HTTPS endpoint exposed by PerGo (`/api/v1/waba/flows/data-exchange`) that terminates Meta Flow encryption (RSA/AES-128-GCM) and delegates dynamic screen transitions synchronously to a Flow Webhook.
+_Avoid_: Flow gateway, screen controller, form callback
+
+**Interactive Message**:
+A structured message payload containing rich UI elements (e.g. Reply Buttons, List Menus, Single/Multi Product Catalogs, or Flow CTAs) rather than plain text.
+_Avoid_: Rich message, button template, action payload
+
+**Interactive Reply**:
+An inbound event triggered by a contact's interaction with an Interactive Message (e.g. button click, list selection, flow submission `nfm_reply`, or catalog order).
+_Avoid_: Button response, form reply, action callback
