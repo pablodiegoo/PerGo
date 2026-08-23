@@ -12,11 +12,19 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
+// MediaStorage defines the interface for object storage download operations.
+type MediaStorage interface {
+	Download(ctx context.Context, key string) (io.ReadCloser, string, error)
+}
+
 // S3Client wraps the AWS SDK v2 S3 client.
 type S3Client struct {
 	Client *s3.Client
 	Bucket string
 }
+
+var _ MediaStorage = (*S3Client)(nil)
+
 
 // NewS3Client creates and configures a new S3Client.
 func NewS3Client(endpoint, region, accessKey, secretKey, bucket string, usePathStyle bool) (*S3Client, error) {

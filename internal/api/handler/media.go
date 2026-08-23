@@ -15,13 +15,13 @@ import (
 
 // MediaHandler serves stored S3 objects securely.
 type MediaHandler struct {
-	S3Client *storage.S3Client
+	Storage storage.MediaStorage
 }
 
 // NewMediaHandler creates a new MediaHandler.
-func NewMediaHandler(s3Client *storage.S3Client) *MediaHandler {
+func NewMediaHandler(store storage.MediaStorage) *MediaHandler {
 	return &MediaHandler{
-		S3Client: s3Client,
+		Storage: store,
 	}
 }
 
@@ -51,7 +51,8 @@ func (h *MediaHandler) Handle(c *echo.Context) error {
 	// The key format in S3 is {workspace_id}/{hash}
 	key := workspaceID.String() + "/" + hashWithExt
 
-	body, contentType, err := h.S3Client.Download(c.Request().Context(), key)
+	body, contentType, err := h.Storage.Download(c.Request().Context(), key)
+
 	if err != nil {
 		var noSuchKey *types.NoSuchKey
 		if errors.As(err, &noSuchKey) {
