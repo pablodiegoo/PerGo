@@ -224,6 +224,28 @@ func TestWebhookSubscriptionAPI_Create(t *testing.T) {
 		}
 	})
 
+	t.Run("successful creation with allowlisted local URL", func(t *testing.T) {
+		allowlistHandler := api.NewWebhookSubscriptionAPIHandler(repo, api.WithSubscriptionAllowlist("localhost", "127.0.0.1"))
+		eLocal := echo.New()
+		allowlistHandler.RegisterRoutes(eLocal)
+
+		body := map[string]interface{}{
+			"url": "http://localhost:8080/api/pergo/webhook",
+		}
+		jsonBytes, _ := json.Marshal(body)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/webhooks/subscriptions", bytes.NewReader(jsonBytes))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		ctx := tenant.WithWorkspaceID(req.Context(), wsID)
+		req = req.WithContext(ctx)
+		rec := httptest.NewRecorder()
+
+		eLocal.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected status 201 Created for allowlisted local URL, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
 	t.Run("reject missing workspace context", func(t *testing.T) {
 		body := map[string]interface{}{
 			"url": "https://api.example.com/webhook",

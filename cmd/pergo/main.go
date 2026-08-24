@@ -40,6 +40,7 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	echosrv "github.com/pablojhp.pergo/internal/platform/echo"
+	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/platform/obs"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
@@ -324,7 +325,13 @@ func main() {
 	webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, encryptor)
 	webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
 	verbsEngine := webhook.NewVerbsEngine(publisher, contactRepo, userActionLogRepo, connectionRepo)
-	webhookDispatcher := webhook.NewDefaultDispatcher(webhookSubRepo, webhookDLQRepo, wsRepo, nil, verbsEngine)
+
+	var webhookAllowlist []string
+	if !cfg.IsProduction() || os.Getenv("PERGO_ALLOW_LOCAL_WEBHOOKS") == "true" {
+		webhookAllowlist = []string{"localhost", "127.0.0.1", "::1", "0.0.0.0", "host.docker.internal"}
+	}
+	dispatcherHTTPClient := netpolicy.NewPublicHTTPClient(netpolicy.WithTimeout(10*time.Second), netpolicy.WithAllowlist(webhookAllowlist...))
+	webhookDispatcher := webhook.NewDefaultDispatcher(webhookSubRepo, webhookDLQRepo, wsRepo, dispatcherHTTPClient, verbsEngine)
 	webhookWorker, err := queue.NewWebhookWorker(ctx, nc, webhookDispatcher, webhookSubRepo)
 	if err != nil {
 		slog.Error("failed to start webhook worker", "error", err)
@@ -517,7 +524,7 @@ func main() {
 	wabaTemplateAPIHandler.RegisterRoutes(e)
 
 	// --- Webhook Subscription REST API handler ---
-	webhookSubscriptionAPIHandler := apipkg.NewWebhookSubscriptionAPIHandler(webhookSubRepo)
+	webhookSubscriptionAPIHandler := apipkg.NewWebhookSubscriptionAPIHandler(webhookSubRepo, apipkg.WithSubscriptionAllowlist(webhookAllowlist...))
 	webhookSubscriptionAPIHandler.RegisterRoutes(e)
 
 	// --- WABA Meta Flows Data Exchange endpoint ---

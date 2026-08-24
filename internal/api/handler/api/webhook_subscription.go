@@ -29,14 +29,29 @@ type WebhookSubscriptionRepo interface {
 
 // WebhookSubscriptionAPIHandler exposes RESTful endpoints for managing webhook subscriptions programmatically.
 type WebhookSubscriptionAPIHandler struct {
-	repo WebhookSubscriptionRepo
+	repo      WebhookSubscriptionRepo
+	allowlist []string
+}
+
+// WebhookSubscriptionOption configures WebhookSubscriptionAPIHandler.
+type WebhookSubscriptionOption func(*WebhookSubscriptionAPIHandler)
+
+// WithSubscriptionAllowlist configures permitted IP/host ranges for webhook URLs (e.g. for dev/testing).
+func WithSubscriptionAllowlist(allowlist ...string) WebhookSubscriptionOption {
+	return func(h *WebhookSubscriptionAPIHandler) {
+		h.allowlist = append(h.allowlist, allowlist...)
+	}
 }
 
 // NewWebhookSubscriptionAPIHandler creates a new WebhookSubscriptionAPIHandler instance.
-func NewWebhookSubscriptionAPIHandler(repo WebhookSubscriptionRepo) *WebhookSubscriptionAPIHandler {
-	return &WebhookSubscriptionAPIHandler{
+func NewWebhookSubscriptionAPIHandler(repo WebhookSubscriptionRepo, opts ...WebhookSubscriptionOption) *WebhookSubscriptionAPIHandler {
+	h := &WebhookSubscriptionAPIHandler{
 		repo: repo,
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // RegisterRoutes registers the webhook subscription endpoints on Echo router.
@@ -149,7 +164,7 @@ func (h *WebhookSubscriptionAPIHandler) Create(c *echo.Context) error {
 	}
 
 	// SSRF validation
-	if err := netpolicy.ValidateURL(urlStr); err != nil {
+	if err := netpolicy.ValidateURL(urlStr, h.allowlist...); err != nil {
 		if errors.Is(err, netpolicy.ErrRestrictedIP) {
 			return c.JSON(http.StatusUnprocessableEntity, map[string]string{
 				"code":    "invalid_url",
@@ -378,7 +393,7 @@ func (h *WebhookSubscriptionAPIHandler) Update(c *echo.Context) error {
 				"message": "url cannot be empty",
 			})
 		}
-		if err := netpolicy.ValidateURL(trimmed); err != nil {
+		if err := netpolicy.ValidateURL(trimmed, h.allowlist...); err != nil {
 			if errors.Is(err, netpolicy.ErrRestrictedIP) {
 				return c.JSON(http.StatusUnprocessableEntity, map[string]string{
 					"code":    "invalid_url",
