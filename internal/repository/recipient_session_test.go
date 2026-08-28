@@ -86,27 +86,60 @@ func TestRecipientSessionRepository(t *testing.T) {
 		t.Errorf("got updated EntryPointType %s, want standard", sess2.EntryPointType)
 	}
 
-	// Test GetExpiringSessions and MarkNotifiedExpiring
-	expiring, err := repo.GetExpiringSessions(ctx, newTime.Add(-2*time.Hour), newTime.Add(2*time.Hour))
+	// Test RecordOutbound on existing session
+	outboundTime := now.Add(2 * time.Hour)
+	err = repo.RecordOutbound(ctx, ws.ID, recipient, channelName, recipientIdentity, outboundTime)
 	if err != nil {
-		t.Fatalf("failed to get expiring sessions: %v", err)
-	}
-	if len(expiring) == 0 {
-		t.Errorf("expected at least 1 expiring session, got 0")
+		t.Fatalf("failed to record outbound: %v", err)
 	}
 
-	err = repo.MarkNotifiedExpiring(ctx, ws.ID, recipient, channelName, recipientIdentity, time.Now().UTC())
+	sessOutbound, err := repo.Get(ctx, ws.ID, recipient, channelName, recipientIdentity)
 	if err != nil {
-		t.Fatalf("failed to mark notified expiring: %v", err)
+		t.Fatalf("failed to get session after recording outbound: %v", err)
+	}
+	if sessOutbound.LastOutboundAt == nil {
+		t.Fatal("expected LastOutboundAt to be set, got nil")
+	}
+	if !sessOutbound.LastOutboundAt.Equal(outboundTime) {
+		t.Errorf("got LastOutboundAt %v, want %v", *sessOutbound.LastOutboundAt, outboundTime)
+	}
+	// Verify LastInboundAt was preserved
+	if !sessOutbound.LastInboundAt.Equal(newTime) {
+		t.Errorf("expected LastInboundAt %v preserved, got %v", newTime, sessOutbound.LastInboundAt)
 	}
 
-	expiringAfter, err := repo.GetExpiringSessions(ctx, newTime.Add(-2*time.Hour), newTime.Add(2*time.Hour))
+	// Test RecordOutbound on new recipient without prior session
+	newRecipient := "+5511998877665"
+	newOutboundTime := now.Add(3 * time.Hour)
+	err = repo.RecordOutbound(ctx, ws.ID, newRecipient, channelName, recipientIdentity, newOutboundTime)
 	if err != nil {
-		t.Fatalf("failed to get expiring sessions after mark: %v", err)
+		t.Fatalf("failed to record outbound for new recipient: %v", err)
 	}
-	for _, s := range expiringAfter {
-		if s.RecipientPhone == recipient && s.WorkspaceID == ws.ID {
-			t.Errorf("expected session to be excluded from expiring sessions after marking")
-		}
+
+	newSess, err := repo.Get(ctx, ws.ID, newRecipient, channelName, recipientIdentity)
+	if err != nil {
+		t.Fatalf("failed to get new session: %v", err)
+	}
+	if newSess.LastOutboundAt == nil {
+		t.Fatal("expected LastOutboundAt on new session to be set")
+	}
+	if !newSess.LastOutboundAt.Equal(newOutboundTime) {
+		t.Errorf("got new session LastOutboundAt %v, want %v", *newSess.LastOutboundAt, newOutboundTime)
+	}
+
+	// Test phone normalization (e.g. without plus) updates existing session
+	trimmedRecipient := "5511998877665"
+	updatedOutboundTime := now.Add(4 * time.Hour)
+	err = repo.RecordOutbound(ctx, ws.ID, trimmedRecipient, channelName, recipientIdentity, updatedOutboundTime)
+	if err != nil {
+		t.Fatalf("failed to record outbound with trimmed recipient: %v", err)
+	}
+	updatedSess, err := repo.Get(ctx, ws.ID, newRecipient, channelName, recipientIdentity)
+	if err != nil {
+		t.Fatalf("failed to get updated session: %v", err)
+	}
+	if !updatedSess.LastOutboundAt.Equal(updatedOutboundTime) {
+		t.Errorf("expected updated LastOutboundAt %v, got %v", updatedOutboundTime, *updatedSess.LastOutboundAt)
 	}
 }
+

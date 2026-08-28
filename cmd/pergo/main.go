@@ -297,6 +297,7 @@ func main() {
 	}()
 	orchestrator := queue.NewDispatchOrchestrator(dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter, contactRepo, 5, 60*time.Second)
 	orchestrator.SetContactRepository(contactRepo)
+	orchestrator.SetRecipientSessionRepository(recipientSessionRepo)
 	worker := queue.NewWorker(ctx, consumer, orchestrator)
 	slog.Info("message worker started", "consumer", "worker-1")
 

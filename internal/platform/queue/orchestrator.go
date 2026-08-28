@@ -36,9 +36,10 @@ type DispatchOrchestrator struct {
 	dispatchers  *channel.Registry
 	dispatchRepo *repository.MessageDispatchRepository
 	publisher    *JetStreamPublisher
-	queueDepth   QueueDepthTracker
-	auditWriter  audit.Writer
-	contactRepo  *repository.ContactRepository
+	queueDepth           QueueDepthTracker
+	auditWriter          audit.Writer
+	contactRepo          *repository.ContactRepository
+	recipientSessionRepo *repository.RecipientSessionRepository
 
 	maxRetries int
 	maxBackoff time.Duration
@@ -226,6 +227,11 @@ func (o *DispatchOrchestrator) Process(
 			if o.contactRepo != nil && workspaceID != (uuid.UUID{}) {
 				_, _ = o.contactRepo.ResolveContact(ctx, workspaceID, channelName, resolvedTo, "", "", "")
 			}
+			if o.recipientSessionRepo != nil && workspaceID != (uuid.UUID{}) {
+				if errRec := o.recipientSessionRepo.RecordOutbound(ctx, workspaceID, resolvedTo, channelName, qMsg.SenderIdentity, time.Now().UTC()); errRec != nil {
+					slog.Error("orchestrator: failed to record recipient session outbound timestamp", "error", errRec, "recipient", resolvedTo, "channel", channelName)
+				}
+			}
 			if o.dispatchRepo != nil && dispatch != nil {
 				_ = o.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "sent", channelName, i, nil)
 				if channelName == "whatsapp_cloud" && respStr != "" {
@@ -375,6 +381,11 @@ func isNumericIdentifier(s string) bool {
 // SetContactRepository registers the Contact repository.
 func (o *DispatchOrchestrator) SetContactRepository(repo *repository.ContactRepository) {
 	o.contactRepo = repo
+}
+
+// SetRecipientSessionRepository registers the RecipientSession repository.
+func (o *DispatchOrchestrator) SetRecipientSessionRepository(repo *repository.RecipientSessionRepository) {
+	o.recipientSessionRepo = repo
 }
 
 func (o *DispatchOrchestrator) dispatchToChannel(ctx context.Context, channelName string, qMsg *domain.QueueMessage) (string, error) {

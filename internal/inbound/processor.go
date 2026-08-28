@@ -165,8 +165,15 @@ type InboundEventPayload struct {
 	Contacts    []InboundContact    `json:"contacts,omitempty"`
 	Interactive *InboundInteractive `json:"interactive,omitempty"`
 	Story       *InboundStoryEvent  `json:"story_event,omitempty"`
+	Timing      *EventTiming        `json:"timing,omitempty"`
 	SenderName  string              `json:"sender_name,omitempty"`
 	Metadata    map[string]string   `json:"metadata,omitempty"`
+}
+
+// EventTiming carries contact response latency and timing telemetry.
+type EventTiming struct {
+	ResponseLatencyMS *int64 `json:"response_latency_ms,omitempty"`
+	LastOutboundAt    string `json:"last_outbound_at,omitempty"`
 }
 
 // MessageStatusUpdatedPayload is the structure of the message status update event published to NATS.
@@ -308,8 +315,22 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		}
 	}
 
-	// 1. Recipient Session Tracking
+	// 1. Recipient Session Tracking & Timing Telemetry
+	var timing *EventTiming
 	if p.recipientSessionRepo != nil {
+		if sess, err := p.recipientSessionRepo.Get(ctx, ev.WorkspaceID, ev.From, ev.Channel, ev.To); err == nil && sess != nil {
+			if sess.LastOutboundAt != nil && !sess.LastOutboundAt.IsZero() {
+				diff := time.Since(*sess.LastOutboundAt)
+				if diff >= 0 {
+					latencyMS := diff.Milliseconds()
+					timing = &EventTiming{
+						ResponseLatencyMS: &latencyMS,
+						LastOutboundAt:    sess.LastOutboundAt.UTC().Format(time.RFC3339),
+					}
+				}
+			}
+		}
+
 		entryPointType := "standard"
 		if ev.Metadata != nil {
 			if ept, ok := ev.Metadata["entry_point_type"]; ok && ept != "" {
@@ -358,6 +379,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		Body:        ev.Body,
 		Interactive: ev.Interactive,
 		Story:       ev.Story,
+		Timing:      timing,
 		SenderName:  ev.SenderName,
 		Metadata:    ev.Metadata,
 	}

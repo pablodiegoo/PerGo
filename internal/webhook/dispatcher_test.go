@@ -212,6 +212,82 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 		}
 	})
 
+	t.Run("Inbound event with timing telemetry preserves timing and is signed with X-PerGo-Signature", func(t *testing.T) {
+		subStore := &mockSubscriptionStore{sub: sub}
+		dlqStore := &mockDLQStore{}
+		workspaceStore := &mockWorkspaceStore{
+			ws: &repository.Workspace{ID: wsID, PIIOptIn: false},
+		}
+		httpClient := &mockHTTPClient{}
+		d := webhook.NewDefaultDispatcher(subStore, dlqStore, workspaceStore, httpClient, nil)
+
+		latency := int64(1850)
+		inboundEvent := map[string]any{
+			"event":        "inbound_message",
+			"trace_id":     "trace-timing-1",
+			"message_id":   "msg-timing-1",
+			"workspace_id": wsID.String(),
+			"channel":      "whatsapp_cloud",
+			"from":         "+5511999998888",
+			"to":           "+5511888887777",
+			"body":         "Resposta do participante",
+			"timing": map[string]any{
+				"response_latency_ms": latency,
+				"last_outbound_at":    "2026-08-28T20:15:10Z",
+			},
+		}
+		rawBytes, _ := json.Marshal(inboundEvent)
+
+		task := webhook.WebhookDeliveryTask{
+			ID:             uuid.New(),
+			SubscriptionID: subID,
+			WorkspaceID:    wsID,
+			Event:          "inbound_message",
+			TraceID:        "trace-timing-1",
+			MessageID:      "msg-timing-1",
+			Payload:        rawBytes,
+			Mode:           "inbound",
+		}
+
+		err := d.Dispatch(context.Background(), task)
+		if err != nil {
+			t.Fatalf("Dispatch failed: %v", err)
+		}
+
+		if len(httpClient.requests) != 1 {
+			t.Fatalf("expected 1 HTTP request, got %d", len(httpClient.requests))
+		}
+		req := httpClient.requests[0]
+		sig := req.Header.Get("X-PerGo-Signature")
+		if sig == "" {
+			t.Fatal("expected X-PerGo-Signature header to be present")
+		}
+
+		bodyBytes, _ := io.ReadAll(req.Body)
+
+		// Verify signature against body
+		if !webhook.VerifyPerGoSignature(bodyBytes, sig, string(sub.Secret)) {
+			t.Errorf("X-PerGo-Signature verification failed for delivered payload")
+		}
+
+		var delivered map[string]any
+		if err := json.Unmarshal(bodyBytes, &delivered); err != nil {
+			t.Fatalf("failed to unmarshal delivered payload: %v", err)
+		}
+
+		timingMap, ok := delivered["timing"].(map[string]any)
+		if !ok || timingMap == nil {
+			t.Fatalf("expected 'timing' object in delivered payload, got %v", delivered["timing"])
+		}
+		if int64(timingMap["response_latency_ms"].(float64)) != latency {
+			t.Errorf("expected response_latency_ms %d, got %v", latency, timingMap["response_latency_ms"])
+		}
+		if timingMap["last_outbound_at"] != "2026-08-28T20:15:10Z" {
+			t.Errorf("expected last_outbound_at 2026-08-28T20:15:10Z, got %v", timingMap["last_outbound_at"])
+		}
+	})
+
+
 	t.Run("Non-2xx HTTP responses wrap HTTPError", func(t *testing.T) {
 		subStore := &mockSubscriptionStore{sub: sub}
 		dlqStore := &mockDLQStore{}

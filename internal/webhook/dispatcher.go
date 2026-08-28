@@ -153,6 +153,7 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, task WebhookDeliveryTa
 				Contacts    any               `json:"contacts,omitempty"`
 				Interactive any               `json:"interactive,omitempty"`
 				Story       any               `json:"story_event,omitempty"`
+				Timing      any               `json:"timing,omitempty"`
 				SenderName  string            `json:"sender_name,omitempty"`
 				Metadata    map[string]string `json:"metadata,omitempty"`
 			}

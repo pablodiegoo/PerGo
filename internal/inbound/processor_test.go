@@ -410,6 +410,105 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 	})
 
+	t.Run("Response latency and timing telemetry extracted from prior outbound message", func(t *testing.T) {
+		pub := &fakePublisher{}
+		me := &fakeMediaEngine{}
+		aud := &fakeAuditWriter{}
+
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+
+		recipient := "+5511999991111"
+		senderIdentity := "+5511888882222"
+		outboundTime := time.Now().UTC().Add(-2500 * time.Millisecond)
+
+		// Seed prior outbound message
+		err := sessRepo.RecordOutbound(ctx, ws.ID, recipient, "whatsapp_cloud", senderIdentity, outboundTime)
+		if err != nil {
+			t.Fatalf("failed to seed outbound session: %v", err)
+		}
+
+		event := &inbound.InboundEvent{
+			WorkspaceID: ws.ID,
+			MessageID:   "test-timing-msg-1",
+			Channel:     "whatsapp_cloud",
+			From:        recipient,
+			To:          senderIdentity,
+			Body:        "Sim, concordo com a pesquisa.",
+		}
+
+		err = proc.Process(ctx, event)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+
+		if len(pub.published) != 1 {
+			t.Fatalf("expected 1 published event, got %d", len(pub.published))
+		}
+
+		var payload inbound.InboundEventPayload
+		if err := json.Unmarshal(pub.published[0].data, &payload); err != nil {
+			t.Fatalf("failed to unmarshal payload: %v", err)
+		}
+
+		if payload.Timing == nil {
+			t.Fatal("expected payload.Timing to be present")
+		}
+		if payload.Timing.ResponseLatencyMS == nil {
+			t.Fatal("expected payload.Timing.ResponseLatencyMS to be present")
+		}
+		latency := *payload.Timing.ResponseLatencyMS
+		if latency < 2400 || latency > 3500 {
+			t.Errorf("expected latency ~2500ms, got %d", latency)
+		}
+		if payload.Timing.LastOutboundAt == "" {
+			t.Error("expected payload.Timing.LastOutboundAt to be populated")
+		}
+	})
+
+	t.Run("Timing telemetry omitted when no prior outbound message exists", func(t *testing.T) {
+		pub := &fakePublisher{}
+		me := &fakeMediaEngine{}
+		aud := &fakeAuditWriter{}
+
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+
+		event := &inbound.InboundEvent{
+			WorkspaceID: ws.ID,
+			MessageID:   "test-no-timing-msg",
+			Channel:     "whatsapp_cloud",
+			From:        "+5511999993333",
+			To:          "+5511888884444",
+			Body:        "Primeira mensagem de lead",
+		}
+
+		err := proc.Process(ctx, event)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+
+		if len(pub.published) != 1 {
+			t.Fatalf("expected 1 published event, got %d", len(pub.published))
+		}
+
+		var payload inbound.InboundEventPayload
+		if err := json.Unmarshal(pub.published[0].data, &payload); err != nil {
+			t.Fatalf("failed to unmarshal payload: %v", err)
+		}
+
+		if payload.Timing != nil {
+			t.Errorf("expected payload.Timing to be nil for initial message, got %+v", payload.Timing)
+		}
+
+		// Also verify raw JSON does not contain "timing" field
+		var rawMap map[string]any
+		if err := json.Unmarshal(pub.published[0].data, &rawMap); err != nil {
+			t.Fatalf("failed to unmarshal raw map: %v", err)
+		}
+		if _, ok := rawMap["timing"]; ok {
+			t.Errorf("expected 'timing' field to be omitted from JSON, got %v", rawMap["timing"])
+		}
+	})
+
 	t.Run("PII Opt-in opt-out filters", func(t *testing.T) {
 		// Update workspace PIIOptIn to false
 		_, err = pool.Exec(ctx, "UPDATE workspaces SET pii_opt_in = FALSE WHERE id = $1", ws.ID)

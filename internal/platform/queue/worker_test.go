@@ -731,5 +731,46 @@ func TestOrchestrator_AutomatedCascadingAndIdentityVerification(t *testing.T) {
 			t.Errorf("expected audit event for skipped_no_identity on telegram channel")
 		}
 	})
+
+	t.Run("Records outbound timestamp in recipient session on successful dispatch", func(t *testing.T) {
+		sessRepo := repository.NewRecipientSessionRepository(pool)
+		dispWA := &fakeDispatcher{err: nil}
+
+		registry := channel.NewRegistry(map[string]channel.Dispatcher{
+			"whatsapp_cloud": dispWA,
+		})
+
+		orchestrator := NewDispatchOrchestrator(registry, dispatchRepo, nil, nil, nil, contactRepo, 5, 60*time.Second)
+		orchestrator.SetRecipientSessionRepository(sessRepo)
+
+		recipient := "+5511977770003"
+		traceID := "session_outbound_trace_" + uuid.New().String()
+		qMsg := &domain.QueueMessage{
+			WorkspaceID:    ws.ID,
+			TraceID:        traceID,
+			To:             recipient,
+			Channel:        "whatsapp_cloud",
+			SenderIdentity: "+5511888880000",
+			Body:           "Outbound timing test message",
+		}
+
+		msg := &fakeDispatchMsg{}
+		err := orchestrator.Process(ctx, msg, qMsg, 0)
+		if err != nil {
+			t.Fatalf("expected successful dispatch, got error: %v", err)
+		}
+
+		sess, err := sessRepo.Get(ctx, ws.ID, recipient, "whatsapp_cloud", "+5511888880000")
+		if err != nil {
+			t.Fatalf("failed to retrieve session: %v", err)
+		}
+		if sess.LastOutboundAt == nil {
+			t.Fatal("expected LastOutboundAt to be recorded on recipient session, got nil")
+		}
+		if time.Since(*sess.LastOutboundAt) > 10*time.Second {
+			t.Errorf("expected LastOutboundAt to be recent, got %v", *sess.LastOutboundAt)
+		}
+	})
 }
+
 

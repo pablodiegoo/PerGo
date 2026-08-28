@@ -735,6 +735,74 @@ components:
           description: Detected audio format.
           example: "ogg/opus"
 
+    EventTiming:
+      type: object
+      description: Response timing telemetry tracking contact engagement latency between outbound and inbound events.
+      properties:
+        response_latency_ms:
+          type: integer
+          description: Elapsed time in milliseconds between the last outbound message sent and this inbound message arrival.
+          example: 2450
+        last_outbound_at:
+          type: string
+          format: date-time
+          description: ISO 8601 UTC timestamp of the last outbound message sent to the contact.
+          example: "2026-08-28T20:15:12Z"
+
+    InboundEventPayload:
+      type: object
+      required:
+        - event
+        - trace_id
+        - message_id
+        - channel
+        - timestamp
+        - workspace_id
+        - from
+      properties:
+        event:
+          type: string
+          example: "inbound_message"
+        trace_id:
+          type: string
+          example: "018d4512-321b-789a-bcde-f0123456789a"
+        message_id:
+          type: string
+          example: "wamid.HBgLNTUxMTk5..."
+        channel:
+          type: string
+          enum: [whatsapp, whatsapp_cloud, telegram, instagram, email]
+          example: "whatsapp_cloud"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-08-28T20:15:15Z"
+        workspace_id:
+          type: string
+          format: uuid
+        from:
+          type: string
+          description: Contact phone number or chat ID (or SHA-256 hash if workspace PII is opted out).
+          example: "+5511999998888"
+        to:
+          type: string
+          description: PerGo receiving identity / sender identity.
+          example: "+5511888887777"
+        body:
+          type: string
+          example: "Sim, consumo produtos orgânicos."
+        media:
+          $ref: '#/components/schemas/Media'
+        timing:
+          $ref: '#/components/schemas/EventTiming'
+        sender_name:
+          type: string
+          example: "Ana Clara"
+        metadata:
+          type: object
+          additionalProperties:
+            type: string
+
     TemplateComponent:
       type: object
       required:
