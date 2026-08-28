@@ -69,6 +69,10 @@ func (f *fakeMediaEngine) ProcessInbound(ctx context.Context, workspaceID uuid.U
 	return "", nil
 }
 
+func (f *fakeMediaEngine) ExtractAudioTelemetry(data []byte, contentType string) (*media.AudioTelemetry, error) {
+	return media.ExtractAudioTelemetry(data, contentType)
+}
+
 // fakeQueueDepthTracker tracks depths in memory.
 type fakeQueueDepthTracker struct {
 	exceeds   bool

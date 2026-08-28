@@ -1,7 +1,9 @@
 package inbound_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"os"
@@ -132,6 +134,10 @@ func (f *fakeMediaEngine) ProcessInbound(ctx context.Context, workspaceID uuid.U
 		return f.processInboundFn(ctx, workspaceID, mediaType, data)
 	}
 	return "", nil
+}
+
+func (f *fakeMediaEngine) ExtractAudioTelemetry(data []byte, contentType string) (*media.AudioTelemetry, error) {
+	return media.ExtractAudioTelemetry(data, contentType)
 }
 
 // fakeAuditWriter records audit events.
@@ -317,6 +323,90 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 		if !strings.HasPrefix(payload.Media.MediaURL, "/media/"+ws.ID.String()+"/") {
 			t.Errorf("invalid media URL format: %s", payload.Media.MediaURL)
+		}
+	})
+
+	t.Run("Audio voice note enriched with acoustic telemetry RMS and duration", func(t *testing.T) {
+		pub := &fakePublisher{}
+		me := &fakeMediaEngine{
+			processInboundFn: func(ctx context.Context, workspaceID uuid.UUID, mediaType string, data []byte) (string, error) {
+				return "/media/" + workspaceID.String() + "/voice_note.ogg", nil
+			},
+		}
+		aud := &fakeAuditWriter{}
+
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+
+		// Create a synthetic WAV or Ogg audio byte payload
+		sine := make([]int16, 16000) // 1 second at 16kHz
+		for i := range sine {
+			sine[i] = 16384 // non-zero amplitude
+		}
+		buf := new(bytes.Buffer)
+		buf.WriteString("RIFF")
+		binary.Write(buf, binary.LittleEndian, uint32(36+len(sine)*2))
+		buf.WriteString("WAVEfmt ")
+		binary.Write(buf, binary.LittleEndian, uint32(16))
+		binary.Write(buf, binary.LittleEndian, uint16(1))
+		binary.Write(buf, binary.LittleEndian, uint16(1))
+		binary.Write(buf, binary.LittleEndian, uint32(16000))
+		binary.Write(buf, binary.LittleEndian, uint32(32000))
+		binary.Write(buf, binary.LittleEndian, uint16(2))
+		binary.Write(buf, binary.LittleEndian, uint16(16))
+		buf.WriteString("data")
+		binary.Write(buf, binary.LittleEndian, uint32(len(sine)*2))
+		for _, s := range sine {
+			binary.Write(buf, binary.LittleEndian, s)
+		}
+		audioBytes := buf.Bytes()
+
+		event := &inbound.InboundEvent{
+			WorkspaceID: ws.ID,
+			MessageID:   "test-audio-msg-" + uuid.New().String(),
+			Channel:     "whatsapp_cloud",
+			From:        "+5511999999999",
+			To:          "+5511888888888",
+			Media: &inbound.InboundMedia{
+				Bytes:     audioBytes,
+				MediaType: "audio",
+				Filename:  "voice.ogg",
+			},
+		}
+
+		err := proc.Process(ctx, event)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+
+		if len(pub.published) == 0 {
+			t.Fatal("expected message to be published to NATS")
+		}
+
+		var payload inbound.InboundEventPayload
+		if err := json.Unmarshal(pub.published[0].data, &payload); err != nil {
+			t.Fatalf("failed to unmarshal published payload: %v", err)
+		}
+
+		if payload.Media == nil {
+			t.Fatal("expected payload.Media to be present")
+		}
+		if payload.Media.MediaType != "audio" {
+			t.Errorf("expected media_type = audio, got %s", payload.Media.MediaType)
+		}
+		if payload.Media.DurationMS != 1000 {
+			t.Errorf("expected duration_ms = 1000, got %d", payload.Media.DurationMS)
+		}
+		if payload.Media.RMSEnergy == nil || *payload.Media.RMSEnergy <= 0.0 {
+			t.Errorf("expected valid rms_energy, got %v", payload.Media.RMSEnergy)
+		}
+		if payload.Media.Telemetry == nil {
+			t.Fatal("expected payload.Media.Telemetry to be populated")
+		}
+		if payload.Media.Telemetry.DurationMS != 1000 {
+			t.Errorf("expected telemetry duration_ms = 1000, got %d", payload.Media.Telemetry.DurationMS)
+		}
+		if payload.Media.Telemetry.SampleRate != 16000 {
+			t.Errorf("expected telemetry sample_rate = 16000, got %d", payload.Media.Telemetry.SampleRate)
 		}
 	})
 

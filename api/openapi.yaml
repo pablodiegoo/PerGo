@@ -694,6 +694,46 @@ components:
         caption:
           type: string
           example: "Sua fatura do mês de agosto."
+        duration_ms:
+          type: integer
+          description: Total audio duration in milliseconds.
+          example: 1850
+        rms_energy:
+          type: number
+          format: double
+          description: Normalized Root Mean Square acoustic energy in [0.0, 1.0].
+          example: 0.0854
+        telemetry:
+          $ref: '#/components/schemas/AudioTelemetry'
+
+    AudioTelemetry:
+      type: object
+      properties:
+        duration_ms:
+          type: integer
+          description: Total duration in milliseconds.
+          example: 1850
+        voiced_duration_ms:
+          type: integer
+          description: Active voiced audio duration in milliseconds.
+          example: 1600
+        rms_energy:
+          type: number
+          format: double
+          description: Normalized Root Mean Square acoustic energy in [0.0, 1.0].
+          example: 0.0854
+        sample_rate:
+          type: integer
+          description: Audio sample rate in Hz.
+          example: 48000
+        channels:
+          type: integer
+          description: Channel count (1 for mono, 2 for stereo).
+          example: 1
+        format:
+          type: string
+          description: Detected audio format.
+          example: "ogg/opus"
 
     TemplateComponent:
       type: object

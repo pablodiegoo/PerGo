@@ -179,10 +179,13 @@ type MessageStatusUpdatedPayload struct {
 }
 
 type EventMedia struct {
-	MediaURL  string `json:"media_url"`
-	MediaType string `json:"media_type"`
-	Filename  string `json:"filename,omitempty"`
-	Caption   string `json:"caption,omitempty"`
+	MediaURL   string                `json:"media_url"`
+	MediaType  string                `json:"media_type"`
+	Filename   string                `json:"filename,omitempty"`
+	Caption    string                `json:"caption,omitempty"`
+	DurationMS int                   `json:"duration_ms,omitempty"`
+	RMSEnergy  *float64              `json:"rms_energy,omitempty"`
+	Telemetry  *media.AudioTelemetry `json:"telemetry,omitempty"`
 }
 
 // Publisher defines the port for publishing event payloads to a messaging queue.
@@ -375,6 +378,18 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 					Caption:   ev.Media.Caption,
 				}
 				ev.Media.MediaURL = mediaURL
+
+				// If media is audio, extract acoustic telemetry (RMS energy and duration)
+				if media.IsAudio(ev.Media.MediaType, ev.Media.Filename) {
+					telemetry, err := p.mediaEngine.ExtractAudioTelemetry(ev.Media.Bytes, ev.Media.MediaType)
+					if err != nil {
+						slog.Warn("inbound processor: failed to extract audio telemetry", "error", err)
+					} else if telemetry != nil {
+						payload.Media.DurationMS = telemetry.DurationMS
+						payload.Media.RMSEnergy = &telemetry.RMSEnergy
+						payload.Media.Telemetry = telemetry
+					}
+				}
 			}
 		}
 	}
