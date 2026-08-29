@@ -132,7 +132,7 @@ func (st *SessionTicker) processRange(ctx context.Context, start, end time.Time,
 		}
 
 		if err := st.repo.MarkNotifiedExpiring(ctx, sess.SessionKey, time.Now().UTC()); err != nil {
-			slog.Error("session ticker: failed to mark notified expiring", "error", err, "recipient", sess.RecipientPhone)
+			slog.Error("session ticker: failed to mark notified expiring", "error", err, "recipient", sess.RecipientPhone, "trace_id", traceID)
 		}
 	}
 }
