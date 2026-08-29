@@ -1064,6 +1064,8 @@ func DecodeMP4AAC(data []byte) ([]int16, *AudioTelemetry, error) {
 		durationMs   = 0
 		sampleRate   = 44100
 		channels     = 1
+		sampleSizes  []int
+		mdatPayload  []byte
 		syntheticPCM []int16
 	)
 
@@ -1115,44 +1117,83 @@ func DecodeMP4AAC(data []byte) ([]int16, *AudioTelemetry, error) {
 					sampleRate = sr
 				}
 			}
+
+			// Find stsz box for exact frame/sample sizes
+			stszIdx := bytes.Index(boxData, []byte("stsz"))
+			if stszIdx != -1 && stszIdx+16 <= len(boxData) {
+				stszPayload := boxData[stszIdx+4:]
+				if len(stszPayload) >= 12 {
+					sampleSize := binary.BigEndian.Uint32(stszPayload[4:8])
+					sampleCount := binary.BigEndian.Uint32(stszPayload[8:12])
+					if sampleSize > 0 && sampleCount > 0 && sampleCount < 1000000 {
+						for i := uint32(0); i < sampleCount; i++ {
+							sampleSizes = append(sampleSizes, int(sampleSize))
+						}
+					} else if sampleSize == 0 && sampleCount > 0 && sampleCount < 1000000 && len(stszPayload) >= 12+int(sampleCount)*4 {
+						for i := uint32(0); i < sampleCount; i++ {
+							sz := binary.BigEndian.Uint32(stszPayload[12+i*4 : 12+(i+1)*4])
+							sampleSizes = append(sampleSizes, int(sz))
+						}
+					}
+				}
+			}
 		}
 
 		if boxType == "mdat" {
-			// Extract power from mdat
 			headerSize := 8
 			if offset+4 <= len(data) && binary.BigEndian.Uint32(data[offset:offset+4]) == 1 {
 				headerSize = 16
 			}
 			if len(boxData) > headerSize {
-				payload := boxData[headerSize:]
-				numFrames := 1
-				if durationMs > 0 && sampleRate > 0 {
-					numFrames = (sampleRate * durationMs) / (1024 * 1000)
-				}
-				if numFrames <= 0 {
-					numFrames = 1
-				}
-				framePayloadLen := len(payload) / numFrames
-				if framePayloadLen <= 0 {
-					framePayloadLen = len(payload)
-				}
-				for f := 0; f < numFrames; f++ {
-					fStart := f * framePayloadLen
-					if fStart >= len(payload) {
-						break
-					}
-					fEnd := fStart + framePayloadLen
-					if fEnd > len(payload) {
-						fEnd = len(payload)
-					}
-					fData := payload[fStart:fEnd]
-					amp, _ := ExtractAACFrameEnergy(fData, channels)
-					syntheticPCM = appendSyntheticPCM(syntheticPCM, 1024, sampleRate, amp)
-				}
+				mdatPayload = boxData[headerSize:]
 			}
 		}
 
 		offset += boxSize
+	}
+
+	if len(mdatPayload) > 0 {
+		if len(sampleSizes) > 0 {
+			pOff := 0
+			for _, sz := range sampleSizes {
+				if pOff >= len(mdatPayload) {
+					break
+				}
+				fEnd := pOff + sz
+				if fEnd > len(mdatPayload) {
+					fEnd = len(mdatPayload)
+				}
+				fData := mdatPayload[pOff:fEnd]
+				amp, _ := ExtractAACFrameEnergy(fData, channels)
+				syntheticPCM = appendSyntheticPCM(syntheticPCM, 1024, sampleRate, amp)
+				pOff = fEnd
+			}
+		} else {
+			numFrames := 1
+			if durationMs > 0 && sampleRate > 0 {
+				numFrames = (sampleRate * durationMs) / (1024 * 1000)
+			}
+			if numFrames <= 0 {
+				numFrames = 1
+			}
+			framePayloadLen := len(mdatPayload) / numFrames
+			if framePayloadLen <= 0 {
+				framePayloadLen = len(mdatPayload)
+			}
+			for f := 0; f < numFrames; f++ {
+				fStart := f * framePayloadLen
+				if fStart >= len(mdatPayload) {
+					break
+				}
+				fEnd := fStart + framePayloadLen
+				if fEnd > len(mdatPayload) {
+					fEnd = len(mdatPayload)
+				}
+				fData := mdatPayload[fStart:fEnd]
+				amp, _ := ExtractAACFrameEnergy(fData, channels)
+				syntheticPCM = appendSyntheticPCM(syntheticPCM, 1024, sampleRate, amp)
+			}
+		}
 	}
 
 	if durationMs == 0 && len(syntheticPCM) == 0 {

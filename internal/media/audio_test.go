@@ -1209,6 +1209,54 @@ func TestDecodeMP4AAC_EdgeCases(t *testing.T) {
 			t.Errorf("expected error for empty MP4 container")
 		}
 	})
+
+	t.Run("MP4 container with stsz sample size table", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+		writeBox(buf, "ftyp", []byte("mp42\x00\x00\x00\x00mp42isom"))
+
+		moov := new(bytes.Buffer)
+		// mvhd
+		mvhd := new(bytes.Buffer)
+		mvhd.WriteByte(0)
+		mvhd.Write([]byte{0, 0, 0})
+		binary.Write(mvhd, binary.BigEndian, uint32(0))
+		binary.Write(mvhd, binary.BigEndian, uint32(0))
+		binary.Write(mvhd, binary.BigEndian, uint32(44100))
+		binary.Write(mvhd, binary.BigEndian, uint32(44100)) // 1s
+		mvhd.Write(make([]byte, 24))
+		binary.Write(mvhd, binary.BigEndian, uint32(2))
+		writeBox(moov, "mvhd", mvhd.Bytes())
+
+		// stsz table with 2 frames (sizes: 10, 14 bytes)
+		stsz := new(bytes.Buffer)
+		stsz.WriteByte(0)
+		stsz.Write([]byte{0, 0, 0})
+		binary.Write(stsz, binary.BigEndian, uint32(0)) // variable sample size
+		binary.Write(stsz, binary.BigEndian, uint32(2)) // 2 samples
+		binary.Write(stsz, binary.BigEndian, uint32(10))
+		binary.Write(stsz, binary.BigEndian, uint32(14))
+		writeBox(moov, "stsz", stsz.Bytes())
+
+		writeBox(buf, "moov", moov.Bytes())
+
+		// mdat with 24 bytes (10 + 14)
+		mdat := make([]byte, 24)
+		for i := range mdat {
+			mdat[i] = byte(i + 1)
+		}
+		writeBox(buf, "mdat", mdat)
+
+		samples, tel, err := DecodeMP4AAC(buf.Bytes())
+		if err != nil {
+			t.Fatalf("DecodeMP4AAC failed with stsz: %v", err)
+		}
+		if tel.DurationMS != 1000 {
+			t.Errorf("expected DurationMS=1000, got %d", tel.DurationMS)
+		}
+		if len(samples) != 2*1024 {
+			t.Errorf("expected 2048 samples (2 frames * 1024), got %d", len(samples))
+		}
+	})
 }
 
 func TestOpusFrameEnergyExtraction(t *testing.T) {

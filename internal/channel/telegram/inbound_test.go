@@ -115,8 +115,9 @@ func TestTelegramInboundAdapter_Parse(t *testing.T) {
 		if ev.Interactive.ButtonReply.ID != "btn_action_1" {
 			t.Errorf("expected ButtonReply.ID=btn_action_1, got %s", ev.Interactive.ButtonReply.ID)
 		}
-		if !ev.OccurredAt.IsZero() {
-			t.Errorf("expected OccurredAt to be zero for callback query, got %v", ev.OccurredAt)
+		expectedCbTime := time.Unix(1700000005, 0).UTC()
+		if !ev.OccurredAt.Equal(expectedCbTime) {
+			t.Errorf("expected OccurredAt=%v for callback query, got %v", expectedCbTime, ev.OccurredAt)
 		}
 
 		// wait a tiny bit for the async ack to complete

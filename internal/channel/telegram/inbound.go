@@ -176,6 +176,7 @@ func (a *TelegramInboundAdapter) Parse(
 		if update.CallbackQuery.Message != nil {
 			chat = update.CallbackQuery.Message.Chat
 			messageThreadIDInt = update.CallbackQuery.Message.MessageThreadID
+			msgDate = update.CallbackQuery.Message.Date
 		}
 
 		// Acknowledge the callback query in background
