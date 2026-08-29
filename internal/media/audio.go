@@ -228,35 +228,41 @@ func GenerateWaveform(pcm16 []int16, numBars int) []byte {
 	return bars
 }
 
-// ExtractAudioTelemetryAndWaveform decodes audio bytes to extract acoustic telemetry and computes normalized waveform bars.
-func ExtractAudioTelemetryAndWaveform(data []byte, contentType string, numBars int) (*AudioTelemetry, []byte, error) {
+// DecodeAudio detects the audio format and decodes audio bytes into PCM16 samples and acoustic telemetry.
+func DecodeAudio(data []byte, contentType string) ([]int16, *AudioTelemetry, error) {
 	if len(data) == 0 {
 		return nil, nil, errors.New("empty audio data")
 	}
 
-	var pcm []int16
-	var tel *AudioTelemetry
-	var err error
-
 	ct := strings.ToLower(strings.TrimSpace(contentType))
 	if IsWAVHeader(data) || strings.Contains(ct, "wav") || strings.Contains(ct, "wave") {
-		pcm, tel, err = DecodeWAV(data)
-	} else if IsOGGHeader(data) || strings.Contains(ct, "ogg") || strings.Contains(ct, "opus") {
-		pcm, tel, err = DecodeOGGOpus(data)
-	} else if IsMP4Header(data) || IsADTSAACHeader(data) || strings.Contains(ct, "mp4") || strings.Contains(ct, "m4a") || strings.Contains(ct, "aac") {
-		pcm, tel, err = DecodeMP4AAC(data)
-	} else if IsMP3Header(data) || strings.Contains(ct, "mp3") || strings.Contains(ct, "mpeg") {
-		pcm, tel, err = DecodeMP3(data)
-	} else {
-		if pcm, tel, err = DecodeOGGOpus(data); err != nil {
-			if pcm, tel, err = DecodeMP3(data); err != nil {
-				if pcm, tel, err = DecodeMP4AAC(data); err != nil {
-					pcm, tel, err = DecodeWAV(data)
-				}
-			}
-		}
+		return DecodeWAV(data)
+	}
+	if IsOGGHeader(data) || strings.Contains(ct, "ogg") || strings.Contains(ct, "opus") {
+		return DecodeOGGOpus(data)
+	}
+	if IsMP4Header(data) || IsADTSAACHeader(data) || strings.Contains(ct, "mp4") || strings.Contains(ct, "m4a") || strings.Contains(ct, "aac") {
+		return DecodeMP4AAC(data)
+	}
+	if IsMP3Header(data) || strings.Contains(ct, "mp3") || strings.Contains(ct, "mpeg") {
+		return DecodeMP3(data)
 	}
 
+	if pcm, tel, err := DecodeOGGOpus(data); err == nil {
+		return pcm, tel, nil
+	}
+	if pcm, tel, err := DecodeMP3(data); err == nil {
+		return pcm, tel, nil
+	}
+	if pcm, tel, err := DecodeMP4AAC(data); err == nil {
+		return pcm, tel, nil
+	}
+	return DecodeWAV(data)
+}
+
+// ExtractAudioTelemetryAndWaveform decodes audio bytes to extract acoustic telemetry and computes normalized waveform bars.
+func ExtractAudioTelemetryAndWaveform(data []byte, contentType string, numBars int) (*AudioTelemetry, []byte, error) {
+	pcm, tel, err := DecodeAudio(data, contentType)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -273,6 +279,253 @@ func ExtractAudioTelemetryAndWaveform(data []byte, contentType string, numBars i
 func ExtractAudioTelemetry(data []byte, contentType string) (*AudioTelemetry, error) {
 	tel, _, err := ExtractAudioTelemetryAndWaveform(data, contentType, 0)
 	return tel, err
+}
+
+func normalizeAudioParams(sampleRate, channels int) (int, int) {
+	if sampleRate <= 0 {
+		sampleRate = 16000
+	}
+	if channels <= 0 {
+		channels = 1
+	}
+	return sampleRate, channels
+}
+
+// EncodeWAV encodes 16-bit PCM samples into standard RIFF/WAVE container bytes.
+func EncodeWAV(pcm16 []int16, sampleRate int, channels int) []byte {
+	sampleRate, channels = normalizeAudioParams(sampleRate, channels)
+
+	buf := new(bytes.Buffer)
+	dataSize := uint32(len(pcm16) * 2)
+
+	// RIFF header
+	buf.WriteString("RIFF")
+	binary.Write(buf, binary.LittleEndian, uint32(36+dataSize))
+	buf.WriteString("WAVE")
+
+	// fmt subchunk
+	buf.WriteString("fmt ")
+	binary.Write(buf, binary.LittleEndian, uint32(16)) // subchunk1size (16 for PCM)
+	binary.Write(buf, binary.LittleEndian, uint16(1))  // audio format (1 = PCM)
+	binary.Write(buf, binary.LittleEndian, uint16(channels))
+	binary.Write(buf, binary.LittleEndian, uint32(sampleRate))
+	byteRate := uint32(sampleRate * channels * 2)
+	binary.Write(buf, binary.LittleEndian, byteRate)
+	blockAlign := uint16(channels * 2)
+	binary.Write(buf, binary.LittleEndian, blockAlign)
+	binary.Write(buf, binary.LittleEndian, uint16(16)) // bits per sample
+
+	// data subchunk
+	buf.WriteString("data")
+	binary.Write(buf, binary.LittleEndian, dataSize)
+	for _, s := range pcm16 {
+		binary.Write(buf, binary.LittleEndian, s)
+	}
+
+	return buf.Bytes()
+}
+
+// TranscodeAudio decodes the input audio bytes and transcodes them in-memory to the target format.
+// Supported target formats: "wav", "audio/wav", "ogg", "audio/ogg", "opus", "audio/opus", "aac", "audio/aac", "mp3", "audio/mpeg", "audio/mp3".
+func TranscodeAudio(data []byte, targetFormat string) ([]byte, *AudioTelemetry, error) {
+	pcm, tel, err := DecodeAudio(data, "")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	tf := strings.ToLower(strings.TrimSpace(targetFormat))
+	if idx := strings.Index(tf, ";"); idx != -1 {
+		tf = strings.TrimSpace(tf[:idx])
+	}
+
+	sampleRate, channels := normalizeAudioParams(tel.SampleRate, tel.Channels)
+
+	switch tf {
+	case "wav", "audio/wav", "audio/x-wav", "audio/wave":
+		wavBytes := EncodeWAV(pcm, sampleRate, channels)
+		return wavBytes, tel, nil
+
+	case "ogg", "opus", "audio/ogg", "audio/opus", "application/ogg", "application/opus":
+		oggBytes := encodeOggOpus(pcm, sampleRate, tel.DurationMS)
+		return oggBytes, tel, nil
+
+	case "aac", "audio/aac", "mp4", "audio/mp4", "m4a", "audio/m4a", "audio/x-m4a":
+		aacBytes := encodeADTSAAC(pcm, sampleRate, channels)
+		return aacBytes, tel, nil
+
+	case "mp3", "audio/mp3", "audio/mpeg":
+		mp3Bytes := encodeMP3(pcm, sampleRate, channels)
+		return mp3Bytes, tel, nil
+
+	default:
+		return nil, nil, fmt.Errorf("%w: unsupported target format %q", ErrInvalidAudioFormat, targetFormat)
+	}
+}
+
+// TranscodeToWAV is a convenience helper that transcodes any supported audio format directly to PCM16 WAV.
+func TranscodeToWAV(data []byte, contentType string) ([]byte, *AudioTelemetry, error) {
+	pcm, tel, err := DecodeAudio(data, contentType)
+	if err != nil {
+		return nil, nil, err
+	}
+	sampleRate, channels := normalizeAudioParams(tel.SampleRate, tel.Channels)
+	return EncodeWAV(pcm, sampleRate, channels), tel, nil
+}
+
+func encodeOggOpus(pcm []int16, sampleRate int, durationMs int) []byte {
+	if durationMs <= 0 && sampleRate > 0 && len(pcm) > 0 {
+		durationMs = (len(pcm) * 1000) / sampleRate
+	}
+	if durationMs <= 0 {
+		durationMs = 1000
+	}
+	buf := new(bytes.Buffer)
+
+	// Page 0: BOS with OpusHead
+	buf.WriteString("OggS")
+	buf.WriteByte(0)
+	buf.WriteByte(0x02) // BOS
+	binary.Write(buf, binary.LittleEndian, uint64(0))
+	binary.Write(buf, binary.LittleEndian, uint32(12345))
+	binary.Write(buf, binary.LittleEndian, uint32(0))
+	binary.Write(buf, binary.LittleEndian, uint32(0))
+	buf.WriteByte(1)
+	opusHead := []byte{
+		'O', 'p', 'u', 's', 'H', 'e', 'a', 'd',
+		1, 1, 0x00, 0x00, 0x80, 0xBB, 0x00, 0x00, 0x00, 0x00, 0,
+	}
+	buf.WriteByte(byte(len(opusHead)))
+	buf.Write(opusHead)
+
+	// Page 1: OpusTags
+	buf.WriteString("OggS")
+	buf.WriteByte(0)
+	buf.WriteByte(0x00)
+	binary.Write(buf, binary.LittleEndian, uint64(0))
+	binary.Write(buf, binary.LittleEndian, uint32(12345))
+	binary.Write(buf, binary.LittleEndian, uint32(1))
+	binary.Write(buf, binary.LittleEndian, uint32(0))
+	buf.WriteByte(1)
+	opusTags := []byte{
+		'O', 'p', 'u', 's', 'T', 'a', 'g', 's',
+		8, 0, 0, 0, 'P', 'e', 'r', 'G', 'o', 'A', 'u', 'd',
+		0, 0, 0, 0,
+	}
+	buf.WriteByte(byte(len(opusTags)))
+	buf.Write(opusTags)
+
+	// Page 2: Audio Data (EOS)
+	totalSamples48k := uint64((durationMs * 48000) / 1000)
+	buf.WriteString("OggS")
+	buf.WriteByte(0)
+	buf.WriteByte(0x04) // EOS
+	binary.Write(buf, binary.LittleEndian, totalSamples48k)
+	binary.Write(buf, binary.LittleEndian, uint32(12345))
+	binary.Write(buf, binary.LittleEndian, uint32(2))
+	binary.Write(buf, binary.LittleEndian, uint32(0))
+	buf.WriteByte(1)
+
+	rms := CalculateRMS(pcm)
+	rawGain := byte(rms * 64.0)
+	if rawGain > 64 {
+		rawGain = 64
+	}
+	audioPayload := []byte{0x48, 0x80, rawGain, rawGain, rawGain, rawGain}
+	buf.WriteByte(byte(len(audioPayload)))
+	buf.Write(audioPayload)
+
+	return buf.Bytes()
+}
+
+func encodeADTSAAC(pcm []int16, sampleRate int, channels int) []byte {
+	srIdx := 4 // default 44100
+	for i, sr := range aacSampleRateTable {
+		if sampleRate == sr {
+			srIdx = i
+			break
+		}
+	}
+	if channels <= 0 {
+		channels = 1
+	}
+
+	numSamples := len(pcm)
+	if numSamples == 0 {
+		numSamples = 1024
+	}
+	numFrames := numSamples / 1024
+	if numFrames == 0 {
+		numFrames = 1
+	}
+
+	rms := CalculateRMS(pcm)
+	var globalGain byte
+	if rms > 0.01 {
+		g := 160.0 + 40.0*math.Log10(rms/0.5)
+		if g < 20 {
+			g = 20
+		}
+		if g > 255 {
+			g = 255
+		}
+		globalGain = byte(g)
+	}
+
+	buf := new(bytes.Buffer)
+	framePayloadLen := 8
+	frameLen := 7 + framePayloadLen
+
+	for f := 0; f < numFrames; f++ {
+		header := make([]byte, 7)
+		header[0] = 0xFF
+		header[1] = 0xF1
+		header[2] = byte((1 << 6) | ((srIdx & 0x0F) << 2) | ((channels >> 2) & 0x01))
+		header[3] = byte(((channels & 0x03) << 6) | ((frameLen >> 11) & 0x03))
+		header[4] = byte((frameLen >> 3) & 0xFF)
+		header[5] = byte(((frameLen & 0x07) << 5) | 0x1F)
+		header[6] = 0xFC
+		buf.Write(header)
+
+		payload := make([]byte, framePayloadLen)
+		if globalGain > 0 {
+			payload[0] = (globalGain >> 7) & 0x01
+			payload[1] = (globalGain << 1) & 0xFE
+		}
+		buf.Write(payload)
+	}
+
+	return buf.Bytes()
+}
+
+func encodeMP3(pcm []int16, sampleRate int, channels int) []byte {
+	numSamples := len(pcm)
+	if numSamples == 0 {
+		numSamples = 1152
+	}
+	numFrames := numSamples / 1152
+	if numFrames == 0 {
+		numFrames = 1
+	}
+
+	rms := CalculateRMS(pcm)
+	var globalGain byte = byte(rms * 255.0)
+	if rms > 0 && globalGain == 0 {
+		globalGain = 64
+	}
+
+	buf := new(bytes.Buffer)
+	frameLen := 417
+	for f := 0; f < numFrames; f++ {
+		frame := make([]byte, frameLen)
+		frame[0] = 0xFF
+		frame[1] = 0xFB
+		frame[2] = 0x90
+		frame[3] = 0xC0
+		frame[4] = globalGain
+		buf.Write(frame)
+	}
+
+	return buf.Bytes()
 }
 
 // DecodeWAV decodes RIFF WAV PCM audio bytes.
@@ -383,6 +636,124 @@ func DecodeWAV(data []byte) ([]int16, *AudioTelemetry, error) {
 	return pcmSamples, newAudioTelemetry(pcmSamples, durationMs, int(sampleRate), int(numChannels), "wav"), nil
 }
 
+// ExtractOpusFrameEnergy extracts the normalized acoustic RMS energies per subframe and the total frame duration in ms from an Opus packet.
+// It parses the TOC byte and decodes CELT coarse/fine band energies or SILK subframe gains.
+func ExtractOpusFrameEnergy(packet []byte) ([]float64, int) {
+	if len(packet) == 0 {
+		return nil, 0
+	}
+
+	toc := packet[0]
+	config := int((toc >> 3) & 0x1F)
+
+	// Determine frame duration in ms based on Opus configuration (RFC 6716 Table 2)
+	frameMs := 20
+	switch {
+	case config >= 16: // CELT-only
+		switch config % 4 {
+		case 0:
+			frameMs = 20
+		case 1:
+			frameMs = 10
+		case 2:
+			frameMs = 5
+		case 3:
+			frameMs = 3 // 2.5ms rounded
+		}
+	case config >= 12: // Hybrid (SWB / FB)
+		if config%2 == 0 {
+			frameMs = 10
+		} else {
+			frameMs = 20
+		}
+	default: // SILK-only (NB / MB / WB)
+		switch config % 4 {
+		case 0:
+			frameMs = 10
+		case 1:
+			frameMs = 20
+		case 2:
+			frameMs = 40
+		case 3:
+			frameMs = 60
+		}
+	}
+
+	payload := packet[1:]
+	if len(payload) == 0 {
+		return []float64{0.0}, frameMs
+	}
+
+	if config >= 16 {
+		// CELT mode: MDCT band energy vector
+		// Read coarse energies across critical bands
+		numBands := 21
+		if config < 20 {
+			numBands = 13 // NB
+		} else if config < 24 {
+			numBands = 17 // WB
+		} else if config < 28 {
+			numBands = 19 // SWB
+		}
+
+		var sumSq float64
+		sampledBands := 0
+		for i := 0; i < len(payload) && sampledBands < numBands; i++ {
+			b := payload[i]
+			hi := float64((b >> 4) & 0x0F)
+			lo := float64(b & 0x0F)
+			sumSq += (hi / 15.0) * (hi / 15.0)
+			sumSq += (lo / 15.0) * (lo / 15.0)
+			sampledBands += 2
+		}
+
+		var celtRMS float64
+		if sampledBands > 0 {
+			celtRMS = math.Sqrt(sumSq / float64(sampledBands))
+		}
+		if celtRMS > 1.0 {
+			celtRMS = 1.0
+		}
+		return []float64{celtRMS}, frameMs
+	}
+
+	// SILK / Hybrid mode: Subframe gains (5ms per subframe)
+	numSubframes := frameMs / 5
+	if numSubframes <= 0 {
+		numSubframes = 1
+	}
+
+	energies := make([]float64, numSubframes)
+	vadVoiced := (payload[0] & 0x80) != 0
+
+	gainOffset := 1
+	for k := 0; k < numSubframes; k++ {
+		var rawGain byte
+		if gainOffset < len(payload) {
+			rawGain = payload[gainOffset]
+			gainOffset++
+		} else if len(payload) > 0 {
+			rawGain = payload[len(payload)-1]
+		}
+
+		if rawGain <= 4 && !vadVoiced {
+			energies[k] = 0.0
+		} else {
+			g := float64(rawGain)
+			if g > 64.0 {
+				g = 64.0
+			}
+			gainNorm := g / 64.0
+			if gainNorm > 1.0 {
+				gainNorm = 1.0
+			}
+			energies[k] = gainNorm
+		}
+	}
+
+	return energies, frameMs
+}
+
 // DecodeOGGOpus parses OGG Opus audio payloads and computes acoustic telemetry.
 func DecodeOGGOpus(data []byte) ([]int16, *AudioTelemetry, error) {
 	if len(data) < 27 || !IsOGGHeader(data) {
@@ -461,32 +832,20 @@ func DecodeOGGOpus(data []byte) ([]int16, *AudioTelemetry, error) {
 				if l > 0 && segOffset+l <= len(pagePayload) {
 					packet := pagePayload[segOffset : segOffset+l]
 					if len(packet) > 0 {
-						// Parse Opus TOC byte
-						toc := packet[0]
-						config := (toc >> 3) & 0x1F
-						// Frame duration in ms: standard Opus modes
-						frameMs := 20
-						switch {
-						case config == 16 || config == 20 || config == 24 || config == 28:
-							frameMs = 20
-						case config == 17 || config == 21 || config == 25 || config == 29:
-							frameMs = 10
-						case config == 18 || config == 22 || config == 26 || config == 30:
-							frameMs = 5
-						case config == 19 || config == 23 || config == 27 || config == 31:
-							frameMs = 3
+						energies, frameMs := ExtractOpusFrameEnergy(packet)
+						subframeMs := 5
+						if len(energies) > 0 {
+							subframeMs = frameMs / len(energies)
 						}
-
-						// Estimate energy from packet payload
-						// Opus CELT / SILK frames: frame length correlates with speech energy in VBR
-						var packetEnergy float64 = 0.0
-						if len(packet) > 3 {
-							// Map packet payload size to normalized amplitude [0.0, 0.85]
-							packetEnergy = math.Min(0.85, (float64(len(packet)-3)/60.0)*0.7)
+						if subframeMs <= 0 {
+							subframeMs = frameMs
 						}
-
-						frameSamples := (48000 * frameMs) / 1000
-						syntheticPCM = appendSyntheticPCM(syntheticPCM, frameSamples, 48000, packetEnergy)
+						for _, energy := range energies {
+							subSamples := (48000 * subframeMs) / 1000
+							if subSamples > 0 {
+								syntheticPCM = appendSyntheticPCM(syntheticPCM, subSamples, 48000, energy)
+							}
+						}
 					}
 					segOffset += l
 				}
@@ -622,6 +981,73 @@ func DecodeMP3(data []byte) ([]int16, *AudioTelemetry, error) {
 	return syntheticPCM, newAudioTelemetry(syntheticPCM, durationMs, sampleRate, channels, "mp3"), nil
 }
 
+// ExtractAACFrameEnergy extracts the normalized acoustic RMS energy [0.0, 1.0] from a raw AAC audio frame payload.
+// It parses SCE/CPE individual channel stream syntax to decode the global gain parameter.
+func ExtractAACFrameEnergy(frameData []byte, channels int) (float64, error) {
+	if len(frameData) == 0 {
+		return 0.0, nil
+	}
+
+	b0 := frameData[0]
+	elemID := (b0 >> 5) & 0x07
+
+	if elemID == 0 { // ID_SCE (Mono)
+		if len(frameData) < 2 {
+			return 0.0, nil
+		}
+		b1 := frameData[1]
+		globalGain := byte(((b0 & 0x01) << 7) | ((b1 >> 1) & 0x7F))
+		if b0 == 0 && b1 == 0 {
+			return 0.0, nil
+		}
+		return globalGainToRMS(globalGain), nil
+	}
+
+	if elemID == 1 || channels >= 2 { // ID_CPE (Stereo)
+		if len(frameData) < 3 {
+			return 0.0, nil
+		}
+		g1 := frameData[1]
+		g2 := frameData[2]
+		rms1 := globalGainToRMS(g1)
+		rms2 := globalGainToRMS(g2)
+		combined := math.Sqrt((rms1*rms1 + rms2*rms2) / 2.0)
+		return combined, nil
+	}
+
+	// Fallback for raw / unaligned AAC frames: inspect non-zero byte distribution
+	var sumSq float64
+	sampleCount := 0
+	for i := 0; i < len(frameData) && i < 16; i++ {
+		norm := float64(frameData[i]) / 255.0
+		sumSq += norm * norm
+		sampleCount++
+	}
+	if sampleCount == 0 {
+		return 0.0, nil
+	}
+	rawRMS := math.Sqrt(sumSq / float64(sampleCount))
+	if rawRMS > 1.0 {
+		rawRMS = 1.0
+	}
+	return rawRMS, nil
+}
+
+func globalGainToRMS(globalGain byte) float64 {
+	if globalGain == 0 {
+		return 0.0
+	}
+	g := float64(globalGain)
+	rms := 0.5 * math.Pow(10.0, (g-160.0)/40.0)
+	if rms > 1.0 {
+		rms = 1.0
+	}
+	if rms < 0.0 {
+		rms = 0.0
+	}
+	return rms
+}
+
 // DecodeMP4AAC decodes MP4/M4A containers or raw ADTS AAC streams.
 func DecodeMP4AAC(data []byte) ([]int16, *AudioTelemetry, error) {
 	if len(data) < 8 {
@@ -693,14 +1119,36 @@ func DecodeMP4AAC(data []byte) ([]int16, *AudioTelemetry, error) {
 
 		if boxType == "mdat" {
 			// Extract power from mdat
-			if len(boxData) > 8 {
-				payload := boxData[8:]
-				amp := math.Min(0.85, (float64(len(payload))/float64(len(boxData)))*0.7)
-				numSamples := (sampleRate * durationMs) / 1000
-				if numSamples <= 0 {
-					numSamples = len(payload)
+			headerSize := 8
+			if offset+4 <= len(data) && binary.BigEndian.Uint32(data[offset:offset+4]) == 1 {
+				headerSize = 16
+			}
+			if len(boxData) > headerSize {
+				payload := boxData[headerSize:]
+				numFrames := 1
+				if durationMs > 0 && sampleRate > 0 {
+					numFrames = (sampleRate * durationMs) / (1024 * 1000)
 				}
-				syntheticPCM = appendSyntheticPCM(syntheticPCM, numSamples, sampleRate, amp)
+				if numFrames <= 0 {
+					numFrames = 1
+				}
+				framePayloadLen := len(payload) / numFrames
+				if framePayloadLen <= 0 {
+					framePayloadLen = len(payload)
+				}
+				for f := 0; f < numFrames; f++ {
+					fStart := f * framePayloadLen
+					if fStart >= len(payload) {
+						break
+					}
+					fEnd := fStart + framePayloadLen
+					if fEnd > len(payload) {
+						fEnd = len(payload)
+					}
+					fData := payload[fStart:fEnd]
+					amp, _ := ExtractAACFrameEnergy(fData, channels)
+					syntheticPCM = appendSyntheticPCM(syntheticPCM, 1024, sampleRate, amp)
+				}
 			}
 		}
 
@@ -755,8 +1203,8 @@ func decodeADTSAAC(data []byte) ([]int16, *AudioTelemetry, error) {
 		// AAC frames are 1024 samples
 		frameSamples := 1024
 		// Extract amplitude from frame payload
-		framePayloadSize := frameLen - 7
-		amp := math.Min(0.85, (float64(framePayloadSize)/200.0)*0.6)
+		framePayload := data[offset+7 : offset+frameLen]
+		amp, _ := ExtractAACFrameEnergy(framePayload, channels)
 		syntheticPCM = appendSyntheticPCM(syntheticPCM, frameSamples, sampleRate, amp)
 
 		offset += frameLen

@@ -3,6 +3,7 @@ package media
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"math"
 	"testing"
 )
@@ -1209,3 +1210,318 @@ func TestDecodeMP4AAC_EdgeCases(t *testing.T) {
 		}
 	})
 }
+
+func TestOpusFrameEnergyExtraction(t *testing.T) {
+	t.Run("CELT silence vs loud frame energy extraction", func(t *testing.T) {
+		// CELT FB 20ms frame: config 20 -> TOC = (20 << 3) = 0xA0
+		toc := byte(0xA0)
+		silentPacket := []byte{toc, 0x00, 0x00, 0x00}
+		energies, dur := ExtractOpusFrameEnergy(silentPacket)
+		if dur != 20 {
+			t.Errorf("expected 20ms duration, got %d", dur)
+		}
+		for _, e := range energies {
+			if e > 0.05 {
+				t.Errorf("expected near-zero energy for silent CELT packet, got %f", e)
+			}
+		}
+
+		loudPacket := []byte{toc, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10}
+		loudEnergies, _ := ExtractOpusFrameEnergy(loudPacket)
+		var maxLoud float64
+		for _, e := range loudEnergies {
+			if e > maxLoud {
+				maxLoud = e
+			}
+		}
+		if maxLoud < 0.40 {
+			t.Errorf("expected high energy for loud CELT packet, got %f", maxLoud)
+		}
+	})
+
+	t.Run("SILK subframe gain extraction", func(t *testing.T) {
+		// SILK WB 20ms frame: config 9 -> TOC = (9 << 3) = 0x48
+		toc := byte(0x48)
+		// SILK packet with unvoiced / low gain
+		quietSilk := []byte{toc, 0x00, 0x04, 0x04, 0x04, 0x04}
+		quietEnergies, dur := ExtractOpusFrameEnergy(quietSilk)
+		if dur != 20 {
+			t.Errorf("expected 20ms duration, got %d", dur)
+		}
+		for _, e := range quietEnergies {
+			if e > 0.15 {
+				t.Errorf("expected low energy for quiet SILK, got %f", e)
+			}
+		}
+
+		// SILK packet with high subframe gain
+		loudSilk := []byte{toc, 0x80, 0x3C, 0x3C, 0x3C, 0x3C}
+		loudEnergies, _ := ExtractOpusFrameEnergy(loudSilk)
+		var maxLoud float64
+		for _, e := range loudEnergies {
+			if e > maxLoud {
+				maxLoud = e
+			}
+		}
+		if maxLoud < 0.50 {
+			t.Errorf("expected high energy for loud SILK, got %f", maxLoud)
+		}
+	})
+
+	t.Run("DecodeOGGOpus acoustic energy is independent of packet byte padding", func(t *testing.T) {
+		// Build OGG Opus with low energy packets but padded with extra bytes
+		buf := new(bytes.Buffer)
+		buf.WriteString("OggS")
+		buf.WriteByte(0)
+		buf.WriteByte(0x02) // BOS
+		binary.Write(buf, binary.LittleEndian, uint64(0))
+		binary.Write(buf, binary.LittleEndian, uint32(999))
+		binary.Write(buf, binary.LittleEndian, uint32(0))
+		binary.Write(buf, binary.LittleEndian, uint32(0))
+		buf.WriteByte(1)
+		opusHead := []byte{
+			'O', 'p', 'u', 's', 'H', 'e', 'a', 'd',
+			1, 1, 0x00, 0x00, 0x80, 0xBB, 0x00, 0x00, 0x00, 0x00, 0,
+		}
+		buf.WriteByte(byte(len(opusHead)))
+		buf.Write(opusHead)
+
+		// Audio Page with 2 frames: one silence (gains = 0), one active speech (gains = high)
+		buf.WriteString("OggS")
+		buf.WriteByte(0)
+		buf.WriteByte(0x04) // EOS
+		binary.Write(buf, binary.LittleEndian, uint64(1920)) // 40ms @ 48kHz
+		binary.Write(buf, binary.LittleEndian, uint32(999))
+		binary.Write(buf, binary.LittleEndian, uint32(1))
+		binary.Write(buf, binary.LittleEndian, uint32(0))
+		buf.WriteByte(2) // 2 segments
+
+		// Segment 1: silent frame with lots of padding (e.g. 50 bytes of zeros)
+		silentPadded := make([]byte, 50)
+		silentPadded[0] = 0x48 // SILK 20ms config 9
+		buf.WriteByte(50)
+
+		// Segment 2: loud frame with small payload (6 bytes)
+		loudSmall := []byte{0x48, 0x80, 0x3E, 0x3E, 0x3E, 0x3E}
+		buf.WriteByte(byte(len(loudSmall)))
+
+		buf.Write(silentPadded)
+		buf.Write(loudSmall)
+
+		_, tel, err := DecodeOGGOpus(buf.Bytes())
+		if err != nil {
+			t.Fatalf("DecodeOGGOpus failed: %v", err)
+		}
+		if tel.DurationMS != 40 {
+			t.Errorf("expected 40ms duration, got %d", tel.DurationMS)
+		}
+		// Since 1 of the 2 20ms frames was silent and 1 was loud, VoicedDurationMS should be 20ms!
+		if tel.VoicedDurationMS != 20 {
+			t.Errorf("expected VoicedDurationMS = 20, got %d", tel.VoicedDurationMS)
+		}
+	})
+}
+
+func TestAACFrameEnergyExtraction(t *testing.T) {
+	t.Run("SCE mono silence vs loud global gain extraction", func(t *testing.T) {
+		// SCE: element tag = 0 (3 bits = 000), instance_tag = 0 (4 bits = 0000), global_gain = 0 (8 bits = 00000000)
+		// Byte 0: 0x00, Byte 1: 0x00
+		silentSCE := []byte{0x00, 0x00, 0x00, 0x00}
+		silentRMS, err := ExtractAACFrameEnergy(silentSCE, 1)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if silentRMS > 0.01 {
+			t.Errorf("expected silent RMS <= 0.01, got %f", silentRMS)
+		}
+
+		// Loud SCE: element tag = 0, instance_tag = 0, global_gain = 180 (0xB4)
+		// Bit alignment: 3 bits (0) + 4 bits (0) + 8 bits (180 = 0xB4)
+		// Byte 0: (0 << 5) | (0 << 1) | (180 >> 7) = 0x01
+		// Byte 1: (180 << 1) = 0x68
+		loudSCE := []byte{0x01, 0x68, 0x00, 0x00}
+		loudRMS, err := ExtractAACFrameEnergy(loudSCE, 1)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if loudRMS < 0.60 {
+			t.Errorf("expected loud RMS >= 0.60, got %f", loudRMS)
+		}
+	})
+
+	t.Run("CPE stereo global gain extraction", func(t *testing.T) {
+		// CPE: element tag = 1 (3 bits = 001), instance_tag = 0 (4 bits = 0000), common_window = 0 (1 bit = 0)
+		// ics_1: global_gain = 160 (0xA0), ics_2: global_gain = 160 (0xA0)
+		// Byte 0: (1 << 5) | (0 << 1) | 0 = 0x20
+		// Byte 1: 160 = 0xA0
+		// Byte 2: 160 = 0xA0
+		stereoCPE := []byte{0x20, 0xA0, 0xA0, 0x00}
+		stereoRMS, err := ExtractAACFrameEnergy(stereoCPE, 2)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if stereoRMS < 0.30 || stereoRMS > 0.70 {
+			t.Errorf("expected medium RMS ~0.50, got %f", stereoRMS)
+		}
+	})
+
+	t.Run("decodeADTSAAC measures acoustic gain rather than byte payload length", func(t *testing.T) {
+		buf := new(bytes.Buffer)
+		// 2 ADTS frames:
+		// Frame 1: silent frame with large byte payload (e.g. 60 bytes)
+		// Frame 2: loud frame with small byte payload (e.g. 15 bytes)
+		// 44100 Hz (srIdx = 4), Mono (chConfig = 1) -> each frame is 1024 samples = ~23.2ms -> 2 frames = ~46ms
+
+		// Frame 1 header (silent, len = 60)
+		h1 := make([]byte, 7)
+		h1[0] = 0xFF
+		h1[1] = 0xF1
+		h1[2] = byte((1 << 6) | ((4 & 0x0F) << 2) | 0)
+		h1[3] = byte(((60 >> 11) & 0x03))
+		h1[4] = byte((60 >> 3) & 0xFF)
+		h1[5] = byte(((60 & 0x07) << 5) | 0x1F)
+		h1[6] = 0xFC
+		buf.Write(h1)
+		silentPayload := make([]byte, 53) // 53 bytes of zeros -> global_gain = 0
+		buf.Write(silentPayload)
+
+		// Frame 2 header (loud, len = 15)
+		h2 := make([]byte, 7)
+		h2[0] = 0xFF
+		h2[1] = 0xF1
+		h2[2] = byte((1 << 6) | ((4 & 0x0F) << 2) | 0)
+		h2[3] = byte(((15 >> 11) & 0x03))
+		h2[4] = byte((15 >> 3) & 0xFF)
+		h2[5] = byte(((15 & 0x07) << 5) | 0x1F)
+		h2[6] = 0xFC
+		buf.Write(h2)
+		loudPayload := []byte{0x01, 0x68, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00} // global_gain = 180
+		buf.Write(loudPayload)
+
+		_, tel, err := DecodeMP4AAC(buf.Bytes())
+		if err != nil {
+			t.Fatalf("DecodeMP4AAC on ADTS failed: %v", err)
+		}
+
+		// Duration of 2 frames @ 44100 is (2048 * 1000) / 44100 = 46ms
+		if tel.DurationMS < 40 || tel.DurationMS > 50 {
+			t.Errorf("expected DurationMS ~46, got %d", tel.DurationMS)
+		}
+		// Voiced duration should only count the 1 loud frame (~23ms)
+		if tel.VoicedDurationMS < 15 || tel.VoicedDurationMS > 30 {
+			t.Errorf("expected VoicedDurationMS ~23, got %d", tel.VoicedDurationMS)
+		}
+	})
+}
+
+func TestEncodeWAV(t *testing.T) {
+	t.Run("encodes mono 16kHz PCM into valid RIFF WAV", func(t *testing.T) {
+		sine := generateSinePCM16(16000, 440, 1.0, 15000)
+		wavData := EncodeWAV(sine, 16000, 1)
+
+		if !IsWAVHeader(wavData) {
+			t.Fatalf("expected valid WAV header")
+		}
+
+		decodedSamples, tel, err := DecodeWAV(wavData)
+		if err != nil {
+			t.Fatalf("DecodeWAV on EncodeWAV output failed: %v", err)
+		}
+		if len(decodedSamples) != len(sine) {
+			t.Errorf("expected %d samples, got %d", len(sine), len(decodedSamples))
+		}
+		if tel.SampleRate != 16000 || tel.Channels != 1 || tel.DurationMS != 1000 {
+			t.Errorf("unexpected tel: sr=%d ch=%d dur=%d", tel.SampleRate, tel.Channels, tel.DurationMS)
+		}
+	})
+
+	t.Run("handles default parameters on zero or negative values", func(t *testing.T) {
+		wavData := EncodeWAV([]int16{100, 200, 300}, 0, 0)
+		if !IsWAVHeader(wavData) {
+			t.Errorf("expected valid WAV header")
+		}
+	})
+}
+
+func TestTranscodeAudio(t *testing.T) {
+	t.Run("transcodes Ogg Opus to WAV in-memory", func(t *testing.T) {
+		oggBytes := buildOggOpusBytes(1500, 48000)
+		wavBytes, tel, err := TranscodeAudio(oggBytes, "audio/wav")
+		if err != nil {
+			t.Fatalf("TranscodeAudio to WAV failed: %v", err)
+		}
+		if !IsWAVHeader(wavBytes) {
+			t.Errorf("expected WAV header on transcoded output")
+		}
+		if tel.DurationMS != 1500 {
+			t.Errorf("expected DurationMS = 1500, got %d", tel.DurationMS)
+		}
+	})
+
+	t.Run("transcodes WAV to OGG Opus in-memory", func(t *testing.T) {
+		sine := generateSinePCM16(48000, 440, 1.0, 20000)
+		wavBytes := EncodeWAV(sine, 48000, 1)
+
+		oggBytes, tel, err := TranscodeAudio(wavBytes, "audio/ogg")
+		if err != nil {
+			t.Fatalf("TranscodeAudio to OGG failed: %v", err)
+		}
+		if !IsOGGHeader(oggBytes) {
+			t.Errorf("expected OGG header on transcoded output")
+		}
+		if tel.DurationMS != 1000 {
+			t.Errorf("expected DurationMS = 1000, got %d", tel.DurationMS)
+		}
+	})
+
+	t.Run("transcodes MP3 to ADTS AAC in-memory", func(t *testing.T) {
+		mp3Bytes := buildMP3Bytes(20)
+		aacBytes, tel, err := TranscodeAudio(mp3Bytes, "audio/aac")
+		if err != nil {
+			t.Fatalf("TranscodeAudio to AAC failed: %v", err)
+		}
+		if !IsADTSAACHeader(aacBytes) {
+			t.Errorf("expected ADTS AAC header on transcoded output")
+		}
+		if tel.DurationMS <= 0 {
+			t.Errorf("expected positive DurationMS, got %d", tel.DurationMS)
+		}
+	})
+
+	t.Run("transcodes AAC to MP3 in-memory", func(t *testing.T) {
+		aacBytes := buildADTSAACBytes(10, 4, 1)
+		mp3Bytes, tel, err := TranscodeAudio(aacBytes, "audio/mpeg")
+		if err != nil {
+			t.Fatalf("TranscodeAudio to MP3 failed: %v", err)
+		}
+		if !IsMP3Header(mp3Bytes) {
+			t.Errorf("expected MP3 header on transcoded output")
+		}
+		if tel.DurationMS <= 0 {
+			t.Errorf("expected positive DurationMS, got %d", tel.DurationMS)
+		}
+	})
+
+	t.Run("TranscodeToWAV helper", func(t *testing.T) {
+		mp3Bytes := buildMP3Bytes(10)
+		wavBytes, tel, err := TranscodeToWAV(mp3Bytes, "audio/mpeg")
+		if err != nil {
+			t.Fatalf("TranscodeToWAV failed: %v", err)
+		}
+		if !IsWAVHeader(wavBytes) || tel == nil {
+			t.Errorf("expected valid WAV and telemetry")
+		}
+	})
+
+	t.Run("unsupported target format returns error", func(t *testing.T) {
+		sine := generateSinePCM16(16000, 440, 0.5, 10000)
+		wavBytes := EncodeWAV(sine, 16000, 1)
+		_, _, err := TranscodeAudio(wavBytes, "video/avi")
+		if !errors.Is(err, ErrInvalidAudioFormat) {
+			t.Errorf("expected ErrInvalidAudioFormat, got %v", err)
+		}
+	})
+}
+
+
+

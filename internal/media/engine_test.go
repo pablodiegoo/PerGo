@@ -255,4 +255,16 @@ func TestDefaultEngine_Process(t *testing.T) {
 			t.Errorf("expected ogg/opus, got %s", tel.Format)
 		}
 	})
+
+	t.Run("Transcode delegation", func(t *testing.T) {
+		oggBytes := []byte("OggS\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x13OpusHead\x01\x01\x00\x00\x80\xBB\x00\x00\x00\x00\x00")
+		wavBytes, tel, err := engine.Transcode(ctx, oggBytes, "audio/wav")
+		if err != nil {
+			t.Fatalf("Transcode failed: %v", err)
+		}
+		if !media.IsWAVHeader(wavBytes) || tel == nil {
+			t.Errorf("expected valid WAV from engine.Transcode")
+		}
+	})
 }
+

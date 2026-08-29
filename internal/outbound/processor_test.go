@@ -73,6 +73,10 @@ func (f *fakeMediaEngine) ExtractAudioTelemetry(data []byte, contentType string)
 	return media.ExtractAudioTelemetry(data, contentType)
 }
 
+func (f *fakeMediaEngine) Transcode(ctx context.Context, data []byte, targetMime string) ([]byte, *media.AudioTelemetry, error) {
+	return media.TranscodeAudio(data, targetMime)
+}
+
 // fakeQueueDepthTracker tracks depths in memory.
 type fakeQueueDepthTracker struct {
 	exceeds   bool

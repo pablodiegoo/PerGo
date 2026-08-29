@@ -140,6 +140,10 @@ func (f *fakeMediaEngine) ExtractAudioTelemetry(data []byte, contentType string)
 	return media.ExtractAudioTelemetry(data, contentType)
 }
 
+func (f *fakeMediaEngine) Transcode(ctx context.Context, data []byte, targetMime string) ([]byte, *media.AudioTelemetry, error) {
+	return media.TranscodeAudio(data, targetMime)
+}
+
 // fakeAuditWriter records audit events.
 type fakeAuditWriter struct {
 	events []audit.Event

@@ -39,13 +39,14 @@ type Uploader interface {
 	Upload(ctx context.Context, key string, data []byte, contentType string) error
 }
 
-// Engine combines downloader, uploader, consolidated inbound/outbound processors, and audio telemetry extractor.
+// Engine combines downloader, uploader, consolidated inbound/outbound processors, audio telemetry extractor, and in-memory transcoder.
 type Engine interface {
 	Downloader
 	Uploader
 	ProcessOutbound(ctx context.Context, workspaceID uuid.UUID, mediaURL string) (string, error)
 	ProcessInbound(ctx context.Context, workspaceID uuid.UUID, mediaType string, data []byte) (string, error)
 	ExtractAudioTelemetry(data []byte, contentType string) (*AudioTelemetry, error)
+	Transcode(ctx context.Context, data []byte, targetMime string) ([]byte, *AudioTelemetry, error)
 }
 
 // DefaultEngine implements the Engine interface.
@@ -65,6 +66,14 @@ func NewDefaultEngine(s3Client *storage.S3Client) *DefaultEngine {
 // ExtractAudioTelemetry extracts duration and normalized RMS energy from audio payload bytes.
 func (e *DefaultEngine) ExtractAudioTelemetry(data []byte, contentType string) (*AudioTelemetry, error) {
 	return ExtractAudioTelemetry(data, contentType)
+}
+
+// Transcode converts audio bytes in-memory to the target MIME format.
+func (e *DefaultEngine) Transcode(ctx context.Context, data []byte, targetMime string) ([]byte, *AudioTelemetry, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	return TranscodeAudio(data, targetMime)
 }
 
 // Download fetches media from the URL, enforcing headers, timeouts, and size limits.
