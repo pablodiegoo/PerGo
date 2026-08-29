@@ -63,17 +63,18 @@ type telegramUpdate struct {
 
 type telegramMessage struct {
 	MessageID       int64             `json:"message_id"`
+	Date            int64             `json:"date,omitempty"`
 	MessageThreadID int64             `json:"message_thread_id,omitempty"`
 	From            *telegramUser     `json:"from,omitempty"`
 	Chat            *telegramChat     `json:"chat"`
 	Text            string            `json:"text,omitempty"`
-	Caption   string            `json:"caption,omitempty"`
-	Photo     []telegramPhoto   `json:"photo,omitempty"`
-	Document  *telegramDocument `json:"document,omitempty"`
-	Audio     *telegramAudio    `json:"audio,omitempty"`
-	Video     *telegramVideo    `json:"video,omitempty"`
-	Location  *telegramLocation `json:"location,omitempty"`
-	Contact   *telegramContact  `json:"contact,omitempty"`
+	Caption         string            `json:"caption,omitempty"`
+	Photo           []telegramPhoto   `json:"photo,omitempty"`
+	Document        *telegramDocument `json:"document,omitempty"`
+	Audio           *telegramAudio    `json:"audio,omitempty"`
+	Video           *telegramVideo    `json:"video,omitempty"`
+	Location        *telegramLocation `json:"location,omitempty"`
+	Contact         *telegramContact  `json:"contact,omitempty"`
 }
 
 type telegramPhoto struct {
@@ -165,6 +166,7 @@ func (a *TelegramInboundAdapter) Parse(
 	var video *telegramVideo
 	var location *telegramLocation
 	var contact *telegramContact
+	var msgDate int64
 
 	if update.CallbackQuery != nil {
 		isCallback = true
@@ -194,6 +196,7 @@ func (a *TelegramInboundAdapter) Parse(
 		chat = update.Message.Chat
 		fromUser = update.Message.From
 		messageThreadIDInt = update.Message.MessageThreadID
+		msgDate = update.Message.Date
 		text = update.Message.Text
 		caption = update.Message.Caption
 		photo = update.Message.Photo
@@ -335,6 +338,11 @@ func (a *TelegramInboundAdapter) Parse(
 		}
 	}
 
+	var occurredAt time.Time
+	if msgDate > 0 {
+		occurredAt = time.Unix(msgDate, 0).UTC()
+	}
+
 	return []*inbound.InboundEvent{
 		{
 			WorkspaceID:  conn.WorkspaceID,
@@ -349,6 +357,7 @@ func (a *TelegramInboundAdapter) Parse(
 			Contacts:     inboundContacts,
 			Interactive:  interactive,
 			SenderName:   senderName,
+			OccurredAt:   occurredAt,
 			Metadata:     metadata,
 		},
 	}, nil

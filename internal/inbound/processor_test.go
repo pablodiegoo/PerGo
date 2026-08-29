@@ -465,6 +465,62 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 	})
 
+	t.Run("Timing telemetry uses OccurredAt provider timestamp when present", func(t *testing.T) {
+		pub := &fakePublisher{}
+		me := &fakeMediaEngine{}
+		aud := &fakeAuditWriter{}
+
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+
+		recipient := "+5511999992222"
+		senderIdentity := "+5511888883333"
+		outboundTime := time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC)
+		occurredAt := time.Date(2026, 8, 28, 10, 0, 3, 500000000, time.UTC) // exactly 3500ms later
+
+		err := sessRepo.RecordOutbound(ctx, ws.ID, recipient, "whatsapp_cloud", senderIdentity, outboundTime)
+		if err != nil {
+			t.Fatalf("failed to seed outbound session: %v", err)
+		}
+
+		event := &inbound.InboundEvent{
+			WorkspaceID: ws.ID,
+			MessageID:   "test-timing-msg-provider-ts",
+			Channel:     "whatsapp_cloud",
+			From:        recipient,
+			To:          senderIdentity,
+			Body:        "Sim, confirmo.",
+			OccurredAt:  occurredAt,
+		}
+
+		err = proc.Process(ctx, event)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+
+		if len(pub.published) != 1 {
+			t.Fatalf("expected 1 published event, got %d", len(pub.published))
+		}
+
+		var payload inbound.InboundEventPayload
+		if err := json.Unmarshal(pub.published[0].data, &payload); err != nil {
+			t.Fatalf("failed to unmarshal payload: %v", err)
+		}
+
+		if payload.Timing == nil {
+			t.Fatal("expected payload.Timing to be present")
+		}
+		if payload.Timing.ResponseLatencyMS == nil {
+			t.Fatal("expected payload.Timing.ResponseLatencyMS to be present")
+		}
+		latency := *payload.Timing.ResponseLatencyMS
+		if latency != 3500 {
+			t.Errorf("expected latency exactly 3500ms, got %d", latency)
+		}
+		if payload.Timestamp != occurredAt.Format(time.RFC3339) {
+			t.Errorf("expected payload.Timestamp = %s, got %s", occurredAt.Format(time.RFC3339), payload.Timestamp)
+		}
+	})
+
 	t.Run("Timing telemetry omitted when no prior outbound message exists", func(t *testing.T) {
 		pub := &fakePublisher{}
 		me := &fakeMediaEngine{}

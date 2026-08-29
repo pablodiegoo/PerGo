@@ -1560,6 +1560,38 @@ func TestWABAInboundAdapter_SenderIdentityStamping(t *testing.T) {
 			t.Errorf("expected fallback InboundEvent.To = %q, got %q", "15550000000", events[0].To)
 		}
 	})
+
+	t.Run("extracts OccurredAt provider timestamp for messages and statuses", func(t *testing.T) {
+		conn := &repository.Connection{
+			ID:          connID,
+			WorkspaceID: wsID,
+			Credentials: credsJSON,
+		}
+
+		events, err := adapter.Parse(ctx, payloadMessage, nil, conn)
+		if err != nil {
+			t.Fatalf("Parse error: %v", err)
+		}
+		if len(events) != 1 {
+			t.Fatalf("expected 1 event, got %d", len(events))
+		}
+		expectedMsgTime := time.Unix(1700000000, 0).UTC()
+		if !events[0].OccurredAt.Equal(expectedMsgTime) {
+			t.Errorf("expected OccurredAt = %v, got %v", expectedMsgTime, events[0].OccurredAt)
+		}
+
+		statusEvents, err := adapter.Parse(ctx, payloadStatus, nil, conn)
+		if err != nil {
+			t.Fatalf("Parse status error: %v", err)
+		}
+		if len(statusEvents) != 1 {
+			t.Fatalf("expected 1 status event, got %d", len(statusEvents))
+		}
+		expectedStatusTime := time.Unix(1700000001, 0).UTC()
+		if !statusEvents[0].OccurredAt.Equal(expectedStatusTime) {
+			t.Errorf("expected status OccurredAt = %v, got %v", expectedStatusTime, statusEvents[0].OccurredAt)
+		}
+	})
 }
 
 func TestWABAAdapter_DispatchFlowMessage(t *testing.T) {

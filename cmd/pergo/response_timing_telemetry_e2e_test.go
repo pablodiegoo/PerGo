@@ -205,11 +205,13 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 		}
 
 		// Adjust LastOutboundAt in database to simulate a 3200ms thinking/reading time
-		simulatedOutboundAt := time.Now().UTC().Add(-3200 * time.Millisecond)
+		simulatedOutboundAt := time.Now().UTC().Add(-3200 * time.Millisecond).Truncate(time.Second)
 		err = sessRepo.RecordOutbound(ctx, ws.ID, contactPhone, "whatsapp_cloud", senderPhone, simulatedOutboundAt)
 		if err != nil {
 			t.Fatalf("failed to update simulated outbound time: %v", err)
 		}
+
+		simulatedInboundAt := simulatedOutboundAt.Add(3200 * time.Millisecond)
 
 		// Step B: Inbound response arrives from contact
 		inboundPayload := fmt.Sprintf(`{
@@ -226,7 +228,7 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 									{
 										"from": %q,
 										"id": "wamid.inbound_timing_001",
-										"timestamp": "1700000000",
+										"timestamp": "%d",
 										"type": "text",
 										"text": {
 											"body": "Sim, costumo comprar semanalmente na feira do bairro."
@@ -238,7 +240,7 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 					]
 				}
 			]
-		}`, contactPhone)
+		}`, contactPhone, simulatedInboundAt.Unix())
 
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/waba/%s", ws.ID), strings.NewReader(inboundPayload))
 		req.Header.Set("Content-Type", "application/json")
@@ -382,6 +384,93 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 		}
 		if _, exists := rawDelivered["timing"]; exists {
 			t.Errorf("expected 'timing' field to be completely omitted from JSON, got %v", rawDelivered["timing"])
+		}
+	})
+
+	t.Run("Provider timestamp eliminates ingress queue lag from response latency telemetry", func(t *testing.T) {
+		deliveriesMu.Lock()
+		deliveries = nil
+		deliveriesMu.Unlock()
+
+		lagPhone := "5511999998888"
+		senderPhone := "+5511888887777"
+
+		// Outbound sent at fixed past time T0
+		fixedOutboundAt := time.Date(2026, 8, 28, 20, 0, 0, 0, time.UTC)
+		err = sessRepo.RecordOutbound(ctx, ws.ID, lagPhone, "whatsapp_cloud", senderPhone, fixedOutboundAt)
+		if err != nil {
+			t.Fatalf("failed to record outbound session: %v", err)
+		}
+
+		// Contact replied at T0 + 4s upstream at Meta
+		fixedInboundAt := fixedOutboundAt.Add(4 * time.Second)
+
+		inboundPayload := fmt.Sprintf(`{
+			"object": "whatsapp_business_account",
+			"entry": [
+				{
+					"id": "12345",
+					"changes": [
+						{
+							"field": "messages",
+							"value": {
+								"messaging_product": "whatsapp",
+								"messages": [
+									{
+										"from": %q,
+										"id": "wamid.inbound_timing_lag_001",
+										"timestamp": "%d",
+										"type": "text",
+										"text": {
+											"body": "Mensagem respondida rapidamente pelo usuário."
+										}
+									}
+								]
+							}
+						}
+					]
+				}
+			]
+		}`, lagPhone, fixedInboundAt.Unix())
+
+		// Process webhook now (simulating arbitrary ingress queue/network delay)
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/waba/%s", ws.ID), strings.NewReader(inboundPayload))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/webhooks/waba/:workspace_id")
+		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: ws.ID.String()}})
+
+		err = wabaHandler.HandlePost(c)
+		if err != nil {
+			t.Fatalf("HandlePost error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200", rec.Code)
+		}
+
+		deliveriesMu.Lock()
+		numDeliveries := len(deliveries)
+		var lastDelivery recordedWebhookDelivery
+		if numDeliveries > 0 {
+			lastDelivery = deliveries[numDeliveries-1]
+		}
+		deliveriesMu.Unlock()
+
+		if numDeliveries == 0 {
+			t.Fatal("expected webhook delivery to subscriber endpoint")
+		}
+
+		if lastDelivery.Payload.Timing == nil || lastDelivery.Payload.Timing.ResponseLatencyMS == nil {
+			t.Fatalf("expected Timing.ResponseLatencyMS in payload, got %+v", lastDelivery.Payload.Timing)
+		}
+
+		latency := *lastDelivery.Payload.Timing.ResponseLatencyMS
+		if latency != 4000 {
+			t.Errorf("expected response latency exactly 4000ms from provider timestamp, got %d ms", latency)
+		}
+		if lastDelivery.Payload.Timestamp != fixedInboundAt.Format(time.RFC3339) {
+			t.Errorf("expected payload Timestamp = %s, got %s", fixedInboundAt.Format(time.RFC3339), lastDelivery.Payload.Timestamp)
 		}
 	})
 

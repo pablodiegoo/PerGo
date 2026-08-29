@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/pablojhp.pergo/internal/inbound"
@@ -37,7 +38,8 @@ type igPayload struct {
 			Recipient struct {
 				ID string `json:"id"`
 			} `json:"recipient"`
-			Message *struct {
+			Timestamp int64 `json:"timestamp"`
+			Message   *struct {
 				Mid  string `json:"mid"`
 				Text string `json:"text"`
 				QuickReply *struct {
@@ -61,9 +63,10 @@ type igPayload struct {
 			Value struct {
 				MessagingProduct string `json:"messaging_product"`
 				Messages []struct {
-					From string `json:"from"`
-					ID   string `json:"id"`
-					Text *struct {
+					From      string `json:"from"`
+					ID        string `json:"id"`
+					Timestamp string `json:"timestamp"`
+					Text      *struct {
 						Body string `json:"body"`
 					} `json:"text"`
 					Interactive *struct {
@@ -103,6 +106,11 @@ func (a *InstagramInboundAdapter) Parse(
 				continue
 			}
 
+			var occurredAt time.Time
+			if msg.Timestamp > 0 {
+				occurredAt = time.UnixMilli(msg.Timestamp).UTC()
+			}
+
 			ev := &inbound.InboundEvent{
 				WorkspaceID:  conn.WorkspaceID,
 				ConnectionID: conn.ID,
@@ -111,6 +119,7 @@ func (a *InstagramInboundAdapter) Parse(
 				From:         msg.Sender.ID,
 				To:           msg.Recipient.ID,
 				Body:         msg.Message.Text,
+				OccurredAt:   occurredAt,
 			}
 
 			if msg.Message.QuickReply != nil {
@@ -146,6 +155,13 @@ func (a *InstagramInboundAdapter) Parse(
 		for _, change := range entry.Changes {
 			if change.Value.MessagingProduct == "instagram" {
 				for _, msg := range change.Value.Messages {
+					var changeOccurredAt time.Time
+					if msg.Timestamp != "" {
+						if sec, err := strconv.ParseInt(msg.Timestamp, 10, 64); err == nil && sec > 0 {
+							changeOccurredAt = time.Unix(sec, 0).UTC()
+						}
+					}
+
 					ev := &inbound.InboundEvent{
 						WorkspaceID:  conn.WorkspaceID,
 						ConnectionID: conn.ID,
@@ -153,6 +169,7 @@ func (a *InstagramInboundAdapter) Parse(
 						Channel:      "instagram",
 						From:         msg.From,
 						To:           change.Value.Metadata.DisplayPhoneNumber,
+						OccurredAt:   changeOccurredAt,
 					}
 					
 					if msg.Text != nil {

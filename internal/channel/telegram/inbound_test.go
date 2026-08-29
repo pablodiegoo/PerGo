@@ -48,6 +48,7 @@ func TestTelegramInboundAdapter_Parse(t *testing.T) {
 			"update_id": 1,
 			"message": {
 				"message_id": 100,
+				"date": 1700000000,
 				"message_thread_id": 42,
 				"from": {"id": 123, "username": "user1"},
 				"chat": {"id": 456, "type": "group"},
@@ -69,6 +70,10 @@ func TestTelegramInboundAdapter_Parse(t *testing.T) {
 		if ev.Body != "Hello in thread" {
 			t.Errorf("expected body 'Hello in thread', got %s", ev.Body)
 		}
+		expectedTime := time.Unix(1700000000, 0).UTC()
+		if !ev.OccurredAt.Equal(expectedTime) {
+			t.Errorf("expected OccurredAt = %v, got %v", expectedTime, ev.OccurredAt)
+		}
 	})
 
 	t.Run("Callback Query", func(t *testing.T) {
@@ -82,6 +87,7 @@ func TestTelegramInboundAdapter_Parse(t *testing.T) {
 				"from": {"id": 123, "username": "user1"},
 				"message": {
 					"message_id": 101,
+					"date": 1700000005,
 					"message_thread_id": 42,
 					"chat": {"id": 456, "type": "group"}
 				},
@@ -108,6 +114,9 @@ func TestTelegramInboundAdapter_Parse(t *testing.T) {
 		}
 		if ev.Interactive.ButtonReply.ID != "btn_action_1" {
 			t.Errorf("expected ButtonReply.ID=btn_action_1, got %s", ev.Interactive.ButtonReply.ID)
+		}
+		if !ev.OccurredAt.IsZero() {
+			t.Errorf("expected OccurredAt to be zero for callback query, got %v", ev.OccurredAt)
 		}
 
 		// wait a tiny bit for the async ack to complete

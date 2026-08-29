@@ -182,6 +182,13 @@ func (a *WABAInboundAdapter) Parse(
 
 			if len(change.Value.Statuses) > 0 {
 				for _, status := range change.Value.Statuses {
+					var statusOccurredAt time.Time
+					if status.Timestamp != "" {
+						if sec, err := strconv.ParseInt(status.Timestamp, 10, 64); err == nil && sec > 0 {
+							statusOccurredAt = time.Unix(sec, 0).UTC()
+						}
+					}
+
 					events = append(events, &inbound.InboundEvent{
 						WorkspaceID:  conn.WorkspaceID,
 						ConnectionID: conn.ID,
@@ -190,6 +197,7 @@ func (a *WABAInboundAdapter) Parse(
 						From:         status.RecipientID,
 						To:           recipientIdentity,
 						Body:         status.Status,
+						OccurredAt:   statusOccurredAt,
 						Metadata:     map[string]string{"type": "status_update"},
 					})
 				}
@@ -467,6 +475,13 @@ func (a *WABAInboundAdapter) Parse(
 					}
 				}
 
+				var msgOccurredAt time.Time
+				if msg.Timestamp != "" {
+					if sec, err := strconv.ParseInt(msg.Timestamp, 10, 64); err == nil && sec > 0 {
+						msgOccurredAt = time.Unix(sec, 0).UTC()
+					}
+				}
+
 				events = append(events, &inbound.InboundEvent{
 					WorkspaceID:  conn.WorkspaceID,
 					ConnectionID: conn.ID,
@@ -479,6 +494,7 @@ func (a *WABAInboundAdapter) Parse(
 					Location:     inboundLocation,
 					Contacts:     inboundContacts,
 					Interactive:  inboundInteractive,
+					OccurredAt:   msgOccurredAt,
 					Metadata:     metadata,
 				})
 			}

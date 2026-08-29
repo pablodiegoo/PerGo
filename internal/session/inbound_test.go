@@ -3,6 +3,7 @@ package session_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -48,8 +49,9 @@ func TestWhatsAppInbound_GroupTextMessage(t *testing.T) {
 				IsGroup:  true,
 				IsFromMe: false,
 			},
-			ID:       "wamid.group_msg_101",
-			PushName: "Alice GroupMember",
+			ID:        "wamid.group_msg_101",
+			PushName:  "Alice GroupMember",
+			Timestamp: time.Date(2026, 8, 28, 14, 30, 0, 0, time.UTC),
 		},
 		Message: &waE2E.Message{
 			Conversation: &text,
@@ -88,6 +90,9 @@ func TestWhatsAppInbound_GroupTextMessage(t *testing.T) {
 	// Acceptance criterion: SenderName populated with push name
 	if ev.SenderName != "Alice GroupMember" {
 		t.Errorf("expected SenderName 'Alice GroupMember', got %q", ev.SenderName)
+	}
+	if !ev.OccurredAt.Equal(evt.Info.Timestamp) {
+		t.Errorf("expected OccurredAt = %v, got %v", evt.Info.Timestamp, ev.OccurredAt)
 	}
 	// Acceptance criterion: Metadata populated with is_group, participant, chat_jid, sender_push_name
 	if ev.Metadata == nil {

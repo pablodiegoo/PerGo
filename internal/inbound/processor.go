@@ -116,6 +116,7 @@ type InboundEvent struct {
 	Interactive  *InboundInteractive
 	Story        *InboundStoryEvent
 	SenderName   string
+	OccurredAt   time.Time
 	Metadata     map[string]string
 }
 
@@ -265,12 +266,16 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		}
 
 		if p.publisher != nil {
+			statusOccurredAt := ev.OccurredAt
+			if statusOccurredAt.IsZero() {
+				statusOccurredAt = time.Now().UTC()
+			}
 			payload := MessageStatusUpdatedPayload{
 				WorkspaceID: dispatch.WorkspaceID.String(),
 				DispatchID:  dispatch.ID.String(),
 				MessageID:   ev.MessageID,
 				Status:      ev.Body,
-				Timestamp:   time.Now().UTC().Format(time.RFC3339),
+				Timestamp:   statusOccurredAt.Format(time.RFC3339),
 			}
 			eventData, err := json.Marshal(payload)
 			if err != nil {
@@ -316,11 +321,16 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 	}
 
 	// 1. Recipient Session Tracking & Timing Telemetry
+	occurredAt := ev.OccurredAt
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+
 	var timing *EventTiming
 	if p.recipientSessionRepo != nil {
 		if sess, err := p.recipientSessionRepo.Get(ctx, ev.WorkspaceID, ev.From, ev.Channel, ev.To); err == nil && sess != nil {
 			if sess.LastOutboundAt != nil && !sess.LastOutboundAt.IsZero() {
-				diff := time.Since(*sess.LastOutboundAt)
+				diff := occurredAt.Sub(*sess.LastOutboundAt)
 				if diff >= 0 {
 					latencyMS := diff.Milliseconds()
 					timing = &EventTiming{
@@ -337,7 +347,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 				entryPointType = ept
 			}
 		}
-		err := p.recipientSessionRepo.Upsert(ctx, ev.WorkspaceID, ev.From, ev.Channel, ev.To, time.Now().UTC(), entryPointType)
+		err := p.recipientSessionRepo.Upsert(ctx, ev.WorkspaceID, ev.From, ev.Channel, ev.To, occurredAt, entryPointType)
 		if err != nil {
 			slog.Error("inbound processor: failed to upsert recipient session", "error", err, "from", ev.From)
 		}
@@ -372,7 +382,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		TraceID:     traceID,
 		MessageID:   ev.MessageID,
 		Channel:     ev.Channel,
-		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+		Timestamp:   occurredAt.Format(time.RFC3339),
 		WorkspaceID: ev.WorkspaceID.String(),
 		From:        ev.From,
 		To:          ev.To,

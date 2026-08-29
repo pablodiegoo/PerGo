@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -250,7 +251,7 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 						"messages": [{
 							"from": "` + contactPhone + `",
 							"id": "wamid.inbound_001",
-							"timestamp": "1770000000",
+							"timestamp": "` + fmt.Sprintf("%d", time.Now().Unix()) + `",
 							"type": "text",
 							"text": {"body": "Hello from customer"}
 						}]
@@ -327,7 +328,7 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 						"messages": [{
 							"from": "5511999992222",
 							"id": "wamid.inbound_ctwa_002",
-							"timestamp": "1770000000",
+							"timestamp": "` + fmt.Sprintf("%d", time.Now().Unix()) + `",
 							"type": "text",
 							"text": {"body": "Saw your ad"},
 							"referral": {

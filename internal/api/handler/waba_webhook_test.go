@@ -579,7 +579,7 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 									{
 										"from": "%s",
 										"id": "wamid.inbound_window_test_001",
-										"timestamp": "1700000000",
+										"timestamp": "%d",
 										"type": "text",
 										"text": {
 											"body": "Customer initiated conversation"
@@ -591,7 +591,7 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 					]
 				}
 			]
-		}`, customerPhone)
+		}`, customerPhone, time.Now().Unix())
 
 		reqInbound := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/webhooks/waba/%s", ws.ID), strings.NewReader(inboundMsg))
 		reqInbound.Header.Set("Content-Type", "application/json")

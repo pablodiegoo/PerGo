@@ -560,6 +560,7 @@ func (m *Manager) HandleWhatsAppMessage(ctx context.Context, wc WhatsAppClientIn
 			Location:     inboundLocation,
 			Contacts:     inboundContacts,
 			SenderName:   v.Info.PushName,
+			OccurredAt:   v.Info.Timestamp,
 			Metadata:     metadata,
 		}
 
