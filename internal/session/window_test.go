@@ -6,15 +6,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
 type mockSessionReader struct {
-	getFn func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error)
+	getFn func(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error)
 }
 
-func (m *mockSessionReader) Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
-	return m.getFn(ctx, workspaceID, recipientPhone, channel, recipientIdentity)
+func (m *mockSessionReader) Get(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error) {
+	return m.getFn(ctx, key)
 }
 
 func TestWindowChecker_IsWindowOpen(t *testing.T) {
@@ -22,11 +23,12 @@ func TestWindowChecker_IsWindowOpen(t *testing.T) {
 	phone := "+1234567890"
 	channelName := "whatsapp_cloud"
 	recIdentity := "5511999999999"
+	key := domain.NewSessionKey(wsID, phone, channelName, recIdentity)
 
 	tests := []struct {
 		name         string
 		safetyBuffer time.Duration
-		mockGet      func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error)
+		mockGet      func(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error)
 		wantOpen     bool
 		wantDuration time.Duration
 		wantType     string
@@ -35,7 +37,7 @@ func TestWindowChecker_IsWindowOpen(t *testing.T) {
 		{
 			name:         "Session not found (expired/missing)",
 			safetyBuffer: 0,
-			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
+			mockGet: func(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error) {
 				return nil, repository.ErrSessionNotFound
 			},
 			wantOpen: false,
@@ -44,7 +46,7 @@ func TestWindowChecker_IsWindowOpen(t *testing.T) {
 		{
 			name:         "DB error",
 			safetyBuffer: 0,
-			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
+			mockGet: func(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error) {
 				return nil, repository.ErrCredentialsNotFound
 			},
 			wantOpen: false,
@@ -53,11 +55,9 @@ func TestWindowChecker_IsWindowOpen(t *testing.T) {
 		{
 			name:         "Standard window open (last inbound 1 hour ago)",
 			safetyBuffer: 0,
-			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
+			mockGet: func(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error) {
 				return &repository.RecipientSession{
-					WorkspaceID:    workspaceID,
-					RecipientPhone: recipientPhone,
-					Channel:        channel,
+					SessionKey:     key,
 					LastInboundAt:  time.Now().Add(-1 * time.Hour),
 					EntryPointType: "standard",
 				}, nil
@@ -70,11 +70,9 @@ func TestWindowChecker_IsWindowOpen(t *testing.T) {
 		{
 			name:         "Standard window closed (last inbound 25 hours ago)",
 			safetyBuffer: 0,
-			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
+			mockGet: func(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error) {
 				return &repository.RecipientSession{
-					WorkspaceID:    workspaceID,
-					RecipientPhone: recipientPhone,
-					Channel:        channel,
+					SessionKey:     key,
 					LastInboundAt:  time.Now().Add(-25 * time.Hour),
 					EntryPointType: "standard",
 				}, nil
@@ -87,11 +85,9 @@ func TestWindowChecker_IsWindowOpen(t *testing.T) {
 		{
 			name:         "Safety buffer early closure (23h58m since inbound, 5m buffer)",
 			safetyBuffer: 5 * time.Minute,
-			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
+			mockGet: func(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error) {
 				return &repository.RecipientSession{
-					WorkspaceID:    workspaceID,
-					RecipientPhone: recipientPhone,
-					Channel:        channel,
+					SessionKey:     key,
 					LastInboundAt:  time.Now().Add(-23*time.Hour - 58*time.Minute),
 					EntryPointType: "standard",
 				}, nil
@@ -104,11 +100,9 @@ func TestWindowChecker_IsWindowOpen(t *testing.T) {
 		{
 			name:         "CTWA 72h window open (last inbound 48 hours ago)",
 			safetyBuffer: 0,
-			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
+			mockGet: func(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error) {
 				return &repository.RecipientSession{
-					WorkspaceID:    workspaceID,
-					RecipientPhone: recipientPhone,
-					Channel:        channel,
+					SessionKey:     key,
 					LastInboundAt:  time.Now().Add(-48 * time.Hour),
 					EntryPointType: "ctwa",
 				}, nil
@@ -121,11 +115,9 @@ func TestWindowChecker_IsWindowOpen(t *testing.T) {
 		{
 			name:         "CTWA 72h window closed (last inbound 73 hours ago)",
 			safetyBuffer: 0,
-			mockGet: func(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
+			mockGet: func(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error) {
 				return &repository.RecipientSession{
-					WorkspaceID:    workspaceID,
-					RecipientPhone: recipientPhone,
-					Channel:        channel,
+					SessionKey:     key,
 					LastInboundAt:  time.Now().Add(-73 * time.Hour),
 					EntryPointType: "ctwa",
 				}, nil
@@ -142,7 +134,7 @@ func TestWindowChecker_IsWindowOpen(t *testing.T) {
 			mockReader := &mockSessionReader{getFn: tt.mockGet}
 			checker := NewWindowChecker(mockReader)
 
-			status, err := checker.IsWindowOpen(context.Background(), wsID, phone, channelName, recIdentity, tt.safetyBuffer)
+			status, err := checker.IsWindowOpen(context.Background(), key, tt.safetyBuffer)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("IsWindowOpen() error = %v, wantErr %v", err, tt.wantErr)
 			}

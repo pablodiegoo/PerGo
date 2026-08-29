@@ -226,7 +226,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 
 		// Verify Recipient Session
-		sess, err := sessRepo.Get(ctx, ws.ID, "user-chat-99", "telegram", "@test_bot")
+		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, "user-chat-99", "telegram", "@test_bot"))
 		if err != nil {
 			t.Fatalf("failed to get recipient session: %v", err)
 		}
@@ -422,7 +422,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		outboundTime := time.Now().UTC().Add(-2500 * time.Millisecond)
 
 		// Seed prior outbound message
-		err := sessRepo.RecordOutbound(ctx, ws.ID, recipient, "whatsapp_cloud", senderIdentity, outboundTime)
+		err := sessRepo.RecordOutbound(ctx, domain.NewSessionKey(ws.ID, recipient, "whatsapp_cloud", senderIdentity), outboundTime)
 		if err != nil {
 			t.Fatalf("failed to seed outbound session: %v", err)
 		}
@@ -477,7 +477,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		outboundTime := time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC)
 		occurredAt := time.Date(2026, 8, 28, 10, 0, 3, 500000000, time.UTC) // exactly 3500ms later
 
-		err := sessRepo.RecordOutbound(ctx, ws.ID, recipient, "whatsapp_cloud", senderIdentity, outboundTime)
+		err := sessRepo.RecordOutbound(ctx, domain.NewSessionKey(ws.ID, recipient, "whatsapp_cloud", senderIdentity), outboundTime)
 		if err != nil {
 			t.Fatalf("failed to seed outbound session: %v", err)
 		}
@@ -1018,7 +1018,7 @@ func TestInboundProcessor_WhatsAppCloudSessionTracking(t *testing.T) {
 			t.Fatalf("Process failed: %v", err)
 		}
 
-		sess, err := sessRepo.Get(ctx, ws.ID, "5511999990001", "whatsapp_cloud", "+5511888880001")
+		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, "5511999990001", "whatsapp_cloud", "+5511888880001"))
 		if err != nil {
 			t.Fatalf("failed to retrieve recipient session: %v", err)
 		}
@@ -1054,7 +1054,7 @@ func TestInboundProcessor_WhatsAppCloudSessionTracking(t *testing.T) {
 			t.Fatalf("Process failed: %v", err)
 		}
 
-		sess, err := sessRepo.Get(ctx, ws.ID, "5511999990002", "whatsapp_cloud", "+5511888880001")
+		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, "5511999990002", "whatsapp_cloud", "+5511888880001"))
 		if err != nil {
 			t.Fatalf("failed to retrieve recipient session: %v", err)
 		}

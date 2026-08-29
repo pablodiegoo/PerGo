@@ -693,7 +693,7 @@ func TestInboxHandler_NewMessageSend_HTTP(t *testing.T) {
 	}
 
 	// Verify session was upserted
-	sess, err := sessionRepo.Get(ctx, ws.ID, "+5511888880002", "whatsapp_cloud", "+5511999990001")
+	sess, err := sessionRepo.Get(ctx, domain.NewSessionKey(ws.ID, "+5511888880002", "whatsapp_cloud", "+5511999990001"))
 	if err != nil {
 		t.Errorf("expected session to be upserted: %v", err)
 	}
@@ -997,7 +997,8 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 	bannerText := "Janela de atendimento (24h) fechada para este contato"
 
 	t.Run("hides banner when active 24h standard session exists for contact and connection sender", func(t *testing.T) {
-		err := sessionRepo.Upsert(ctx, ws.ID, contactPhone, "whatsapp_cloud", "+5511888880000", time.Now().UTC().Add(-2*time.Hour), "standard")
+		sessKey := domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", "+5511888880000")
+		err := sessionRepo.Upsert(ctx, sessKey, time.Now().UTC().Add(-2*time.Hour), "standard")
 		if err != nil {
 			t.Fatalf("failed to upsert session: %v", err)
 		}
@@ -1024,7 +1025,8 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 	})
 
 	t.Run("hides banner when active 72h CTWA session exists for contact and connection sender", func(t *testing.T) {
-		err := sessionRepo.Upsert(ctx, ws.ID, contactPhone, "whatsapp_cloud", "+5511888880000", time.Now().UTC().Add(-30*time.Hour), "ctwa")
+		sessKey := domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", "+5511888880000")
+		err := sessionRepo.Upsert(ctx, sessKey, time.Now().UTC().Add(-30*time.Hour), "ctwa")
 		if err != nil {
 			t.Fatalf("failed to upsert session: %v", err)
 		}
@@ -1051,7 +1053,8 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 	})
 
 	t.Run("shows banner when session is expired (>24h for standard)", func(t *testing.T) {
-		err := sessionRepo.Upsert(ctx, ws.ID, contactPhone, "whatsapp_cloud", "+5511888880000", time.Now().UTC().Add(-26*time.Hour), "standard")
+		sessKey := domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", "+5511888880000")
+		err := sessionRepo.Upsert(ctx, sessKey, time.Now().UTC().Add(-26*time.Hour), "standard")
 		if err != nil {
 			t.Fatalf("failed to upsert session: %v", err)
 		}

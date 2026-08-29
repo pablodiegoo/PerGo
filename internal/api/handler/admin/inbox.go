@@ -177,7 +177,13 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		for _, conn := range connections {
 			if conn.Channel == "whatsapp_cloud" && (conn.Status == "connected" || conn.Status == "active" || conn.Status == "") {
 				checkedAny = true
-				session, sErr := h.Sessions.Get(ctx, workspaceID, wabaIdentity.SenderIdentity, "whatsapp_cloud", conn.SenderIdentity)
+				sessKey := domain.SessionKey{
+					WorkspaceID:       workspaceID,
+					RecipientPhone:    wabaIdentity.SenderIdentity,
+					Channel:           "whatsapp_cloud",
+					RecipientIdentity: conn.SenderIdentity,
+				}
+				session, sErr := h.Sessions.Get(ctx, sessKey)
 				if sErr == nil && session != nil {
 					windowDuration := 24 * time.Hour
 					if session.EntryPointType == "ctwa" {
@@ -193,7 +199,13 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		if !checkedAny {
 			wabaSender := defaultSenders["whatsapp_cloud"]
 			if wabaSender != "" {
-				session, sErr := h.Sessions.Get(ctx, workspaceID, wabaIdentity.SenderIdentity, "whatsapp_cloud", wabaSender)
+				sessKey := domain.SessionKey{
+					WorkspaceID:       workspaceID,
+					RecipientPhone:    wabaIdentity.SenderIdentity,
+					Channel:           "whatsapp_cloud",
+					RecipientIdentity: wabaSender,
+				}
+				session, sErr := h.Sessions.Get(ctx, sessKey)
 				if sErr == nil && session != nil {
 					windowDuration := 24 * time.Hour
 					if session.EntryPointType == "ctwa" {
@@ -542,8 +554,14 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 
 	// Upsert session to make sure it exists and registers sending
 	if h.Sessions != nil {
-		_ = h.Sessions.Upsert(ctx, workspaceID, to, channel, senderIdentity, time.Now().UTC(), "standard")
-		_ = h.Sessions.UpdateLastReadAt(ctx, workspaceID, to, channel, senderIdentity, time.Now().UTC())
+		sessKey := domain.SessionKey{
+			WorkspaceID:       workspaceID,
+			RecipientPhone:    to,
+			Channel:           channel,
+			RecipientIdentity: senderIdentity,
+		}
+		_ = h.Sessions.Upsert(ctx, sessKey, time.Now().UTC(), "standard")
+		_ = h.Sessions.UpdateLastReadAt(ctx, sessKey, time.Now().UTC())
 	}
 
 	c.Response().Header().Set("HX-Trigger", `{"showToast":{"text":"Nova mensagem/template enviada com sucesso!"}}`)

@@ -196,7 +196,7 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 		}
 
 		// Verify session record has last_outbound_at
-		sess, err := sessRepo.Get(ctx, ws.ID, contactPhone, "whatsapp_cloud", senderPhone)
+		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", senderPhone))
 		if err != nil {
 			t.Fatalf("failed to get recipient session: %v", err)
 		}
@@ -206,7 +206,7 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 
 		// Adjust LastOutboundAt in database to simulate a 3200ms thinking/reading time
 		simulatedOutboundAt := time.Now().UTC().Add(-3200 * time.Millisecond).Truncate(time.Second)
-		err = sessRepo.RecordOutbound(ctx, ws.ID, contactPhone, "whatsapp_cloud", senderPhone, simulatedOutboundAt)
+		err = sessRepo.RecordOutbound(ctx, domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", senderPhone), simulatedOutboundAt)
 		if err != nil {
 			t.Fatalf("failed to update simulated outbound time: %v", err)
 		}
@@ -397,7 +397,7 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 
 		// Outbound sent at fixed past time T0
 		fixedOutboundAt := time.Date(2026, 8, 28, 20, 0, 0, 0, time.UTC)
-		err = sessRepo.RecordOutbound(ctx, ws.ID, lagPhone, "whatsapp_cloud", senderPhone, fixedOutboundAt)
+		err = sessRepo.RecordOutbound(ctx, domain.NewSessionKey(ws.ID, lagPhone, "whatsapp_cloud", senderPhone), fixedOutboundAt)
 		if err != nil {
 			t.Fatalf("failed to record outbound session: %v", err)
 		}

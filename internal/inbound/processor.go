@@ -328,7 +328,13 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 
 	var timing *EventTiming
 	if p.recipientSessionRepo != nil {
-		if sess, err := p.recipientSessionRepo.Get(ctx, ev.WorkspaceID, ev.From, ev.Channel, ev.To); err == nil && sess != nil {
+		sessKey := domain.SessionKey{
+			WorkspaceID:       ev.WorkspaceID,
+			RecipientPhone:    ev.From,
+			Channel:           ev.Channel,
+			RecipientIdentity: ev.To,
+		}
+		if sess, err := p.recipientSessionRepo.Get(ctx, sessKey); err == nil && sess != nil {
 			if sess.LastOutboundAt != nil && !sess.LastOutboundAt.IsZero() {
 				diff := occurredAt.Sub(*sess.LastOutboundAt)
 				if diff >= 0 {
@@ -347,7 +353,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 				entryPointType = ept
 			}
 		}
-		err := p.recipientSessionRepo.Upsert(ctx, ev.WorkspaceID, ev.From, ev.Channel, ev.To, occurredAt, entryPointType)
+		err := p.recipientSessionRepo.Upsert(ctx, sessKey, occurredAt, entryPointType)
 		if err != nil {
 			slog.Error("inbound processor: failed to upsert recipient session", "error", err, "from", ev.From)
 		}

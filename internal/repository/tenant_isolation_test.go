@@ -201,16 +201,20 @@ func TestRepository_StrictTenantIsolation_RejectsNilUUID(t *testing.T) {
 		repo := repository.NewRecipientSessionRepository(nil)
 
 		now := time.Now()
-		if err := repo.Upsert(ctx, nilID, "123", "whatsapp", "456", now, "standard"); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
+		key := domain.SessionKey{WorkspaceID: nilID, RecipientPhone: "123", Channel: "whatsapp", RecipientIdentity: "456"}
+		if err := repo.Upsert(ctx, key, now, "standard"); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("Upsert: expected ErrInvalidWorkspaceID, got %v", err)
 		}
-		if _, err := repo.Get(ctx, nilID, "123", "whatsapp", "456"); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
+		if err := repo.RecordOutbound(ctx, key, now); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
+			t.Errorf("RecordOutbound: expected ErrInvalidWorkspaceID, got %v", err)
+		}
+		if _, err := repo.Get(ctx, key); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("Get: expected ErrInvalidWorkspaceID, got %v", err)
 		}
-		if err := repo.MarkNotifiedExpiring(ctx, nilID, "123", "whatsapp", "456", now); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
+		if err := repo.MarkNotifiedExpiring(ctx, key, now); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("MarkNotifiedExpiring: expected ErrInvalidWorkspaceID, got %v", err)
 		}
-		if err := repo.UpdateLastReadAt(ctx, nilID, "123", "whatsapp", "456", now); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
+		if err := repo.UpdateLastReadAt(ctx, key, now); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("UpdateLastReadAt: expected ErrInvalidWorkspaceID, got %v", err)
 		}
 		if err := repo.UpdateLastReadAtByContact(ctx, nilID, uuid.New(), now); !errors.Is(err, repository.ErrInvalidWorkspaceID) {

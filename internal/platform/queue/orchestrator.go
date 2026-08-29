@@ -228,7 +228,13 @@ func (o *DispatchOrchestrator) Process(
 				_, _ = o.contactRepo.ResolveContact(ctx, workspaceID, channelName, resolvedTo, "", "", "")
 			}
 			if o.recipientSessionRepo != nil && workspaceID != (uuid.UUID{}) {
-				if errRec := o.recipientSessionRepo.RecordOutbound(ctx, workspaceID, resolvedTo, channelName, qMsg.SenderIdentity, time.Now().UTC()); errRec != nil {
+				sessKey := domain.SessionKey{
+					WorkspaceID:       workspaceID,
+					RecipientPhone:    resolvedTo,
+					Channel:           channelName,
+					RecipientIdentity: qMsg.SenderIdentity,
+				}
+				if errRec := o.recipientSessionRepo.RecordOutbound(ctx, sessKey, time.Now().UTC()); errRec != nil {
 					slog.Error("orchestrator: failed to record recipient session outbound timestamp", "error", errRec, "recipient", resolvedTo, "channel", channelName, "trace_id", traceID)
 				}
 			}

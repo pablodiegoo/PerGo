@@ -823,7 +823,7 @@ type mockWABAWindowChecker struct {
 	err  error
 }
 
-func (m *mockWABAWindowChecker) IsWindowOpenBool(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channelName string, recipientIdentity string, safetyBuffer time.Duration) (bool, error) {
+func (m *mockWABAWindowChecker) IsWindowOpenBool(ctx context.Context, key domain.SessionKey, safetyBuffer time.Duration) (bool, error) {
 	return m.open, m.err
 }
 

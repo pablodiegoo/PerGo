@@ -280,7 +280,7 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 		}
 
 		// Verify WindowChecker confirms window is now open
-		status, err := windowChecker.IsWindowOpen(ctx, ws.ID, contactPhone, "whatsapp_cloud", wabaSenderIdentity, 0)
+		status, err := windowChecker.IsWindowOpen(ctx, domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", wabaSenderIdentity), 0)
 		if err != nil {
 			t.Fatalf("failed to check window: %v", err)
 		}
@@ -355,13 +355,13 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 		}
 
 		// Update LastInboundAt to 48 hours ago to simulate time passage
-		err = sessRepo.Upsert(ctx, ws.ID, "5511999992222", "whatsapp_cloud", wabaSenderIdentity, time.Now().Add(-48*time.Hour), "ctwa")
+		err = sessRepo.Upsert(ctx, domain.NewSessionKey(ws.ID, "5511999992222", "whatsapp_cloud", wabaSenderIdentity), time.Now().Add(-48*time.Hour), "ctwa")
 		if err != nil {
 			t.Fatalf("failed to update CTWA session: %v", err)
 		}
 
 		// Window should still be open at 48 hours because CTWA is 72h
-		status, err := windowChecker.IsWindowOpen(ctx, ws.ID, "5511999992222", "whatsapp_cloud", wabaSenderIdentity, 0)
+		status, err := windowChecker.IsWindowOpen(ctx, domain.NewSessionKey(ws.ID, "5511999992222", "whatsapp_cloud", wabaSenderIdentity), 0)
 		if err != nil {
 			t.Fatalf("failed to check CTWA window: %v", err)
 		}
@@ -391,7 +391,7 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 	// =========================================================================
 	t.Run("Approved template message dispatches successfully outside 24h window", func(t *testing.T) {
 		// Set session to expired
-		err := sessRepo.Upsert(ctx, ws.ID, contactPhone, "whatsapp_cloud", wabaSenderIdentity, time.Now().Add(-30*time.Hour), "standard")
+		err := sessRepo.Upsert(ctx, domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", wabaSenderIdentity), time.Now().Add(-30*time.Hour), "standard")
 		if err != nil {
 			t.Fatalf("failed to expire session: %v", err)
 		}

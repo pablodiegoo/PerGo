@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/domain"
 )
 
 func TestRecipientSessionRepository(t *testing.T) {
@@ -30,21 +31,22 @@ func TestRecipientSessionRepository(t *testing.T) {
 	channelName := "whatsapp_cloud"
 	recipientIdentity := "+5511999990001"
 	now := time.Now().Truncate(time.Microsecond).UTC() // Postgres timestamptz truncation
+	key := domain.NewSessionKey(ws.ID, recipient, channelName, recipientIdentity)
 
 	// Get non-existent session
-	_, err = repo.Get(ctx, ws.ID, recipient, channelName, recipientIdentity)
+	_, err = repo.Get(ctx, key)
 	if !errors.Is(err, ErrSessionNotFound) {
 		t.Errorf("expected ErrSessionNotFound, got: %v", err)
 	}
 
 	// Upsert session
-	err = repo.Upsert(ctx, ws.ID, recipient, channelName, recipientIdentity, now, "ctwa")
+	err = repo.Upsert(ctx, key, now, "ctwa")
 	if err != nil {
 		t.Fatalf("failed to upsert session: %v", err)
 	}
 
 	// Get existing session
-	sess, err := repo.Get(ctx, ws.ID, recipient, channelName, recipientIdentity)
+	sess, err := repo.Get(ctx, key)
 	if err != nil {
 		t.Fatalf("failed to get session: %v", err)
 	}
@@ -70,12 +72,12 @@ func TestRecipientSessionRepository(t *testing.T) {
 
 	// Upsert again to update timestamp and reset entry_point_type
 	newTime := now.Add(1 * time.Hour)
-	err = repo.Upsert(ctx, ws.ID, recipient, channelName, recipientIdentity, newTime, "standard")
+	err = repo.Upsert(ctx, key, newTime, "standard")
 	if err != nil {
 		t.Fatalf("failed to update/upsert session: %v", err)
 	}
 
-	sess2, err := repo.Get(ctx, ws.ID, recipient, channelName, recipientIdentity)
+	sess2, err := repo.Get(ctx, key)
 	if err != nil {
 		t.Fatalf("failed to get updated session: %v", err)
 	}
@@ -88,12 +90,12 @@ func TestRecipientSessionRepository(t *testing.T) {
 
 	// Test RecordOutbound on existing session
 	outboundTime := now.Add(2 * time.Hour)
-	err = repo.RecordOutbound(ctx, ws.ID, recipient, channelName, recipientIdentity, outboundTime)
+	err = repo.RecordOutbound(ctx, key, outboundTime)
 	if err != nil {
 		t.Fatalf("failed to record outbound: %v", err)
 	}
 
-	sessOutbound, err := repo.Get(ctx, ws.ID, recipient, channelName, recipientIdentity)
+	sessOutbound, err := repo.Get(ctx, key)
 	if err != nil {
 		t.Fatalf("failed to get session after recording outbound: %v", err)
 	}
@@ -111,12 +113,13 @@ func TestRecipientSessionRepository(t *testing.T) {
 	// Test RecordOutbound on new recipient without prior session
 	newRecipient := "+5511998877665"
 	newOutboundTime := now.Add(3 * time.Hour)
-	err = repo.RecordOutbound(ctx, ws.ID, newRecipient, channelName, recipientIdentity, newOutboundTime)
+	newKey := domain.NewSessionKey(ws.ID, newRecipient, channelName, recipientIdentity)
+	err = repo.RecordOutbound(ctx, newKey, newOutboundTime)
 	if err != nil {
 		t.Fatalf("failed to record outbound for new recipient: %v", err)
 	}
 
-	newSess, err := repo.Get(ctx, ws.ID, newRecipient, channelName, recipientIdentity)
+	newSess, err := repo.Get(ctx, newKey)
 	if err != nil {
 		t.Fatalf("failed to get new session: %v", err)
 	}
@@ -130,11 +133,12 @@ func TestRecipientSessionRepository(t *testing.T) {
 	// Test phone normalization (e.g. without plus) updates existing session
 	trimmedRecipient := "5511998877665"
 	updatedOutboundTime := now.Add(4 * time.Hour)
-	err = repo.RecordOutbound(ctx, ws.ID, trimmedRecipient, channelName, recipientIdentity, updatedOutboundTime)
+	trimmedKey := domain.NewSessionKey(ws.ID, trimmedRecipient, channelName, recipientIdentity)
+	err = repo.RecordOutbound(ctx, trimmedKey, updatedOutboundTime)
 	if err != nil {
 		t.Fatalf("failed to record outbound with trimmed recipient: %v", err)
 	}
-	updatedSess, err := repo.Get(ctx, ws.ID, newRecipient, channelName, recipientIdentity)
+	updatedSess, err := repo.Get(ctx, newKey)
 	if err != nil {
 		t.Fatalf("failed to get updated session: %v", err)
 	}
@@ -142,4 +146,3 @@ func TestRecipientSessionRepository(t *testing.T) {
 		t.Errorf("expected updated LastOutboundAt %v, got %v", updatedOutboundTime, *updatedSess.LastOutboundAt)
 	}
 }
-

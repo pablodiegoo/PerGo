@@ -212,7 +212,7 @@ func seedConversations(ctx context.Context, pool *pgxpool.Pool, sessRepo *reposi
 			return fmt.Errorf("insert audit log: %w", err)
 		}
 		// Upsert recipient session so the window checker and unread tracking work.
-		_ = sessRepo.Upsert(ctx, wsID, ct.from, "whatsapp_cloud", recipientIdentity, now, "standard")
+		_ = sessRepo.Upsert(ctx, domain.NewSessionKey(wsID, ct.from, "whatsapp_cloud", recipientIdentity), now, "standard")
 		slog.Info("seeded inbound", "from", ct.from, "body", ct.body)
 	}
 	return nil

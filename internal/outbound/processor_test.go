@@ -406,7 +406,7 @@ type fakeSessionReader struct {
 	err  error
 }
 
-func (f *fakeSessionReader) Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
+func (f *fakeSessionReader) Get(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error) {
 	return f.sess, f.err
 }
 
@@ -440,12 +440,14 @@ func TestProcessor_SessionFallback(t *testing.T) {
 
 	// Session is closed (older than 24h)
 	oldSession := &repository.RecipientSession{
-		WorkspaceID:       wsID,
-		RecipientPhone:    "5511999999999",
-		Channel:           "whatsapp_cloud",
-		RecipientIdentity: "123456789",
-		LastInboundAt:     time.Now().Add(-48 * time.Hour),
-		EntryPointType:    "standard",
+		SessionKey: domain.SessionKey{
+			WorkspaceID:       wsID,
+			RecipientPhone:    "5511999999999",
+			Channel:           "whatsapp_cloud",
+			RecipientIdentity: "123456789",
+		},
+		LastInboundAt:  time.Now().Add(-48 * time.Hour),
+		EntryPointType: "standard",
 	}
 	sessionReader := &fakeSessionReader{sess: oldSession}
 	windowChecker := session.NewWindowChecker(sessionReader)
@@ -625,12 +627,14 @@ func TestProcessor_WhatsAppCloudWindowIngestion(t *testing.T) {
 	t.Run("freeform message passes within 24h standard session", func(t *testing.T) {
 		sessionReader := &fakeSessionReader{
 			sess: &repository.RecipientSession{
-				WorkspaceID:       wsID,
-				RecipientPhone:    contactPhone,
-				Channel:           "whatsapp_cloud",
-				RecipientIdentity: senderIdentity,
-				LastInboundAt:     time.Now().Add(-2 * time.Hour),
-				EntryPointType:    "standard",
+				SessionKey: domain.SessionKey{
+					WorkspaceID:       wsID,
+					RecipientPhone:    contactPhone,
+					Channel:           "whatsapp_cloud",
+					RecipientIdentity: senderIdentity,
+				},
+				LastInboundAt:  time.Now().Add(-2 * time.Hour),
+				EntryPointType: "standard",
 			},
 		}
 		p := outbound.NewProcessor(nil, nil, resolver, publisher)
@@ -657,12 +661,14 @@ func TestProcessor_WhatsAppCloudWindowIngestion(t *testing.T) {
 	t.Run("freeform message passes within 72h CTWA session at 40h", func(t *testing.T) {
 		sessionReader := &fakeSessionReader{
 			sess: &repository.RecipientSession{
-				WorkspaceID:       wsID,
-				RecipientPhone:    contactPhone,
-				Channel:           "whatsapp_cloud",
-				RecipientIdentity: senderIdentity,
-				LastInboundAt:     time.Now().Add(-40 * time.Hour),
-				EntryPointType:    "ctwa",
+				SessionKey: domain.SessionKey{
+					WorkspaceID:       wsID,
+					RecipientPhone:    contactPhone,
+					Channel:           "whatsapp_cloud",
+					RecipientIdentity: senderIdentity,
+				},
+				LastInboundAt:  time.Now().Add(-40 * time.Hour),
+				EntryPointType: "ctwa",
 			},
 		}
 		p := outbound.NewProcessor(nil, nil, resolver, publisher)
@@ -686,12 +692,14 @@ func TestProcessor_WhatsAppCloudWindowIngestion(t *testing.T) {
 	t.Run("freeform message fails with SessionWindowError when window expired and no fallback template", func(t *testing.T) {
 		sessionReader := &fakeSessionReader{
 			sess: &repository.RecipientSession{
-				WorkspaceID:       wsID,
-				RecipientPhone:    contactPhone,
-				Channel:           "whatsapp_cloud",
-				RecipientIdentity: senderIdentity,
-				LastInboundAt:     time.Now().Add(-26 * time.Hour),
-				EntryPointType:    "standard",
+				SessionKey: domain.SessionKey{
+					WorkspaceID:       wsID,
+					RecipientPhone:    contactPhone,
+					Channel:           "whatsapp_cloud",
+					RecipientIdentity: senderIdentity,
+				},
+				LastInboundAt:  time.Now().Add(-26 * time.Hour),
+				EntryPointType: "standard",
 			},
 		}
 		p := outbound.NewProcessor(nil, nil, resolver, publisher)
@@ -730,12 +738,14 @@ func TestProcessor_WhatsAppCloudWindowIngestion(t *testing.T) {
 		}
 		sessionReader := &fakeSessionReader{
 			sess: &repository.RecipientSession{
-				WorkspaceID:       wsID,
-				RecipientPhone:    contactPhone,
-				Channel:           "whatsapp_cloud",
-				RecipientIdentity: senderIdentity,
-				LastInboundAt:     time.Now().Add(-30 * time.Hour),
-				EntryPointType:    "standard",
+				SessionKey: domain.SessionKey{
+					WorkspaceID:       wsID,
+					RecipientPhone:    contactPhone,
+					Channel:           "whatsapp_cloud",
+					RecipientIdentity: senderIdentity,
+				},
+				LastInboundAt:  time.Now().Add(-30 * time.Hour),
+				EntryPointType: "standard",
 			},
 		}
 		p := outbound.NewProcessor(nil, nil, &fakeRouteResolver{conn: fallbackConn}, publisher)

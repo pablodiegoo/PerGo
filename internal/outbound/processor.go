@@ -173,7 +173,13 @@ func (p *Processor) Ingest(
 
 	// 4.4 Smart Session Window Fallback (WABA freeform messages only)
 	if req.TemplateName == "" && conn.Channel == "whatsapp_cloud" && p.windowChecker != nil {
-		status, err := p.windowChecker.IsWindowOpen(ctx, workspaceID, req.To, "whatsapp_cloud", conn.SenderIdentity, 0)
+		sessKey := domain.SessionKey{
+			WorkspaceID:       workspaceID,
+			RecipientPhone:    req.To,
+			Channel:           "whatsapp_cloud",
+			RecipientIdentity: conn.SenderIdentity,
+		}
+		status, err := p.windowChecker.IsWindowOpen(ctx, sessKey, 0)
 		if err != nil {
 			slog.Warn("outbound processor: window checker error", "error", err, "trace_id", traceID)
 		} else if status != nil && !status.Open {

@@ -790,7 +790,7 @@ type mockSessionReaderForHandler struct {
 	err  error
 }
 
-func (m *mockSessionReaderForHandler) Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error) {
+func (m *mockSessionReaderForHandler) Get(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -867,12 +867,14 @@ func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
 		e := echo.New()
 		sessReader := &mockSessionReaderForHandler{
 			sess: &repository.RecipientSession{
-				WorkspaceID:       wsID,
-				RecipientPhone:    contactPhone,
-				Channel:           "whatsapp_cloud",
-				RecipientIdentity: senderIdentity,
-				LastInboundAt:     time.Now().Add(-2 * time.Hour),
-				EntryPointType:    "standard",
+				SessionKey: domain.SessionKey{
+					WorkspaceID:       wsID,
+					RecipientPhone:    contactPhone,
+					Channel:           "whatsapp_cloud",
+					RecipientIdentity: senderIdentity,
+				},
+				LastInboundAt:  time.Now().Add(-2 * time.Hour),
+				EntryPointType: "standard",
 			},
 		}
 		h := &MessageHandler{
@@ -898,12 +900,14 @@ func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
 		e := echo.New()
 		sessReader := &mockSessionReaderForHandler{
 			sess: &repository.RecipientSession{
-				WorkspaceID:       wsID,
-				RecipientPhone:    contactPhone,
-				Channel:           "whatsapp_cloud",
-				RecipientIdentity: senderIdentity,
-				LastInboundAt:     time.Now().Add(-48 * time.Hour),
-				EntryPointType:    "ctwa",
+				SessionKey: domain.SessionKey{
+					WorkspaceID:       wsID,
+					RecipientPhone:    contactPhone,
+					Channel:           "whatsapp_cloud",
+					RecipientIdentity: senderIdentity,
+				},
+				LastInboundAt:  time.Now().Add(-48 * time.Hour),
+				EntryPointType: "ctwa",
 			},
 		}
 		h := &MessageHandler{
@@ -930,12 +934,14 @@ func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
 		lastInbound := time.Now().Add(-26 * time.Hour)
 		sessReader := &mockSessionReaderForHandler{
 			sess: &repository.RecipientSession{
-				WorkspaceID:       wsID,
-				RecipientPhone:    contactPhone,
-				Channel:           "whatsapp_cloud",
-				RecipientIdentity: senderIdentity,
-				LastInboundAt:     lastInbound,
-				EntryPointType:    "standard",
+				SessionKey: domain.SessionKey{
+					WorkspaceID:       wsID,
+					RecipientPhone:    contactPhone,
+					Channel:           "whatsapp_cloud",
+					RecipientIdentity: senderIdentity,
+				},
+				LastInboundAt:  lastInbound,
+				EntryPointType: "standard",
 			},
 		}
 		h := &MessageHandler{

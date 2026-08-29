@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -36,12 +37,14 @@ func TestSessionTicker_CheckExpiringSessions(t *testing.T) {
 
 	// Simulate standard session at 23h5m ago
 	sessStandard := repository.RecipientSession{
-		WorkspaceID:       wsID,
-		RecipientPhone:    phone,
-		Channel:           channelName,
-		RecipientIdentity: recIdentity,
-		LastInboundAt:     now.Add(-23 * time.Hour).Add(-2 * time.Minute),
-		EntryPointType:    "standard",
+		SessionKey: domain.SessionKey{
+			WorkspaceID:       wsID,
+			RecipientPhone:    phone,
+			Channel:           channelName,
+			RecipientIdentity: recIdentity,
+		},
+		LastInboundAt:  now.Add(-23 * time.Hour).Add(-2 * time.Minute),
+		EntryPointType: "standard",
 	}
 
 	pub := &mockPublisher{}

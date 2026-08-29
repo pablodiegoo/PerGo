@@ -9,18 +9,18 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pablojhp.pergo/internal/domain"
 )
 
+// SessionKey aliases domain.SessionKey for convenient repository usage.
+type SessionKey = domain.SessionKey
 
 // ErrSessionNotFound is returned when a recipient session cannot be found.
 var ErrSessionNotFound = errors.New("recipient session not found")
 
 // RecipientSession represents a communication session with a recipient on a channel.
 type RecipientSession struct {
-	WorkspaceID        uuid.UUID
-	RecipientPhone     string
-	Channel            string
-	RecipientIdentity  string
+	SessionKey
 	LastInboundAt      time.Time
 	LastOutboundAt     *time.Time
 	LastReadAt         *time.Time
@@ -40,8 +40,8 @@ func NewRecipientSessionRepository(pool *pgxpool.Pool) *RecipientSessionReposito
 
 // Upsert inserts or updates a recipient session setting last_inbound_at to the given/current time.
 // It also sets entry_point_type (defaulting to "standard") and resets notified_expiring_at to NULL.
-func (r *RecipientSessionRepository) Upsert(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string, lastInboundAt time.Time, entryPointType string) error {
-	if workspaceID == uuid.Nil {
+func (r *RecipientSessionRepository) Upsert(ctx context.Context, key SessionKey, lastInboundAt time.Time, entryPointType string) error {
+	if key.WorkspaceID == uuid.Nil {
 		return ErrInvalidWorkspaceID
 	}
 	if entryPointType == "" {
@@ -55,21 +55,26 @@ func (r *RecipientSessionRepository) Upsert(ctx context.Context, workspaceID uui
 		 	last_inbound_at = EXCLUDED.last_inbound_at,
 		 	entry_point_type = EXCLUDED.entry_point_type,
 		 	notified_expiring_at = NULL`,
-		workspaceID, recipientPhone, channel, recipientIdentity, lastInboundAt, entryPointType,
+		key.WorkspaceID, key.RecipientPhone, key.Channel, key.RecipientIdentity, lastInboundAt, entryPointType,
 	)
 	return err
 }
 
+func normalizeE164Variants(val string) (raw, trimmed, withPlus string) {
+	raw = val
+	trimmed = strings.TrimPrefix(val, "+")
+	withPlus = "+" + trimmed
+	return raw, trimmed, withPlus
+}
+
 // RecordOutbound updates last_outbound_at for a recipient session, inserting a new session record if none exists.
 // It supports E.164 normalization for matching existing sessions.
-func (r *RecipientSessionRepository) RecordOutbound(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string, outboundAt time.Time) error {
-	if workspaceID == uuid.Nil {
+func (r *RecipientSessionRepository) RecordOutbound(ctx context.Context, key SessionKey, outboundAt time.Time) error {
+	if key.WorkspaceID == uuid.Nil {
 		return ErrInvalidWorkspaceID
 	}
-	trimmedPhone := strings.TrimPrefix(recipientPhone, "+")
-	withPlusPhone := "+" + trimmedPhone
-	trimmedIdentity := strings.TrimPrefix(recipientIdentity, "+")
-	withPlusIdentity := "+" + trimmedIdentity
+	_, trimmedPhone, withPlusPhone := normalizeE164Variants(key.RecipientPhone)
+	_, trimmedIdentity, withPlusIdentity := normalizeE164Variants(key.RecipientIdentity)
 
 	// 1. Try updating matching row first (handling phone variations)
 	res, err := r.pool.Exec(ctx,
@@ -79,7 +84,7 @@ func (r *RecipientSessionRepository) RecordOutbound(ctx context.Context, workspa
 		   AND (recipient_phone = $2 OR recipient_phone = $3 OR recipient_phone = $4)
 		   AND channel = $6
 		   AND (recipient_identity = $7 OR recipient_identity = $8 OR recipient_identity = $9 OR recipient_identity = '')`,
-		workspaceID, recipientPhone, trimmedPhone, withPlusPhone, outboundAt, channel, recipientIdentity, trimmedIdentity, withPlusIdentity,
+		key.WorkspaceID, key.RecipientPhone, trimmedPhone, withPlusPhone, outboundAt, key.Channel, key.RecipientIdentity, trimmedIdentity, withPlusIdentity,
 	)
 	if err == nil && res.RowsAffected() > 0 {
 		return nil
@@ -91,24 +96,22 @@ func (r *RecipientSessionRepository) RecordOutbound(ctx context.Context, workspa
 		 VALUES ($1, $2, $3, $4, $5, $5, 'standard', NULL)
 		 ON CONFLICT (workspace_id, recipient_phone, channel, recipient_identity)
 		 DO UPDATE SET last_outbound_at = EXCLUDED.last_outbound_at`,
-		workspaceID, recipientPhone, channel, recipientIdentity, outboundAt,
+		key.WorkspaceID, key.RecipientPhone, key.Channel, key.RecipientIdentity, outboundAt,
 	)
 	return err
 }
 
-// Get retrieves a recipient session by workspace ID, recipient phone/ID, channel, and recipient identity.
+// Get retrieves a recipient session by SessionKey (workspace ID, recipient phone/ID, channel, and recipient identity).
 // It supports E.164 phone normalization (+ prefix) and falls back to matching by workspace, recipient phone, and channel.
-func (r *RecipientSessionRepository) Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*RecipientSession, error) {
-	if workspaceID == uuid.Nil {
+func (r *RecipientSessionRepository) Get(ctx context.Context, key SessionKey) (*RecipientSession, error) {
+	if key.WorkspaceID == uuid.Nil {
 		return nil, ErrInvalidWorkspaceID
 	}
 	var s RecipientSession
-	trimmedPhone := strings.TrimPrefix(recipientPhone, "+")
-	withPlusPhone := "+" + trimmedPhone
-	trimmedIdentity := strings.TrimPrefix(recipientIdentity, "+")
-	withPlusIdentity := "+" + trimmedIdentity
+	_, trimmedPhone, withPlusPhone := normalizeE164Variants(key.RecipientPhone)
+	_, trimmedIdentity, withPlusIdentity := normalizeE164Variants(key.RecipientIdentity)
 
-	if recipientIdentity != "" {
+	if key.RecipientIdentity != "" {
 		err := r.pool.QueryRow(ctx,
 			`SELECT workspace_id, recipient_phone, channel, recipient_identity, last_inbound_at, last_outbound_at, last_read_at, entry_point_type, notified_expiring_at
 			 FROM recipient_sessions 
@@ -117,7 +120,7 @@ func (r *RecipientSessionRepository) Get(ctx context.Context, workspaceID uuid.U
 			   AND channel = $5 
 			   AND (recipient_identity = $6 OR recipient_identity = $7 OR recipient_identity = $8)
 			 ORDER BY last_inbound_at DESC LIMIT 1`,
-			workspaceID, recipientPhone, trimmedPhone, withPlusPhone, channel, recipientIdentity, trimmedIdentity, withPlusIdentity,
+			key.WorkspaceID, key.RecipientPhone, trimmedPhone, withPlusPhone, key.Channel, key.RecipientIdentity, trimmedIdentity, withPlusIdentity,
 		).Scan(&s.WorkspaceID, &s.RecipientPhone, &s.Channel, &s.RecipientIdentity, &s.LastInboundAt, &s.LastOutboundAt, &s.LastReadAt, &s.EntryPointType, &s.NotifiedExpiringAt)
 		if err == nil {
 			return &s, nil
@@ -135,7 +138,7 @@ func (r *RecipientSessionRepository) Get(ctx context.Context, workspaceID uuid.U
 		   AND (recipient_phone = $2 OR recipient_phone = $3 OR recipient_phone = $4) 
 		   AND channel = $5
 		 ORDER BY last_inbound_at DESC LIMIT 1`,
-		workspaceID, recipientPhone, trimmedPhone, withPlusPhone, channel,
+		key.WorkspaceID, key.RecipientPhone, trimmedPhone, withPlusPhone, key.Channel,
 	).Scan(&s.WorkspaceID, &s.RecipientPhone, &s.Channel, &s.RecipientIdentity, &s.LastInboundAt, &s.LastOutboundAt, &s.LastReadAt, &s.EntryPointType, &s.NotifiedExpiringAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -173,29 +176,29 @@ func (r *RecipientSessionRepository) GetExpiringSessions(ctx context.Context, st
 }
 
 // MarkNotifiedExpiring sets notified_expiring_at to the given time for a specific recipient session.
-func (r *RecipientSessionRepository) MarkNotifiedExpiring(ctx context.Context, workspaceID uuid.UUID, recipientPhone, channel, recipientIdentity string, notifiedAt time.Time) error {
-	if workspaceID == uuid.Nil {
+func (r *RecipientSessionRepository) MarkNotifiedExpiring(ctx context.Context, key SessionKey, notifiedAt time.Time) error {
+	if key.WorkspaceID == uuid.Nil {
 		return ErrInvalidWorkspaceID
 	}
 	_, err := r.pool.Exec(ctx,
 		`UPDATE recipient_sessions
 		 SET notified_expiring_at = $5
 		 WHERE workspace_id = $1 AND recipient_phone = $2 AND channel = $3 AND recipient_identity = $4`,
-		workspaceID, recipientPhone, channel, recipientIdentity, notifiedAt,
+		key.WorkspaceID, key.RecipientPhone, key.Channel, key.RecipientIdentity, notifiedAt,
 	)
 	return err
 }
 
 // UpdateLastReadAt updates the last_read_at timestamp for a specific recipient session.
-func (r *RecipientSessionRepository) UpdateLastReadAt(ctx context.Context, workspaceID uuid.UUID, recipientPhone, channel, recipientIdentity string, lastReadAt time.Time) error {
-	if workspaceID == uuid.Nil {
+func (r *RecipientSessionRepository) UpdateLastReadAt(ctx context.Context, key SessionKey, lastReadAt time.Time) error {
+	if key.WorkspaceID == uuid.Nil {
 		return ErrInvalidWorkspaceID
 	}
 	_, err := r.pool.Exec(ctx,
 		`UPDATE recipient_sessions
 		 SET last_read_at = $5
 		 WHERE workspace_id = $1 AND recipient_phone = $2 AND channel = $3 AND recipient_identity = $4`,
-		workspaceID, recipientPhone, channel, recipientIdentity, lastReadAt,
+		key.WorkspaceID, key.RecipientPhone, key.Channel, key.RecipientIdentity, lastReadAt,
 	)
 	return err
 }

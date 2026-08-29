@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/platform/audit"
@@ -196,7 +197,7 @@ func TestTelegramWebhookHandler(t *testing.T) {
 		}
 
 		// Verify upsert in DB
-		sess, err := sessRepo.Get(ctx, ws.ID, "987654321", "telegram", "@testbot")
+		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, "987654321", "telegram", "@testbot"))
 		if err != nil {
 			t.Fatalf("failed to retrieve upserted session: %v", err)
 		}

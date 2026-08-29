@@ -760,7 +760,7 @@ func TestOrchestrator_AutomatedCascadingAndIdentityVerification(t *testing.T) {
 			t.Fatalf("expected successful dispatch, got error: %v", err)
 		}
 
-		sess, err := sessRepo.Get(ctx, ws.ID, recipient, "whatsapp_cloud", "+5511888880000")
+		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, recipient, "whatsapp_cloud", "+5511888880000"))
 		if err != nil {
 			t.Fatalf("failed to retrieve session: %v", err)
 		}

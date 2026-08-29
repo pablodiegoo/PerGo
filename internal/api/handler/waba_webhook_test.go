@@ -609,7 +609,7 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 		}
 
 		// 1. Verify session is registered under connection's SenderIdentity "123456789"
-		sess, err := sessRepo.Get(ctx, ws.ID, customerPhone, "whatsapp_cloud", "123456789")
+		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, customerPhone, "whatsapp_cloud", "123456789"))
 		if err != nil {
 			t.Fatalf("failed to get recipient session: %v", err)
 		}

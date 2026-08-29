@@ -5,14 +5,14 @@ import (
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // RecipientSessionReader defines the interface for retrieving recipient sessions,
 // facilitating unit testing of WindowChecker without a database connection.
 type RecipientSessionReader interface {
-	Get(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string) (*repository.RecipientSession, error)
+	Get(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error)
 }
 
 // WindowStatus represents the detailed status of a recipient's customer service window.
@@ -45,8 +45,8 @@ func NewWindowChecker(repo RecipientSessionReader) *WindowChecker {
 
 // IsWindowOpen checks if a message can be sent to the recipient on the given channel
 // under customer service window rules, applying an optional safetyBuffer.
-func (w *WindowChecker) IsWindowOpen(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string, safetyBuffer time.Duration) (*WindowStatus, error) {
-	sess, err := w.repo.Get(ctx, workspaceID, recipientPhone, channel, recipientIdentity)
+func (w *WindowChecker) IsWindowOpen(ctx context.Context, key domain.SessionKey, safetyBuffer time.Duration) (*WindowStatus, error) {
+	sess, err := w.repo.Get(ctx, key)
 	if err != nil {
 		if errors.Is(err, repository.ErrSessionNotFound) {
 			return &WindowStatus{Open: false}, nil
@@ -78,8 +78,8 @@ func (w *WindowChecker) IsWindowOpen(ctx context.Context, workspaceID uuid.UUID,
 
 // IsWindowOpenBool is a convenience wrapper around IsWindowOpen returning only bool and error,
 // allowing channel adapters (like WABA) to check window status without importing the session package.
-func (w *WindowChecker) IsWindowOpenBool(ctx context.Context, workspaceID uuid.UUID, recipientPhone string, channel string, recipientIdentity string, safetyBuffer time.Duration) (bool, error) {
-	status, err := w.IsWindowOpen(ctx, workspaceID, recipientPhone, channel, recipientIdentity, safetyBuffer)
+func (w *WindowChecker) IsWindowOpenBool(ctx context.Context, key domain.SessionKey, safetyBuffer time.Duration) (bool, error) {
+	status, err := w.IsWindowOpen(ctx, key, safetyBuffer)
 	if err != nil {
 		return false, err
 	}
