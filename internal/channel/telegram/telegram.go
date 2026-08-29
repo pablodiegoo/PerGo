@@ -169,9 +169,14 @@ func (a *TelegramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 		case "document":
 			fieldName = "document"
 			endpoint = "sendDocument"
-		case "audio":
-			fieldName = "audio"
-			endpoint = "sendAudio"
+		case "audio", "voice":
+			if m.Media.MediaType == "voice" || m.Media.PTT {
+				fieldName = "voice"
+				endpoint = "sendVoice"
+			} else {
+				fieldName = "audio"
+				endpoint = "sendAudio"
+			}
 		case "video":
 			fieldName = "video"
 			endpoint = "sendVideo"

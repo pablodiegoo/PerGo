@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.mau.fi/whatsmeow"
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/storage"
@@ -52,6 +53,35 @@ func TestWhatsAppAdapter_Media(t *testing.T) {
 		}
 		if err.Error() != "whatsapp: client not connected" {
 			t.Errorf("expected 'whatsapp: client not connected' error, got %v", err)
+		}
+	})
+
+	t.Run("BuildAudioMessage constructs valid PTT AudioMessage with waveform and seconds", func(t *testing.T) {
+		oggData := []byte("OggS\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x39\x30\x00\x00\x00\x00\x00\x00\x00\x00\x01\x13OpusHead\x01\x01\x00\x00\x80\xbb\x00\x00\x00\x00\x00OggS\x00\x04\x80\xbb\x00\x00\x00\x00\x00\x00\x39\x30\x00\x00\x02\x00\x00\x00\x00\x00\x01\x06\xa0\x7f\x50\x30\x20\x10")
+		uploadResp := &whatsmeow.UploadResponse{
+			URL:           "https://mmg.whatsapp.net/m1",
+			DirectPath:    "/v/t62/m1",
+			MediaKey:      []byte("12345678901234567890123456789012"),
+			FileLength:    uint64(len(oggData)),
+			FileSHA256:    []byte("12345678901234567890123456789012"),
+			FileEncSHA256: []byte("12345678901234567890123456789012"),
+		}
+
+		audioMsg := buildAudioMessage(*uploadResp, oggData, "audio/ogg", true)
+		if audioMsg == nil {
+			t.Fatal("expected non-nil AudioMessage")
+		}
+		if audioMsg.GetPTT() != true {
+			t.Errorf("expected PTT to be true")
+		}
+		if audioMsg.GetMimetype() != "audio/ogg; codecs=opus" {
+			t.Errorf("expected mimetype 'audio/ogg; codecs=opus', got %s", audioMsg.GetMimetype())
+		}
+		if audioMsg.GetURL() != uploadResp.URL {
+			t.Errorf("expected URL %s, got %s", uploadResp.URL, audioMsg.GetURL())
+		}
+		if audioMsg.GetFileLength() != uploadResp.FileLength {
+			t.Errorf("expected FileLength %d, got %d", uploadResp.FileLength, audioMsg.GetFileLength())
 		}
 	})
 }

@@ -581,7 +581,7 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 			}
 			return a.sendRequest(ctx, config.PhoneNumberID, config.Token, bodyBytes)
 
-		case "audio":
+		case "audio", "voice":
 			type wabaAudio struct {
 				Link string `json:"link"`
 			}

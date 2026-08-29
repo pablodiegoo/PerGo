@@ -174,6 +174,23 @@ func TestValidateMessageMedia(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name: "valid audio",
+			media: &Media{
+				MediaURL:  "https://example.com/audio.mp3",
+				MediaType: "audio",
+			},
+			expectError: false,
+		},
+		{
+			name: "valid voice note",
+			media: &Media{
+				MediaURL:  "https://example.com/voice.ogg",
+				MediaType: "voice",
+				PTT:       true,
+			},
+			expectError: false,
+		},
+		{
 			name: "valid document with filename",
 			media: &Media{
 				MediaURL:  "https://example.com/doc.pdf",

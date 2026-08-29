@@ -108,6 +108,48 @@ func CalculateVoicedDuration(pcm16 []int16, sampleRate int, channels int, silenc
 	return voicedMs
 }
 
+// GenerateWaveform computes a slice of normalized amplitude bars (0-100) for PTT voice notes.
+func GenerateWaveform(pcm16 []int16, numBars int) []byte {
+	if len(pcm16) == 0 || numBars <= 0 {
+		return nil
+	}
+	if numBars > len(pcm16) {
+		numBars = len(pcm16)
+	}
+	waveform := make([]byte, numBars)
+	chunkSize := len(pcm16) / numBars
+	if chunkSize <= 0 {
+		chunkSize = 1
+	}
+	for i := 0; i < numBars; i++ {
+		start := i * chunkSize
+		end := start + chunkSize
+		if end > len(pcm16) {
+			end = len(pcm16)
+		}
+		var maxAmp int16 = 0
+		for _, s := range pcm16[start:end] {
+			absS := s
+			if absS < 0 {
+				if absS == -32768 {
+					absS = 32767
+				} else {
+					absS = -absS
+				}
+			}
+			if absS > maxAmp {
+				maxAmp = absS
+			}
+		}
+		val := byte((int(maxAmp) * 100) / 32767)
+		if val > 100 {
+			val = 100
+		}
+		waveform[i] = val
+	}
+	return waveform
+}
+
 // ExtractAudioTelemetry detects the audio format and extracts acoustic telemetry.
 func ExtractAudioTelemetry(data []byte, contentType string) (*AudioTelemetry, error) {
 	if len(data) == 0 {

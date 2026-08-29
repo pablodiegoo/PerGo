@@ -25,9 +25,22 @@ func TestMain(m *testing.M) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	// 1. Start PostgreSQL Container with safety check
 	var err error
 	var pgContainer *tcpostgres.PostgresContainer
+
+	// 0. Check existing PERGO_DATABASE_URL
+	if existingDB := os.Getenv("PERGO_DATABASE_URL"); existingDB != "" {
+		if pool, err := pgxpool.New(ctx, existingDB); err == nil {
+			if pool.Ping(ctx) == nil {
+				testDBURL = existingDB
+				pool.Close()
+				goto skipPgContainer
+			}
+			pool.Close()
+		}
+	}
+
+	// 1. Start PostgreSQL Container with safety check
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -52,44 +65,48 @@ func TestMain(m *testing.M) {
 		}
 	}()
 
-	pgConnStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		log.Fatalf("failed to get postgres connection string: %v", err)
-	}
-	testDBURL = pgConnStr
-	os.Setenv("PERGO_DATABASE_URL", pgConnStr)
-
-	// Connect to pool with retries to ensure Postgres is fully ready
-	var pool *pgxpool.Pool
-	for i := 0; i < 10; i++ {
-		pool, err = pgxpool.New(ctx, pgConnStr)
-		if err == nil {
-			err = pool.Ping(ctx)
-			if err == nil {
-				break
-			}
-			pool.Close()
+	{
+		pgConnStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
+		if err != nil {
+			log.Fatalf("failed to get postgres connection string: %v", err)
 		}
-		log.Printf("waiting for postgres to accept connections (attempt %d/10)... error: %v", i+1, err)
-		time.Sleep(1 * time.Second)
-	}
-	if err != nil {
-		log.Fatalf("postgres failed to accept connections after retries: %v", err)
-	}
+		testDBURL = pgConnStr
+		os.Setenv("PERGO_DATABASE_URL", pgConnStr)
 
-	// Run migrations
-	db, err := postgres.NewSQLDB(pool)
-	if err != nil {
-		pool.Close()
-		log.Fatalf("failed to get sql.DB wrapper: %v", err)
-	}
-	if err := postgres.RunMigrations(db); err != nil {
+		// Connect to pool with retries to ensure Postgres is fully ready
+		var pool *pgxpool.Pool
+		for i := 0; i < 10; i++ {
+			pool, err = pgxpool.New(ctx, pgConnStr)
+			if err == nil {
+				err = pool.Ping(ctx)
+				if err == nil {
+					break
+				}
+				pool.Close()
+			}
+			log.Printf("waiting for postgres to accept connections (attempt %d/10)... error: %v", i+1, err)
+			time.Sleep(1 * time.Second)
+		}
+		if err != nil {
+			log.Fatalf("postgres failed to accept connections after retries: %v", err)
+		}
+
+		// Run migrations
+		db, err := postgres.NewSQLDB(pool)
+		if err != nil {
+			pool.Close()
+			log.Fatalf("failed to get sql.DB wrapper: %v", err)
+		}
+		if err := postgres.RunMigrations(db); err != nil {
+			db.Close()
+			pool.Close()
+			log.Fatalf("failed to run migrations: %v", err)
+		}
 		db.Close()
 		pool.Close()
-		log.Fatalf("failed to run migrations: %v", err)
 	}
-	db.Close()
-	pool.Close()
+
+skipPgContainer:
 
 	// 2. Start NATS Container with JetStream enabled via GenericContainer
 	natsContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{

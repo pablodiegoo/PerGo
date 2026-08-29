@@ -212,6 +212,8 @@ func (a *InstagramAdapter) Dispatch(ctx context.Context, m *channel.MessagePaylo
 		mediaType := m.Media.MediaType
 		if mediaType == "document" {
 			mediaType = "file"
+		} else if mediaType == "voice" {
+			mediaType = "audio"
 		}
 		
 		reqPayload.Message.Attachment = &instagramAttachment{

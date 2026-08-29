@@ -204,4 +204,44 @@ func TestDefaultEngine_Process(t *testing.T) {
 			t.Errorf("expected URL %s, got %s", expectedURL, url)
 		}
 	})
+
+	t.Run("ProcessOutbound audio ogg opus success", func(t *testing.T) {
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "audio/ogg; codecs=opus")
+			_, _ = w.Write([]byte("OggS" + "\x00\x02" + "opus-audio-data"))
+		})
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		url, err := engine.ProcessOutbound(ctx, wsID, server.URL)
+		if err != nil {
+			t.Fatalf("ProcessOutbound failed: %v", err)
+		}
+
+		expectedHash := sha256.New()
+		expectedHash.Write([]byte("OggS" + "\x00\x02" + "opus-audio-data"))
+		hashStr := hex.EncodeToString(expectedHash.Sum(nil))
+
+		expectedURL := "/media/" + wsID.String() + "/" + hashStr + ".ogg"
+		if url != expectedURL {
+			t.Errorf("expected URL %s, got %s", expectedURL, url)
+		}
+	})
+
+	t.Run("ProcessInbound voice success", func(t *testing.T) {
+		data := []byte("OggS" + "\x00\x02" + "inbound-voice")
+		url, err := engine.ProcessInbound(ctx, wsID, "voice", data)
+		if err != nil {
+			t.Fatalf("ProcessInbound failed: %v", err)
+		}
+
+		expectedHash := sha256.New()
+		expectedHash.Write(data)
+		hashStr := hex.EncodeToString(expectedHash.Sum(nil))
+
+		expectedURL := "/media/" + wsID.String() + "/" + hashStr + ".ogg"
+		if url != expectedURL {
+			t.Errorf("expected URL %s, got %s", expectedURL, url)
+		}
+	})
 }

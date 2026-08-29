@@ -42,12 +42,13 @@ var ValidChannels = map[string]bool{
 	"email_mautic":   true,
 }
 
-// Media represents media payload (URL, type, filename, caption).
+// Media represents media payload (URL, type, filename, caption, PTT flag).
 type Media struct {
 	MediaURL  string `json:"media_url"`
 	MediaType string `json:"media_type"`
 	Filename  string `json:"filename,omitempty"`
 	Caption   string `json:"caption,omitempty"`
+	PTT       bool   `json:"ptt,omitempty"`
 }
 
 // Interactive represents the unified schema for rich interactive messages.
@@ -315,11 +316,14 @@ func ValidateMessage(req *CreateMessageRequest) *ErrorResponse {
 
 	// Validate Body & Media payload presence
 	if req.Media != nil {
-		if req.Media.MediaType != "image" && req.Media.MediaType != "document" && req.Media.MediaType != "audio" && req.Media.MediaType != "video" {
+		if req.Media.MediaType != "image" && req.Media.MediaType != "document" && req.Media.MediaType != "audio" && req.Media.MediaType != "video" && req.Media.MediaType != "voice" {
 			details = append(details, FieldError{
 				Field:   "media.media_type",
-				Message: "must be one of: image, document, audio, video",
+				Message: "must be one of: image, document, audio, video, voice",
 			})
+		}
+		if req.Media.MediaType == "voice" {
+			req.Media.PTT = true
 		}
 
 		// MediaURL validation: check empty and scheme

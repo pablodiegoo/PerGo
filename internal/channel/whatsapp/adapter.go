@@ -17,6 +17,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/platform/storage"
 )
 
@@ -138,7 +139,7 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 			uploadType = whatsmeow.MediaImage
 		case "document":
 			uploadType = whatsmeow.MediaDocument
-		case "audio":
+		case "audio", "voice":
 			uploadType = whatsmeow.MediaAudio
 		case "video":
 			uploadType = whatsmeow.MediaVideo
@@ -186,16 +187,9 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 				FileName:      &filename,
 				Caption:       caption,
 			}
-		case "audio":
-			msg.AudioMessage = &waE2E.AudioMessage{
-				URL:           &resp.URL,
-				DirectPath:    &resp.DirectPath,
-				MediaKey:      resp.MediaKey,
-				Mimetype:      &contentType,
-				FileLength:    &resp.FileLength,
-				FileSHA256:    resp.FileSHA256,
-				FileEncSHA256: resp.FileEncSHA256,
-			}
+		case "audio", "voice":
+			isPTT := m.Media.PTT || m.Media.MediaType == "voice" || strings.Contains(strings.ToLower(contentType), "opus") || strings.Contains(strings.ToLower(contentType), "ogg")
+			msg.AudioMessage = buildAudioMessage(resp, dataBytes, contentType, isPTT)
 		case "video":
 			msg.VideoMessage = &waE2E.VideoMessage{
 				URL:           &resp.URL,
@@ -380,4 +374,58 @@ func buildInteractiveOrOverrideMsg(m *channel.MessagePayload) (*waE2E.Message, e
 		}
 	}
 	return nil, nil
+}
+
+func buildAudioMessage(resp whatsmeow.UploadResponse, dataBytes []byte, contentType string, isPTT bool) *waE2E.AudioMessage {
+	mime := contentType
+	if isPTT {
+		if strings.Contains(strings.ToLower(mime), "ogg") || strings.Contains(strings.ToLower(mime), "opus") || mime == "audio/ogg" || mime == "" {
+			mime = "audio/ogg; codecs=opus"
+		}
+	}
+
+	var seconds uint32
+	var waveform []byte
+
+	if tele, err := media.ExtractAudioTelemetry(dataBytes, contentType); err == nil && tele != nil {
+		if tele.DurationMS > 0 {
+			seconds = uint32((tele.DurationMS + 500) / 1000)
+			if seconds == 0 {
+				seconds = 1
+			}
+		}
+	}
+
+	if pcm, _, err := media.DecodeOGGOpus(dataBytes); err == nil && len(pcm) > 0 {
+		waveform = media.GenerateWaveform(pcm, 64)
+	} else if pcm, _, err := media.DecodeWAV(dataBytes); err == nil && len(pcm) > 0 {
+		waveform = media.GenerateWaveform(pcm, 64)
+	} else if pcm, _, err := media.DecodeMP3(dataBytes); err == nil && len(pcm) > 0 {
+		waveform = media.GenerateWaveform(pcm, 64)
+	} else if pcm, _, err := media.DecodeMP4AAC(dataBytes); err == nil && len(pcm) > 0 {
+		waveform = media.GenerateWaveform(pcm, 64)
+	}
+
+	audioMsg := &waE2E.AudioMessage{
+		URL:           &resp.URL,
+		DirectPath:    &resp.DirectPath,
+		MediaKey:      resp.MediaKey,
+		Mimetype:      &mime,
+		FileLength:    &resp.FileLength,
+		FileSHA256:    resp.FileSHA256,
+		FileEncSHA256: resp.FileEncSHA256,
+	}
+
+	if isPTT {
+		pttVal := true
+		audioMsg.PTT = &pttVal
+	}
+	if seconds > 0 {
+		audioMsg.Seconds = &seconds
+	}
+	if len(waveform) > 0 {
+		audioMsg.Waveform = waveform
+	}
+
+	return audioMsg
 }

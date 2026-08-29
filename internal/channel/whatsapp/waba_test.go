@@ -430,6 +430,106 @@ func TestWABADispatch(t *testing.T) {
 		}
 	})
 
+	t.Run("Success Audio Message", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/12345_phone_id/messages" {
+				t.Errorf("path = %q, want /12345_phone_id/messages", r.URL.Path)
+			}
+
+			bodyBytes, _ := io.ReadAll(r.Body)
+			var payload struct {
+				Type  string `json:"type"`
+				Audio *struct {
+					Link string `json:"link"`
+				} `json:"audio"`
+			}
+			if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+				t.Fatalf("unmarshal request payload: %v", err)
+			}
+
+			if payload.Type != "audio" || payload.Audio == nil {
+				t.Fatalf("expected audio message, got: %s", string(bodyBytes))
+			}
+
+			if payload.Audio.Link != "/media/workspace123/hash123.ogg" {
+				t.Errorf("expected link /media/workspace123/hash123.ogg, got %s", payload.Audio.Link)
+			}
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.HBgLAudio..."}]}`))
+		}))
+		defer server.Close()
+
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter.SetBaseURL(server.URL)
+
+		payload := &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
+			To:             "+5511999999999",
+			Media: &domain.Media{
+				MediaURL:  "/media/workspace123/hash123.ogg",
+				MediaType: "audio",
+			},
+		}
+
+		_, err := adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on success, got: %v", err)
+		}
+	})
+
+	t.Run("Success Voice Note Message", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/12345_phone_id/messages" {
+				t.Errorf("path = %q, want /12345_phone_id/messages", r.URL.Path)
+			}
+
+			bodyBytes, _ := io.ReadAll(r.Body)
+			var payload struct {
+				Type  string `json:"type"`
+				Audio *struct {
+					Link string `json:"link"`
+				} `json:"audio"`
+			}
+			if err := json.Unmarshal(bodyBytes, &payload); err != nil {
+				t.Fatalf("unmarshal request payload: %v", err)
+			}
+
+			if payload.Type != "audio" || payload.Audio == nil {
+				t.Fatalf("expected audio type for voice message, got: %s", string(bodyBytes))
+			}
+
+			expectedLink := "https://cdn.example.com/media/workspace123/hash123.ogg"
+			if payload.Audio.Link != expectedLink {
+				t.Errorf("expected link %s, got %s", expectedLink, payload.Audio.Link)
+			}
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.HBgLVoice..."}]}`))
+		}))
+		defer server.Close()
+
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "https://cdn.example.com")
+		adapter.SetBaseURL(server.URL)
+
+		payload := &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "+12345_phone_id",
+			To:             "+5511999999999",
+			Media: &domain.Media{
+				MediaURL:  "/media/workspace123/hash123.ogg",
+				MediaType: "voice",
+				PTT:       true,
+			},
+		}
+
+		_, err := adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on success, got: %v", err)
+		}
+	})
+
 	t.Run("Success Interactive Message", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			bodyBytes, _ := io.ReadAll(r.Body)

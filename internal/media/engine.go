@@ -107,15 +107,21 @@ func (e *DefaultEngine) Download(
 	}
 
 	// Detect content type
-	contentType := resp.Header.Get("Content-Type")
-	if len(data) > 0 {
-		detected := http.DetectContentType(data)
-		if contentType == "" || contentType == "application/octet-stream" {
-			contentType = detected
-		} else {
-			if detected != "application/octet-stream" {
-				contentType = detected
-			}
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if contentType == "" || contentType == "application/octet-stream" {
+		if len(data) > 0 {
+			contentType = http.DetectContentType(data)
+		}
+	}
+
+	// Sniff magic audio signatures if content-type is generic or text
+	if contentType == "" || contentType == "application/octet-stream" || strings.HasPrefix(contentType, "text/plain") {
+		if len(data) >= 4 && string(data[0:4]) == "OggS" {
+			contentType = "audio/ogg; codecs=opus"
+		} else if len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WAVE" {
+			contentType = "audio/wav"
+		} else if (len(data) >= 3 && string(data[0:3]) == "ID3") || (len(data) >= 2 && data[0] == 0xFF && (data[1]&0xE0) == 0xE0) {
+			contentType = "audio/mpeg"
 		}
 	}
 
@@ -186,7 +192,7 @@ func getExtFromMediaType(mediaType string) string {
 		return "jpg"
 	case "video":
 		return "mp4"
-	case "audio":
+	case "audio", "voice":
 		return "ogg"
 	case "document":
 		return "pdf"
@@ -201,6 +207,8 @@ func getMimeFromMediaType(mediaType string) string {
 		return "image/jpeg"
 	case "video":
 		return "video/mp4"
+	case "voice":
+		return "audio/ogg; codecs=opus"
 	case "audio":
 		return "audio/ogg"
 	case "document":
@@ -228,8 +236,14 @@ func mimeToExt(mime string) string {
 		return "mp4"
 	case "audio/mpeg", "audio/mp3":
 		return "mp3"
-	case "audio/ogg":
+	case "audio/ogg", "audio/opus", "application/ogg", "application/opus":
 		return "ogg"
+	case "audio/wav", "audio/x-wav", "audio/wave":
+		return "wav"
+	case "audio/mp4", "audio/m4a", "audio/aac", "audio/x-m4a":
+		return "m4a"
+	case "audio/flac":
+		return "flac"
 	case "application/pdf":
 		return "pdf"
 	default:

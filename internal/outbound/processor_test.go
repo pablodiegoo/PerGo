@@ -322,6 +322,66 @@ func TestProcessor_Ingest(t *testing.T) {
 		}
 	})
 
+	t.Run("Ingest PTT voice note downloads, uploads to S3, preserves PTT flag, and publishes", func(t *testing.T) {
+		me := &fakeMediaEngine{
+			processOutboundFn: func(ctx context.Context, workspaceID uuid.UUID, mediaURL string) (string, error) {
+				return "/media/" + workspaceID.String() + "/voice12345.ogg", nil
+			},
+		}
+		resolver := &fakeRouteResolver{conn: defaultConn}
+		publisher := &fakePublisher{}
+		tracker := &fakeQueueDepthTracker{}
+
+		p := outbound.NewProcessor(tracker, me, resolver, publisher)
+
+		req := &domain.CreateMessageRequest{
+			To:      "123456",
+			Channel: "telegram",
+			Media: &domain.Media{
+				MediaURL:  "https://example.com/audio/voice-sample.ogg",
+				MediaType: "voice",
+				PTT:       true,
+			},
+		}
+
+		qMsg, err := p.Ingest(context.Background(), wsID, traceID, req)
+		if err != nil {
+			t.Fatalf("Ingest failed: %v", err)
+		}
+
+		if len(me.outboundCalls) != 1 {
+			t.Fatalf("expected 1 ProcessOutbound call, got %d", len(me.outboundCalls))
+		}
+		if me.outboundCalls[0].mediaURL != "https://example.com/audio/voice-sample.ogg" {
+			t.Errorf("got mediaURL %s, want https://example.com/audio/voice-sample.ogg", me.outboundCalls[0].mediaURL)
+		}
+
+		expectedURL := "/media/" + wsID.String() + "/voice12345.ogg"
+		if qMsg.Media.MediaURL != expectedURL {
+			t.Errorf("got rewired MediaURL %s, want %s", qMsg.Media.MediaURL, expectedURL)
+		}
+		if !qMsg.Media.PTT {
+			t.Errorf("expected qMsg.Media.PTT to be true")
+		}
+		if len(publisher.published) != 1 {
+			t.Fatalf("expected 1 published message, got %d", len(publisher.published))
+		}
+
+		var publishedMsg domain.QueueMessage
+		if err := json.Unmarshal(publisher.published[0], &publishedMsg); err != nil {
+			t.Fatalf("failed to unmarshal published queue message: %v", err)
+		}
+		if publishedMsg.Media == nil || !publishedMsg.Media.PTT {
+			t.Errorf("expected published queue message to have PTT=true, got %+v", publishedMsg.Media)
+		}
+		if publishedMsg.Media.MediaURL != expectedURL {
+			t.Errorf("expected published media URL %s, got %s", expectedURL, publishedMsg.Media.MediaURL)
+		}
+		if tracker.increment != wsID {
+			t.Errorf("expected queue tracker to increment for %s", wsID)
+		}
+	})
+
 	t.Run("Missing route triggers RouteError", func(t *testing.T) {
 		resolver := &fakeRouteResolver{err: errors.New("connection not found")}
 

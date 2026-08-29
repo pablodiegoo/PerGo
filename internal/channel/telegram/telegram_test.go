@@ -294,6 +294,122 @@ func TestTelegramDispatch(t *testing.T) {
 			t.Fatalf("expected nil error on success, got: %v", err)
 		}
 	})
+
+	t.Run("Success Send Audio", func(t *testing.T) {
+		s3Client, err := storage.NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "pergo-bucket", true)
+		if err != nil {
+			t.Fatalf("failed to init s3 client: %v", err)
+		}
+
+		key := ws.ID.String() + "/audio123.mp3"
+		fileData := []byte("fake-mp3-audio-bytes")
+		err = s3Client.Upload(context.Background(), key, fileData, "audio/mpeg")
+		if err != nil {
+			t.Fatalf("failed to upload mock file to S3: %v", err)
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/bot123456:ABC-DEF_test_token/sendAudio" {
+				t.Errorf("path = %q, want /bot123456:ABC-DEF_test_token/sendAudio", r.URL.Path)
+			}
+
+			err := r.ParseMultipartForm(10 << 20)
+			if err != nil {
+				t.Fatalf("failed to parse multipart form: %v", err)
+			}
+
+			if r.FormValue("chat_id") != "987654321" {
+				t.Errorf("expected chat_id 987654321, got %s", r.FormValue("chat_id"))
+			}
+
+			file, _, err := r.FormFile("audio")
+			if err != nil {
+				t.Fatalf("failed to read audio file from multipart form: %v", err)
+			}
+			defer file.Close()
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":12346}}`))
+		}))
+		defer server.Close()
+
+		adapter := NewTelegramAdapter(connectionsRepo, server.Client(), s3Client)
+		adapter.SetBaseURL(server.URL)
+
+		payload := &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "@test_bot",
+			To:             "987654321",
+			Media: &domain.Media{
+				MediaURL:  "/media/" + ws.ID.String() + "/audio123.mp3",
+				MediaType: "audio",
+			},
+		}
+
+		_, err = adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on success, got: %v", err)
+		}
+	})
+
+	t.Run("Success Send Voice Note", func(t *testing.T) {
+		s3Client, err := storage.NewS3Client("http://localhost:9000", "us-east-1", "minioadmin", "minioadmin", "pergo-bucket", true)
+		if err != nil {
+			t.Fatalf("failed to init s3 client: %v", err)
+		}
+
+		key := ws.ID.String() + "/voice123.ogg"
+		fileData := []byte("fake-ogg-voice-bytes")
+		err = s3Client.Upload(context.Background(), key, fileData, "audio/ogg; codecs=opus")
+		if err != nil {
+			t.Fatalf("failed to upload mock file to S3: %v", err)
+		}
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/bot123456:ABC-DEF_test_token/sendVoice" {
+				t.Errorf("path = %q, want /bot123456:ABC-DEF_test_token/sendVoice", r.URL.Path)
+			}
+
+			err := r.ParseMultipartForm(10 << 20)
+			if err != nil {
+				t.Fatalf("failed to parse multipart form: %v", err)
+			}
+
+			if r.FormValue("chat_id") != "987654321" {
+				t.Errorf("expected chat_id 987654321, got %s", r.FormValue("chat_id"))
+			}
+
+			file, _, err := r.FormFile("voice")
+			if err != nil {
+				t.Fatalf("failed to read voice file from multipart form: %v", err)
+			}
+			defer file.Close()
+
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":12347}}`))
+		}))
+		defer server.Close()
+
+		adapter := NewTelegramAdapter(connectionsRepo, server.Client(), s3Client)
+		adapter.SetBaseURL(server.URL)
+
+		payload := &channel.MessagePayload{
+			ConnectionID:   connID,
+			SenderIdentity: "@test_bot",
+			To:             "987654321",
+			Media: &domain.Media{
+				MediaURL:  "/media/" + ws.ID.String() + "/voice123.ogg",
+				MediaType: "voice",
+				PTT:       true,
+			},
+		}
+
+		_, err = adapter.Dispatch(tenantCtx, payload)
+		if err != nil {
+			t.Fatalf("expected nil error on success, got: %v", err)
+		}
+	})
+
 	t.Run("Success Send Interactive", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path != "/bot123456:ABC-DEF_test_token/sendMessage" {

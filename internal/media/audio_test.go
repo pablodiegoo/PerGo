@@ -305,6 +305,43 @@ func TestCalculateRMS(t *testing.T) {
 	})
 }
 
+func TestGenerateWaveform(t *testing.T) {
+	t.Run("empty slice or zero bars returns nil", func(t *testing.T) {
+		if wf := GenerateWaveform(nil, 64); wf != nil {
+			t.Errorf("expected nil for nil pcm, got %v", wf)
+		}
+		if wf := GenerateWaveform([]int16{100}, 0); wf != nil {
+			t.Errorf("expected nil for 0 bars, got %v", wf)
+		}
+	})
+
+	t.Run("generates exact number of bars bounded in 0..100", func(t *testing.T) {
+		sine := generateSinePCM16(48000, 440, 1.0, 32767)
+		wf := GenerateWaveform(sine, 64)
+		if len(wf) != 64 {
+			t.Fatalf("expected 64 bars, got %d", len(wf))
+		}
+		for i, b := range wf {
+			if b > 100 {
+				t.Errorf("bar %d exceeds 100: %d", i, b)
+			}
+		}
+	})
+
+	t.Run("silence produces all zero bars", func(t *testing.T) {
+		silence := make([]int16, 16000)
+		wf := GenerateWaveform(silence, 32)
+		if len(wf) != 32 {
+			t.Fatalf("expected 32 bars, got %d", len(wf))
+		}
+		for i, b := range wf {
+			if b != 0 {
+				t.Errorf("expected 0 for silence bar %d, got %d", i, b)
+			}
+		}
+	})
+}
+
 func TestDecodeWAV(t *testing.T) {
 	sampleRate := 16000
 	channels := 1

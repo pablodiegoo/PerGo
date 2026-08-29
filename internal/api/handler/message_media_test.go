@@ -41,6 +41,12 @@ func TestMessageHandler_CreateWithMedia(t *testing.T) {
 		case "/image.png":
 			w.Header().Set("Content-Type", "image/png")
 			w.Write([]byte{0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A, 'd', 'a', 't', 'a'})
+		case "/voice.ogg":
+			w.Header().Set("Content-Type", "audio/ogg; codecs=opus")
+			w.Write([]byte("OggS\x00\x02opus-audio-data"))
+		case "/audio.mp3":
+			w.Header().Set("Content-Type", "audio/mpeg")
+			w.Write([]byte("ID3\x03\x00\x00\x00\x00\x00\x00mp3-audio-data"))
 		case "/large.png":
 			data := make([]byte, 25*1024*1024+1)
 			w.Header().Set("Content-Type", "image/png")
@@ -100,6 +106,80 @@ func TestMessageHandler_CreateWithMedia(t *testing.T) {
 
 		if ct != "image/png" {
 			t.Errorf("expected S3 contentType image/png, got %s", ct)
+		}
+	})
+
+	t.Run("successful voice note download and ingest with PTT flag", func(t *testing.T) {
+		body := `{"to":"+1234567890","channel":"whatsapp","media":{"media_url":"` + downloadServer.URL + `/voice.ogg","media_type":"voice","ptt":true}}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(testContext(uuid.New().String(), wsID))
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var resp domain.CreateMessageResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("unmarshal response: %v", err)
+		}
+
+		var qMsg domain.QueueMessage
+		if err := json.Unmarshal(pub.data, &qMsg); err != nil {
+			t.Fatalf("failed to unmarshal published data: %v", err)
+		}
+
+		if qMsg.Media == nil {
+			t.Fatal("expected media in QueueMessage")
+		}
+		if !qMsg.Media.PTT {
+			t.Errorf("expected PTT=true in QueueMessage.Media")
+		}
+		if !strings.HasSuffix(qMsg.Media.MediaURL, ".ogg") {
+			t.Errorf("expected rewired media URL ending with .ogg, got %s", qMsg.Media.MediaURL)
+		}
+
+		parts := strings.Split(qMsg.Media.MediaURL, "/")
+		hashWithExt := parts[len(parts)-1]
+		key := wsID.String() + "/" + hashWithExt
+
+		rc, ct, err := s3Client.Download(context.Background(), key)
+		if err != nil {
+			t.Fatalf("expected S3 object at key %s, got err %v", key, err)
+		}
+		defer rc.Close()
+
+		if !strings.Contains(ct, "ogg") {
+			t.Errorf("expected S3 contentType containing ogg, got %s", ct)
+		}
+	})
+
+	t.Run("successful audio download and ingest", func(t *testing.T) {
+		body := `{"to":"+1234567890","channel":"whatsapp","media":{"media_url":"` + downloadServer.URL + `/audio.mp3","media_type":"audio"}}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(testContext(uuid.New().String(), wsID))
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusAccepted {
+			t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var qMsg domain.QueueMessage
+		if err := json.Unmarshal(pub.data, &qMsg); err != nil {
+			t.Fatalf("failed to unmarshal published data: %v", err)
+		}
+
+		if qMsg.Media == nil {
+			t.Fatal("expected media in QueueMessage")
+		}
+		if !strings.HasSuffix(qMsg.Media.MediaURL, ".mp3") {
+			t.Errorf("expected rewired media URL ending with .mp3, got %s", qMsg.Media.MediaURL)
 		}
 	})
 
