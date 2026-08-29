@@ -356,7 +356,7 @@ func buildInteractiveOrOverrideMsg(m *channel.MessagePayload) (*waE2E.Message, e
 					Sections:    sections,
 					FooterText:  description,
 				}
-			return &msg, nil
+				return &msg, nil
 		} else if m.Interactive.Type == "flow" {
 			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
 				return nil, channel.NewTerminalError(fmt.Errorf("whatsapp: interactive flow is not supported on whatsapp web and fallback_behavior is fail"))
@@ -387,23 +387,14 @@ func buildAudioMessage(resp whatsmeow.UploadResponse, dataBytes []byte, contentT
 	var seconds uint32
 	var waveform []byte
 
-	if tele, err := media.ExtractAudioTelemetry(dataBytes, contentType); err == nil && tele != nil {
+	if tele, wf, err := media.ExtractAudioTelemetryAndWaveform(dataBytes, contentType, 64); err == nil && tele != nil {
 		if tele.DurationMS > 0 {
 			seconds = uint32((tele.DurationMS + 500) / 1000)
 			if seconds == 0 {
 				seconds = 1
 			}
 		}
-	}
-
-	if pcm, _, err := media.DecodeOGGOpus(dataBytes); err == nil && len(pcm) > 0 {
-		waveform = media.GenerateWaveform(pcm, 64)
-	} else if pcm, _, err := media.DecodeWAV(dataBytes); err == nil && len(pcm) > 0 {
-		waveform = media.GenerateWaveform(pcm, 64)
-	} else if pcm, _, err := media.DecodeMP3(dataBytes); err == nil && len(pcm) > 0 {
-		waveform = media.GenerateWaveform(pcm, 64)
-	} else if pcm, _, err := media.DecodeMP4AAC(dataBytes); err == nil && len(pcm) > 0 {
-		waveform = media.GenerateWaveform(pcm, 64)
+		waveform = wf
 	}
 
 	audioMsg := &waE2E.AudioMessage{

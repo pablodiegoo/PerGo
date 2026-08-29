@@ -108,26 +108,31 @@ func CalculateVoicedDuration(pcm16 []int16, sampleRate int, channels int, silenc
 	return voicedMs
 }
 
-// GenerateWaveform computes a slice of normalized amplitude bars (0-100) for PTT voice notes.
+// GenerateWaveform divides the PCM16 audio samples into numBars equal time slices
+// and calculates the normalized RMS amplitude (0..100) for each slice.
+// This is used by messaging channels (like WhatsApp PTT voice notes) to render preview waveforms.
 func GenerateWaveform(pcm16 []int16, numBars int) []byte {
 	if len(pcm16) == 0 || numBars <= 0 {
 		return nil
 	}
-	if numBars > len(pcm16) {
-		numBars = len(pcm16)
-	}
-	waveform := make([]byte, numBars)
-	chunkSize := len(pcm16) / numBars
-	if chunkSize <= 0 {
-		chunkSize = 1
-	}
+
+	bars := make([]byte, numBars)
+	chunkSize := float64(len(pcm16)) / float64(numBars)
+
 	for i := 0; i < numBars; i++ {
-		start := i * chunkSize
-		end := start + chunkSize
+		start := int(float64(i) * chunkSize)
+		end := int(float64(i+1) * chunkSize)
 		if end > len(pcm16) {
 			end = len(pcm16)
 		}
-		var maxAmp int16 = 0
+		if start >= end {
+			start = end - 1
+			if start < 0 {
+				start = 0
+			}
+		}
+
+		var maxAmp int16
 		for _, s := range pcm16[start:end] {
 			absS := s
 			if absS < 0 {
@@ -145,9 +150,50 @@ func GenerateWaveform(pcm16 []int16, numBars int) []byte {
 		if val > 100 {
 			val = 100
 		}
-		waveform[i] = val
+		bars[i] = val
 	}
-	return waveform
+	return bars
+}
+
+// ExtractAudioTelemetryAndWaveform decodes audio bytes to extract acoustic telemetry and computes normalized waveform bars.
+func ExtractAudioTelemetryAndWaveform(data []byte, contentType string, numBars int) (*AudioTelemetry, []byte, error) {
+	if len(data) == 0 {
+		return nil, nil, errors.New("empty audio data")
+	}
+
+	var pcm []int16
+	var tel *AudioTelemetry
+	var err error
+
+	ct := strings.ToLower(strings.TrimSpace(contentType))
+	if (len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WAVE") || strings.Contains(ct, "wav") || strings.Contains(ct, "wave") {
+		pcm, tel, err = DecodeWAV(data)
+	} else if (len(data) >= 4 && string(data[0:4]) == "OggS") || strings.Contains(ct, "ogg") || strings.Contains(ct, "opus") {
+		pcm, tel, err = DecodeOGGOpus(data)
+	} else if (len(data) >= 8 && (string(data[4:8]) == "ftyp" || string(data[4:8]) == "moov")) || strings.Contains(ct, "mp4") || strings.Contains(ct, "m4a") || strings.Contains(ct, "aac") {
+		pcm, tel, err = DecodeMP4AAC(data)
+	} else if (len(data) >= 3 && string(data[0:3]) == "ID3") || (len(data) >= 2 && data[0] == 0xFF && (data[1]&0xE0) == 0xE0) || strings.Contains(ct, "mp3") || strings.Contains(ct, "mpeg") {
+		pcm, tel, err = DecodeMP3(data)
+	} else {
+		if pcm, tel, err = DecodeOGGOpus(data); err != nil {
+			if pcm, tel, err = DecodeMP3(data); err != nil {
+				if pcm, tel, err = DecodeMP4AAC(data); err != nil {
+					pcm, tel, err = DecodeWAV(data)
+				}
+			}
+		}
+	}
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var waveform []byte
+	if numBars > 0 && len(pcm) > 0 {
+		waveform = GenerateWaveform(pcm, numBars)
+	}
+
+	return tel, waveform, nil
 }
 
 // ExtractAudioTelemetry detects the audio format and extracts acoustic telemetry.
