@@ -116,12 +116,8 @@ func (e *DefaultEngine) Download(
 
 	// Sniff magic audio signatures if content-type is generic or text
 	if contentType == "" || contentType == "application/octet-stream" || strings.HasPrefix(contentType, "text/plain") {
-		if len(data) >= 4 && string(data[0:4]) == "OggS" {
-			contentType = "audio/ogg; codecs=opus"
-		} else if len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WAVE" {
-			contentType = "audio/wav"
-		} else if (len(data) >= 3 && string(data[0:3]) == "ID3") || (len(data) >= 2 && data[0] == 0xFF && (data[1]&0xE0) == 0xE0) {
-			contentType = "audio/mpeg"
+		if sniffed := SniffAudioContentType(data); sniffed != "" {
+			contentType = sniffed
 		}
 	}
 

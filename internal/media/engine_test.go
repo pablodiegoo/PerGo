@@ -244,4 +244,15 @@ func TestDefaultEngine_Process(t *testing.T) {
 			t.Errorf("expected URL %s, got %s", expectedURL, url)
 		}
 	})
+
+	t.Run("ExtractAudioTelemetry delegation", func(t *testing.T) {
+		oggBytes := []byte("OggS\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x13OpusHead\x01\x01\x00\x00\x80\xBB\x00\x00\x00\x00\x00")
+		tel, err := engine.ExtractAudioTelemetry(oggBytes, "audio/ogg")
+		if err != nil {
+			t.Fatalf("ExtractAudioTelemetry failed: %v", err)
+		}
+		if tel.Format != "ogg/opus" {
+			t.Errorf("expected ogg/opus, got %s", tel.Format)
+		}
+	})
 }

@@ -32,6 +32,55 @@ func IsAudio(mediaType, filename string) bool {
 	return false
 }
 
+// IsWAVHeader checks if data starts with the RIFF/WAVE header.
+func IsWAVHeader(data []byte) bool {
+	return len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WAVE"
+}
+
+// IsOGGHeader checks if data starts with the OggS container header.
+func IsOGGHeader(data []byte) bool {
+	return len(data) >= 4 && string(data[0:4]) == "OggS"
+}
+
+// IsMP3Header checks if data starts with an ID3 tag or MPEG audio syncword.
+func IsMP3Header(data []byte) bool {
+	if len(data) >= 3 && string(data[0:3]) == "ID3" {
+		return true
+	}
+	return len(data) >= 2 && data[0] == 0xFF && (data[1]&0xE0) == 0xE0 && (data[1]&0x06) != 0x00
+}
+
+// IsMP4Header checks if data starts with an ISO BMFF box (ftyp or moov).
+func IsMP4Header(data []byte) bool {
+	return len(data) >= 8 && (string(data[4:8]) == "ftyp" || string(data[4:8]) == "moov")
+}
+
+// IsADTSAACHeader checks if data starts with the ADTS AAC frame syncword (0xFFF).
+func IsADTSAACHeader(data []byte) bool {
+	return len(data) >= 2 && data[0] == 0xFF && (data[1]&0xF0) == 0xF0 && (data[1]&0x06) == 0x00
+}
+
+// SniffAudioContentType sniffs magic bytes to determine the audio MIME content type.
+// Returns an empty string if the data does not match a recognized audio header.
+func SniffAudioContentType(data []byte) string {
+	if IsOGGHeader(data) {
+		return "audio/ogg; codecs=opus"
+	}
+	if IsWAVHeader(data) {
+		return "audio/wav"
+	}
+	if IsMP4Header(data) {
+		return "audio/mp4"
+	}
+	if IsADTSAACHeader(data) {
+		return "audio/aac"
+	}
+	if IsMP3Header(data) {
+		return "audio/mpeg"
+	}
+	return ""
+}
+
 // AudioTelemetry captures acoustic metrics extracted directly from audio payloads.
 type AudioTelemetry struct {
 	DurationMS       int     `json:"duration_ms"`
@@ -97,6 +146,41 @@ func CalculateVoicedDuration(pcm16 []int16, sampleRate int, channels int, silenc
 	return voicedMs
 }
 
+func newAudioTelemetry(pcm []int16, durationMs, sampleRate, channels int, format string) *AudioTelemetry {
+	rms := CalculateRMS(pcm)
+	voicedMs := CalculateVoicedDuration(pcm, sampleRate, channels, 0.01)
+
+	return &AudioTelemetry{
+		DurationMS:       durationMs,
+		VoicedDurationMS: voicedMs,
+		RMSEnergy:        rms,
+		SampleRate:       sampleRate,
+		Channels:         channels,
+		Format:           format,
+	}
+}
+
+// appendSyntheticPCM appends numSamples of a 440Hz sine wave scaled by amplitude [0.0, 1.0] to dst.
+func appendSyntheticPCM(dst []int16, numSamples int, sampleRate int, amplitude float64) []int16 {
+	if numSamples <= 0 {
+		return dst
+	}
+	if sampleRate <= 0 {
+		sampleRate = 44100
+	}
+	if amplitude > 1.0 {
+		amplitude = 1.0
+	}
+	for s := 0; s < numSamples; s++ {
+		var pcmVal int16
+		if amplitude > 0 {
+			pcmVal = int16(amplitude * 32767.0 * math.Sin(2.0*math.Pi*440.0*float64(s)/float64(sampleRate)))
+		}
+		dst = append(dst, pcmVal)
+	}
+	return dst
+}
+
 // GenerateWaveform divides the PCM16 audio samples into numBars equal time slices
 // and calculates the normalized RMS amplitude (0..100) for each slice.
 // This is used by messaging channels (like WhatsApp PTT voice notes) to render preview waveforms.
@@ -155,13 +239,13 @@ func ExtractAudioTelemetryAndWaveform(data []byte, contentType string, numBars i
 	var err error
 
 	ct := strings.ToLower(strings.TrimSpace(contentType))
-	if (len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WAVE") || strings.Contains(ct, "wav") || strings.Contains(ct, "wave") {
+	if IsWAVHeader(data) || strings.Contains(ct, "wav") || strings.Contains(ct, "wave") {
 		pcm, tel, err = DecodeWAV(data)
-	} else if (len(data) >= 4 && string(data[0:4]) == "OggS") || strings.Contains(ct, "ogg") || strings.Contains(ct, "opus") {
+	} else if IsOGGHeader(data) || strings.Contains(ct, "ogg") || strings.Contains(ct, "opus") {
 		pcm, tel, err = DecodeOGGOpus(data)
-	} else if (len(data) >= 8 && (string(data[4:8]) == "ftyp" || string(data[4:8]) == "moov")) || strings.Contains(ct, "mp4") || strings.Contains(ct, "m4a") || strings.Contains(ct, "aac") {
+	} else if IsMP4Header(data) || IsADTSAACHeader(data) || strings.Contains(ct, "mp4") || strings.Contains(ct, "m4a") || strings.Contains(ct, "aac") {
 		pcm, tel, err = DecodeMP4AAC(data)
-	} else if (len(data) >= 3 && string(data[0:3]) == "ID3") || (len(data) >= 2 && data[0] == 0xFF && (data[1]&0xE0) == 0xE0) || strings.Contains(ct, "mp3") || strings.Contains(ct, "mpeg") {
+	} else if IsMP3Header(data) || strings.Contains(ct, "mp3") || strings.Contains(ct, "mpeg") {
 		pcm, tel, err = DecodeMP3(data)
 	} else {
 		if pcm, tel, err = DecodeOGGOpus(data); err != nil {
@@ -197,7 +281,7 @@ func DecodeWAV(data []byte) ([]int16, *AudioTelemetry, error) {
 		return nil, nil, fmt.Errorf("%w: wav data too small", ErrCorruptAudioData)
 	}
 
-	if string(data[0:4]) != "RIFF" || string(data[8:12]) != "WAVE" {
+	if !IsWAVHeader(data) {
 		return nil, nil, fmt.Errorf("%w: not a valid RIFF/WAVE file", ErrInvalidAudioFormat)
 	}
 
@@ -295,32 +379,23 @@ func DecodeWAV(data []byte) ([]int16, *AudioTelemetry, error) {
 	if sampleRate > 0 && numChannels > 0 {
 		durationMs = (len(pcmSamples) * 1000) / int(sampleRate*uint32(numChannels))
 	}
-	rms := CalculateRMS(pcmSamples)
-	voicedMs := CalculateVoicedDuration(pcmSamples, int(sampleRate), int(numChannels), 0.01)
 
-	return pcmSamples, &AudioTelemetry{
-		DurationMS:       durationMs,
-		VoicedDurationMS: voicedMs,
-		RMSEnergy:        rms,
-		SampleRate:       int(sampleRate),
-		Channels:         int(numChannels),
-		Format:           "wav",
-	}, nil
+	return pcmSamples, newAudioTelemetry(pcmSamples, durationMs, int(sampleRate), int(numChannels), "wav"), nil
 }
 
 // DecodeOGGOpus parses OGG Opus audio payloads and computes acoustic telemetry.
 func DecodeOGGOpus(data []byte) ([]int16, *AudioTelemetry, error) {
-	if len(data) < 27 || string(data[0:4]) != "OggS" {
+	if len(data) < 27 || !IsOGGHeader(data) {
 		return nil, nil, fmt.Errorf("%w: missing OggS header", ErrInvalidAudioFormat)
 	}
 
 	var (
-		channels       = 1
-		sampleRate     = 48000
-		preSkip        = 0
-		lastGranulePos uint64
+		channels        = 1
+		sampleRate      = 48000
+		preSkip         = 0
+		lastGranulePos  uint64
 		totalDurationMs int
-		syntheticPCM   []int16
+		syntheticPCM    []int16
 	)
 
 	offset := 0
@@ -411,13 +486,7 @@ func DecodeOGGOpus(data []byte) ([]int16, *AudioTelemetry, error) {
 						}
 
 						frameSamples := (48000 * frameMs) / 1000
-						for s := 0; s < frameSamples; s++ {
-							var pcmVal int16
-							if packetEnergy > 0 {
-								pcmVal = int16(packetEnergy * 32767.0 * math.Sin(2.0*math.Pi*440.0*float64(s)/48000.0))
-							}
-							syntheticPCM = append(syntheticPCM, pcmVal)
-						}
+						syntheticPCM = appendSyntheticPCM(syntheticPCM, frameSamples, 48000, packetEnergy)
 					}
 					segOffset += l
 				}
@@ -440,17 +509,7 @@ func DecodeOGGOpus(data []byte) ([]int16, *AudioTelemetry, error) {
 		channels = 1
 	}
 
-	rms := CalculateRMS(syntheticPCM)
-	voicedMs := CalculateVoicedDuration(syntheticPCM, 48000, 1, 0.01)
-
-	return syntheticPCM, &AudioTelemetry{
-		DurationMS:       totalDurationMs,
-		VoicedDurationMS: voicedMs,
-		RMSEnergy:        rms,
-		SampleRate:       sampleRate,
-		Channels:         channels,
-		Format:           "ogg/opus",
-	}, nil
+	return syntheticPCM, newAudioTelemetry(syntheticPCM, totalDurationMs, sampleRate, channels, "ogg/opus"), nil
 }
 
 // DecodeMP3 decodes MPEG Audio (Layer III) frames and extracts acoustic telemetry.
@@ -550,13 +609,7 @@ func DecodeMP3(data []byte) ([]int16, *AudioTelemetry, error) {
 
 		// Map global gain (0..255) to amplitude with zero-mean waveform
 		gainNormalized := float64(globalGain) / 255.0
-		for s := 0; s < frameSamples; s++ {
-			var pcmVal int16
-			if gainNormalized > 0 {
-				pcmVal = int16(gainNormalized * 32767.0 * math.Sin(2.0*math.Pi*440.0*float64(s)/float64(sampleRate)))
-			}
-			syntheticPCM = append(syntheticPCM, pcmVal)
-		}
+		syntheticPCM = appendSyntheticPCM(syntheticPCM, frameSamples, sampleRate, gainNormalized)
 
 		offset += frameLen
 	}
@@ -566,17 +619,7 @@ func DecodeMP3(data []byte) ([]int16, *AudioTelemetry, error) {
 	}
 
 	durationMs := (totalSamples * 1000) / sampleRate
-	rms := CalculateRMS(syntheticPCM)
-	voicedMs := CalculateVoicedDuration(syntheticPCM, sampleRate, channels, 0.01)
-
-	return syntheticPCM, &AudioTelemetry{
-		DurationMS:       durationMs,
-		VoicedDurationMS: voicedMs,
-		RMSEnergy:        rms,
-		SampleRate:       sampleRate,
-		Channels:         channels,
-		Format:           "mp3",
-	}, nil
+	return syntheticPCM, newAudioTelemetry(syntheticPCM, durationMs, sampleRate, channels, "mp3"), nil
 }
 
 // DecodeMP4AAC decodes MP4/M4A containers or raw ADTS AAC streams.
@@ -586,7 +629,7 @@ func DecodeMP4AAC(data []byte) ([]int16, *AudioTelemetry, error) {
 	}
 
 	// 1. Check for ADTS AAC Stream (syncword 0xFFF)
-	if data[0] == 0xFF && (data[1]&0xF0) == 0xF0 {
+	if IsADTSAACHeader(data) {
 		return decodeADTSAAC(data)
 	}
 
@@ -657,13 +700,7 @@ func DecodeMP4AAC(data []byte) ([]int16, *AudioTelemetry, error) {
 				if numSamples <= 0 {
 					numSamples = len(payload)
 				}
-				for i := 0; i < numSamples; i++ {
-					var pcmVal int16
-					if amp > 0 {
-						pcmVal = int16(amp * 32767.0 * math.Sin(2.0*math.Pi*440.0*float64(i)/float64(sampleRate)))
-					}
-					syntheticPCM = append(syntheticPCM, pcmVal)
-				}
+				syntheticPCM = appendSyntheticPCM(syntheticPCM, numSamples, sampleRate, amp)
 			}
 		}
 
@@ -682,17 +719,7 @@ func DecodeMP4AAC(data []byte) ([]int16, *AudioTelemetry, error) {
 		return nil, nil, fmt.Errorf("%w: unable to extract MP4 duration/audio", ErrInvalidAudioFormat)
 	}
 
-	rms := CalculateRMS(syntheticPCM)
-	voicedMs := CalculateVoicedDuration(syntheticPCM, sampleRate, channels, 0.01)
-
-	return syntheticPCM, &AudioTelemetry{
-		DurationMS:       durationMs,
-		VoicedDurationMS: voicedMs,
-		RMSEnergy:        rms,
-		SampleRate:       sampleRate,
-		Channels:         channels,
-		Format:           "mp4/aac",
-	}, nil
+	return syntheticPCM, newAudioTelemetry(syntheticPCM, durationMs, sampleRate, channels, "mp4/aac"), nil
 }
 
 func decodeADTSAAC(data []byte) ([]int16, *AudioTelemetry, error) {
@@ -730,13 +757,7 @@ func decodeADTSAAC(data []byte) ([]int16, *AudioTelemetry, error) {
 		// Extract amplitude from frame payload
 		framePayloadSize := frameLen - 7
 		amp := math.Min(0.85, (float64(framePayloadSize)/200.0)*0.6)
-		for s := 0; s < frameSamples; s++ {
-			var pcmVal int16
-			if amp > 0 {
-				pcmVal = int16(amp * 32767.0 * math.Sin(2.0*math.Pi*440.0*float64(s)/float64(sampleRate)))
-			}
-			syntheticPCM = append(syntheticPCM, pcmVal)
-		}
+		syntheticPCM = appendSyntheticPCM(syntheticPCM, frameSamples, sampleRate, amp)
 
 		offset += frameLen
 	}
@@ -746,15 +767,5 @@ func decodeADTSAAC(data []byte) ([]int16, *AudioTelemetry, error) {
 	}
 
 	durationMs := (totalFrames * 1024 * 1000) / sampleRate
-	rms := CalculateRMS(syntheticPCM)
-	voicedMs := CalculateVoicedDuration(syntheticPCM, sampleRate, channels, 0.01)
-
-	return syntheticPCM, &AudioTelemetry{
-		DurationMS:       durationMs,
-		VoicedDurationMS: voicedMs,
-		RMSEnergy:        rms,
-		SampleRate:       sampleRate,
-		Channels:         channels,
-		Format:           "aac",
-	}, nil
+	return syntheticPCM, newAudioTelemetry(syntheticPCM, durationMs, sampleRate, channels, "aac"), nil
 }
