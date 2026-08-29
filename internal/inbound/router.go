@@ -128,4 +128,3 @@ func (r *DefaultInboundRouter) Route(ctx context.Context, contact *domain.Contac
 
 	return nil
 }
-

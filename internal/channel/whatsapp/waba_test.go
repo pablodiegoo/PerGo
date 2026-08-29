@@ -16,8 +16,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
-	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -536,7 +536,7 @@ func TestWABADispatch(t *testing.T) {
 			var req struct {
 				Type        string `json:"type"`
 				Interactive *struct {
-					Type   string `json:"type"`
+					Type   string                `json:"type"`
 					Body   struct{ Text string } `json:"body"`
 					Action struct {
 						Buttons []struct {
@@ -1438,7 +1438,6 @@ func TestWABAInboundAdapter_OrderParsing(t *testing.T) {
 	}
 }
 
-
 func TestWABAAdapter_SSRFProtection(t *testing.T) {
 	client := netpolicy.NewPublicHTTPClient()
 	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1:9999", nil)
@@ -1717,5 +1716,3 @@ func TestWABAAdapter_DispatchFlowMessage(t *testing.T) {
 		t.Errorf("expected token ContactID '5511999998888', got %q", parsed.ContactID)
 	}
 }
-
-

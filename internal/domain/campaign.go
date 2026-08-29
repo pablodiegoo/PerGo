@@ -434,7 +434,7 @@ const (
 	MaxListButtonTextRunes     = 20
 	MaxListSectionTitleRunes   = 24
 	MaxListRowTitleRunes       = 24
-	MaxListRowDescriptionRunes  = 72
+	MaxListRowDescriptionRunes = 72
 	MaxListRowIDRunes          = 200
 	MaxListTotalRows           = 10
 	MaxListSectionsCount       = 10
@@ -618,4 +618,3 @@ func ValidateInteractiveLimits(i *Interactive) error {
 
 	return nil
 }
-

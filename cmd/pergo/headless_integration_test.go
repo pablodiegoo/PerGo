@@ -836,7 +836,6 @@ func TestHeadlessCPaaS_EndToEndLifecycle(t *testing.T) {
 		defer func() { _ = s.connRepo.Delete(ctx, wabaConnID) }()
 	}
 
-
 	// =========================================================================
 	// STEP 7: Headless Telegram Bot Connection Registration
 	// =========================================================================

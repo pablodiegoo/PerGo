@@ -843,6 +843,3 @@ func TestProcessor_WhatsAppCloudWindowIngestion(t *testing.T) {
 		}
 	})
 }
-
-
-

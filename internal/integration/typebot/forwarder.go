@@ -169,7 +169,7 @@ func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Cont
 
 	// If a customer is in an active session, D-04 dictates we ignore trigger keyword and route to active session.
 	if session != nil {
-		// Identify which bot config this session belongs to (if multiple bots per connection, we use defaultBot or the matching bot if we can. 
+		// Identify which bot config this session belongs to (if multiple bots per connection, we use defaultBot or the matching bot if we can.
 		// Actually, we need to pass public_token, so we need the bot config. For now just grab the first matching connection bot.)
 		// Wait, we don't store which BotID the session belongs to! We should, or we just rely on one bot per connection.
 		// Since connectionID maps to a bot, let's use the first one for this connection to get the token.
@@ -221,7 +221,7 @@ func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Cont
 			Message:            messageText,
 			PrefilledVariables: prefilled,
 		}
-		
+
 		var startErr error
 		typebotSessionID, messages, startErr = f.client.StartChat(ctx, cfg.APIURL, matchingBot.BotID, matchingBot.PublicToken, req)
 		if startErr != nil {
@@ -243,7 +243,7 @@ func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Cont
 	// 5. Publish returned messages from Typebot to messages.outbound
 	for _, m := range messages {
 		traceID := uuid.New().String()
-		
+
 		// Create an outbound QueueMessage
 		outMsg := domain.QueueMessage{
 			WorkspaceID:    event.WorkspaceID,

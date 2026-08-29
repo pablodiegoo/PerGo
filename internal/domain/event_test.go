@@ -49,4 +49,3 @@ func TestOrderCreated_Config(t *testing.T) {
 		t.Errorf("unexpected OrderCreatedEvent layout: %+v", orderEvent)
 	}
 }
-

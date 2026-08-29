@@ -558,7 +558,7 @@ func TestInboxHandler_NewMessageSend_Template(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create mock QueueMessage and verify payload serialization
 	qMsg := domain.QueueMessage{
 		WorkspaceID:    uuid.New(),
@@ -1227,7 +1227,3 @@ func TestInboxHandler_NewMessageModal_Renders(t *testing.T) {
 		t.Errorf("expected body to contain form action /admin/inbox/new-message-send, got: %s", body)
 	}
 }
-
-
-
-

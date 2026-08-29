@@ -12,9 +12,9 @@ import (
 
 func TestMasterAuthMiddleware(t *testing.T) {
 	const (
-		masterKey   = "secret-master-key-12345"
-		adminPass   = "fallback-admin-pass-67890"
-		wrongKey    = "wrong-key-00000"
+		masterKey = "secret-master-key-12345"
+		adminPass = "fallback-admin-pass-67890"
+		wrongKey  = "wrong-key-00000"
 	)
 
 	dummyHandler := func(c *echo.Context) error {

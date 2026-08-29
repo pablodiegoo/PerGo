@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.mau.fi/whatsmeow"
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/storage"
+	"go.mau.fi/whatsmeow"
 )
 
 func TestWhatsAppAdapter_Media(t *testing.T) {

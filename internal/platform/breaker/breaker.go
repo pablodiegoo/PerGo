@@ -102,4 +102,3 @@ func (cb *CircuitBreaker) RecordFailure(endpoint string) {
 		ep.openUntil = time.Now().Add(cb.resetTimeout)
 	}
 }
-

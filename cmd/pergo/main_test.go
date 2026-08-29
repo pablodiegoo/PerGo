@@ -12,8 +12,8 @@ import (
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/integration/chatwoot"
 	"github.com/pablojhp.pergo/internal/integration/typebot"
-	echosrv "github.com/pablojhp.pergo/internal/platform/echo"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
+	echosrv "github.com/pablojhp.pergo/internal/platform/echo"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/repository"
 )

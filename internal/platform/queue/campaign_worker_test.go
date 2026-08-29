@@ -11,10 +11,10 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go/jetstream"
-	"golang.org/x/time/rate"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/repository"
+	"golang.org/x/time/rate"
 )
 
 type fakeAuditWriter struct {
@@ -2200,7 +2200,3 @@ func TestCampaignWorker_Interactive_LimitValidation_Fail(t *testing.T) {
 		t.Errorf("expected FallbackBehavior fail, got %q", qMsg.FallbackBehavior)
 	}
 }
-
-
-
-

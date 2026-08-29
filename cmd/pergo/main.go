@@ -708,7 +708,6 @@ func main() {
 	adminGroup.GET("/devices/flow-key", deviceHandler.FlowKey)
 	adminGroup.GET("/connections/flow-key", deviceHandler.FlowKey)
 
-
 	// Telemetry page (system health: sessions, NATS, uptime)
 	telemetryHandler := &admin.TelemetryHandler{
 		Manager:    sessionManager,

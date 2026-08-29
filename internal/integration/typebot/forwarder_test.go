@@ -168,22 +168,22 @@ func TestTypebotForwarder_PopulatesRoutingFields(t *testing.T) {
 	// 1. Setup mock typebot API
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		if r.URL.Path == "/api/v1/typebots/bot1/startChat" {
 			var requestBody typebot.StartChatRequest
 			if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
 				t.Errorf("failed to decode request body: %v", err)
 			}
-			
+
 			expectedSessionId := fmt.Sprintf("%s:+123456789", connID.String())
 			if requestBody.SessionID != expectedSessionId {
 				t.Errorf("expected sessionId %q, got %q", expectedSessionId, requestBody.SessionID)
 			}
-			
+
 			if requestBody.Message != "[Media Attachment]" {
 				t.Errorf("expected message %q, got %q", "[Media Attachment]", requestBody.Message)
 			}
-			
+
 			if requestBody.PrefilledVariables == nil {
 				t.Errorf("expected prefilledVariables to be populated")
 			} else {
@@ -615,4 +615,3 @@ func TestTypebotForwarder_InteractiveReplies(t *testing.T) {
 		}
 	})
 }
-

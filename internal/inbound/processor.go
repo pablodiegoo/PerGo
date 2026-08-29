@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,28 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/repository"
 )
+
+// ParseUnixTimestamp parses a string representation of a Unix timestamp in seconds to time.Time in UTC.
+// Returns a zero time.Time if the string is empty, unparseable, or <= 0.
+func ParseUnixTimestamp(ts string) time.Time {
+	if ts == "" {
+		return time.Time{}
+	}
+	sec, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil || sec <= 0 {
+		return time.Time{}
+	}
+	return time.Unix(sec, 0).UTC()
+}
+
+// ParseUnixMillis parses an int64 Unix timestamp in milliseconds to time.Time in UTC.
+// Returns a zero time.Time if ms <= 0.
+func ParseUnixMillis(ms int64) time.Time {
+	if ms <= 0 {
+		return time.Time{}
+	}
+	return time.UnixMilli(ms).UTC()
+}
 
 // ChatwootSyncer defines the interface to sync inbound customer messages into Chatwoot.
 type ChatwootSyncer interface {
@@ -79,11 +102,11 @@ type InboundNFMReply struct {
 
 // InboundOrder represents a WhatsApp catalog checkout order.
 type InboundOrder struct {
-	CatalogID    string                   `json:"catalog_id"`
-	Text         string                   `json:"text,omitempty"`
+	CatalogID    string                    `json:"catalog_id"`
+	Text         string                    `json:"text,omitempty"`
 	ProductItems []domain.OrderProductItem `json:"product_items"`
-	TotalPrice   float64                  `json:"total_price,omitempty"`
-	Currency     string                   `json:"currency,omitempty"`
+	TotalPrice   float64                   `json:"total_price,omitempty"`
+	Currency     string                    `json:"currency,omitempty"`
 }
 
 // InboundInteractive represents the unified inbound interactive payload.
@@ -106,6 +129,7 @@ type InboundEvent struct {
 	WorkspaceID  uuid.UUID
 	ConnectionID uuid.UUID
 	MessageID    string // Provider-specific unique message/update ID
+	TraceID      string
 	Channel      string // "whatsapp", "whatsapp_cloud", "telegram"
 	From         string // Sender JID/phone/chat ID
 	To           string // Recipient identity (our bot/phone)
@@ -246,15 +270,20 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		return fmt.Errorf("inbound: workspace ID is required")
 	}
 
+	traceID := ev.TraceID
+	if traceID == "" {
+		traceID = uuid.New().String()
+	}
+
 	if ev.Metadata != nil && ev.Metadata["type"] == "status_update" {
 		if p.dispatchRepo == nil {
-			slog.Warn("inbound processor: status_update received but dispatchRepo is nil")
+			slog.Warn("inbound processor: status_update received but dispatchRepo is nil", "trace_id", traceID)
 			return nil
 		}
 		dispatch, err := p.dispatchRepo.GetByProviderMessageID(ctx, ev.MessageID)
 		if err != nil {
 			if errors.Is(err, repository.ErrDispatchNotFound) {
-				slog.Warn("inbound processor: dispatch not found for status update", "provider_message_id", ev.MessageID)
+				slog.Warn("inbound processor: dispatch not found for status update", "provider_message_id", ev.MessageID, "trace_id", traceID)
 				return nil
 			}
 			return fmt.Errorf("inbound processor: failed to get dispatch by provider message ID: %w", err)
@@ -281,7 +310,11 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 			if err != nil {
 				return fmt.Errorf("inbound processor: failed to marshal status update payload: %w", err)
 			}
-			err = p.publisher.Publish(ctx, "messages.status_updated", eventData, dispatch.TraceID)
+			statusTraceID := dispatch.TraceID
+			if statusTraceID == "" {
+				statusTraceID = traceID
+			}
+			err = p.publisher.Publish(ctx, "messages.status_updated", eventData, statusTraceID)
 			if err != nil {
 				return fmt.Errorf("inbound processor: failed to publish status update to NATS: %w", err)
 			}
@@ -303,15 +336,15 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		var err error
 		contact, err = p.contactRepo.ResolveContact(ctx, ev.WorkspaceID, ev.Channel, ev.From, ev.SenderName, username, phone)
 		if err != nil {
-			slog.Error("inbound processor: failed to resolve contact profile", "error", err, "from", ev.From)
+			slog.Error("inbound processor: failed to resolve contact profile", "error", err, "from", ev.From, "trace_id", traceID)
 		}
 
 		if contact != nil && !contact.BotActive && contact.BotPausedAt != nil {
 			if time.Since(*contact.BotPausedAt) > 12*time.Hour {
-				slog.Info("inbound processor: bot inactive for > 12 hours, auto-resetting to active", "contact_id", contact.ID)
+				slog.Info("inbound processor: bot inactive for > 12 hours, auto-resetting to active", "contact_id", contact.ID, "trace_id", traceID)
 				err := p.contactRepo.UpdateBotState(ctx, ev.WorkspaceID, contact.ID, true, nil)
 				if err != nil {
-					slog.Error("inbound processor: failed to reset bot state to active", "error", err, "contact_id", contact.ID)
+					slog.Error("inbound processor: failed to reset bot state to active", "error", err, "contact_id", contact.ID, "trace_id", traceID)
 				} else {
 					contact.BotActive = true
 					contact.BotPausedAt = nil
@@ -337,12 +370,13 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		if sess, err := p.recipientSessionRepo.Get(ctx, sessKey); err == nil && sess != nil {
 			if sess.LastOutboundAt != nil && !sess.LastOutboundAt.IsZero() {
 				diff := occurredAt.Sub(*sess.LastOutboundAt)
-				if diff >= 0 {
-					latencyMS := diff.Milliseconds()
-					timing = &EventTiming{
-						ResponseLatencyMS: &latencyMS,
-						LastOutboundAt:    sess.LastOutboundAt.UTC().Format(time.RFC3339),
-					}
+				var latencyMS int64
+				if diff > 0 {
+					latencyMS = diff.Milliseconds()
+				}
+				timing = &EventTiming{
+					ResponseLatencyMS: &latencyMS,
+					LastOutboundAt:    sess.LastOutboundAt.UTC().Format(time.RFC3339),
 				}
 			}
 		}
@@ -355,7 +389,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		}
 		err := p.recipientSessionRepo.Upsert(ctx, sessKey, occurredAt, entryPointType)
 		if err != nil {
-			slog.Error("inbound processor: failed to upsert recipient session", "error", err, "from", ev.From)
+			slog.Error("inbound processor: failed to upsert recipient session", "error", err, "from", ev.From, "trace_id", traceID)
 		}
 	}
 
@@ -367,7 +401,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 				return fmt.Errorf("inbound: deduplication check failed: %w", err)
 			}
 			if !unique {
-				slog.Info("inbound processor: duplicate message ignored", "message_id", ev.MessageID, "channel", ev.Channel)
+				slog.Info("inbound processor: duplicate message ignored", "message_id", ev.MessageID, "channel", ev.Channel, "trace_id", traceID)
 				return nil
 			}
 		}
@@ -382,7 +416,6 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 	}
 
 	// 4. Construct base event payload
-	traceID := uuid.New().String()
 	payload := InboundEventPayload{
 		Event:       "inbound_message",
 		TraceID:     traceID,
@@ -403,11 +436,11 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 	// 5. Upload media to S3 if present
 	if ev.Media != nil && len(ev.Media.Bytes) > 0 {
 		if p.mediaEngine == nil {
-			slog.Error("inbound processor: skipped S3 upload; S3 client/media engine is not configured")
+			slog.Error("inbound processor: skipped S3 upload; S3 client/media engine is not configured", "trace_id", traceID)
 		} else {
 			mediaURL, err := p.mediaEngine.ProcessInbound(ctx, ev.WorkspaceID, ev.Media.MediaType, ev.Media.Bytes)
 			if err != nil {
-				slog.Error("inbound processor: media upload/process failed", "error", err)
+				slog.Error("inbound processor: media upload/process failed", "error", err, "trace_id", traceID)
 			} else {
 				payload.Media = &EventMedia{
 					MediaURL:  mediaURL,
@@ -440,7 +473,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 
 	// 7. Drop event if it's completely empty
 	if payload.Body == "" && payload.Media == nil && payload.Location == nil && len(payload.Contacts) == 0 && payload.Interactive == nil && payload.Story == nil {
-		slog.Debug("inbound processor: ignoring empty inbound event payload")
+		slog.Debug("inbound processor: ignoring empty inbound event payload", "trace_id", traceID)
 		return nil
 	}
 
@@ -475,7 +508,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 					TraceID:   traceID,
 				}
 				if pubErr := p.PublishFlowCompleted(ctx, ev.WorkspaceID, flowEv); pubErr != nil {
-					slog.Error("inbound processor: failed to publish flow.completed event", "error", pubErr, "message_id", ev.MessageID)
+					slog.Error("inbound processor: failed to publish flow.completed event", "error", pubErr, "message_id", ev.MessageID, "trace_id", traceID)
 				}
 			} else if ev.Interactive.Type == "order" && ev.Interactive.Order != nil {
 				orderEv := &domain.OrderCreatedEvent{
@@ -489,7 +522,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 					TraceID:    traceID,
 				}
 				if pubErr := p.PublishOrderCreated(ctx, ev.WorkspaceID, orderEv); pubErr != nil {
-					slog.Error("inbound processor: failed to publish order.created event", "error", pubErr, "message_id", ev.MessageID)
+					slog.Error("inbound processor: failed to publish order.created event", "error", pubErr, "message_id", ev.MessageID, "trace_id", traceID)
 				}
 			}
 		} else if ev.Metadata != nil && ev.Metadata["type"] == "order" && ev.Metadata["order_json"] != "" {
@@ -506,7 +539,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 	// 9. Route inbound event via InboundRouter
 	if p.router != nil && contact != nil {
 		if err := p.router.Route(ctx, contact, ev); err != nil {
-			slog.Error("inbound processor: router failed to route event", "error", err, "contact_id", contact.ID)
+			slog.Error("inbound processor: router failed to route event", "error", err, "contact_id", contact.ID, "trace_id", traceID)
 		}
 	}
 

@@ -617,5 +617,3 @@ func TestManager_Pairing_TenantIsolation(t *testing.T) {
 		t.Errorf("expected error event for workspace B subscriber, got %v", evtB)
 	}
 }
-
-

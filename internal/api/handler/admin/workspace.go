@@ -22,7 +22,6 @@ type WorkspaceHandler struct {
 	ExternalURL string
 }
 
-
 // ActiveWorkspace redirects to the detail page of the active workspace.
 func (h *WorkspaceHandler) ActiveWorkspace(c *echo.Context) error {
 	ctx := c.Request().Context()
@@ -269,5 +268,3 @@ func (h *WorkspaceHandler) SetFlowWebhookURL(c *echo.Context) error {
 		"flow_webhook_url": flowURL,
 	})
 }
-
-

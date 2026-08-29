@@ -399,7 +399,7 @@ func (r *CampaignRepository) ClaimDueScheduledCampaigns(ctx context.Context, now
 			&c.ID, &c.WorkspaceID, &c.ConnectionID, &c.ConnectionSlug, &c.Name, &c.Status,
 			&c.BatchSize, &c.DelaySeconds, &c.TemplateName, &c.MessageBody, &c.Channel, &c.TagID,
 			&c.TotalRecipients, &c.SentRecipients, &c.FailedRecipients,
-			&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.TagIDs, &c.RateLimitPerMin, 
+			&recipientsJSON, &skippedJSON, &c.ScheduledAt, &c.TagIDs, &c.RateLimitPerMin,
 			&c.FallbackChannels, &interactiveJSON, &c.FallbackBehavior, &c.CreatedAt, &c.UpdatedAt,
 		)
 		if err != nil {
@@ -444,4 +444,3 @@ func unmarshalInteractive(raw []byte) (*domain.Interactive, error) {
 	}
 	return &inter, nil
 }
-

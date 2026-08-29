@@ -344,8 +344,6 @@ func (h *TagAdminHandler) ImportContactsCSV(c *echo.Context) error {
 	return c.JSON(http.StatusOK, result)
 }
 
-
-
 // ExportContactsCSV handles GET /api/v1/workspaces/:workspace_id/contacts/export or GET /admin/contacts/export
 func (h *TagAdminHandler) ExportContactsCSV(c *echo.Context) error {
 	workspaceID, err := resolveWorkspaceID(c)
@@ -379,4 +377,3 @@ func (h *TagAdminHandler) ExportContactsCSV(c *echo.Context) error {
 
 	return domain.WriteContactsCSV(c.Response(), contacts)
 }
-

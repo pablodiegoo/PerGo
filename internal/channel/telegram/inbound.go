@@ -19,9 +19,9 @@ import (
 
 // TelegramInboundAdapter implements channel.InboundAdapter for Telegram.
 type TelegramInboundAdapter struct {
-	downloader          media.Downloader
-	client              *http.Client
-	telegramBaseURL     string
+	downloader      media.Downloader
+	client          *http.Client
+	telegramBaseURL string
 }
 
 // NewTelegramInboundAdapter creates a new TelegramInboundAdapter.
@@ -29,9 +29,9 @@ func NewTelegramInboundAdapter(
 	downloader media.Downloader,
 ) *TelegramInboundAdapter {
 	return &TelegramInboundAdapter{
-		downloader:          downloader,
-		client:              &http.Client{Timeout: 30 * time.Second},
-		telegramBaseURL:     "https://api.telegram.org",
+		downloader:      downloader,
+		client:          &http.Client{Timeout: 30 * time.Second},
+		telegramBaseURL: "https://api.telegram.org",
 	}
 }
 
@@ -393,7 +393,7 @@ func (a *TelegramInboundAdapter) downloadTelegramFile(ctx context.Context, fileI
 	}
 
 	downloadURL := fmt.Sprintf("%s/file/bot%s/%s", a.telegramBaseURL, token, fileInfo.Result.FilePath)
-	
+
 	if a.downloader == nil {
 		return nil, fmt.Errorf("downloader is not configured")
 	}

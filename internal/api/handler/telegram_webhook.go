@@ -26,10 +26,10 @@ const (
 
 // TelegramWebhookHandler handles inbound webhooks from Telegram.
 type TelegramWebhookHandler struct {
-	connectionsRepo     *repository.ConnectionRepository
-	inboundProcessor    *inbound.InboundProcessor
-	adapter             channel.InboundAdapter
-	telegramBaseURL     string
+	connectionsRepo  *repository.ConnectionRepository
+	inboundProcessor *inbound.InboundProcessor
+	adapter          channel.InboundAdapter
+	telegramBaseURL  string
 }
 
 // NewTelegramWebhookHandler creates a new TelegramWebhookHandler.
@@ -39,9 +39,9 @@ func NewTelegramWebhookHandler(
 	mediaEngine media.Engine,
 ) *TelegramWebhookHandler {
 	return &TelegramWebhookHandler{
-		connectionsRepo:     connectionsRepo,
-		inboundProcessor:    inboundProcessor,
-		adapter:             telegram.NewTelegramInboundAdapter(mediaEngine),
+		connectionsRepo:  connectionsRepo,
+		inboundProcessor: inboundProcessor,
+		adapter:          telegram.NewTelegramInboundAdapter(mediaEngine),
 	}
 }
 

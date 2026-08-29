@@ -987,4 +987,3 @@ func (h *CampaignHandler) APICancel(c *echo.Context) error {
 
 	return c.JSON(http.StatusOK, camp)
 }
-

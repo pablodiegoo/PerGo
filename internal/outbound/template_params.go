@@ -19,7 +19,7 @@ func NormalizeTemplateParams(params interface{}) ([]domain.TemplateParameter, er
 	if params == nil {
 		return nil, nil
 	}
-	
+
 	toParam := func(v interface{}) (domain.TemplateParameter, error) {
 		switch val := v.(type) {
 		case string:

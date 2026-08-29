@@ -33,11 +33,11 @@ func NewMauticProvider(cfg MauticConfig) *MauticProvider {
 }
 
 type mauticSendRequest struct {
-	Subject  string            `json:"subject"`
-	Body     string            `json:"body"`
-	PlainBody string           `json:"plainText"`
-	To       []string          `json:"to"`
-	Headers  map[string]string `json:"headers,omitempty"`
+	Subject   string            `json:"subject"`
+	Body      string            `json:"body"`
+	PlainBody string            `json:"plainText"`
+	To        []string          `json:"to"`
+	Headers   map[string]string `json:"headers,omitempty"`
 }
 
 // Send dispatches an email via Mautic API.

@@ -17,7 +17,6 @@ import (
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
-
 // ChatwootWebhookPayload represents the Chatwoot webhook payload for message events.
 type ChatwootWebhookPayload struct {
 	Event       string `json:"event"`

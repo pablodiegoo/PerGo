@@ -1449,8 +1449,3 @@ func TestCampaignHandler_InteractiveCampaigns(t *testing.T) {
 		}
 	})
 }
-
-
-
-
-

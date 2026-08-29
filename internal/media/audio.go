@@ -228,23 +228,65 @@ func GenerateWaveform(pcm16 []int16, numBars int) []byte {
 	return bars
 }
 
+// AudioFormat represents canonical audio container formats.
+type AudioFormat string
+
+const (
+	AudioFormatWAV AudioFormat = "wav"
+	AudioFormatOGG AudioFormat = "ogg"
+	AudioFormatMP4 AudioFormat = "mp4"
+	AudioFormatMP3 AudioFormat = "mp3"
+)
+
+// NormalizeAudioFormat normalizes arbitrary MIME types or format extensions into a canonical AudioFormat.
+func NormalizeAudioFormat(formatOrMIME string) (AudioFormat, bool) {
+	s := strings.ToLower(strings.TrimSpace(formatOrMIME))
+	if idx := strings.Index(s, ";"); idx != -1 {
+		s = strings.TrimSpace(s[:idx])
+	}
+	switch s {
+	case "wav", "wave", "audio/wav", "audio/x-wav", "audio/wave":
+		return AudioFormatWAV, true
+	case "ogg", "opus", "audio/ogg", "audio/opus", "application/ogg", "application/opus":
+		return AudioFormatOGG, true
+	case "mp4", "m4a", "aac", "audio/mp4", "audio/m4a", "audio/aac", "audio/x-m4a":
+		return AudioFormatMP4, true
+	case "mp3", "mpeg", "audio/mp3", "audio/mpeg":
+		return AudioFormatMP3, true
+	default:
+		return "", false
+	}
+}
+
 // DecodeAudio detects the audio format and decodes audio bytes into PCM16 samples and acoustic telemetry.
 func DecodeAudio(data []byte, contentType string) ([]int16, *AudioTelemetry, error) {
 	if len(data) == 0 {
 		return nil, nil, errors.New("empty audio data")
 	}
 
-	ct := strings.ToLower(strings.TrimSpace(contentType))
-	if IsWAVHeader(data) || strings.Contains(ct, "wav") || strings.Contains(ct, "wave") {
+	if fmt, ok := NormalizeAudioFormat(contentType); ok {
+		switch fmt {
+		case AudioFormatWAV:
+			return DecodeWAV(data)
+		case AudioFormatOGG:
+			return DecodeOGGOpus(data)
+		case AudioFormatMP4:
+			return DecodeMP4AAC(data)
+		case AudioFormatMP3:
+			return DecodeMP3(data)
+		}
+	}
+
+	if IsWAVHeader(data) {
 		return DecodeWAV(data)
 	}
-	if IsOGGHeader(data) || strings.Contains(ct, "ogg") || strings.Contains(ct, "opus") {
+	if IsOGGHeader(data) {
 		return DecodeOGGOpus(data)
 	}
-	if IsMP4Header(data) || IsADTSAACHeader(data) || strings.Contains(ct, "mp4") || strings.Contains(ct, "m4a") || strings.Contains(ct, "aac") {
+	if IsMP4Header(data) || IsADTSAACHeader(data) {
 		return DecodeMP4AAC(data)
 	}
-	if IsMP3Header(data) || strings.Contains(ct, "mp3") || strings.Contains(ct, "mpeg") {
+	if IsMP3Header(data) {
 		return DecodeMP3(data)
 	}
 
@@ -333,27 +375,27 @@ func TranscodeAudio(data []byte, targetFormat string) ([]byte, *AudioTelemetry, 
 		return nil, nil, err
 	}
 
-	tf := strings.ToLower(strings.TrimSpace(targetFormat))
-	if idx := strings.Index(tf, ";"); idx != -1 {
-		tf = strings.TrimSpace(tf[:idx])
+	targetFmt, ok := NormalizeAudioFormat(targetFormat)
+	if !ok {
+		return nil, nil, fmt.Errorf("%w: unsupported target format %q", ErrInvalidAudioFormat, targetFormat)
 	}
 
 	sampleRate, channels := normalizeAudioParams(tel.SampleRate, tel.Channels)
 
-	switch tf {
-	case "wav", "audio/wav", "audio/x-wav", "audio/wave":
+	switch targetFmt {
+	case AudioFormatWAV:
 		wavBytes := EncodeWAV(pcm, sampleRate, channels)
 		return wavBytes, tel, nil
 
-	case "ogg", "opus", "audio/ogg", "audio/opus", "application/ogg", "application/opus":
+	case AudioFormatOGG:
 		oggBytes := encodeOggOpus(pcm, sampleRate, tel.DurationMS)
 		return oggBytes, tel, nil
 
-	case "aac", "audio/aac", "mp4", "audio/mp4", "m4a", "audio/m4a", "audio/x-m4a":
+	case AudioFormatMP4:
 		aacBytes := encodeADTSAAC(pcm, sampleRate, channels)
 		return aacBytes, tel, nil
 
-	case "mp3", "audio/mp3", "audio/mpeg":
+	case AudioFormatMP3:
 		mp3Bytes := encodeMP3(pcm, sampleRate, channels)
 		return mp3Bytes, tel, nil
 

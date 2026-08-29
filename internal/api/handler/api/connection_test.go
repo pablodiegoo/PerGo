@@ -24,7 +24,6 @@ import (
 	"github.com/pablojhp.pergo/internal/session"
 )
 
-
 type mockConnectionRepo struct {
 	mu          sync.RWMutex
 	connections map[uuid.UUID]*repository.Connection
@@ -514,12 +513,12 @@ func TestConnectionAPIHandler_List(t *testing.T) {
 		UpdatedAt:      time.Now(),
 	}
 	connRepo.connections[cID2] = &repository.Connection{
-		ID:             cID2,
-		WorkspaceID:    uuid.New(), // other workspace
-		Name:           "Conn 2",
-		Status:         "connected",
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		ID:          cID2,
+		WorkspaceID: uuid.New(), // other workspace
+		Name:        "Conn 2",
+		Status:      "connected",
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 
 	handler := api.NewConnectionAPIHandler(connRepo, nil, nil)
@@ -1216,7 +1215,6 @@ func TestConnectionAPIHandler_CreateWABA_CustomRSAKey(t *testing.T) {
 	}
 }
 
-
 func TestConnectionAPIHandler_CreateWABA_InvalidRSAKey(t *testing.T) {
 	wsID := uuid.New()
 	connRepo := newMockConnectionRepo()
@@ -1371,6 +1369,3 @@ func TestConnectionAPIHandler_GetFlowPublicKey(t *testing.T) {
 		}
 	}
 }
-
-
-

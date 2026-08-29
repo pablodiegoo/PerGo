@@ -103,4 +103,3 @@ func WriteContactsCSV(w io.Writer, contacts []Contact) error {
 	writer.Flush()
 	return writer.Error()
 }
-

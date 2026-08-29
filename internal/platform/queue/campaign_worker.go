@@ -610,4 +610,3 @@ func (w *CampaignWorker) Stop() {
 	w.cancel()
 	<-w.done
 }
-

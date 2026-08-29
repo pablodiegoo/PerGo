@@ -184,5 +184,3 @@ func (w *Worker) Stop() {
 
 	<-w.done
 }
-
-

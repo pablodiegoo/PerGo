@@ -64,14 +64,14 @@ var (
 )
 
 type WebhookDeliveryTask struct {
-	ID             uuid.UUID       `json:"id"`
-	SubscriptionID uuid.UUID       `json:"subscription_id"`
-	WorkspaceID    uuid.UUID       `json:"workspace_id"`
-	Event          string          `json:"event"`
-	TraceID        string          `json:"trace_id"`
-	MessageID      string          `json:"message_id"`
-	Payload        []byte          `json:"payload"`
-	Mode           string          `json:"mode"` // "inbound" | "outbound"
+	ID             uuid.UUID `json:"id"`
+	SubscriptionID uuid.UUID `json:"subscription_id"`
+	WorkspaceID    uuid.UUID `json:"workspace_id"`
+	Event          string    `json:"event"`
+	TraceID        string    `json:"trace_id"`
+	MessageID      string    `json:"message_id"`
+	Payload        []byte    `json:"payload"`
+	Mode           string    `json:"mode"` // "inbound" | "outbound"
 }
 
 // WebhookDispatcher defines the interface for webhook payload processing and delivery.
@@ -344,4 +344,3 @@ func VerifySignatureWithTolerance(rawBody []byte, signatureHeader string, secret
 
 	return subtle.ConstantTimeCompare([]byte(computedSig), []byte(expectedSig)) == 1
 }
-

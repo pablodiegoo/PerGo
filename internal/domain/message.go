@@ -233,7 +233,7 @@ type QueueMessage struct {
 
 // TemplateComponent represents a template component payload.
 type TemplateComponent struct {
-	Type       string              `json:"type"` // "header", "body", "buttons", etc.
+	Type       string      `json:"type"` // "header", "body", "buttons", etc.
 	Parameters interface{} `json:"parameters"`
 }
 

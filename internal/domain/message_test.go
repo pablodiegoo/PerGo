@@ -435,8 +435,8 @@ func TestValidateMessageInteractiveStructure(t *testing.T) {
 		{
 			name: "button missing buttons array",
 			interactive: &Interactive{
-				Type: "button",
-				Body: TextContent{Text: "Choose an option"},
+				Type:   "button",
+				Body:   TextContent{Text: "Choose an option"},
 				Action: Action{},
 			},
 			expectError: true,
@@ -445,8 +445,8 @@ func TestValidateMessageInteractiveStructure(t *testing.T) {
 		{
 			name: "list missing sections",
 			interactive: &Interactive{
-				Type: "list",
-				Body: TextContent{Text: "Choose an option"},
+				Type:   "list",
+				Body:   TextContent{Text: "Choose an option"},
 				Action: Action{},
 			},
 			expectError: true,
@@ -793,5 +793,3 @@ func TestValidateMessage_ProductPayload(t *testing.T) {
 		}
 	})
 }
-
-

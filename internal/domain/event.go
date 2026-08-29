@@ -33,4 +33,3 @@ type OrderCreatedEvent struct {
 	ContactID  string             `json:"contact_id"`
 	TraceID    string             `json:"trace_id"`
 }
-

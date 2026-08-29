@@ -1337,7 +1337,7 @@ func TestOpusFrameEnergyExtraction(t *testing.T) {
 		// Audio Page with 2 frames: one silence (gains = 0), one active speech (gains = high)
 		buf.WriteString("OggS")
 		buf.WriteByte(0)
-		buf.WriteByte(0x04) // EOS
+		buf.WriteByte(0x04)                                  // EOS
 		binary.Write(buf, binary.LittleEndian, uint64(1920)) // 40ms @ 48kHz
 		binary.Write(buf, binary.LittleEndian, uint32(999))
 		binary.Write(buf, binary.LittleEndian, uint32(1))
@@ -1571,5 +1571,41 @@ func TestTranscodeAudio(t *testing.T) {
 	})
 }
 
+func TestNormalizeAudioFormat(t *testing.T) {
+	cases := []struct {
+		input       string
+		expectedFmt AudioFormat
+		expectedOK  bool
+	}{
+		{"audio/wav", AudioFormatWAV, true},
+		{"audio/x-wav", AudioFormatWAV, true},
+		{"audio/wave", AudioFormatWAV, true},
+		{"wav", AudioFormatWAV, true},
+		{"audio/ogg; codecs=opus", AudioFormatOGG, true},
+		{"audio/opus", AudioFormatOGG, true},
+		{"opus", AudioFormatOGG, true},
+		{"audio/mp4", AudioFormatMP4, true},
+		{"audio/aac", AudioFormatMP4, true},
+		{"audio/m4a", AudioFormatMP4, true},
+		{"m4a", AudioFormatMP4, true},
+		{"mp4", AudioFormatMP4, true},
+		{"audio/mpeg", AudioFormatMP3, true},
+		{"audio/mp3", AudioFormatMP3, true},
+		{"mp3", AudioFormatMP3, true},
+		{"video/mp4", "", false},
+		{"application/json", "", false},
+		{"", "", false},
+	}
 
-
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			fmt, ok := NormalizeAudioFormat(tc.input)
+			if ok != tc.expectedOK {
+				t.Fatalf("NormalizeAudioFormat(%q) ok = %v, expected %v", tc.input, ok, tc.expectedOK)
+			}
+			if fmt != tc.expectedFmt {
+				t.Fatalf("NormalizeAudioFormat(%q) format = %v, expected %v", tc.input, fmt, tc.expectedFmt)
+			}
+		})
+	}
+}

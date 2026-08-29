@@ -16,7 +16,7 @@ var ErrCredentialsNotFound = errors.New("credentials not found")
 
 // CredentialsRepository provides CRUD operations for channel credentials, shimmed on top of connections table.
 type CredentialsRepository struct {
-	pool      *pgxpool.Pool
+	pool     *pgxpool.Pool
 	provider CredentialProvider
 }
 

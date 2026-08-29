@@ -119,7 +119,6 @@ func EnsureInboundStream(ctx context.Context, nc *nats.Conn) (jetstream.Stream, 
 	return stream, nil
 }
 
-
 // EnsureConsumer creates or gets a durable pull consumer on the given stream.
 // Safe to call multiple times — CreateConsumer is idempotent when the config matches.
 func EnsureConsumer(ctx context.Context, stream jetstream.Stream, consumerName string) (jetstream.Consumer, error) {
@@ -269,4 +268,3 @@ func EnsureCampaignConsumer(ctx context.Context, stream jetstream.Stream, consum
 	slog.Info("jetstream campaigns consumer ready", "consumer", consumerName)
 	return cons, nil
 }
-

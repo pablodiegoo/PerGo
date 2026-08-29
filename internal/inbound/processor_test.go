@@ -525,6 +525,59 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 	})
 
+	t.Run("Timing telemetry clamps to 0ms on provider clock skew", func(t *testing.T) {
+		pub := &fakePublisher{}
+		me := &fakeMediaEngine{}
+		aud := &fakeAuditWriter{}
+
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+
+		recipient := "+5511999992223"
+		senderIdentity := "+5511888883334"
+		outboundTime := time.Date(2026, 8, 28, 10, 0, 0, 500000000, time.UTC)
+		occurredAt := time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC) // 500ms before outboundTime due to provider clock skew
+
+		err := sessRepo.RecordOutbound(ctx, domain.NewSessionKey(ws.ID, recipient, "whatsapp_cloud", senderIdentity), outboundTime)
+		if err != nil {
+			t.Fatalf("failed to seed outbound session: %v", err)
+		}
+
+		event := &inbound.InboundEvent{
+			WorkspaceID: ws.ID,
+			MessageID:   "test-timing-msg-clock-skew",
+			Channel:     "whatsapp_cloud",
+			From:        recipient,
+			To:          senderIdentity,
+			Body:        "Sim, confirmo.",
+			OccurredAt:  occurredAt,
+		}
+
+		err = proc.Process(ctx, event)
+		if err != nil {
+			t.Fatalf("Process failed: %v", err)
+		}
+
+		if len(pub.published) != 1 {
+			t.Fatalf("expected 1 published event, got %d", len(pub.published))
+		}
+
+		var payload inbound.InboundEventPayload
+		if err := json.Unmarshal(pub.published[0].data, &payload); err != nil {
+			t.Fatalf("failed to unmarshal payload: %v", err)
+		}
+
+		if payload.Timing == nil {
+			t.Fatal("expected payload.Timing to be present even on clock skew")
+		}
+		if payload.Timing.ResponseLatencyMS == nil {
+			t.Fatal("expected payload.Timing.ResponseLatencyMS to be present")
+		}
+		latency := *payload.Timing.ResponseLatencyMS
+		if latency != 0 {
+			t.Errorf("expected latency clamped to 0ms, got %d", latency)
+		}
+	})
+
 	t.Run("Timing telemetry omitted when no prior outbound message exists", func(t *testing.T) {
 		pub := &fakePublisher{}
 		me := &fakeMediaEngine{}
@@ -702,7 +755,7 @@ func TestProcess_StatusUpdate(t *testing.T) {
 	sessRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 
-	ws, err := wsRepo.Create(ctx, "status_update_test_ws_" + uuid.New().String())
+	ws, err := wsRepo.Create(ctx, "status_update_test_ws_"+uuid.New().String())
 	if err != nil {
 		t.Fatalf("failed to create test workspace: %v", err)
 	}
@@ -826,7 +879,7 @@ func TestInboundProcessor_ChatwootSyncer(t *testing.T) {
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 
-	ws, err := wsRepo.Create(ctx, "chatwoot_syncer_test_ws_" + uuid.New().String())
+	ws, err := wsRepo.Create(ctx, "chatwoot_syncer_test_ws_"+uuid.New().String())
 	if err != nil {
 		t.Fatalf("failed to create test workspace: %v", err)
 	}
@@ -884,7 +937,7 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 
-	ws, err := wsRepo.Create(ctx, "cooldown_test_ws_" + uuid.New().String())
+	ws, err := wsRepo.Create(ctx, "cooldown_test_ws_"+uuid.New().String())
 	if err != nil {
 		t.Fatalf("failed to create test workspace: %v", err)
 	}
@@ -1598,5 +1651,42 @@ func TestInboundProcessor_InteractivePayloads_DomainEvents(t *testing.T) {
 	})
 }
 
+func TestParseUnixTimestamp_And_Millis(t *testing.T) {
+	t.Run("ParseUnixTimestamp valid", func(t *testing.T) {
+		ts := inbound.ParseUnixTimestamp("1724889600")
+		expected := time.Date(2024, 8, 29, 0, 0, 0, 0, time.UTC)
+		if !ts.Equal(expected) {
+			t.Errorf("expected %v, got %v", expected, ts)
+		}
+	})
 
+	t.Run("ParseUnixTimestamp invalid or empty", func(t *testing.T) {
+		if !inbound.ParseUnixTimestamp("").IsZero() {
+			t.Errorf("expected zero time for empty string")
+		}
+		if !inbound.ParseUnixTimestamp("invalid").IsZero() {
+			t.Errorf("expected zero time for non-number string")
+		}
+		if !inbound.ParseUnixTimestamp("-100").IsZero() {
+			t.Errorf("expected zero time for negative timestamp")
+		}
+		if !inbound.ParseUnixTimestamp("0").IsZero() {
+			t.Errorf("expected zero time for zero timestamp")
+		}
+	})
 
+	t.Run("ParseUnixMillis valid and invalid", func(t *testing.T) {
+		ts := inbound.ParseUnixMillis(1724889600123)
+		expected := time.UnixMilli(1724889600123).UTC()
+		if !ts.Equal(expected) {
+			t.Errorf("expected %v, got %v", expected, ts)
+		}
+
+		if !inbound.ParseUnixMillis(0).IsZero() {
+			t.Errorf("expected zero time for 0 millis")
+		}
+		if !inbound.ParseUnixMillis(-500).IsZero() {
+			t.Errorf("expected zero time for negative millis")
+		}
+	})
+}

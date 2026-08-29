@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/pablojhp.pergo/internal/inbound"
@@ -40,8 +39,8 @@ type igPayload struct {
 			} `json:"recipient"`
 			Timestamp int64 `json:"timestamp"`
 			Message   *struct {
-				Mid  string `json:"mid"`
-				Text string `json:"text"`
+				Mid        string `json:"mid"`
+				Text       string `json:"text"`
 				QuickReply *struct {
 					Payload string `json:"payload"`
 				} `json:"quick_reply"`
@@ -62,7 +61,7 @@ type igPayload struct {
 		Changes []struct {
 			Value struct {
 				MessagingProduct string `json:"messaging_product"`
-				Messages []struct {
+				Messages         []struct {
 					From      string `json:"from"`
 					ID        string `json:"id"`
 					Timestamp string `json:"timestamp"`
@@ -70,7 +69,7 @@ type igPayload struct {
 						Body string `json:"body"`
 					} `json:"text"`
 					Interactive *struct {
-						Type       string `json:"type"`
+						Type        string `json:"type"`
 						ButtonReply *struct {
 							ID    string `json:"id"`
 							Title string `json:"title"`
@@ -106,10 +105,7 @@ func (a *InstagramInboundAdapter) Parse(
 				continue
 			}
 
-			var occurredAt time.Time
-			if msg.Timestamp > 0 {
-				occurredAt = time.UnixMilli(msg.Timestamp).UTC()
-			}
+			occurredAt := inbound.ParseUnixMillis(msg.Timestamp)
 
 			ev := &inbound.InboundEvent{
 				WorkspaceID:  conn.WorkspaceID,
@@ -155,12 +151,7 @@ func (a *InstagramInboundAdapter) Parse(
 		for _, change := range entry.Changes {
 			if change.Value.MessagingProduct == "instagram" {
 				for _, msg := range change.Value.Messages {
-					var changeOccurredAt time.Time
-					if msg.Timestamp != "" {
-						if sec, err := strconv.ParseInt(msg.Timestamp, 10, 64); err == nil && sec > 0 {
-							changeOccurredAt = time.Unix(sec, 0).UTC()
-						}
-					}
+					changeOccurredAt := inbound.ParseUnixTimestamp(msg.Timestamp)
 
 					ev := &inbound.InboundEvent{
 						WorkspaceID:  conn.WorkspaceID,
@@ -171,11 +162,11 @@ func (a *InstagramInboundAdapter) Parse(
 						To:           change.Value.Metadata.DisplayPhoneNumber,
 						OccurredAt:   changeOccurredAt,
 					}
-					
+
 					if msg.Text != nil {
 						ev.Body = msg.Text.Body
 					}
-					
+
 					if msg.Interactive != nil && msg.Interactive.ButtonReply != nil {
 						ev.Interactive = &inbound.InboundInteractive{
 							Type: "button_reply",
@@ -185,7 +176,7 @@ func (a *InstagramInboundAdapter) Parse(
 							},
 						}
 					}
-					
+
 					events = append(events, ev)
 				}
 			}

@@ -220,7 +220,7 @@ func TestDashboardAuditMiddleware(t *testing.T) {
 			if log.UserAgent == nil || *log.UserAgent != "DashboardAgent" {
 				t.Errorf("expected user agent 'DashboardAgent', got '%v'", log.UserAgent)
 			}
-			
+
 			var meta map[string]any
 			if err := json.Unmarshal(log.Metadata, &meta); err != nil {
 				t.Fatalf("failed to parse metadata: %v", err)

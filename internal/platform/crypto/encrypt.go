@@ -9,7 +9,6 @@ import (
 	"errors"
 )
 
-
 // Encryptor provides AES-256-GCM envelope encryption with a Key Encryption Key (KEK).
 type Encryptor struct {
 	kek []byte
@@ -147,7 +146,6 @@ func DecryptRSAPem(privateKeyPem []byte, ciphertext []byte) ([]byte, error) {
 	}
 	return DecryptRSA(priv, ciphertext)
 }
-
 
 // DecryptAES128GCM decrypts ciphertext using AES-GCM.
 func DecryptAES128GCM(key, iv, ciphertext, tag []byte) ([]byte, error) {

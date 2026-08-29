@@ -169,10 +169,14 @@ type fakeDispatchMsg struct {
 	nakDelay time.Duration
 }
 
-func (m *fakeDispatchMsg) Data() []byte                         { return m.data }
-func (m *fakeDispatchMsg) Headers() map[string]string           { return m.headers }
-func (m *fakeDispatchMsg) Ack() error                           { m.acked = true; return nil }
-func (m *fakeDispatchMsg) NakWithDelay(d time.Duration) error   { m.nacked = true; m.nakDelay = d; return nil }
+func (m *fakeDispatchMsg) Data() []byte               { return m.data }
+func (m *fakeDispatchMsg) Headers() map[string]string { return m.headers }
+func (m *fakeDispatchMsg) Ack() error                 { m.acked = true; return nil }
+func (m *fakeDispatchMsg) NakWithDelay(d time.Duration) error {
+	m.nacked = true
+	m.nakDelay = d
+	return nil
+}
 
 type fakeDispatcher struct {
 	err         error
@@ -772,5 +776,3 @@ func TestOrchestrator_AutomatedCascadingAndIdentityVerification(t *testing.T) {
 		}
 	})
 }
-
-

@@ -13,9 +13,9 @@ import (
 
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/storage"
-	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 

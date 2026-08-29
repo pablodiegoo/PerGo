@@ -32,4 +32,3 @@ func TestTelegramErrorUnwrapping(t *testing.T) {
 		t.Errorf("errors.Is(err, s3Err) = true, want false (formatted with %%v)")
 	}
 }
-

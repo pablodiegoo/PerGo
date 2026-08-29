@@ -61,12 +61,12 @@ func ActivePathFrom(ctx context.Context) string {
 // ActiveWorkspaceMiddleware returns an Echo v5 middleware that centrally resolves
 // the Active Workspace for every incoming operator request.
 //
-// 1. It validates the pergo-active-workspace cookie against PostgreSQL.
-// 2. If valid, it injects the resolved Workspace into request context (tenant.WithWorkspaceID).
-// 3. If the cookie is absent, invalid, or points to a deleted workspace, it automatically falls back
-//    to the earliest created workspace in PostgreSQL (ORDER BY created_at ASC LIMIT 1) and issues an
-//    updated cookie to the browser.
-// 4. If the database has zero workspaces, it redirects the operator to /admin/workspaces/new with an onboarding message.
+//  1. It validates the pergo-active-workspace cookie against PostgreSQL.
+//  2. If valid, it injects the resolved Workspace into request context (tenant.WithWorkspaceID).
+//  3. If the cookie is absent, invalid, or points to a deleted workspace, it automatically falls back
+//     to the earliest created workspace in PostgreSQL (ORDER BY created_at ASC LIMIT 1) and issues an
+//     updated cookie to the browser.
+//  4. If the database has zero workspaces, it redirects the operator to /admin/workspaces/new with an onboarding message.
 func ActiveWorkspaceMiddleware(wsRepo *repository.WorkspaceRepository) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {

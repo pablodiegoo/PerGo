@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
 func getTestPool(t *testing.T) *pgxpool.Pool {

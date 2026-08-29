@@ -45,7 +45,7 @@ func TestFlowCrypto(t *testing.T) {
 		if err != nil {
 			t.Fatalf("GenerateKey error: %v", err)
 		}
-		
+
 		plaintext := []byte("aes_key_data")
 		ciphertext, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, &privKey.PublicKey, plaintext, nil)
 		if err != nil {

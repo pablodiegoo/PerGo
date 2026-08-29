@@ -30,10 +30,10 @@ func TestSniffDelimiter(t *testing.T) {
 
 func TestSanitizePhone(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      string
-		wantClean  string
-		wantValid  bool
+		name      string
+		input     string
+		wantClean string
+		wantValid bool
 	}{
 		{"valid standard", "+55 (11) 99999-8888", "5511999998888", true},
 		{"valid raw", "5511999998888", "5511999998888", true},
@@ -505,7 +505,7 @@ func TestMergeTagAndCSVRecipients(t *testing.T) {
 
 func TestInterpolateInteractive_Buttons(t *testing.T) {
 	tmpl := &Interactive{
-		Type: "button",
+		Type:   "button",
 		Header: &TextContent{Text: "Aviso {{nome}}"},
 		Body:   TextContent{Text: "Olá {{nome}}, seu plano {{plano}} está ativo."},
 		Footer: &TextContent{Text: "Cupom: {{cupom}}"},
@@ -565,7 +565,7 @@ func TestInterpolateInteractive_Buttons(t *testing.T) {
 
 func TestInterpolateInteractive_Lists(t *testing.T) {
 	tmpl := &Interactive{
-		Type: "list",
+		Type:   "list",
 		Header: &TextContent{Text: "Cardápio para {{nome}}"},
 		Body:   TextContent{Text: "Escolha seu item em {{cidade}}:"},
 		Action: Action{
@@ -758,4 +758,3 @@ func TestValidateInteractiveLimits(t *testing.T) {
 		}
 	})
 }
-

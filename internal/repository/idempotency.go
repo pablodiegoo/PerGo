@@ -14,28 +14,28 @@ import (
 var ErrIdempotencyKeyNotFound = errors.New("idempotency key not found")
 
 type IdempotencyEntry struct {
-	ID                uuid.UUID 
-	WorkspaceID       uuid.UUID 
-	KeyHash           string    
-	TraceID           string    
-	StatusCode        *int      
-	ResponseBody      []byte    
-	ProviderMessageID *string   
-	CreatedAt         time.Time 
-	ExpiresAt         time.Time 
+	ID                uuid.UUID
+	WorkspaceID       uuid.UUID
+	KeyHash           string
+	TraceID           string
+	StatusCode        *int
+	ResponseBody      []byte
+	ProviderMessageID *string
+	CreatedAt         time.Time
+	ExpiresAt         time.Time
 }
 
 type IngressLedgerEntry struct {
-	ID             uuid.UUID 
-	WorkspaceID    uuid.UUID 
-	TraceID        string    
-	IdempotencyKey string    
-	Channel        string    
-	Recipient      string    
-	Status         string     // "accepted" | "enqueued" | "delivered" | "failed"
-	ErrorReason    *string   
-	CreatedAt      time.Time 
-	UpdatedAt      time.Time 
+	ID             uuid.UUID
+	WorkspaceID    uuid.UUID
+	TraceID        string
+	IdempotencyKey string
+	Channel        string
+	Recipient      string
+	Status         string // "accepted" | "enqueued" | "delivered" | "failed"
+	ErrorReason    *string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type IdempotencyRepository struct {

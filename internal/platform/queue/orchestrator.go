@@ -33,9 +33,9 @@ const (
 // TTL enforcement, fallback routing, channel dispatch, audit, and
 // webhook events. Tests exercise the full pipeline through Process.
 type DispatchOrchestrator struct {
-	dispatchers  *channel.Registry
-	dispatchRepo *repository.MessageDispatchRepository
-	publisher    *JetStreamPublisher
+	dispatchers          *channel.Registry
+	dispatchRepo         *repository.MessageDispatchRepository
+	publisher            *JetStreamPublisher
 	queueDepth           QueueDepthTracker
 	auditWriter          audit.Writer
 	contactRepo          *repository.ContactRepository
@@ -415,15 +415,15 @@ func (o *DispatchOrchestrator) dispatchToChannel(ctx context.Context, channelNam
 	}
 
 	return dispatcher.Dispatch(ctx, &channel.MessagePayload{
-		MessageID:      qMsg.TraceID,
-		ConnectionID:   qMsg.ConnectionID,
-		SenderIdentity: qMsg.SenderIdentity,
-		TraceID:        qMsg.TraceID,
-		To:             to,
-		Channel:        channelName,
-		Body:           qMsg.Body,
-		Media:          qMsg.Media,
-		Metadata:       qMsg.Metadata,
+		MessageID:        qMsg.TraceID,
+		ConnectionID:     qMsg.ConnectionID,
+		SenderIdentity:   qMsg.SenderIdentity,
+		TraceID:          qMsg.TraceID,
+		To:               to,
+		Channel:          channelName,
+		Body:             qMsg.Body,
+		Media:            qMsg.Media,
+		Metadata:         qMsg.Metadata,
 		TemplateName:     qMsg.TemplateName,
 		Language:         qMsg.Language,
 		Components:       qMsg.Components,

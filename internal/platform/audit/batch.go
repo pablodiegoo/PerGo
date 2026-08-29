@@ -32,7 +32,7 @@ func NewWriter(pool *pgxpool.Pool, bufSize int, workers int) Writer {
 		batchSize: 100,
 		stopCh:    make(chan struct{}),
 	}
-	
+
 	if pool != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		_ = bw.EnsurePartitions(ctx)

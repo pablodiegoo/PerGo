@@ -189,13 +189,13 @@ func TestAuditRepository_ConversationsAndThread(t *testing.T) {
 	t.Run("ListThreadByContact returns dispatch status for outbound messages", func(t *testing.T) {
 		dispatchRepo := NewMessageDispatchRepository(pool)
 		outboundTraceID := uuid.New().String()
-		
+
 		// 1. Create a dispatch record with trace ID
 		d, err := dispatchRepo.GetOrCreateDispatch(ctx, ws.ID, outboundTraceID, "telegram", nil, nil, nil)
 		if err != nil {
 			t.Fatalf("failed to create dispatch: %v", err)
 		}
-		
+
 		// Update dispatch status to "read"
 		err = dispatchRepo.UpdateDispatchStatus(ctx, d.ID, "read", "telegram", 0, nil)
 		if err != nil {
@@ -392,4 +392,3 @@ func TestAuditRepository_OutboundMessagesInConversationsList(t *testing.T) {
 		}
 	})
 }
-

@@ -296,4 +296,3 @@ func TestCampaignScheduler_CheckDueCampaigns_RollbackOnPublishFailure(t *testing
 		t.Errorf("expected campaign status 'scheduled' after rollback, got %s", fetched.Status)
 	}
 }
-

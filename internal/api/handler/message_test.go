@@ -1043,5 +1043,3 @@ func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
 		}
 	})
 }
-
-

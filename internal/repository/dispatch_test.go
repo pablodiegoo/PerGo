@@ -145,4 +145,3 @@ func TestMessageDispatchProviderMessageID(t *testing.T) {
 		t.Errorf("expected ErrDispatchNotFound, got %v", err)
 	}
 }
-

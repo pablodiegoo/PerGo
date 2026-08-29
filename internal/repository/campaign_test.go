@@ -433,6 +433,3 @@ func TestCampaignRepository_ClaimDueScheduledCampaigns_Concurrency(t *testing.T)
 		}
 	}
 }
-
-
-

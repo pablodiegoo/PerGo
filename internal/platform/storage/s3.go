@@ -25,7 +25,6 @@ type S3Client struct {
 
 var _ MediaStorage = (*S3Client)(nil)
 
-
 // NewS3Client creates and configures a new S3Client.
 func NewS3Client(endpoint, region, accessKey, secretKey, bucket string, usePathStyle bool) (*S3Client, error) {
 	// Configure static credentials provider

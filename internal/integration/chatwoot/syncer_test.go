@@ -106,7 +106,7 @@ func TestChatwootSyncer(t *testing.T) {
 
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			
+
 			switch {
 			case r.Method == http.MethodGet && r.URL.Path == "/api/v1/accounts/1/contacts/search":
 				searchCount++
@@ -538,4 +538,3 @@ func TestChatwootSyncer(t *testing.T) {
 		}
 	})
 }
-

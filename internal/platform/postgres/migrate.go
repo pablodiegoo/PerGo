@@ -18,4 +18,3 @@ func RunMigrations(db *sql.DB) error {
 	}
 	return goose.Up(db, "migrations", goose.WithAllowMissing())
 }
-

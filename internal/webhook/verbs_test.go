@@ -236,7 +236,7 @@ func TestVerbsEngine(t *testing.T) {
 		}
 
 		cancelCtx, cancel := context.WithCancel(ctx)
-		
+
 		verbs := []webhook.Verb{
 			{
 				Action: "wait",

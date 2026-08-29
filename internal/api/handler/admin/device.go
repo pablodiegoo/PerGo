@@ -26,7 +26,6 @@ import (
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
-
 // DeviceHandler handles admin operations for unified connections management.
 type DeviceHandler struct {
 	Sessions      *session.ActiveSession
@@ -280,7 +279,6 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "unsupported channel type for synchronous creation")
 	}
 
-
 	if validationErr != nil {
 		c.Response().Header().Set("HX-Retarget", "#modal-error-container")
 		return c.HTML(http.StatusOK, fmt.Sprintf(`
@@ -461,7 +459,6 @@ func (h *DeviceHandler) FlowKey(c *echo.Context) error {
 
 	return mw.Render(c, http.StatusOK, pages.FlowKeyModal(conn, pubPEM))
 }
-
 
 // RunTest publishes a test outbound message to the messages.outbound JetStream subject.
 // POST /admin/devices/test

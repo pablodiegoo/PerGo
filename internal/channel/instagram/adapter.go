@@ -11,8 +11,8 @@ import (
 
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
-	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -36,9 +36,9 @@ type instagramMessageRequest struct {
 		ID string `json:"id"`
 	} `json:"recipient"`
 	Message struct {
-		Text        string                 `json:"text,omitempty"`
-		Attachment  *instagramAttachment   `json:"attachment,omitempty"`
-		Interactive *instagramInteractive  `json:"interactive,omitempty"`
+		Text        string                `json:"text,omitempty"`
+		Attachment  *instagramAttachment  `json:"attachment,omitempty"`
+		Interactive *instagramInteractive `json:"interactive,omitempty"`
 	} `json:"message"`
 	MessagingType string `json:"messaging_type,omitempty"`
 }
@@ -46,13 +46,13 @@ type instagramMessageRequest struct {
 type instagramAttachment struct {
 	Type    string `json:"type"` // "image", "audio", "video", "file"
 	Payload struct {
-		URL string `json:"url"`
-		IsReusable bool `json:"is_reusable,omitempty"`
+		URL        string `json:"url"`
+		IsReusable bool   `json:"is_reusable,omitempty"`
 	} `json:"payload"`
 }
 
 type instagramInteractive struct {
-	Type   string                   `json:"type"` // "button", "list"
+	Type   string                    `json:"type"` // "button", "list"
 	Header *instagramInteractiveText `json:"header,omitempty"`
 	Body   *instagramInteractiveText `json:"body,omitempty"`
 	Footer *instagramInteractiveText `json:"footer,omitempty"`
@@ -64,13 +64,13 @@ type instagramInteractiveText struct {
 }
 
 type instagramAction struct {
-	Button   string                       `json:"button,omitempty"`
+	Button   string                            `json:"button,omitempty"`
 	Buttons  []instagramInteractiveReplyButton `json:"buttons,omitempty"`
 	Sections []instagramInteractiveSection     `json:"sections,omitempty"`
 }
 
 type instagramInteractiveReplyButton struct {
-	Type  string                     `json:"type"`
+	Type  string                          `json:"type"`
 	Reply instagramInteractiveButtonReply `json:"reply"`
 }
 
@@ -80,7 +80,7 @@ type instagramInteractiveButtonReply struct {
 }
 
 type instagramInteractiveSection struct {
-	Title string                     `json:"title,omitempty"`
+	Title string                           `json:"title,omitempty"`
 	Rows  []instagramInteractiveSectionRow `json:"rows"`
 }
 
@@ -168,7 +168,7 @@ func (a *InstagramAdapter) Dispatch(ctx context.Context, m *channel.MessagePaylo
 			if m.Interactive.Footer != nil {
 				reqPayload.Message.Interactive.Footer = &instagramInteractiveText{Text: m.Interactive.Footer.Text}
 			}
-			
+
 			action := instagramAction{
 				Button: m.Interactive.Action.Button,
 			}
@@ -208,19 +208,19 @@ func (a *InstagramAdapter) Dispatch(ctx context.Context, m *channel.MessagePaylo
 			}
 			mediaURL = base + mediaURL
 		}
-		
+
 		mediaType := m.Media.MediaType
 		if mediaType == "document" {
 			mediaType = "file"
 		} else if mediaType == "voice" {
 			mediaType = "audio"
 		}
-		
+
 		reqPayload.Message.Attachment = &instagramAttachment{
 			Type: mediaType,
 		}
 		reqPayload.Message.Attachment.Payload.URL = mediaURL
-		
+
 	} else {
 		reqPayload.Message.Text = m.Body
 	}

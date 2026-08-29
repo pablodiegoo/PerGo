@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"google.golang.org/protobuf/encoding/protojson"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
@@ -104,7 +104,7 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 	if err != nil {
 		return "", err
 	}
-	
+
 	if interMsg != nil {
 		msg = interMsg
 	} else if m.Media != nil {
@@ -315,48 +315,48 @@ func buildInteractiveOrOverrideMsg(m *channel.MessagePayload) (*waE2E.Message, e
 			return &msg, nil
 		} else if m.Interactive.Type == "list" {
 			var title, description *string
-				if m.Interactive.Header != nil {
-					title = &m.Interactive.Header.Text
-				}
-				if m.Interactive.Footer != nil {
-					description = &m.Interactive.Footer.Text
-				}
-				buttonText := m.Interactive.Action.Button
-				if buttonText == "" {
-					buttonText = "Options"
-				}
-				listType := waE2E.ListMessage_SINGLE_SELECT
+			if m.Interactive.Header != nil {
+				title = &m.Interactive.Header.Text
+			}
+			if m.Interactive.Footer != nil {
+				description = &m.Interactive.Footer.Text
+			}
+			buttonText := m.Interactive.Action.Button
+			if buttonText == "" {
+				buttonText = "Options"
+			}
+			listType := waE2E.ListMessage_SINGLE_SELECT
 
-				var sections []*waE2E.ListMessage_Section
-				for _, s := range m.Interactive.Action.Sections {
-					secTitle := s.Title
-					sec := &waE2E.ListMessage_Section{
-						Title: &secTitle,
-					}
-					for _, r := range s.Rows {
-						rID := r.ID
-						rTitle := r.Title
-						var rDesc *string
-						if r.Description != "" {
-							rDesc = &r.Description
-						}
-						sec.Rows = append(sec.Rows, &waE2E.ListMessage_Row{
-							RowID:       &rID,
-							Title:       &rTitle,
-							Description: rDesc,
-						})
-					}
-					sections = append(sections, sec)
+			var sections []*waE2E.ListMessage_Section
+			for _, s := range m.Interactive.Action.Sections {
+				secTitle := s.Title
+				sec := &waE2E.ListMessage_Section{
+					Title: &secTitle,
 				}
-				msg.ListMessage = &waE2E.ListMessage{
-					Title:       title,
-					Description: &m.Interactive.Body.Text,
-					ButtonText:  &buttonText,
-					ListType:    &listType,
-					Sections:    sections,
-					FooterText:  description,
+				for _, r := range s.Rows {
+					rID := r.ID
+					rTitle := r.Title
+					var rDesc *string
+					if r.Description != "" {
+						rDesc = &r.Description
+					}
+					sec.Rows = append(sec.Rows, &waE2E.ListMessage_Row{
+						RowID:       &rID,
+						Title:       &rTitle,
+						Description: rDesc,
+					})
 				}
-				return &msg, nil
+				sections = append(sections, sec)
+			}
+			msg.ListMessage = &waE2E.ListMessage{
+				Title:       title,
+				Description: &m.Interactive.Body.Text,
+				ButtonText:  &buttonText,
+				ListType:    &listType,
+				Sections:    sections,
+				FooterText:  description,
+			}
+			return &msg, nil
 		} else if m.Interactive.Type == "flow" {
 			if m.FallbackBehavior == string(domain.FallbackBehaviorFail) {
 				return nil, channel.NewTerminalError(fmt.Errorf("whatsapp: interactive flow is not supported on whatsapp web and fallback_behavior is fail"))

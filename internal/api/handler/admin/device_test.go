@@ -15,9 +15,9 @@ import (
 
 	"encoding/json"
 	"github.com/google/uuid"
-	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -892,5 +892,3 @@ func TestDeviceHandler_WABA_FlowKey_Integration(t *testing.T) {
 		}
 	})
 }
-
-

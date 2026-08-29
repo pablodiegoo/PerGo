@@ -128,10 +128,10 @@ type ValueData struct {
 		Referral *wabaReferralObj `json:"referral,omitempty"`
 	} `json:"messages,omitempty"`
 	Statuses []struct {
-		ID           string `json:"id"`
-		Status       string `json:"status"` // "sent", "delivered", "read", "failed"
-		RecipientID  string `json:"recipient_id"`
-		Timestamp    string `json:"timestamp"`
+		ID          string `json:"id"`
+		Status      string `json:"status"` // "sent", "delivered", "read", "failed"
+		RecipientID string `json:"recipient_id"`
+		Timestamp   string `json:"timestamp"`
 	} `json:"statuses,omitempty"`
 }
 
@@ -182,12 +182,7 @@ func (a *WABAInboundAdapter) Parse(
 
 			if len(change.Value.Statuses) > 0 {
 				for _, status := range change.Value.Statuses {
-					var statusOccurredAt time.Time
-					if status.Timestamp != "" {
-						if sec, err := strconv.ParseInt(status.Timestamp, 10, 64); err == nil && sec > 0 {
-							statusOccurredAt = time.Unix(sec, 0).UTC()
-						}
-					}
+					statusOccurredAt := inbound.ParseUnixTimestamp(status.Timestamp)
 
 					events = append(events, &inbound.InboundEvent{
 						WorkspaceID:  conn.WorkspaceID,
@@ -475,12 +470,7 @@ func (a *WABAInboundAdapter) Parse(
 					}
 				}
 
-				var msgOccurredAt time.Time
-				if msg.Timestamp != "" {
-					if sec, err := strconv.ParseInt(msg.Timestamp, 10, 64); err == nil && sec > 0 {
-						msgOccurredAt = time.Unix(sec, 0).UTC()
-					}
-				}
+				msgOccurredAt := inbound.ParseUnixTimestamp(msg.Timestamp)
 
 				events = append(events, &inbound.InboundEvent{
 					WorkspaceID:  conn.WorkspaceID,

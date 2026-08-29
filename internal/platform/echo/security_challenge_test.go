@@ -64,8 +64,8 @@ func TestSecurityHeaders_DefaultConfig_FullAssertions(t *testing.T) {
 
 	expected := map[string]string{
 		"X-Content-Type-Options":    "nosniff",
-		"X-Frame-Options":          "DENY",
-		"X-XSS-Protection":         "1; mode=block",
+		"X-Frame-Options":           "DENY",
+		"X-XSS-Protection":          "1; mode=block",
 		"Strict-Transport-Security": "31536000; includeSubDomains",
 		"Referrer-Policy":           "strict-origin-when-cross-origin",
 	}

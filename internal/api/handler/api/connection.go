@@ -23,7 +23,6 @@ import (
 	"github.com/pablojhp.pergo/internal/session"
 )
 
-
 // ConnectionRepo defines the repository methods required by ConnectionAPIHandler.
 type ConnectionRepo interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*repository.Connection, error)
@@ -277,7 +276,6 @@ type CreateWABAConnectionRequest struct {
 	PrivateKey         string `json:"private_key,omitempty"`
 }
 
-
 // CreateWABA registers a new WhatsApp Cloud (WABA) connection headless via REST API.
 // POST /api/v1/connections/waba & POST /api/v1/workspaces/:workspace_id/connections/waba
 func (h *ConnectionAPIHandler) CreateWABA(c *echo.Context) error {
@@ -379,7 +377,6 @@ func (h *ConnectionAPIHandler) CreateWABA(c *echo.Context) error {
 		AppSecret:     strings.TrimSpace(req.AppSecret),
 		PrivateKey:    privateKeyPEM,
 	}
-
 
 	credentialsJSON, err := json.Marshal(wabaCfg)
 	if err != nil {
@@ -1043,4 +1040,3 @@ func (h *ConnectionAPIHandler) GetFlowPublicKey(c *echo.Context) error {
 		PublicKeyPEM: pubPEM,
 	})
 }
-

@@ -287,7 +287,6 @@ func TestDefaultDispatcher_Dispatch(t *testing.T) {
 		}
 	})
 
-
 	t.Run("Non-2xx HTTP responses wrap HTTPError", func(t *testing.T) {
 		subStore := &mockSubscriptionStore{sub: sub}
 		dlqStore := &mockDLQStore{}
@@ -868,4 +867,3 @@ func TestDispatcher_WorkspaceWebhookSecretFallback(t *testing.T) {
 		t.Errorf("expected signature to contain v1=, got: %s", capturedSignature)
 	}
 }
-

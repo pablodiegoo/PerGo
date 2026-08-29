@@ -54,9 +54,9 @@ func TestWhatsmeowDeviceStore_Save(t *testing.T) {
 	jid := types.NewJID("5511999999999", types.DefaultUserServer)
 	device.ID = &jid
 	device.Account = &waAdv.ADVSignedDeviceIdentity{
-		Details:            []byte("test-details"),
-		AccountSignature:   make([]byte, 64),
-		DeviceSignature:    make([]byte, 64),
+		Details:             []byte("test-details"),
+		AccountSignature:    make([]byte, 64),
+		DeviceSignature:     make([]byte, 64),
 		AccountSignatureKey: make([]byte, 32),
 	}
 

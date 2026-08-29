@@ -31,7 +31,7 @@ type WABATemplate struct {
 	Category        string          `json:"category"`         // e.g. "MARKETING", "UTILITY", "AUTHENTICATION"
 	Components      json.RawMessage `json:"components"`       // JSON structure from Meta template components
 	RejectionReason *string         `json:"rejection_reason"` // NULL unless template was rejected
-	QualityScore     *string         `json:"quality_score"`    // e.g. "GREEN", "YELLOW", "RED", NULL
+	QualityScore    *string         `json:"quality_score"`    // e.g. "GREEN", "YELLOW", "RED", NULL
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
 }

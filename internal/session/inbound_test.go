@@ -262,4 +262,3 @@ func TestWhatsAppInbound_GroupMediaMessage(t *testing.T) {
 		t.Errorf("expected Metadata[is_group] == 'true', got %q", ev.Metadata["is_group"])
 	}
 }
-

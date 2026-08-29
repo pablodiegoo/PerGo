@@ -39,7 +39,7 @@ func TestLoadRSAPrivateKey(t *testing.T) {
 	t.Run("Valid 2048 bit key from Env", func(t *testing.T) {
 		os.Setenv("WABA_FLOWS_PRIVATE_KEY", pem2048)
 		defer os.Unsetenv("WABA_FLOWS_PRIVATE_KEY")
-		
+
 		key, err := LoadRSAPrivateKey([]byte("{}"), nil)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -120,4 +120,3 @@ func TestRSAKeypairGenerationAndExport(t *testing.T) {
 		}
 	})
 }
-

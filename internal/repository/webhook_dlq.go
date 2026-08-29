@@ -56,7 +56,6 @@ func NewWebhookDLQRepository(pool *pgxpool.Pool, encryptor CredentialProvider) *
 	}
 }
 
-
 // InsertDLQ inserts a new webhook DLQ item.
 func (r *WebhookDLQRepository) InsertDLQ(ctx context.Context, workspaceID uuid.UUID, subscriptionID uuid.UUID, traceID, messageID, eventType string, payload []byte, url string, attempts int, failureReason *string) error {
 	if workspaceID == uuid.Nil {

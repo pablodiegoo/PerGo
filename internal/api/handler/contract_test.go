@@ -140,4 +140,3 @@ func TestPerGoProviderContract_SessionWindowExpiredError_Serialization(t *testin
 
 	assertJSONMatch(t, "session_window_expired_error.json", actualJSON)
 }
-

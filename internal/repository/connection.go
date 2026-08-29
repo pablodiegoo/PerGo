@@ -190,7 +190,6 @@ func (r *ConnectionRepository) GetByJID(ctx context.Context, jid string) (*Conne
 	return r.scanAndDecrypt(row)
 }
 
-
 // GetDefaultChannelConnection retrieves the default connection for a given workspace and channel.
 func (r *ConnectionRepository) GetDefaultChannelConnection(ctx context.Context, workspaceID uuid.UUID, channel string) (*Connection, error) {
 	if workspaceID == uuid.Nil {
