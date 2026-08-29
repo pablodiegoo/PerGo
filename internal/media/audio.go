@@ -1126,13 +1126,15 @@ func DecodeMP4AAC(data []byte) ([]int16, *AudioTelemetry, error) {
 					sampleSize := binary.BigEndian.Uint32(stszPayload[4:8])
 					sampleCount := binary.BigEndian.Uint32(stszPayload[8:12])
 					if sampleSize > 0 && sampleCount > 0 && sampleCount < 1000000 {
+						sampleSizes = make([]int, sampleCount)
 						for i := uint32(0); i < sampleCount; i++ {
-							sampleSizes = append(sampleSizes, int(sampleSize))
+							sampleSizes[i] = int(sampleSize)
 						}
 					} else if sampleSize == 0 && sampleCount > 0 && sampleCount < 1000000 && len(stszPayload) >= 12+int(sampleCount)*4 {
+						sampleSizes = make([]int, sampleCount)
 						for i := uint32(0); i < sampleCount; i++ {
 							sz := binary.BigEndian.Uint32(stszPayload[12+i*4 : 12+(i+1)*4])
-							sampleSizes = append(sampleSizes, int(sz))
+							sampleSizes[i] = int(sz)
 						}
 					}
 				}
@@ -1153,22 +1155,8 @@ func DecodeMP4AAC(data []byte) ([]int16, *AudioTelemetry, error) {
 	}
 
 	if len(mdatPayload) > 0 {
-		if len(sampleSizes) > 0 {
-			pOff := 0
-			for _, sz := range sampleSizes {
-				if pOff >= len(mdatPayload) {
-					break
-				}
-				fEnd := pOff + sz
-				if fEnd > len(mdatPayload) {
-					fEnd = len(mdatPayload)
-				}
-				fData := mdatPayload[pOff:fEnd]
-				amp, _ := ExtractAACFrameEnergy(fData, channels)
-				syntheticPCM = appendSyntheticPCM(syntheticPCM, 1024, sampleRate, amp)
-				pOff = fEnd
-			}
-		} else {
+		frameSizes := sampleSizes
+		if len(frameSizes) == 0 {
 			numFrames := 1
 			if durationMs > 0 && sampleRate > 0 {
 				numFrames = (sampleRate * durationMs) / (1024 * 1000)
@@ -1180,19 +1168,25 @@ func DecodeMP4AAC(data []byte) ([]int16, *AudioTelemetry, error) {
 			if framePayloadLen <= 0 {
 				framePayloadLen = len(mdatPayload)
 			}
-			for f := 0; f < numFrames; f++ {
-				fStart := f * framePayloadLen
-				if fStart >= len(mdatPayload) {
-					break
-				}
-				fEnd := fStart + framePayloadLen
-				if fEnd > len(mdatPayload) {
-					fEnd = len(mdatPayload)
-				}
-				fData := mdatPayload[fStart:fEnd]
-				amp, _ := ExtractAACFrameEnergy(fData, channels)
-				syntheticPCM = appendSyntheticPCM(syntheticPCM, 1024, sampleRate, amp)
+			frameSizes = make([]int, numFrames)
+			for i := range frameSizes {
+				frameSizes[i] = framePayloadLen
 			}
+		}
+
+		pOff := 0
+		for _, sz := range frameSizes {
+			if pOff >= len(mdatPayload) {
+				break
+			}
+			fEnd := pOff + sz
+			if fEnd > len(mdatPayload) {
+				fEnd = len(mdatPayload)
+			}
+			fData := mdatPayload[pOff:fEnd]
+			amp, _ := ExtractAACFrameEnergy(fData, channels)
+			syntheticPCM = appendSyntheticPCM(syntheticPCM, 1024, sampleRate, amp)
+			pOff = fEnd
 		}
 	}
 
