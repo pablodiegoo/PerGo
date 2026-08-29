@@ -405,7 +405,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 				if media.IsAudio(ev.Media.MediaType, ev.Media.Filename) {
 					telemetry, err := p.mediaEngine.ExtractAudioTelemetry(ev.Media.Bytes, ev.Media.MediaType)
 					if err != nil {
-						slog.Warn("inbound processor: failed to extract audio telemetry", "error", err)
+						slog.Warn("inbound processor: failed to extract audio telemetry", "error", err, "trace_id", traceID)
 					} else if telemetry != nil {
 						payload.Media.DurationMS = telemetry.DurationMS
 						payload.Media.RMSEnergy = &telemetry.RMSEnergy

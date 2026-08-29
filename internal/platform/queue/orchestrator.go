@@ -229,7 +229,7 @@ func (o *DispatchOrchestrator) Process(
 			}
 			if o.recipientSessionRepo != nil && workspaceID != (uuid.UUID{}) {
 				if errRec := o.recipientSessionRepo.RecordOutbound(ctx, workspaceID, resolvedTo, channelName, qMsg.SenderIdentity, time.Now().UTC()); errRec != nil {
-					slog.Error("orchestrator: failed to record recipient session outbound timestamp", "error", errRec, "recipient", resolvedTo, "channel", channelName)
+					slog.Error("orchestrator: failed to record recipient session outbound timestamp", "error", errRec, "recipient", resolvedTo, "channel", channelName, "trace_id", traceID)
 				}
 			}
 			if o.dispatchRepo != nil && dispatch != nil {

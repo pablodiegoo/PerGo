@@ -32,17 +32,6 @@ func IsAudio(mediaType, filename string) bool {
 	return false
 }
 
-func averageByteEnergy(data []byte) float64 {
-	if len(data) == 0 {
-		return 0.0
-	}
-	var sum float64
-	for _, b := range data {
-		sum += float64(b)
-	}
-	return sum / float64(len(data))
-}
-
 // AudioTelemetry captures acoustic metrics extracted directly from audio payloads.
 type AudioTelemetry struct {
 	DurationMS       int     `json:"duration_ms"`
@@ -198,88 +187,8 @@ func ExtractAudioTelemetryAndWaveform(data []byte, contentType string, numBars i
 
 // ExtractAudioTelemetry detects the audio format and extracts acoustic telemetry.
 func ExtractAudioTelemetry(data []byte, contentType string) (*AudioTelemetry, error) {
-	if len(data) == 0 {
-		return nil, errors.New("empty audio data")
-	}
-
-	ct := strings.ToLower(strings.TrimSpace(contentType))
-
-	// 1. Check RIFF / WAV
-	if len(data) >= 12 && string(data[0:4]) == "RIFF" && string(data[8:12]) == "WAVE" {
-		_, tel, err := DecodeWAV(data)
-		return tel, err
-	}
-
-	// 2. Check OGG
-	if len(data) >= 4 && string(data[0:4]) == "OggS" {
-		_, tel, err := DecodeOGGOpus(data)
-		return tel, err
-	}
-
-	// 3. Check MP4 / M4A / ISO BMFF
-	if len(data) >= 8 && (string(data[4:8]) == "ftyp" || string(data[4:8]) == "moov") {
-		_, tel, err := DecodeMP4AAC(data)
-		return tel, err
-	}
-
-	// 4. Check ID3 or MPEG Sync
-	if len(data) >= 3 && string(data[0:3]) == "ID3" {
-		_, tel, err := DecodeMP3(data)
-		return tel, err
-	}
-	if len(data) >= 2 && data[0] == 0xFF && (data[1]&0xE0) == 0xE0 {
-		// Could be MP3 or ADTS AAC
-		if (data[1] & 0x06) == 0x02 { // Layer III -> MP3
-			_, tel, err := DecodeMP3(data)
-			if err == nil {
-				return tel, nil
-			}
-		}
-		// Try ADTS AAC
-		_, tel, err := DecodeMP4AAC(data)
-		if err == nil {
-			return tel, nil
-		}
-		// Fallback to MP3
-		_, tel, err = DecodeMP3(data)
-		return tel, err
-	}
-
-	// Format matching by content-type
-	if strings.Contains(ct, "ogg") || strings.Contains(ct, "opus") {
-		_, tel, err := DecodeOGGOpus(data)
-		return tel, err
-	}
-	if strings.Contains(ct, "mp3") || strings.Contains(ct, "mpeg") {
-		_, tel, err := DecodeMP3(data)
-		return tel, err
-	}
-	if strings.Contains(ct, "mp4") || strings.Contains(ct, "m4a") || strings.Contains(ct, "aac") {
-		_, tel, err := DecodeMP4AAC(data)
-		return tel, err
-	}
-	if strings.Contains(ct, "wav") || strings.Contains(ct, "wave") {
-		_, tel, err := DecodeWAV(data)
-		return tel, err
-	}
-
-	if ct == "audio" || ct == "voice" || strings.HasPrefix(ct, "audio/") {
-		// Try each decoder in sequence
-		if _, tel, err := DecodeOGGOpus(data); err == nil {
-			return tel, nil
-		}
-		if _, tel, err := DecodeMP3(data); err == nil {
-			return tel, nil
-		}
-		if _, tel, err := DecodeMP4AAC(data); err == nil {
-			return tel, nil
-		}
-		if _, tel, err := DecodeWAV(data); err == nil {
-			return tel, nil
-		}
-	}
-
-	return nil, fmt.Errorf("%w: %s", ErrInvalidAudioFormat, contentType)
+	tel, _, err := ExtractAudioTelemetryAndWaveform(data, contentType, 0)
+	return tel, err
 }
 
 // DecodeWAV decodes RIFF WAV PCM audio bytes.
@@ -494,17 +403,19 @@ func DecodeOGGOpus(data []byte) ([]int16, *AudioTelemetry, error) {
 						}
 
 						// Estimate energy from packet payload
-						// Opus CELT / SILK frames carry signal energy in the lower bytes
+						// Opus CELT / SILK frames: frame length correlates with speech energy in VBR
 						var packetEnergy float64 = 0.0
-						if len(packet) > 1 {
-							avgByte := averageByteEnergy(packet[1:])
-							// Scale 0..255 byte power to [0.0, 1.0] amplitude
-							packetEnergy = avgByte / 255.0
+						if len(packet) > 3 {
+							// Map packet payload size to normalized amplitude [0.0, 0.85]
+							packetEnergy = math.Min(0.85, (float64(len(packet)-3)/60.0)*0.7)
 						}
 
 						frameSamples := (48000 * frameMs) / 1000
-						pcmVal := int16(packetEnergy * 32767.0)
 						for s := 0; s < frameSamples; s++ {
+							var pcmVal int16
+							if packetEnergy > 0 {
+								pcmVal = int16(packetEnergy * 32767.0 * math.Sin(2.0*math.Pi*440.0*float64(s)/48000.0))
+							}
 							syntheticPCM = append(syntheticPCM, pcmVal)
 						}
 					}
@@ -637,10 +548,13 @@ func DecodeMP3(data []byte) ([]int16, *AudioTelemetry, error) {
 			globalGain = data[sideOffset]
 		}
 
-		// Map global gain (0..255) to amplitude
+		// Map global gain (0..255) to amplitude with zero-mean waveform
 		gainNormalized := float64(globalGain) / 255.0
-		pcmVal := int16(gainNormalized * 32767.0)
 		for s := 0; s < frameSamples; s++ {
+			var pcmVal int16
+			if gainNormalized > 0 {
+				pcmVal = int16(gainNormalized * 32767.0 * math.Sin(2.0*math.Pi*440.0*float64(s)/float64(sampleRate)))
+			}
 			syntheticPCM = append(syntheticPCM, pcmVal)
 		}
 
@@ -735,17 +649,19 @@ func DecodeMP4AAC(data []byte) ([]int16, *AudioTelemetry, error) {
 		}
 
 		if boxType == "mdat" {
-			// Extract average power from mdat
+			// Extract power from mdat
 			if len(boxData) > 8 {
 				payload := boxData[8:]
-				avgByte := averageByteEnergy(payload)
-				amp := (avgByte / 255.0) * 32767.0
+				amp := math.Min(0.85, (float64(len(payload))/float64(len(boxData)))*0.7)
 				numSamples := (sampleRate * durationMs) / 1000
 				if numSamples <= 0 {
 					numSamples = len(payload)
 				}
-				pcmVal := int16(amp)
 				for i := 0; i < numSamples; i++ {
+					var pcmVal int16
+					if amp > 0 {
+						pcmVal = int16(amp * 32767.0 * math.Sin(2.0*math.Pi*440.0*float64(i)/float64(sampleRate)))
+					}
 					syntheticPCM = append(syntheticPCM, pcmVal)
 				}
 			}
@@ -812,11 +728,13 @@ func decodeADTSAAC(data []byte) ([]int16, *AudioTelemetry, error) {
 		// AAC frames are 1024 samples
 		frameSamples := 1024
 		// Extract amplitude from frame payload
-		frameData := data[offset+7 : offset+frameLen]
-		avgByte := averageByteEnergy(frameData)
-		amp := (avgByte / 255.0) * 32767.0
-		pcmVal := int16(amp)
+		framePayloadSize := frameLen - 7
+		amp := math.Min(0.85, (float64(framePayloadSize)/200.0)*0.6)
 		for s := 0; s < frameSamples; s++ {
+			var pcmVal int16
+			if amp > 0 {
+				pcmVal = int16(amp * 32767.0 * math.Sin(2.0*math.Pi*440.0*float64(s)/float64(sampleRate)))
+			}
 			syntheticPCM = append(syntheticPCM, pcmVal)
 		}
 

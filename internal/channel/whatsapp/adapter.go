@@ -188,7 +188,7 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 				Caption:       caption,
 			}
 		case "audio", "voice":
-			isPTT := m.Media.PTT || m.Media.MediaType == "voice" || strings.Contains(strings.ToLower(contentType), "opus") || strings.Contains(strings.ToLower(contentType), "ogg")
+			isPTT := m.Media.PTT || m.Media.MediaType == "voice"
 			msg.AudioMessage = buildAudioMessage(resp, dataBytes, contentType, isPTT)
 		case "video":
 			msg.VideoMessage = &waE2E.VideoMessage{
