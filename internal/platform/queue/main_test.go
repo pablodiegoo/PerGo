@@ -32,6 +32,10 @@ func getTestPool(t *testing.T) *pgxpool.Pool {
 }
 
 func TestMain(m *testing.M) {
+	os.Exit(run(m))
+}
+
+func run(m *testing.M) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
@@ -54,7 +58,7 @@ func TestMain(m *testing.M) {
 
 	if err != nil || pgContainer == nil {
 		log.Printf("postgres testcontainer unavailable: %v; running tests without docker container", err)
-		os.Exit(m.Run())
+		return m.Run()
 	}
 	defer func() {
 		if err := pgContainer.Terminate(context.Background()); err != nil {
@@ -99,5 +103,5 @@ func TestMain(m *testing.M) {
 	db.Close()
 	pool.Close()
 
-	os.Exit(m.Run())
+	return m.Run()
 }

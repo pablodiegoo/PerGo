@@ -33,6 +33,10 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	os.Exit(run(m))
+}
+
+func run(m *testing.M) int {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
@@ -55,7 +59,7 @@ func TestMain(m *testing.M) {
 
 	if err != nil || pgContainer == nil {
 		log.Printf("postgres testcontainer unavailable: %v; running tests without docker container", err)
-		os.Exit(m.Run())
+		return m.Run()
 	}
 	defer func() {
 		if err := pgContainer.Terminate(context.Background()); err != nil {
@@ -104,37 +108,39 @@ func TestMain(m *testing.M) {
 	pool.Close()
 
 	// 2. Start NATS Container with JetStream enabled
-	natsContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "nats:2.10-alpine",
-			ExposedPorts: []string{"4222/tcp"},
-			Cmd:          []string{"-js"},
-			WaitingFor:   wait.ForListeningPort("4222/tcp"),
-		},
-		Started: true,
-	})
-	if err != nil {
-		log.Fatalf("failed to start nats container: %v", err)
-	}
-	defer func() {
-		if err := natsContainer.Terminate(context.Background()); err != nil {
-			log.Printf("failed to terminate nats container: %v", err)
+	{
+		natsContainer, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+			ContainerRequest: testcontainers.ContainerRequest{
+				Image:        "nats:2.10-alpine",
+				ExposedPorts: []string{"4222/tcp"},
+				Cmd:          []string{"-js"},
+				WaitingFor:   wait.ForListeningPort("4222/tcp"),
+			},
+			Started: true,
+		})
+		if err != nil {
+			log.Fatalf("failed to start nats container: %v", err)
 		}
-	}()
+		defer func() {
+			if err := natsContainer.Terminate(context.Background()); err != nil {
+				log.Printf("failed to terminate nats container: %v", err)
+			}
+		}()
 
-	natsHost, err := natsContainer.Host(ctx)
-	if err != nil {
-		log.Fatalf("failed to get nats host: %v", err)
+		natsHost, err := natsContainer.Host(ctx)
+		if err != nil {
+			log.Fatalf("failed to get nats host: %v", err)
+		}
+		natsPort, err := natsContainer.MappedPort(ctx, "4222/tcp")
+		if err != nil {
+			log.Fatalf("failed to get nats port: %v", err)
+		}
+		natsURL := fmt.Sprintf("nats://%s:%s", natsHost, natsPort.Port())
+		integrationNATSURL = natsURL
+		os.Setenv("PERGO_NATS_URL", natsURL)
 	}
-	natsPort, err := natsContainer.MappedPort(ctx, "4222/tcp")
-	if err != nil {
-		log.Fatalf("failed to get nats port: %v", err)
-	}
-	natsURL := fmt.Sprintf("nats://%s:%s", natsHost, natsPort.Port())
-	integrationNATSURL = natsURL
-	os.Setenv("PERGO_NATS_URL", natsURL)
 
-	os.Exit(m.Run())
+	return m.Run()
 }
 
 func TestAdminContactMerge(t *testing.T) {
