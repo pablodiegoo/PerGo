@@ -8,6 +8,7 @@
 # Compiled binaries
 /pergo
 pergo.test
+bin/
 
 # Test binary, built with `go test -c`
 *.test
@@ -36,6 +37,3 @@ tmp/
 /graphify-out/
 /skills-lock.json
 /.gemini/
-
-# CPaaS References
-docs/context/inspiration/
