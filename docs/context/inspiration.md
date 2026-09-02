@@ -1,8 +1,8 @@
 # Referências CPaaS / API de WhatsApp
 
-Este documento lista repositórios de projetos de código aberto relevantes para o desenvolvimento do **PerGo**. Estes projetos atuam como plataformas CPaaS (Communications Platform as a Service) ou Gateways de API para o WhatsApp, fornecendo inspirações valiosas sobre arquitetura, boas práticas e modelos de integração (multidispositivo, mensageria e webhooks).
-
-Todos os repositórios listados aqui foram clonados para o diretório `context/inspiration/` para fácil consulta local, sem afetar o projeto principal, já que estão no `.gitignore`.
+> [!NOTE]
+> As referências e repositórios de inspiração foram centralizados no monorepo raiz em [`inspiration/README.md`](../../inspiration/README.md).
+> As análises de engenharia reversa para CPaaS Gateways residem em [`inspiration/cpaas-gateways/PATTERNS.md`](../../inspiration/cpaas-gateways/PATTERNS.md).
 
 ## Repositórios Clonados
 
