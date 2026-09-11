@@ -99,3 +99,16 @@ _Avoid_: Rich message, button template, action payload
 **Interactive Reply**:
 An inbound event triggered by a contact's interaction with an Interactive Message (e.g. button click, list selection, flow submission `nfm_reply`, or catalog order).
 _Avoid_: Button response, form reply, action callback
+
+**Safe Webhook Transport**:
+An HTTP client transport intercepting TCP socket dials to reject private IP ranges (RFC 1918), loopback, and cloud provider link-local metadata endpoints (`169.254.169.254`) to prevent Server-Side Request Forgery (SSRF) and DNS rebinding attacks.
+_Avoid_: Custom HTTP client, secure transport, URL filter
+
+**Connection Proxy**:
+An egress SOCKS5 network configuration applied to a WhatsApp Web connection routing WebSocket traffic through dedicated residential or mobile IPs to protect number reputation.
+_Avoid_: Proxy tunnel, device VPN, connection IP
+
+**Data Retention Daemon**:
+A scheduled background worker that purges expired media blobs from MinIO/S3 and irreversibly scrubs or anonymizes message records exceeding a workspace's compliance retention policy.
+_Avoid_: Cleaner script, purge cron, retention job
+
