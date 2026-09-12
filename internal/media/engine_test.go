@@ -266,4 +266,42 @@ func TestDefaultEngine_Process(t *testing.T) {
 			t.Errorf("expected valid WAV from engine.Transcode")
 		}
 	})
+
+	t.Run("Delete and DeleteMedia success", func(t *testing.T) {
+		data := []byte("sample-media-data")
+		url, err := engine.ProcessInbound(ctx, wsID, "image", data)
+		if err != nil {
+			t.Fatalf("ProcessInbound failed: %v", err)
+		}
+
+		// DeleteMedia using proxy URL
+		if err := engine.DeleteMedia(ctx, url); err != nil {
+			t.Fatalf("DeleteMedia failed: %v", err)
+		}
+
+		// Delete with empty URL returns error
+		if err := engine.DeleteMedia(ctx, ""); err == nil {
+			t.Error("expected error for empty media url, got nil")
+		}
+	})
+
+	t.Run("ExtractS3KeyFromURL", func(t *testing.T) {
+		cases := []struct {
+			input    string
+			expected string
+		}{
+			{"/media/123e4567-e89b-12d3-a456-426614174000/hash.png", "123e4567-e89b-12d3-a456-426614174000/hash.png"},
+			{"https://pergo.domain/media/123e4567-e89b-12d3-a456-426614174000/hash.png", "123e4567-e89b-12d3-a456-426614174000/hash.png"},
+			{"https://pergo.domain/media/123e4567-e89b-12d3-a456-426614174000/hash.png?v=1", "123e4567-e89b-12d3-a456-426614174000/hash.png"},
+			{"123e4567-e89b-12d3-a456-426614174000/hash.png", "123e4567-e89b-12d3-a456-426614174000/hash.png"},
+			{"", ""},
+		}
+
+		for _, tc := range cases {
+			actual := media.ExtractS3KeyFromURL(tc.input)
+			if actual != tc.expected {
+				t.Errorf("ExtractS3KeyFromURL(%q) = %q, expected %q", tc.input, actual, tc.expected)
+			}
+		}
+	})
 }

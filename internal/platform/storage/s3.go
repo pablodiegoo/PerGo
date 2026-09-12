@@ -12,9 +12,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-// MediaStorage defines the interface for object storage download operations.
+// MediaStorage defines the interface for object storage operations.
 type MediaStorage interface {
 	Download(ctx context.Context, key string) (io.ReadCloser, string, error)
+	Delete(ctx context.Context, key string) error
 }
 
 // S3Client wraps the AWS SDK v2 S3 client.
@@ -80,4 +81,16 @@ func (s *S3Client) Download(ctx context.Context, key string) (io.ReadCloser, str
 		contentType = *out.ContentType
 	}
 	return out.Body, contentType, nil
+}
+
+// Delete removes an object from S3.
+func (s *S3Client) Delete(ctx context.Context, key string) error {
+	_, err := s.Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(s.Bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return fmt.Errorf("s3 delete object: %w", err)
+	}
+	return nil
 }

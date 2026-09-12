@@ -18,10 +18,18 @@ import (
 )
 
 type mockWorkspaceRepo struct {
-	createFunc         func(ctx context.Context, name string) (*repository.Workspace, error)
-	generateSecretFunc func(ctx context.Context, id uuid.UUID) (string, error)
-	setFlowURLFunc     func(ctx context.Context, id uuid.UUID, flowWebhookURL *string) error
-	listFunc           func(ctx context.Context, limit int) ([]repository.Workspace, error)
+	createFunc                func(ctx context.Context, name string) (*repository.Workspace, error)
+	generateSecretFunc        func(ctx context.Context, id uuid.UUID) (string, error)
+	setFlowURLFunc            func(ctx context.Context, id uuid.UUID, flowWebhookURL *string) error
+	setMediaRetentionDaysFunc func(ctx context.Context, id uuid.UUID, days int) error
+	listFunc                  func(ctx context.Context, limit int) ([]repository.Workspace, error)
+}
+
+func (m *mockWorkspaceRepo) SetMediaRetentionDays(ctx context.Context, id uuid.UUID, days int) error {
+	if m.setMediaRetentionDaysFunc != nil {
+		return m.setMediaRetentionDaysFunc(ctx, id, days)
+	}
+	return nil
 }
 
 func (m *mockWorkspaceRepo) Create(ctx context.Context, name string) (*repository.Workspace, error) {
@@ -564,4 +572,76 @@ func TestWorkspaceAPIHandler_List_Error(t *testing.T) {
 	if errRes["code"] != "internal_error" {
 		t.Errorf("expected code 'internal_error', got %q", errRes["code"])
 	}
+}
+
+func TestWorkspaceAPIHandler_UpdateRetention(t *testing.T) {
+	e := echo.New()
+	targetID := uuid.New()
+	var capturedDays int
+
+	wsRepo := &mockWorkspaceRepo{
+		setMediaRetentionDaysFunc: func(ctx context.Context, id uuid.UUID, days int) error {
+			if id != targetID {
+				return errors.New("unexpected id")
+			}
+			capturedDays = days
+			return nil
+		},
+	}
+	apiKeyRepo := &mockAPIKeyRepo{}
+	h := apipkg.NewWorkspaceAPIHandler(wsRepo, apiKeyRepo)
+
+	t.Run("successful update", func(t *testing.T) {
+		body := `{"media_retention_days": 60}`
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/workspaces/"+targetID.String()+"/retention", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:id/retention")
+		c.SetPathValues(echo.PathValues{{Name: "id", Value: targetID.String()}})
+
+		if err := h.UpdateRetention(c); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d", rec.Code)
+		}
+		if capturedDays != 60 {
+			t.Errorf("expected capturedDays 60, got %d", capturedDays)
+		}
+	})
+
+	t.Run("negative days returns bad request", func(t *testing.T) {
+		body := `{"media_retention_days": -5}`
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/workspaces/"+targetID.String()+"/retention", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:id/retention")
+		c.SetPathValues(echo.PathValues{{Name: "id", Value: targetID.String()}})
+
+		if err := h.UpdateRetention(c); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 Bad Request, got %d", rec.Code)
+		}
+	})
+
+	t.Run("invalid uuid returns bad request", func(t *testing.T) {
+		body := `{"media_retention_days": 30}`
+		req := httptest.NewRequest(http.MethodPatch, "/api/v1/workspaces/invalid-uuid/retention", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:id/retention")
+		c.SetPathValues(echo.PathValues{{Name: "id", Value: "invalid-uuid"}})
+
+		if err := h.UpdateRetention(c); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 Bad Request, got %d", rec.Code)
+		}
+	})
 }

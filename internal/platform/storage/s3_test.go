@@ -59,4 +59,28 @@ func TestS3ClientUploadAndDownload(t *testing.T) {
 			t.Errorf("expected NoSuchKey error, got %v", err)
 		}
 	})
+
+	t.Run("upload, delete, then download returns NoSuchKey", func(t *testing.T) {
+		ctx := context.Background()
+		key := "workspace1/to-delete.png"
+		data := []byte("delete-me")
+		contentType := "image/png"
+
+		if err := client.Upload(ctx, key, data, contentType); err != nil {
+			t.Fatalf("failed to upload: %v", err)
+		}
+
+		if err := client.Delete(ctx, key); err != nil {
+			t.Fatalf("failed to delete: %v", err)
+		}
+
+		_, _, err := client.Download(ctx, key)
+		if err == nil {
+			t.Fatal("expected error downloading deleted key, got nil")
+		}
+		var noSuchKey *types.NoSuchKey
+		if !errors.As(err, &noSuchKey) {
+			t.Errorf("expected NoSuchKey error, got %v", err)
+		}
+	})
 }

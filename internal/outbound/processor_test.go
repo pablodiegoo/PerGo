@@ -77,6 +77,14 @@ func (f *fakeMediaEngine) Transcode(ctx context.Context, data []byte, targetMime
 	return media.TranscodeAudio(data, targetMime)
 }
 
+func (f *fakeMediaEngine) Delete(ctx context.Context, key string) error {
+	return nil
+}
+
+func (f *fakeMediaEngine) DeleteMedia(ctx context.Context, mediaURL string) error {
+	return nil
+}
+
 // fakeQueueDepthTracker tracks depths in memory.
 type fakeQueueDepthTracker struct {
 	exceeds   bool

@@ -357,3 +357,55 @@ func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID u
 
 	return messages, nil
 }
+
+// GetExpiredMessages finds unpurged inbound and outbound message audit entries older than cutoff.
+func (r *AuditRepository) GetExpiredMessages(ctx context.Context, workspaceID uuid.UUID, cutoff time.Time, limit int) ([]AuditEntry, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+
+	query := `
+		SELECT id, workspace_id, trace_id, event_type, payload, created_at
+		FROM audit_logs
+		WHERE workspace_id = $1
+		  AND created_at < $2
+		  AND event_type IN ('inbound_message', 'outbound_message')
+		  AND COALESCE(payload->>'purged', 'false') != 'true'
+		ORDER BY created_at ASC
+		LIMIT $3`
+
+	rows, err := r.pool.Query(ctx, query, workspaceID, cutoff, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query expired messages: %w", err)
+	}
+	defer rows.Close()
+
+	var entries []AuditEntry
+	for rows.Next() {
+		var e AuditEntry
+		if err := rows.Scan(&e.ID, &e.WorkspaceID, &e.TraceID, &e.EventType, &e.Payload, &e.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan expired message: %w", err)
+		}
+		entries = append(entries, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate expired messages: %w", err)
+	}
+	return entries, nil
+}
+
+// AnonymizeAuditLog updates an audit log entry's payload in place, targeted by primary key (id, created_at).
+func (r *AuditRepository) AnonymizeAuditLog(ctx context.Context, id uuid.UUID, createdAt time.Time, sanitizedPayload []byte) error {
+	query := `UPDATE audit_logs SET payload = $3 WHERE id = $1 AND created_at = $2`
+	tag, err := r.pool.Exec(ctx, query, id, createdAt, sanitizedPayload)
+	if err != nil {
+		return fmt.Errorf("anonymize audit log: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("audit log not found for update: id=%s, created_at=%s", id, createdAt)
+	}
+	return nil
+}

@@ -106,3 +106,25 @@ func (c *Client) GetObject(ctx context.Context, params *GetObjectInput, optFns .
 		ContentType: &contentType,
 	}, nil
 }
+
+type DeleteObjectInput struct {
+	Bucket *string
+	Key    *string
+}
+
+type DeleteObjectOutput struct{}
+
+func (c *Client) DeleteObject(ctx context.Context, params *DeleteObjectInput, optFns ...func(*Options)) (*DeleteObjectOutput, error) {
+	if params.Bucket == nil || params.Key == nil {
+		return nil, fmt.Errorf("invalid params")
+	}
+
+	storageMu.Lock()
+	defer storageMu.Unlock()
+
+	storageKey := *params.Bucket + "/" + *params.Key
+	delete(mockStorage, storageKey)
+	delete(mockContentTypes, storageKey)
+
+	return &DeleteObjectOutput{}, nil
+}

@@ -166,4 +166,57 @@ func TestWorkspaceRepository_CreateWithID_And_GetByName(t *testing.T) {
 			t.Errorf("expected FlowWebhookURL to be nil after clearing, got %v", cleared.FlowWebhookURL)
 		}
 	})
+
+	t.Run("SetMediaRetentionDays and ListActiveRetentionPolicies", func(t *testing.T) {
+		ws, err := repo.Create(ctx, "Retention WS "+uuid.New().String())
+		if err != nil {
+			t.Fatalf("failed to create workspace: %v", err)
+		}
+		if ws.MediaRetentionDays != 30 {
+			t.Errorf("expected default media_retention_days 30, got %d", ws.MediaRetentionDays)
+		}
+
+		// Update retention days to 15
+		if err := repo.SetMediaRetentionDays(ctx, ws.ID, 15); err != nil {
+			t.Fatalf("failed to set media retention days: %v", err)
+		}
+
+		fetched, err := repo.GetByID(ctx, ws.ID)
+		if err != nil {
+			t.Fatalf("GetByID failed: %v", err)
+		}
+		if fetched.MediaRetentionDays != 15 {
+			t.Errorf("expected media_retention_days 15, got %d", fetched.MediaRetentionDays)
+		}
+
+		// List active retention policies
+		policies, err := repo.ListActiveRetentionPolicies(ctx)
+		if err != nil {
+			t.Fatalf("ListActiveRetentionPolicies failed: %v", err)
+		}
+		var found bool
+		for _, p := range policies {
+			if p.ID == ws.ID && p.MediaRetentionDays == 15 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected workspace %s to be present in active retention policies", ws.ID)
+		}
+
+		// Set to 0 (disabled)
+		if err := repo.SetMediaRetentionDays(ctx, ws.ID, 0); err != nil {
+			t.Fatalf("failed to set media retention days to 0: %v", err)
+		}
+		policiesAfter, err := repo.ListActiveRetentionPolicies(ctx)
+		if err != nil {
+			t.Fatalf("ListActiveRetentionPolicies failed: %v", err)
+		}
+		for _, p := range policiesAfter {
+			if p.ID == ws.ID {
+				t.Errorf("workspace %s with 0 days should not be in active retention policies", ws.ID)
+			}
+		}
+	})
 }

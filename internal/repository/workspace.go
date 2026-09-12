@@ -16,13 +16,14 @@ import (
 
 // Workspace represents a workspace entity.
 type Workspace struct {
-	ID             uuid.UUID `json:"id"`
-	Name           string    `json:"name"`
-	PIIOptIn       bool      `json:"pii_opt_in"`
-	WebhookSecret  *string   `json:"webhook_secret,omitempty"`
-	FlowWebhookURL *string   `json:"flow_webhook_url,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID                 uuid.UUID `json:"id"`
+	Name               string    `json:"name"`
+	PIIOptIn           bool      `json:"pii_opt_in"`
+	WebhookSecret      *string   `json:"webhook_secret,omitempty"`
+	FlowWebhookURL     *string   `json:"flow_webhook_url,omitempty"`
+	MediaRetentionDays int       `json:"media_retention_days"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // WorkspaceRepository provides CRUD operations for workspaces.
@@ -39,9 +40,9 @@ func NewWorkspaceRepository(pool *pgxpool.Pool) *WorkspaceRepository {
 func (r *WorkspaceRepository) Create(ctx context.Context, name string) (*Workspace, error) {
 	var ws Workspace
 	err := r.pool.QueryRow(ctx,
-		`INSERT INTO workspaces (name) VALUES ($1) RETURNING id, name, pii_opt_in, webhook_secret, flow_webhook_url, created_at, updated_at`,
+		`INSERT INTO workspaces (name) VALUES ($1) RETURNING id, name, pii_opt_in, webhook_secret, flow_webhook_url, media_retention_days, created_at, updated_at`,
 		name,
-	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.FlowWebhookURL, &ws.CreatedAt, &ws.UpdatedAt)
+	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.FlowWebhookURL, &ws.MediaRetentionDays, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -57,9 +58,9 @@ func (r *WorkspaceRepository) CreateWithID(ctx context.Context, id uuid.UUID, na
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO workspaces (id, name) VALUES ($1, $2)
 		 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, updated_at = now()
-		 RETURNING id, name, pii_opt_in, webhook_secret, flow_webhook_url, created_at, updated_at`,
+		 RETURNING id, name, pii_opt_in, webhook_secret, flow_webhook_url, media_retention_days, created_at, updated_at`,
 		id, name,
-	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.FlowWebhookURL, &ws.CreatedAt, &ws.UpdatedAt)
+	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.FlowWebhookURL, &ws.MediaRetentionDays, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -83,8 +84,8 @@ func (r *WorkspaceRepository) EnsureWorkspace(ctx context.Context, defaultName s
 func (r *WorkspaceRepository) GetEarliest(ctx context.Context) (*Workspace, error) {
 	var ws Workspace
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, name, pii_opt_in, webhook_secret, flow_webhook_url, created_at, updated_at FROM workspaces ORDER BY created_at ASC LIMIT 1`,
-	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.FlowWebhookURL, &ws.CreatedAt, &ws.UpdatedAt)
+		`SELECT id, name, pii_opt_in, webhook_secret, flow_webhook_url, media_retention_days, created_at, updated_at FROM workspaces ORDER BY created_at ASC LIMIT 1`,
+	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.FlowWebhookURL, &ws.MediaRetentionDays, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrWorkspaceNotFound
@@ -101,9 +102,9 @@ func (r *WorkspaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*Works
 	}
 	var ws Workspace
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, name, pii_opt_in, webhook_secret, flow_webhook_url, created_at, updated_at FROM workspaces WHERE id = $1`,
+		`SELECT id, name, pii_opt_in, webhook_secret, flow_webhook_url, media_retention_days, created_at, updated_at FROM workspaces WHERE id = $1`,
 		id,
-	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.FlowWebhookURL, &ws.CreatedAt, &ws.UpdatedAt)
+	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.FlowWebhookURL, &ws.MediaRetentionDays, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrWorkspaceNotFound
@@ -117,9 +118,9 @@ func (r *WorkspaceRepository) GetByID(ctx context.Context, id uuid.UUID) (*Works
 func (r *WorkspaceRepository) GetByName(ctx context.Context, name string) (*Workspace, error) {
 	var ws Workspace
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, name, pii_opt_in, webhook_secret, flow_webhook_url, created_at, updated_at FROM workspaces WHERE name = $1`,
+		`SELECT id, name, pii_opt_in, webhook_secret, flow_webhook_url, media_retention_days, created_at, updated_at FROM workspaces WHERE name = $1`,
 		name,
-	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.FlowWebhookURL, &ws.CreatedAt, &ws.UpdatedAt)
+	).Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.FlowWebhookURL, &ws.MediaRetentionDays, &ws.CreatedAt, &ws.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrWorkspaceNotFound
@@ -201,7 +202,7 @@ func (r *WorkspaceRepository) List(ctx context.Context, limit int) ([]Workspace,
 		limit = 50
 	}
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, name, pii_opt_in, webhook_secret, flow_webhook_url, created_at, updated_at FROM workspaces ORDER BY created_at DESC LIMIT $1`,
+		`SELECT id, name, pii_opt_in, webhook_secret, flow_webhook_url, media_retention_days, created_at, updated_at FROM workspaces ORDER BY created_at DESC LIMIT $1`,
 		limit,
 	)
 	if err != nil {
@@ -212,7 +213,49 @@ func (r *WorkspaceRepository) List(ctx context.Context, limit int) ([]Workspace,
 	var workspaces []Workspace
 	for rows.Next() {
 		var ws Workspace
-		if err := rows.Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.FlowWebhookURL, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
+		if err := rows.Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.FlowWebhookURL, &ws.MediaRetentionDays, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
+			return nil, err
+		}
+		workspaces = append(workspaces, ws)
+	}
+	return workspaces, rows.Err()
+}
+
+// SetMediaRetentionDays updates a workspace's data retention policy in days.
+func (r *WorkspaceRepository) SetMediaRetentionDays(ctx context.Context, id uuid.UUID, days int) error {
+	if id == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
+	tag, err := r.pool.Exec(ctx,
+		`UPDATE workspaces SET media_retention_days = $2, updated_at = NOW() WHERE id = $1`,
+		id, days,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to set media retention days: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("workspace %s: %w", id, ErrWorkspaceNotFound)
+	}
+	return nil
+}
+
+// ListActiveRetentionPolicies retrieves all workspaces with active retention policy (media_retention_days > 0).
+func (r *WorkspaceRepository) ListActiveRetentionPolicies(ctx context.Context) ([]Workspace, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, name, pii_opt_in, webhook_secret, flow_webhook_url, media_retention_days, created_at, updated_at 
+		 FROM workspaces 
+		 WHERE media_retention_days > 0 
+		 ORDER BY created_at ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var workspaces []Workspace
+	for rows.Next() {
+		var ws Workspace
+		if err := rows.Scan(&ws.ID, &ws.Name, &ws.PIIOptIn, &ws.WebhookSecret, &ws.FlowWebhookURL, &ws.MediaRetentionDays, &ws.CreatedAt, &ws.UpdatedAt); err != nil {
 			return nil, err
 		}
 		workspaces = append(workspaces, ws)

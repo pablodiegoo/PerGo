@@ -39,14 +39,21 @@ type Uploader interface {
 	Upload(ctx context.Context, key string, data []byte, contentType string) error
 }
 
-// Engine combines downloader, uploader, consolidated inbound/outbound processors, audio telemetry extractor, and in-memory transcoder.
+// Deleter defines the seam for deleting media bytes from storage.
+type Deleter interface {
+	Delete(ctx context.Context, key string) error
+}
+
+// Engine combines downloader, uploader, deleter, consolidated inbound/outbound processors, audio telemetry extractor, and in-memory transcoder.
 type Engine interface {
 	Downloader
 	Uploader
+	Deleter
 	ProcessOutbound(ctx context.Context, workspaceID uuid.UUID, mediaURL string) (string, error)
 	ProcessInbound(ctx context.Context, workspaceID uuid.UUID, mediaType string, data []byte) (string, error)
 	ExtractAudioTelemetry(data []byte, contentType string) (*AudioTelemetry, error)
 	Transcode(ctx context.Context, data []byte, targetMime string) ([]byte, *AudioTelemetry, error)
+	DeleteMedia(ctx context.Context, mediaURL string) error
 }
 
 // DefaultEngine implements the Engine interface.
@@ -151,6 +158,40 @@ func (e *DefaultEngine) Upload(ctx context.Context, key string, data []byte, con
 		return errors.New("s3 client is not configured")
 	}
 	return e.s3Client.Upload(ctx, key, data, contentType)
+}
+
+// Delete removes a media object from S3 by key.
+func (e *DefaultEngine) Delete(ctx context.Context, key string) error {
+	if e.s3Client == nil {
+		return errors.New("s3 client is not configured")
+	}
+	return e.s3Client.Delete(ctx, key)
+}
+
+// DeleteMedia deletes media given a media URL or proxy path (e.g. "/media/<workspace_id>/<file>").
+func (e *DefaultEngine) DeleteMedia(ctx context.Context, mediaURL string) error {
+	key := ExtractS3KeyFromURL(mediaURL)
+	if key == "" {
+		return errors.New("invalid or empty media url")
+	}
+	return e.Delete(ctx, key)
+}
+
+// ExtractS3KeyFromURL extracts the storage key (<workspace_id>/<filename>) from a media URL.
+func ExtractS3KeyFromURL(mediaURL string) string {
+	mediaURL = strings.TrimSpace(mediaURL)
+	if mediaURL == "" {
+		return ""
+	}
+	const mediaPrefix = "/media/"
+	if idx := strings.Index(mediaURL, mediaPrefix); idx != -1 {
+		clean := mediaURL[idx+len(mediaPrefix):]
+		if qIdx := strings.Index(clean, "?"); qIdx != -1 {
+			clean = clean[:qIdx]
+		}
+		return strings.Trim(clean, "/")
+	}
+	return strings.TrimPrefix(mediaURL, "/")
 }
 
 // ProcessOutbound downloads remote media, uploads it to S3, and returns a local proxy URL.

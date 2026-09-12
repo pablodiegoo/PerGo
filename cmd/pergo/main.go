@@ -47,6 +47,7 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/shutdown"
 	"github.com/pablojhp.pergo/internal/platform/storage"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/retention"
 	"github.com/pablojhp.pergo/internal/security"
 	"github.com/pablojhp.pergo/internal/session"
 	"github.com/pablojhp.pergo/internal/webhook"
@@ -345,6 +346,12 @@ func main() {
 	go sessionTicker.Run(ctx)
 	slog.Info("session expiration ticker started", "interval", "5m")
 
+	// --- LGPD Data Retention & Media Purge Daemon ---
+	retentionPurger := retention.NewPurger(wsRepo, auditRepo, mediaEngine)
+	retentionDaemon := retention.NewDaemon(retentionPurger, 1*time.Hour)
+	go retentionDaemon.Run(ctx)
+	slog.Info("data retention daemon started", "interval", "1h")
+
 	slog.Info("rate limiter configured", "rps", 10, "burst", 10)
 	slog.Info("queue depth limit", "max", 1000)
 	if cfg.AdminPassword == "pergo-dev-2026" {
@@ -396,6 +403,11 @@ func main() {
 	orch.Register(func() error {
 		slog.Info("stopping message worker")
 		worker.Stop()
+		return nil
+	})
+	orch.Register(func() error {
+		slog.Info("stopping data retention daemon")
+		retentionDaemon.Stop()
 		return nil
 	})
 	// Session manager stops all device sessions before worker drains
