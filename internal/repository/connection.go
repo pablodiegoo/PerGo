@@ -269,6 +269,9 @@ func (r *ConnectionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, s
 	r.mu.Lock()
 	for _, conn := range r.slugCache {
 		if conn.ID == id {
+			if status == "disconnected" && (conn.Status == "terminal" || conn.Status == "disconnected_banned") {
+				continue
+			}
 			conn.Status = status
 			if status == "connected" || status == "active" {
 				now := time.Now().UTC()
@@ -278,15 +281,15 @@ func (r *ConnectionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, s
 	}
 	r.mu.Unlock()
 
-	// Update status. If WhatsApp Web (whatsmeow), handle 'terminal' status locks.
-	// (Note: device.go had logic preventing disconnect from overwriting terminal, let's keep that structure)
+	// Update status. If WhatsApp Web (whatsmeow), handle 'terminal' and 'disconnected_banned' status locks.
+	// (Prevents transient disconnection from overwriting permanent suspension or ban states)
 	if status == "disconnected" {
 		_, err := r.pool.Exec(ctx, `
 			UPDATE connections 
 			SET status = $2, 
 			    connected_since = COALESCE($3, connected_since), 
 			    updated_at = NOW()
-			WHERE id = $1 AND status != 'terminal'
+			WHERE id = $1 AND status NOT IN ('terminal', 'disconnected_banned')
 		`, id, status, connectedSince)
 		return err
 	}
@@ -295,9 +298,27 @@ func (r *ConnectionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, s
 		UPDATE connections 
 		SET status = $2, 
 		    connected_since = COALESCE($3, connected_since), 
-		    updated_at = NOW()
+			updated_at = NOW()
 		WHERE id = $1
 	`, id, status, connectedSince)
+	return err
+}
+
+// UpdateProxyURL updates the proxy URL for a connection.
+func (r *ConnectionRepository) UpdateProxyURL(ctx context.Context, id uuid.UUID, proxyURL *string) error {
+	r.mu.Lock()
+	for _, conn := range r.slugCache {
+		if conn.ID == id {
+			conn.ProxyURL = proxyURL
+		}
+	}
+	r.mu.Unlock()
+
+	_, err := r.pool.Exec(ctx, `
+		UPDATE connections 
+		SET proxy_url = $2, updated_at = NOW()
+		WHERE id = $1
+	`, id, proxyURL)
 	return err
 }
 

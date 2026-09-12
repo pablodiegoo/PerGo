@@ -9,6 +9,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/domain"
+	"go.mau.fi/whatsmeow"
 )
 
 func TestPhoneToJID(t *testing.T) {
@@ -39,19 +40,29 @@ func TestPhoneToJID(t *testing.T) {
 
 func TestIsTerminalWhatsAppError(t *testing.T) {
 	tests := []struct {
-		err      string
+		err      error
 		terminal bool
 	}{
-		{"connection failed: 403 forbidden", true},
-		{"logged out from another device", true},
-		{"device unpaired", true},
-		{"connection timeout", false},
-		{"temporary network error", false},
+		{errors.New("connection failed: 403 forbidden"), true},
+		{errors.New("connection failed: 401 unauthorized"), true},
+		{errors.New("logged out from another device"), true},
+		{errors.New("device unpaired"), true},
+		{errors.New("account banned by whatsapp"), true},
+		{&whatsmeow.IQError{Code: 401, Text: "unauthorized"}, true},
+		{&whatsmeow.IQError{Code: 403, Text: "forbidden"}, true},
+		{&whatsmeow.IQError{Code: 500, Text: "internal server error"}, false},
+		{errors.New("connection timeout"), false},
+		{errors.New("temporary network error"), false},
+		{nil, false},
 	}
 	for _, tt := range tests {
-		got := isTerminalWhatsAppError(errors.New(tt.err))
+		got := IsTerminalWhatsAppError(tt.err)
 		if got != tt.terminal {
-			t.Errorf("isTerminalWhatsAppError(%q) = %v, want %v", tt.err, got, tt.terminal)
+			t.Errorf("IsTerminalWhatsAppError(%v) = %v, want %v", tt.err, got, tt.terminal)
+		}
+		// Also test backwards compatibility alias
+		if gotAlias := isTerminalWhatsAppError(tt.err); gotAlias != tt.terminal {
+			t.Errorf("isTerminalWhatsAppError(%v) = %v, want %v", tt.err, gotAlias, tt.terminal)
 		}
 	}
 }

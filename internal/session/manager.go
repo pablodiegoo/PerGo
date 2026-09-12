@@ -38,12 +38,13 @@ type ConnectionStatusEvent struct {
 type SessionState string
 
 const (
-	StateInitializing SessionState = "initializing"
-	StateConnecting   SessionState = "connecting"
-	StateConnected    SessionState = "connected"
-	StateDisconnected SessionState = "disconnected"
-	StateReconnecting SessionState = "reconnecting"
-	StateTerminal     SessionState = "terminal"
+	StateInitializing       SessionState = "initializing"
+	StateConnecting         SessionState = "connecting"
+	StateConnected          SessionState = "connected"
+	StateDisconnected       SessionState = "disconnected"
+	StateDisconnectedBanned SessionState = "disconnected_banned"
+	StateReconnecting       SessionState = "reconnecting"
+	StateTerminal           SessionState = "terminal"
 )
 
 type SessionHealthInfo struct {
@@ -60,6 +61,7 @@ type WhatsAppClientInterface interface {
 	Connect() error
 	Disconnect()
 	GetQRChannel(ctx context.Context) (<-chan whatsmeow.QRChannelItem, error)
+	AddEventHandler(handler func(evt interface{})) uint32
 }
 
 type ClientFactory interface {
@@ -320,9 +322,10 @@ func (m *Manager) ReconnectAll(ctx context.Context) error {
 	var wg sync.WaitGroup
 
 	for _, d := range devices {
-		if d.Status == string(DeviceStatusTerminal) {
-			slog.Warn("session manager: skipping terminal device",
+		if d.Status == string(DeviceStatusTerminal) || d.Status == string(DeviceStatusDisconnectedBanned) || d.Status == "disconnected_banned" {
+			slog.Warn("session manager: skipping terminal or banned device",
 				"device_id", d.ID,
+				"status", d.Status,
 				"jid", *d.JID,
 			)
 			continue
@@ -349,8 +352,18 @@ func (m *Manager) ReconnectAll(ctx context.Context) error {
 					"device_id", d.ID,
 					"jid", *d.JID,
 				)
-				// Update status to disconnected on failure
-				_ = m.repo.UpdateStatus(ctx, d.ID, string(DeviceStatusDisconnected))
+				if whatsapp.IsTerminalWhatsAppError(err) {
+					slog.Warn("session manager: permanent auth failure/ban during reconnect, disabling auto-reconnect", "device_id", d.ID, "error", err)
+					if m.repo != nil {
+						_ = m.repo.UpdateStatus(ctx, d.ID, string(DeviceStatusDisconnectedBanned))
+					}
+					_ = m.EmitStatusEvent(ctx, d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateDisconnectedBanned))
+				} else {
+					// Update status to disconnected on transient failure
+					if m.repo != nil {
+						_ = m.repo.UpdateStatus(ctx, d.ID, string(DeviceStatusDisconnected))
+					}
+				}
 			}
 		}(d)
 	}
@@ -384,9 +397,16 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection)
 		cfg.ProxyURL = *d.ProxyURL
 	}
 
-	wc, err := whatsapp.NewWhatsAppClient(cfg)
+	wc, err := m.clientFactory.CreateClient(cfg)
 	if err != nil {
-		_ = m.EmitStatusEvent(ctx, d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateDisconnected))
+		if whatsapp.IsTerminalWhatsAppError(err) {
+			_ = m.EmitStatusEvent(ctx, d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateDisconnectedBanned))
+			if m.repo != nil {
+				_ = m.repo.UpdateStatus(ctx, d.ID, string(DeviceStatusDisconnectedBanned))
+			}
+		} else {
+			_ = m.EmitStatusEvent(ctx, d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateDisconnected))
+		}
 		return fmt.Errorf("create whatsapp client: %w", err)
 	}
 	wc.SetJID(jid)
@@ -394,10 +414,15 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection)
 	// Create session with cancelable context
 	sessionCtx, cancel := context.WithCancel(ctx)
 
+	var clientPtr *whatsapp.WhatsAppClient
+	if realWC, ok := wc.(*whatsapp.WhatsAppClient); ok {
+		clientPtr = realWC
+	}
+
 	sess := &Session{
 		DeviceID: d.ID.String(),
 		JID:      jid,
-		Client:   wc,
+		Client:   clientPtr,
 		Cancel:   cancel,
 	}
 
@@ -409,21 +434,45 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection)
 
 	// Start the client goroutine
 	go func() {
-		if err := wc.Run(sessionCtx); err != nil && sessionCtx.Err() == nil {
+		runErr := wc.Run(sessionCtx)
+		if runErr != nil && sessionCtx.Err() == nil {
 			slog.Error("session manager: device run error",
-				"error", err,
+				"error", runErr,
 				"jid", jid.String(),
 			)
 		}
-		// Update status when goroutine exits
-		_ = m.repo.UpdateStatus(context.Background(), d.ID, string(DeviceStatusDisconnected))
+
+		if runErr != nil && whatsapp.IsTerminalWhatsAppError(runErr) {
+			slog.Warn("session manager: terminal/banned error from client run, aborting reconnect", "device_id", d.ID, "error", runErr)
+			if m.repo != nil {
+				_ = m.repo.UpdateStatus(context.Background(), d.ID, string(DeviceStatusDisconnectedBanned))
+			}
+			_ = m.EmitStatusEvent(context.Background(), d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateDisconnectedBanned))
+			m.registry.Remove(jid)
+			return
+		}
+
+		m.mu.Lock()
+		health, hasHealth := m.healthMap[d.ID]
+		m.mu.Unlock()
+		if hasHealth && (health.State == StateDisconnectedBanned || health.State == StateTerminal) {
+			m.registry.Remove(jid)
+			return
+		}
+
+		// Update status when goroutine exits normally or transiently
+		if m.repo != nil {
+			_ = m.repo.UpdateStatus(context.Background(), d.ID, string(DeviceStatusDisconnected))
+		}
 		_ = m.EmitStatusEvent(context.Background(), d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateDisconnected))
 		m.registry.Remove(jid)
 	}()
 
 	// Update status to connected
-	if err := m.repo.UpdateStatus(ctx, d.ID, string(DeviceStatusConnected)); err != nil {
-		return err
+	if m.repo != nil {
+		if err := m.repo.UpdateStatus(ctx, d.ID, string(DeviceStatusConnected)); err != nil {
+			return err
+		}
 	}
 	_ = m.EmitStatusEvent(ctx, d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateConnected))
 	return nil
@@ -439,23 +488,27 @@ func parseJID(jid string) (types.JID, error) {
 }
 
 func (m *Manager) registerEventHandler(wc WhatsAppClientInterface, d *repository.Connection, cancel context.CancelFunc) {
-	if realWC, ok := wc.(*whatsapp.WhatsAppClient); ok && realWC.Client() != nil {
-		realWC.Client().AddEventHandler(func(evt interface{}) {
-			switch v := evt.(type) {
-			case *waEvents.LoggedOut:
-				slog.Warn("session manager: whatsmeow logged out event received, marking device terminal", "device_id", d.ID)
-				if m.repo != nil {
-					_ = m.repo.UpdateStatus(context.Background(), d.ID, string(DeviceStatusTerminal))
-				}
-				_ = m.EmitStatusEvent(context.Background(), d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, "degraded")
-				if cancel != nil {
-					cancel()
-				}
-			case *waEvents.Message:
+	wc.AddEventHandler(func(evt interface{}) {
+		switch v := evt.(type) {
+		case *waEvents.LoggedOut:
+			slog.Warn("session manager: whatsmeow logged out event received, marking device disconnected_banned",
+				"device_id", d.ID,
+				"on_connect", v.OnConnect,
+				"reason", v.Reason,
+			)
+			if m.repo != nil {
+				_ = m.repo.UpdateStatus(context.Background(), d.ID, string(DeviceStatusDisconnectedBanned))
+			}
+			_ = m.EmitStatusEvent(context.Background(), d.WorkspaceID, d.ID, "whatsapp", d.SenderIdentity, string(StateDisconnectedBanned))
+			if cancel != nil {
+				cancel()
+			}
+		case *waEvents.Message:
+			if realWC, ok := wc.(*whatsapp.WhatsAppClient); ok {
 				m.HandleWhatsAppMessage(context.Background(), realWC, d, v)
 			}
-		})
-	}
+		}
+	})
 }
 
 // StopAll gracefully stops all active sessions.

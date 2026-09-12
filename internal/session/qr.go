@@ -605,9 +605,29 @@ func (m *Manager) onPairingSuccess(ctx context.Context, wc WhatsAppClientInterfa
 
 		// Keep the client running in background.
 		go func() {
-			if err := wc.Run(sessionCtx); err != nil && sessionCtx.Err() == nil {
-				slog.Error("session manager: paired client run error", "error", err, "jid", jid.String())
+			runErr := wc.Run(sessionCtx)
+			if runErr != nil && sessionCtx.Err() == nil {
+				slog.Error("session manager: paired client run error", "error", runErr, "jid", jid.String())
 			}
+
+			if runErr != nil && whatsapp.IsTerminalWhatsAppError(runErr) {
+				slog.Warn("session manager: terminal/banned error from paired client run, aborting reconnect", "device_id", dID, "error", runErr)
+				if m.repo != nil {
+					_ = m.repo.UpdateStatus(context.Background(), dID, string(DeviceStatusDisconnectedBanned))
+				}
+				_ = m.EmitStatusEvent(context.Background(), workspaceID, dID, "whatsapp", actualPhone, string(StateDisconnectedBanned))
+				m.registry.Remove(jid)
+				return
+			}
+
+			m.mu.Lock()
+			health, hasHealth := m.healthMap[dID]
+			m.mu.Unlock()
+			if hasHealth && (health.State == StateDisconnectedBanned || health.State == StateTerminal) {
+				m.registry.Remove(jid)
+				return
+			}
+
 			if m.repo != nil {
 				_ = m.repo.UpdateStatus(context.Background(), dID, string(DeviceStatusDisconnected))
 			}

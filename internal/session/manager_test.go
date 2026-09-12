@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -11,24 +12,44 @@ import (
 	"github.com/google/uuid"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
+	waEvents "go.mau.fi/whatsmeow/types/events"
 
 	whatsapp "github.com/pablojhp.pergo/internal/channel/whatsapp"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // mockWhatsAppClient implements WhatsAppClientInterface for testing.
 type mockWhatsAppClient struct {
-	jid        types.JID
-	qrCh       chan whatsmeow.QRChannelItem
-	runErr     error
-	connectErr error
-	connected  bool
-	stopped    bool
-	mu         sync.Mutex
+	jid           types.JID
+	qrCh          chan whatsmeow.QRChannelItem
+	runErr        error
+	connectErr    error
+	connected     bool
+	stopped       bool
+	eventHandlers []func(evt interface{})
+	mu            sync.Mutex
 }
 
 func newMockWhatsAppClient() *mockWhatsAppClient {
 	return &mockWhatsAppClient{
 		qrCh: make(chan whatsmeow.QRChannelItem, 10),
+	}
+}
+
+func (m *mockWhatsAppClient) AddEventHandler(handler func(evt interface{})) uint32 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.eventHandlers = append(m.eventHandlers, handler)
+	return uint32(len(m.eventHandlers))
+}
+
+func (m *mockWhatsAppClient) EmitEvent(evt interface{}) {
+	m.mu.Lock()
+	handlers := make([]func(evt interface{}), len(m.eventHandlers))
+	copy(handlers, m.eventHandlers)
+	m.mu.Unlock()
+	for _, h := range handlers {
+		h(evt)
 	}
 }
 
@@ -615,5 +636,128 @@ func TestManager_Pairing_TenantIsolation(t *testing.T) {
 	evtB := <-subB
 	if evtB.Status != "error" {
 		t.Errorf("expected error event for workspace B subscriber, got %v", evtB)
+	}
+}
+
+func TestManager_LoggedOut_TransitionsToDisconnectedBanned(t *testing.T) {
+	mockCli := newMockWhatsAppClient()
+	parsedJID, _ := types.ParseJID("5511999991234@s.whatsapp.net")
+	mockCli.SetJID(parsedJID)
+
+	pub := &mockPublisher{}
+	reg := NewActiveSession()
+	mgr := NewManager(nil, nil, reg, nil, "2.3000.1025000000", nil)
+	mgr.SetPublisher(pub)
+
+	wsID := uuid.New()
+	connID := uuid.New()
+	phone := "5511999991234"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	connObj := &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    wsID,
+		Channel:        "whatsapp",
+		SenderIdentity: phone,
+		Status:         string(DeviceStatusConnected),
+	}
+
+	mgr.registerEventHandler(mockCli, connObj, cancel)
+
+	// Simulate LoggedOut event
+	mockCli.EmitEvent(&waEvents.LoggedOut{
+		OnConnect: false,
+		Reason:    waEvents.ConnectFailureReason(403),
+	})
+
+	// Check context cancellation
+	select {
+	case <-ctx.Done():
+		// Context was cancelled as expected
+	case <-time.After(1 * time.Second):
+		t.Fatal("expected session context to be cancelled on LoggedOut")
+	}
+
+	// Verify health state is disconnected_banned
+	health, err := mgr.SessionHealth(connID)
+	if err != nil {
+		t.Fatalf("SessionHealth failed: %v", err)
+	}
+	if health.State != StateDisconnectedBanned {
+		t.Errorf("expected state %q, got %q", StateDisconnectedBanned, health.State)
+	}
+
+	// Verify status event was published with disconnected_banned
+	found := false
+	for _, p := range pub.published {
+		var evt ConnectionStatusEvent
+		if err := json.Unmarshal(p.data, &evt); err == nil {
+			if evt.ConnectionID == connID && evt.Status == string(StateDisconnectedBanned) {
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected connection.status with %q to be published", StateDisconnectedBanned)
+	}
+}
+
+func TestManager_RunTerminalError_TransitionsToDisconnectedBanned(t *testing.T) {
+	mockCli := newMockWhatsAppClient()
+	mockCli.runErr = errors.New("whatsapp connect: 403 Forbidden account suspended")
+	parsedJID, _ := types.ParseJID("5511888887777@s.whatsapp.net")
+	mockCli.SetJID(parsedJID)
+
+	pub := &mockPublisher{}
+	reg := NewActiveSession()
+	mgr := NewManager(nil, nil, reg, nil, "2.3000.1025000000", nil)
+	mgr.SetPublisher(pub)
+
+	wsID := uuid.New()
+	connID := uuid.New()
+	phone := "5511888887777"
+
+	sessionCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sess := &Session{
+		DeviceID: connID.String(),
+		JID:      parsedJID,
+		Cancel:   cancel,
+	}
+	reg.Add(sess)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runErr := mockCli.Run(sessionCtx)
+		if runErr != nil && whatsapp.IsTerminalWhatsAppError(runErr) {
+			_ = mgr.EmitStatusEvent(context.Background(), wsID, connID, "whatsapp", phone, string(StateDisconnectedBanned))
+			reg.Remove(parsedJID)
+			return
+		}
+	}()
+
+	// Trigger run by closing sessionCtx
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("timed out waiting for goroutine")
+	}
+
+	health, err := mgr.SessionHealth(connID)
+	if err != nil {
+		t.Fatalf("SessionHealth failed: %v", err)
+	}
+	if health.State != StateDisconnectedBanned {
+		t.Errorf("expected state %q, got %q", StateDisconnectedBanned, health.State)
+	}
+	if reg.Get(parsedJID) != nil {
+		t.Errorf("expected session to be removed from registry")
 	}
 }

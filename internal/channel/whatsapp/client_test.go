@@ -95,3 +95,21 @@ func TestWhatsAppClient_DeviceStore_BinaryNoiseKeys(t *testing.T) {
 		t.Fatalf("expected initialized noise key")
 	}
 }
+
+func TestWhatsAppClient_AddEventHandler(t *testing.T) {
+	deviceStore := &store.Device{}
+	cli := whatsmeow.NewClient(deviceStore, waLog.Noop)
+	wc := &WhatsAppClient{
+		client: cli,
+	}
+
+	id := wc.AddEventHandler(func(evt interface{}) {})
+	if id == 0 {
+		t.Error("expected non-zero handler id from AddEventHandler")
+	}
+
+	var nilWC *WhatsAppClient
+	if nilWC.AddEventHandler(func(evt interface{}) {}) != 0 {
+		t.Error("expected zero handler id from nil WhatsAppClient")
+	}
+}

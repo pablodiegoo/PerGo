@@ -81,6 +81,10 @@ func (m *headlessMockWhatsAppClient) GetQRChannel(ctx context.Context) (<-chan w
 	return m.qrCh, nil
 }
 
+func (m *headlessMockWhatsAppClient) AddEventHandler(handler func(evt interface{})) uint32 {
+	return 1
+}
+
 type headlessMockTelegramClient struct{}
 
 func (m *headlessMockTelegramClient) ValidateToken(ctx context.Context, token string) (string, error) {

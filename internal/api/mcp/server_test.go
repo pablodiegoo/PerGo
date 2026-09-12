@@ -196,6 +196,10 @@ func (m *mockWhatsAppClient) GetQRChannel(ctx context.Context) (<-chan whatsmeow
 	return m.qrCh, nil
 }
 
+func (m *mockWhatsAppClient) AddEventHandler(handler func(evt interface{})) uint32 {
+	return 1
+}
+
 type mockClientFactory struct {
 	client *mockWhatsAppClient
 }

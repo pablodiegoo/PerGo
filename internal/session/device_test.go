@@ -29,6 +29,9 @@ func TestDeviceStatusValues(t *testing.T) {
 	if DeviceStatusDisconnected != "disconnected" {
 		t.Errorf("unexpected disconnected value: %q", DeviceStatusDisconnected)
 	}
+	if DeviceStatusDisconnectedBanned != "disconnected_banned" {
+		t.Errorf("unexpected disconnected_banned value: %q", DeviceStatusDisconnectedBanned)
+	}
 	if DeviceStatusTerminal != "terminal" {
 		t.Errorf("unexpected terminal value: %q", DeviceStatusTerminal)
 	}

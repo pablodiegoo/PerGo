@@ -8,10 +8,11 @@ import (
 type DeviceStatus string
 
 const (
-	DeviceStatusConnected    DeviceStatus = "connected"
-	DeviceStatusDisconnected DeviceStatus = "disconnected"
-	DeviceStatusTerminal     DeviceStatus = "terminal"
-	DeviceStatusPending      DeviceStatus = "pending"
+	DeviceStatusConnected          DeviceStatus = "connected"
+	DeviceStatusDisconnected       DeviceStatus = "disconnected"
+	DeviceStatusDisconnectedBanned DeviceStatus = "disconnected_banned"
+	DeviceStatusTerminal           DeviceStatus = "terminal"
+	DeviceStatusPending            DeviceStatus = "pending"
 )
 
 // JIDToPhone extracts the phone number from a whatsmeow JID.

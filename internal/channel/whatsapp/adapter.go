@@ -3,6 +3,7 @@ package whatsapp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -258,16 +259,29 @@ func phoneToJID(phone string) string {
 	return recipientToJID(phone)
 }
 
-// isTerminalWhatsAppError classifies whatsmeow errors as terminal
-// (non-retryable) vs transient.
-func isTerminalWhatsAppError(err error) bool {
+// IsTerminalWhatsAppError classifies whatsmeow errors as terminal
+// (non-retryable: 401 Unauthorized, 403 Forbidden, logged out, banned, unpaired) vs transient.
+func IsTerminalWhatsAppError(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := err.Error()
+	var iqErr *whatsmeow.IQError
+	if errors.As(err, &iqErr) {
+		if iqErr.Code == 401 || iqErr.Code == 403 {
+			return true
+		}
+	}
+	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "403") ||
+		strings.Contains(msg, "401") ||
 		strings.Contains(msg, "logged out") ||
-		strings.Contains(msg, "unpaired")
+		strings.Contains(msg, "unpaired") ||
+		strings.Contains(msg, "banned")
+}
+
+// isTerminalWhatsAppError is an internal alias for backwards compatibility.
+func isTerminalWhatsAppError(err error) bool {
+	return IsTerminalWhatsAppError(err)
 }
 
 func buildInteractiveOrOverrideMsg(m *channel.MessagePayload) (*waE2E.Message, error) {

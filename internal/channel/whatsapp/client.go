@@ -56,7 +56,8 @@ func NewWhatsAppClient(cfg ClientConfig) (*WhatsAppClient, error) {
 
 	if cfg.ProxyURL != "" {
 		if err := ConfigureProxy(cli, cfg.ProxyURL); err != nil {
-			clientLog.Warn("whatsapp: failed to configure proxy", "url", cfg.ProxyURL, "error", err)
+			clientLog.Error("whatsapp: failed to configure proxy", "url", cfg.ProxyURL, "error", err)
+			return nil, fmt.Errorf("whatsapp: failed to configure proxy: %w", err)
 		}
 	}
 
@@ -138,6 +139,14 @@ func (wc *WhatsAppClient) DeviceStore() *store.Device {
 		return wc.client.Store
 	}
 	return nil
+}
+
+// AddEventHandler registers an event handler with the underlying whatsmeow client.
+func (wc *WhatsAppClient) AddEventHandler(handler func(evt interface{})) uint32 {
+	if wc != nil && wc.client != nil {
+		return wc.client.AddEventHandler(handler)
+	}
+	return 0
 }
 
 // setupEventHandlers registers handlers for whatsmeow lifecycle events.

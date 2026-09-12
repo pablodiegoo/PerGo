@@ -169,6 +169,8 @@ templ ConnectionStatusBadge(status string) {
 			<span class="badge badge-sm bg-amber-50 text-amber-700 border-amber-200 px-2 py-0.5 text-xs font-semibold">Desconectado</span>
 		case "terminal":
 			<span class="badge badge-sm bg-rose-50 text-rose-700 border-rose-200 px-2 py-0.5 text-xs font-semibold">Terminal</span>
+		case "disconnected_banned":
+			<span class="badge badge-sm bg-red-100 text-red-800 border-red-300 px-2 py-0.5 text-xs font-semibold">Suspenso / Banido</span>
 		case "pending":
 			<span class="badge badge-sm bg-blue-50 text-blue-700 border-blue-200 px-2 py-0.5 text-xs font-semibold">Pendente</span>
 		default:
