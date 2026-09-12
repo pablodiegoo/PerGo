@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/security"
 	"github.com/pablojhp.pergo/internal/webhook"
 )
 
@@ -866,4 +868,101 @@ func TestDispatcher_WorkspaceWebhookSecretFallback(t *testing.T) {
 	if !strings.Contains(capturedSignature, "v1=") {
 		t.Errorf("expected signature to contain v1=, got: %s", capturedSignature)
 	}
+}
+
+func TestDefaultDispatcher_SSRFProtection_Contract(t *testing.T) {
+	wsID := uuid.New()
+	subID := uuid.New()
+
+	hitServer := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hitServer = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer ts.Close()
+
+	t.Run("DefaultDispatcher with nil client blocks unallowlisted loopback webhooks", func(t *testing.T) {
+		hitServer = false
+		subStore := &mockSubscriptionStore{
+			sub: &repository.WebhookSubscription{
+				ID:          subID,
+				WorkspaceID: wsID,
+				URL:         ts.URL,
+				Active:      true,
+			},
+		}
+
+		// nil client defaults to security.NewSafeWebhookClient
+		dispatcher := webhook.NewDefaultDispatcher(subStore, nil, nil, nil, nil)
+		task := webhook.WebhookDeliveryTask{
+			ID:             uuid.New(),
+			SubscriptionID: subID,
+			WorkspaceID:    wsID,
+			Event:          "test.event",
+			Payload:        []byte(`{"test":true}`),
+		}
+
+		err := dispatcher.Dispatch(context.Background(), task)
+		if err == nil {
+			t.Fatalf("expected dispatch to loopback URL to be blocked by SSRF protection, but succeeded")
+		}
+		if hitServer {
+			t.Fatalf("loopback server was hit despite SSRF protection")
+		}
+	})
+
+	t.Run("DefaultDispatcher with allowlist succeeds for configured internal destinations", func(t *testing.T) {
+		hitServer = false
+		subStore := &mockSubscriptionStore{
+			sub: &repository.WebhookSubscription{
+				ID:          subID,
+				WorkspaceID: wsID,
+				URL:         ts.URL,
+				Active:      true,
+			},
+		}
+
+		client := security.NewSafeWebhookClient(security.WithAllowlist("127.0.0.1", "::1"))
+		dispatcher := webhook.NewDefaultDispatcher(subStore, nil, nil, client, nil)
+		task := webhook.WebhookDeliveryTask{
+			ID:             uuid.New(),
+			SubscriptionID: subID,
+			WorkspaceID:    wsID,
+			Event:          "test.event",
+			Payload:        []byte(`{"test":true}`),
+		}
+
+		err := dispatcher.Dispatch(context.Background(), task)
+		if err != nil {
+			t.Fatalf("expected dispatch with allowlist to succeed, got: %v", err)
+		}
+		if !hitServer {
+			t.Fatalf("expected server to be hit with allowlist")
+		}
+	})
+
+	t.Run("DefaultDispatcher blocks cloud metadata endpoint", func(t *testing.T) {
+		subStore := &mockSubscriptionStore{
+			sub: &repository.WebhookSubscription{
+				ID:          subID,
+				WorkspaceID: wsID,
+				URL:         "http://169.254.169.254/latest/meta-data/",
+				Active:      true,
+			},
+		}
+
+		dispatcher := webhook.NewDefaultDispatcher(subStore, nil, nil, nil, nil)
+		task := webhook.WebhookDeliveryTask{
+			ID:             uuid.New(),
+			SubscriptionID: subID,
+			WorkspaceID:    wsID,
+			Event:          "test.event",
+			Payload:        []byte(`{"test":true}`),
+		}
+
+		err := dispatcher.Dispatch(context.Background(), task)
+		if err == nil {
+			t.Fatalf("expected dispatch to cloud metadata to be blocked by SSRF protection, but succeeded")
+		}
+	})
 }

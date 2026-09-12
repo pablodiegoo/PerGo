@@ -40,7 +40,6 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	echosrv "github.com/pablojhp.pergo/internal/platform/echo"
-	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/platform/obs"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
@@ -48,6 +47,7 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/shutdown"
 	"github.com/pablojhp.pergo/internal/platform/storage"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/security"
 	"github.com/pablojhp.pergo/internal/session"
 	"github.com/pablojhp.pergo/internal/webhook"
 	"github.com/pablojhp.pergo/templates/layout"
@@ -331,7 +331,7 @@ func main() {
 	if !cfg.IsProduction() || os.Getenv("PERGO_ALLOW_LOCAL_WEBHOOKS") == "true" {
 		webhookAllowlist = []string{"localhost", "127.0.0.1", "::1", "0.0.0.0", "host.docker.internal"}
 	}
-	dispatcherHTTPClient := netpolicy.NewPublicHTTPClient(netpolicy.WithTimeout(10*time.Second), netpolicy.WithAllowlist(webhookAllowlist...))
+	dispatcherHTTPClient := security.NewSafeWebhookClient(security.WithTimeout(10*time.Second), security.WithAllowlist(webhookAllowlist...))
 	webhookDispatcher := webhook.NewDefaultDispatcher(webhookSubRepo, webhookDLQRepo, wsRepo, dispatcherHTTPClient, verbsEngine)
 	webhookWorker, err := queue.NewWebhookWorker(ctx, nc, webhookDispatcher, webhookSubRepo)
 	if err != nil {

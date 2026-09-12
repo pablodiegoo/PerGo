@@ -20,8 +20,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/breaker"
-	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/security"
 )
 
 // SubscriptionStore defines the database abstraction for webhook subscription retrieval.
@@ -93,7 +93,7 @@ type DefaultDispatcher struct {
 // NewDefaultDispatcher creates a new DefaultDispatcher instance.
 func NewDefaultDispatcher(subStore SubscriptionStore, dlqStore DLQStore, wsStore WorkspaceStore, client HTTPClient, verbsEngine *VerbsEngine) *DefaultDispatcher {
 	if client == nil {
-		client = netpolicy.NewPublicHTTPClient(netpolicy.WithTimeout(10 * time.Second))
+		client = security.NewSafeWebhookClient(security.WithTimeout(10 * time.Second))
 	}
 	return &DefaultDispatcher{
 		subStore:    subStore,
