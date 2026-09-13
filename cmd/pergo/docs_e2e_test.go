@@ -34,7 +34,7 @@ func TestDocsE2E_PortalAndAssetDelivery(t *testing.T) {
 		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
 		body := rec.Body.String()
 		assert.Contains(t, body, "<title>PerGo API Reference</title>")
-		assert.Contains(t, body, `data-url="/docs/openapi.yaml"`)
+		assert.Contains(t, body, `data-url="/api/openapi.json"`)
 		assert.Contains(t, body, `<script src="/docs/scalar.js"></script>`)
 	})
 
@@ -49,13 +49,32 @@ func TestDocsE2E_PortalAndAssetDelivery(t *testing.T) {
 		body := rec.Body.String()
 		assert.Contains(t, body, "openapi: 3.1.0")
 		assert.Contains(t, body, "PerGo Omnichannel CPaaS API")
+		assert.Contains(t, body, "version: 2.0.0")
 		assert.Contains(t, body, "/api/v1/waba/flows/data-exchange:")
 		assert.Contains(t, body, "/api/v1/connections/{id}/flow-public-key:")
 		assert.Contains(t, body, "FlowDataExchangeRequest:")
 		assert.Contains(t, body, "FlowPublicKeyResponse:")
 	})
 
-	// 3. Verify GET /docs/scalar.js delivers embedded offline Scalar JavaScript bundle
+	// 3. Verify GET /api/openapi.json delivers valid OpenAPI 3.1 JSON document
+	t.Run("GET /api/openapi.json delivers OpenAPI 3.1 JSON specification", func(t *testing.T) {
+		for _, p := range []string{"/api/openapi.json", "/docs/openapi.json", "/openapi.json"} {
+			req := httptest.NewRequest(http.MethodGet, p, nil)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusOK, rec.Code, "endpoint %s must return 200 OK", p)
+			assert.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+			body := rec.Body.String()
+			assert.Contains(t, body, `"openapi": "3.1.0"`)
+			assert.Contains(t, body, `"version": "2.0.0"`)
+			assert.Contains(t, body, `"PerGo Omnichannel CPaaS API"`)
+			assert.Contains(t, body, "Quickstart: Time-To-First-Message")
+			assert.Contains(t, body, `"/api/v1/workspaces/{id}/retention":`)
+		}
+	})
+
+	// 4. Verify GET /docs/scalar.js delivers embedded offline Scalar JavaScript bundle
 	t.Run("GET /docs/scalar.js delivers compiled binary assets", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/docs/scalar.js", nil)
 		rec := httptest.NewRecorder()
@@ -64,6 +83,33 @@ func TestDocsE2E_PortalAndAssetDelivery(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Header().Get("Content-Type"), "javascript")
 		assert.Greater(t, rec.Body.Len(), 50000, "Scalar standalone JS must be fully embedded and > 50KB")
+	})
+
+	// 5. Verify documentation and OpenAPI endpoints bypass AuthMiddleware without credentials
+	t.Run("Documentation endpoints bypass AuthMiddleware anonymously", func(t *testing.T) {
+		authEcho := echo.New()
+		authEcho.Use(mw.AuthMiddleware(nil))
+		docsHandler.RegisterRoutes(authEcho)
+
+		publicPaths := []string{
+			"/docs",
+			"/docs/",
+			"/docs/openapi.yaml",
+			"/openapi.yaml",
+			"/api/openapi.yaml",
+			"/docs/openapi.json",
+			"/openapi.json",
+			"/api/openapi.json",
+			"/docs/scalar.js",
+		}
+
+		for _, p := range publicPaths {
+			req := httptest.NewRequest(http.MethodGet, p, nil)
+			rec := httptest.NewRecorder()
+			authEcho.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusOK, rec.Code, "path %s must be anonymously accessible through AuthMiddleware", p)
+		}
 	})
 }
 

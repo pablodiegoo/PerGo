@@ -27,6 +27,10 @@ func (m *mockMediaStorage) Download(ctx context.Context, key string) (io.ReadClo
 	return m.downloadFunc(ctx, key)
 }
 
+func (m *mockMediaStorage) Delete(ctx context.Context, key string) error {
+	return nil
+}
+
 func TestMediaHandler_Handle(t *testing.T) {
 	wsID := uuid.New()
 	hash := "sample123.ogg"

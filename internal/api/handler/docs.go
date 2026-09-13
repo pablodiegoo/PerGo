@@ -19,14 +19,28 @@ func NewDocsHandler() *DocsHandler {
 func (h *DocsHandler) RegisterRoutes(e *echo.Echo) {
 	e.GET("/docs", h.ServePortal)
 	e.GET("/docs/", h.ServePortal)
-	e.GET("/docs/openapi.yaml", h.ServeOpenAPISpec)
-	e.GET("/openapi.yaml", h.ServeOpenAPISpec)
-	e.GET("/api/openapi.yaml", h.ServeOpenAPISpec)
+
+	// OpenAPI YAML endpoints
+	e.GET("/docs/openapi.yaml", h.ServeOpenAPISpecYAML)
+	e.GET("/openapi.yaml", h.ServeOpenAPISpecYAML)
+	e.GET("/api/openapi.yaml", h.ServeOpenAPISpecYAML)
+
+	// OpenAPI JSON endpoints
+	e.GET("/docs/openapi.json", h.ServeOpenAPISpecJSON)
+	e.GET("/openapi.json", h.ServeOpenAPISpecJSON)
+	e.GET("/api/openapi.json", h.ServeOpenAPISpecJSON)
+
+	// Scalar standalone JS asset
 	e.GET("/docs/scalar.js", h.ServeScalarJS)
 }
 
 // ServePortal renders the standalone offline Scalar developer documentation portal.
 func (h *DocsHandler) ServePortal(c *echo.Context) error {
+	specURL := "/api/openapi.json"
+	if c.QueryParam("format") == "yaml" || c.QueryParam("spec") == "yaml" {
+		specURL = "/docs/openapi.yaml"
+	}
+
 	html := `<!doctype html>
 <html lang="en">
   <head>
@@ -47,8 +61,8 @@ func (h *DocsHandler) ServePortal(c *echo.Context) error {
   <body>
     <script
       id="api-reference"
-      data-url="/docs/openapi.yaml"
-      data-configuration='{"theme":"purple","layout":"modern","darkMode":true}'
+      data-url="` + specURL + `"
+      data-configuration='{"theme":"purple","layout":"modern","darkMode":true,"showSidebar":true}'
     ></script>
     <script src="/docs/scalar.js"></script>
   </body>
@@ -58,10 +72,21 @@ func (h *DocsHandler) ServePortal(c *echo.Context) error {
 	return c.String(http.StatusOK, html)
 }
 
-// ServeOpenAPISpec returns the raw OpenAPI 3.1 YAML document.
+// ServeOpenAPISpec returns the raw OpenAPI 3.1 YAML document (backward compatibility).
 func (h *DocsHandler) ServeOpenAPISpec(c *echo.Context) error {
+	return h.ServeOpenAPISpecYAML(c)
+}
+
+// ServeOpenAPISpecYAML returns the raw OpenAPI 3.1 YAML document.
+func (h *DocsHandler) ServeOpenAPISpecYAML(c *echo.Context) error {
 	c.Response().Header().Set("Content-Type", "application/yaml; charset=utf-8")
 	return c.Blob(http.StatusOK, "application/yaml; charset=utf-8", api.OpenAPIYAML)
+}
+
+// ServeOpenAPISpecJSON returns the raw OpenAPI 3.1 JSON document.
+func (h *DocsHandler) ServeOpenAPISpecJSON(c *echo.Context) error {
+	c.Response().Header().Set("Content-Type", "application/json; charset=utf-8")
+	return c.Blob(http.StatusOK, "application/json; charset=utf-8", api.OpenAPIJSON)
 }
 
 // ServeScalarJS returns the standalone offline Scalar bundle JavaScript.

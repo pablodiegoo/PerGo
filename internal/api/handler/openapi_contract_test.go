@@ -99,9 +99,14 @@ func TestOpenAPI31Contract_RequiredEndpointsPresent(t *testing.T) {
 		{"/api/v1/waba/templates", "post"},
 		{"/api/v1/workspaces", "get"},
 		{"/api/v1/workspaces", "post"},
+		{"/api/v1/workspaces/{id}/retention", "patch"},
 		{"/docs", "get"},
 		{"/docs/openapi.yaml", "get"},
 		{"/openapi.yaml", "get"},
+		{"/api/openapi.yaml", "get"},
+		{"/docs/openapi.json", "get"},
+		{"/openapi.json", "get"},
+		{"/api/openapi.json", "get"},
 		{"/docs/scalar.js", "get"},
 	}
 
@@ -127,11 +132,27 @@ func TestOpenAPI31Contract_EchoRouteCoverage(t *testing.T) {
 
 	for _, r := range e.Router().Routes() {
 		// All registered public documentation and health routes must exist in OpenAPI spec
-		if r.Path == "/docs" || r.Path == "/docs/openapi.yaml" || r.Path == "/openapi.yaml" || r.Path == "/health" || r.Path == "/health/ready" || r.Path == "/health/live" {
+		if r.Path == "/docs" || r.Path == "/docs/openapi.yaml" || r.Path == "/openapi.yaml" || r.Path == "/api/openapi.yaml" ||
+			r.Path == "/docs/openapi.json" || r.Path == "/openapi.json" || r.Path == "/api/openapi.json" ||
+			r.Path == "/health" || r.Path == "/health/ready" || r.Path == "/health/live" {
 			_, ok := doc.Paths[r.Path]
 			assert.Truef(t, ok, "registered Echo route %s must be documented in openapi.yaml", r.Path)
 		}
 	}
+}
+
+func TestOpenAPI31Contract_JSONEmbedding(t *testing.T) {
+	require.NotEmpty(t, api.OpenAPIJSON, "api.OpenAPIJSON must be non-empty")
+
+	var jsonDoc map[string]interface{}
+	err := yaml.Unmarshal(api.OpenAPIJSON, &jsonDoc)
+	require.NoError(t, err, "api.OpenAPIJSON must be valid JSON/YAML structure")
+
+	assert.Equal(t, "3.1.0", jsonDoc["openapi"])
+	info, ok := jsonDoc["info"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "PerGo Omnichannel CPaaS API", info["title"])
+	assert.Equal(t, "2.0.0", info["version"])
 }
 
 func TestOpenAPI31Contract_InteractiveAndFlowSchemas(t *testing.T) {

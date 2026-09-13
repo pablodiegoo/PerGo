@@ -1,12 +1,39 @@
 openapi: 3.1.0
 info:
   title: PerGo Omnichannel CPaaS API
-  version: 1.9.0
+  version: 2.0.0
   description: |
-    PerGo is a self-hosted, open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go.
+    PerGo is a high-performance, self-hosted open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go.
     It exposes a single unified REST API (`POST /messages`) that abstracts away multiple messaging providers
-    (WhatsApp Web via whatsmeow, WhatsApp Cloud WABA, Telegram, Instagram, and Email) with automatic fallback,
-    stateless Meta Flow execution, rich interactive components (buttons, lists, catalog products), and webhook signatures.
+    (WhatsApp Web via whatsmeow with SOCKS5 proxy isolation, WhatsApp Cloud WABA, Telegram, Instagram, and Email)
+    with automatic fallback, stateless Meta Flow execution, rich interactive components (buttons, lists, catalog products),
+    HMAC-SHA256 webhook signatures, and automated LGPD data retention policies.
+
+    ---
+
+    ### ⚡ Quickstart: Time-To-First-Message em < 3 Minutos
+
+    1. **Autenticação**:
+       Gere sua API Key no Developer Portal (`/admin/developers`) ou via `POST /api/v1/workspaces`.
+       Envie a chave no cabeçalho `Authorization: Bearer <SUA_API_KEY>` ou query string `?api_key=<SUA_API_KEY>`.
+
+    2. **Conectar Canal**:
+       - **WhatsApp Web**: Inicie o pareamento com `POST /api/v1/connections/pair` e escaneie o QR Code retornado.
+       - **WhatsApp Cloud (WABA)**: Cadastre suas credenciais com `POST /api/v1/connections/waba`.
+       - **Telegram**: Cadastre seu bot token com `POST /api/v1/connections/telegram`.
+
+    3. **Enviar Mensagem (`POST /messages`)**:
+       ```bash
+       curl -X POST http://localhost:8080/messages \
+         -H "Authorization: Bearer <SUA_API_KEY>" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "to": "+5511999998888",
+           "channel": "whatsapp",
+           "body": "Olá! Minha primeira mensagem enviada via PerGo ⚡"
+         }'
+       ```
+    A mensagem é aceita imediatamente (`202 Accepted`) e enfileirada no NATS JetStream para entrega com telemetria e retry automático.
 servers:
   - url: /
     description: Current PerGo Instance Server
@@ -113,6 +140,20 @@ paths:
               schema:
                 type: string
 
+  /api/openapi.yaml:
+    get:
+      summary: OpenAPI 3.1 YAML Specification Alias
+      description: Alias endpoint delivering the OpenAPI 3.1 YAML specification under the /api prefix.
+      operationId: getAPIOpenAPISpecYAML
+      security: []
+      responses:
+        '200':
+          description: OpenAPI 3.1 YAML document
+          content:
+            application/yaml:
+              schema:
+                type: string
+
   /openapi.yaml:
     get:
       summary: OpenAPI specification alias
@@ -126,6 +167,48 @@ paths:
             application/yaml:
               schema:
                 type: string
+
+  /api/openapi.json:
+    get:
+      summary: OpenAPI 3.1 JSON Specification
+      description: Returns the raw OpenAPI 3.1 JSON specification directly from embedded binary assets.
+      operationId: getAPIOpenAPISpecJSON
+      security: []
+      responses:
+        '200':
+          description: OpenAPI 3.1 JSON document
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /docs/openapi.json:
+    get:
+      summary: OpenAPI 3.1 JSON Specification
+      description: Returns the raw OpenAPI 3.1 JSON specification directly from embedded binary assets.
+      operationId: getDocsOpenAPISpecJSON
+      security: []
+      responses:
+        '200':
+          description: OpenAPI 3.1 JSON document
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /openapi.json:
+    get:
+      summary: OpenAPI specification alias (JSON)
+      description: Alias endpoint delivering the OpenAPI 3.1 JSON specification.
+      operationId: getOpenAPIAliasJSON
+      security: []
+      responses:
+        '200':
+          description: OpenAPI 3.1 JSON document
+          content:
+            application/json:
+              schema:
+                type: object
 
   /docs/scalar.js:
     get:
@@ -544,6 +627,42 @@ paths:
       responses:
         '201':
           description: Workspace provisioned
+
+  /api/v1/workspaces/{id}/retention:
+    patch:
+      summary: Update workspace data retention policy
+      description: Configures the LGPD/GDPR media and audit log retention period in days. 0 disables automated retention purging.
+      operationId: updateWorkspaceRetention
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Workspace UUID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - media_retention_days
+              properties:
+                media_retention_days:
+                  type: integer
+                  minimum: 0
+                  description: Number of days to retain media files and raw message body before irreversible purge.
+      responses:
+        '200':
+          description: Retention policy updated successfully
+        '400':
+          description: Invalid workspace ID or negative retention days
+        '500':
+          description: Internal database error
 
 components:
   securitySchemes:

@@ -15,17 +15,31 @@ func TestDocsHandler_GetDocs(t *testing.T) {
 	docsHandler := handler.NewDocsHandler()
 	docsHandler.RegisterRoutes(e)
 
-	// Test GET /docs
-	req := httptest.NewRequest(http.MethodGet, "/docs", nil)
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
+	// Test GET /docs defaults to /api/openapi.json
+	t.Run("Default renders Scalar pointing to /api/openapi.json", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
-	body := rec.Body.String()
-	assert.Contains(t, body, "<title>PerGo API Reference</title>")
-	assert.Contains(t, body, `data-url="/docs/openapi.yaml"`)
-	assert.Contains(t, body, `<script src="/docs/scalar.js"></script>`)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+		body := rec.Body.String()
+		assert.Contains(t, body, "<title>PerGo API Reference</title>")
+		assert.Contains(t, body, `data-url="/api/openapi.json"`)
+		assert.Contains(t, body, `<script src="/docs/scalar.js"></script>`)
+	})
+
+	// Test GET /docs?spec=yaml switches to /docs/openapi.yaml
+	t.Run("Query ?spec=yaml renders Scalar pointing to YAML spec", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/docs?spec=yaml", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+		body := rec.Body.String()
+		assert.Contains(t, body, `data-url="/docs/openapi.yaml"`)
+	})
 }
 
 func TestDocsHandler_GetOpenAPISpec(t *testing.T) {
@@ -51,6 +65,32 @@ func TestDocsHandler_GetOpenAPISpec(t *testing.T) {
 		assert.Contains(t, body, "PerGo Omnichannel CPaaS API")
 		assert.Contains(t, body, "/messages:")
 		assert.Contains(t, body, "FlowDataExchangeRequest:")
+	}
+}
+
+func TestDocsHandler_GetOpenAPISpecJSON(t *testing.T) {
+	e := echo.New()
+	docsHandler := handler.NewDocsHandler()
+	docsHandler.RegisterRoutes(e)
+
+	pathsToTest := []string{
+		"/docs/openapi.json",
+		"/openapi.json",
+		"/api/openapi.json",
+	}
+
+	for _, p := range pathsToTest {
+		req := httptest.NewRequest(http.MethodGet, p, nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code, "path %s must return 200 OK", p)
+		assert.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+		body := rec.Body.String()
+		assert.Contains(t, body, `"openapi": "3.1.0"`)
+		assert.Contains(t, body, `"title": "PerGo Omnichannel CPaaS API"`)
+		assert.Contains(t, body, `"/messages":`)
+		assert.Contains(t, body, `"FlowDataExchangeRequest":`)
 	}
 }
 

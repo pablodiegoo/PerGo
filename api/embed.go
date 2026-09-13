@@ -10,6 +10,11 @@ import (
 //go:embed openapi.yaml
 var OpenAPIYAML []byte
 
+// OpenAPIJSON contains the raw OpenAPI 3.1 JSON specification.
+//
+//go:embed openapi.json
+var OpenAPIJSON []byte
+
 // ScalarJS contains the offline standalone Scalar API reference bundle.
 //
 //go:embed scalar.standalone.js
