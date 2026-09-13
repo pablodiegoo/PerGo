@@ -55,7 +55,24 @@ import (
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
+func runHealthcheck(port string) int {
+	if port == "" {
+		port = "8080"
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + port + "/healthz")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return 1
+	}
+	_ = resp.Body.Close()
+	return 0
+}
+
 func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "-healthcheck" || os.Args[1] == "--healthcheck") {
+		os.Exit(runHealthcheck(os.Getenv("PERGO_SERVER_PORT")))
+	}
+
 	if len(os.Args) > 1 && os.Args[1] == "mcp" {
 		slog.SetDefault(slog.New(obs.NewRedactingHandler(slog.NewJSONHandler(os.Stderr, nil))))
 		cfg := config.Load()

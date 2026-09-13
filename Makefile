@@ -53,6 +53,18 @@ prod-logs:
 prod-down:
 	@docker compose --env-file .env down
 
+## prod-stack: sobe a stack completa de produção autônoma (Traefik + TLS Let's Encrypt + Postgres + NATS + PerGo)
+prod-stack:
+	@docker compose -f docker-compose.prod.yml up -d
+
+## prod-stack-logs: acompanha os logs da stack de produção
+prod-stack-logs:
+	@docker compose -f docker-compose.prod.yml logs -f
+
+## prod-stack-down: derruba a stack completa de produção autônoma
+prod-stack-down:
+	@docker compose -f docker-compose.prod.yml down
+
 # ─── Infra local (infraestrutura compartilhada devInfra) ──────
 
 ## infra: sobe a infra compartilhada (postgres, nats, mailpit, minio, redis)

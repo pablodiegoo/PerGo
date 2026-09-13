@@ -4,11 +4,13 @@ PerGo is a self-hosted, open-source Omnichannel Communications Platform as a Ser
 
 It is built for backend developers integrating omnichannel messaging into CRMs/ERPs and for system operators managing channel connections, compliance, and logs under full data custody.
 
-> **TL;DR (Quick Start):**
-> 
+> **⚡ 1-Click VPS Deployment (Production):**
 > ```bash
-> make generate && make prod-down && make prod
+> curl -fsSL https://raw.githubusercontent.com/pablodiegoo/Ecoar/main/PerGo/install.sh | bash
 > ```
+> Automated setup with Traefik v3 reverse proxy, Let's Encrypt SSL/TLS, PostgreSQL 16, and NATS JetStream.
+>
+> **Interactive Documentation:** Real-time OpenAPI 3.1 & Scalar Portal embedded at `/docs`.
 
 ---
 
@@ -275,20 +277,73 @@ This project is licensed under the MIT License.
 
 ---
 
-## Quick Start
+---
 
-The quickest way to get PerGo up and running is using Docker Compose:
+## Production Deployment (VPS & Docker Compose)
 
-1. **Start Postgres and NATS services:**
+PerGo provides an enterprise-ready, standalone Docker Compose architecture (`docker-compose.prod.yml`) featuring **Traefik v3** for automated Let's Encrypt SSL/TLS certificate provisioning and zero-config HTTP-to-HTTPS redirection.
+
+### Option A: Automated 1-Click Installer (Recommended)
+
+Run the production installer on any clean Ubuntu/Debian/Linux VPS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pablodiegoo/Ecoar/main/PerGo/install.sh | bash
+```
+
+Or run non-interactively with predefined parameters:
+
+```bash
+./install.sh --domain api.pergo.yourdomain.com --email admin@yourdomain.com --yes
+```
+
+The script automatically:
+1. Validates and installs required dependencies (Docker Engine and Docker Compose plugin).
+2. Prompts for your domain and Let's Encrypt notification email.
+3. Generates cryptographically secure secrets (`PERGO_KEK_BASE64` 32-byte master encryption key, session secrets, and database passwords).
+4. Writes a hardened `.env` file with `chmod 600` permissions.
+5. Launches the full production stack via `docker compose -f docker-compose.prod.yml up -d` and verifies service health.
+
+### Option B: Manual Production Setup
+
+1. **Configure Environment:**
+   Copy the production environment template:
    ```bash
-   docker compose up -d
+   cp .env.production.example .env
+   chmod 600 .env
    ```
-2. **Generate UI template files:**
+   Edit `.env` and fill in:
+   - `DOMAIN`: Your public FQDN (DNS A record must point to your server IP).
+   - `ACME_EMAIL`: Contact email for Let's Encrypt certificate renewals.
+   - `PERGO_KEK_BASE64`: 32-byte Base64 key (`openssl rand -base64 32`).
+   - `POSTGRES_PASSWORD`: Strong password for PostgreSQL.
+   - `PERGO_ADMIN_PASSWORD`: Password for the `/admin` operator console.
+   - `PERGO_SESSION_SECRET`: Random 32-character string.
+
+2. **Launch the Production Stack:**
    ```bash
-   make generate
+   make prod-stack
+   # or: docker compose -f docker-compose.prod.yml up -d
    ```
-3. **Start the local development server:**
-   ```bash
-   make dev
-   ```
-   The admin console will be available at `http://localhost:8080/admin`.
+
+3. **Verify Deployment:**
+   - **Public API & Health:** `https://<YOUR_DOMAIN>/healthz`
+   - **Readiness Probe:** `https://<YOUR_DOMAIN>/readyz`
+   - **Interactive API Documentation:** `https://<YOUR_DOMAIN>/docs`
+   - **Operator Dashboard:** `https://<YOUR_DOMAIN>/admin`
+
+### Useful Production Commands
+
+```bash
+# View live logs across all containers
+docker compose -f docker-compose.prod.yml logs -f
+
+# Check container health and status
+docker compose -f docker-compose.prod.yml ps
+
+# Restart services
+docker compose -f docker-compose.prod.yml restart
+
+# Stop services
+docker compose -f docker-compose.prod.yml down
+```

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -36,6 +37,32 @@ func TestServerBootHealthz(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
+	}
+}
+
+// TestRunHealthcheckHelper verifies the internal healthcheck helper returns 0 when healthy
+// and 1 when the target server is unreachable or failing.
+func TestRunHealthcheckHelper(t *testing.T) {
+	// 1. Unreachable port
+	if code := runHealthcheck("59999"); code != 1 {
+		t.Errorf("expected exit code 1 for unreachable port, got %d", code)
+	}
+
+	// 2. Reachable server returning 200 on /healthz
+	e := echosrv.New()
+	h := &handler.HealthHandler{}
+	h.RegisterRoutes(e)
+	srv := httptest.NewServer(e)
+	defer srv.Close()
+
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("failed to parse test server url: %v", err)
+	}
+	port := u.Port()
+
+	if code := runHealthcheck(port); code != 0 {
+		t.Errorf("expected exit code 0 for healthy server, got %d", code)
 	}
 }
 

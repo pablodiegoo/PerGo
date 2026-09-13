@@ -27,6 +27,8 @@ go.work.sum
 .env
 .env.*
 !.env.example
+!.env.*.example
+!.env.production.example
 
 # Local SQLite databases (if any are generated in the future)
 *.db
