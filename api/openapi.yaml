@@ -346,17 +346,6 @@ paths:
       responses:
         '200':
           description: Curated agent documentation index in Markdown
-          headers:
-            Link:
-              description: RFC 8288 Web Linking header pointing to agent indexes
-              schema:
-                type: string
-                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
-            Vary:
-              description: Informs HTTP caches that representations vary based on request headers
-              schema:
-                type: string
-                example: 'Accept, Accept-Encoding'
           content:
             text/markdown:
               schema:
@@ -371,17 +360,6 @@ paths:
       responses:
         '200':
           description: Full developer documentation in Markdown
-          headers:
-            Link:
-              description: RFC 8288 Web Linking header pointing to agent indexes
-              schema:
-                type: string
-                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
-            Vary:
-              description: Informs HTTP caches that representations vary based on request headers
-              schema:
-                type: string
-                example: 'Accept, Accept-Encoding'
           content:
             text/markdown:
               schema:

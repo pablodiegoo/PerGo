@@ -205,7 +205,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</h1><p class=\"text-zinc-500 text-sm mt-1\">Gerencie chaves de API, rotacione segredos de webhook, teste payloads interativos e acesse a documentação OpenAPI 3.1.</p></div><div class=\"flex items-center gap-3\"><a href=\"/docs\" target=\"_blank\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5 shadow-sm\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-emerald-400\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253\"></path></svg> <span>Abrir Scalar Docs (/docs) ↗</span></a> <a href=\"/llms.txt\" target=\"_blank\" class=\"btn btn-secondary border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 btn-sm font-semibold px-3 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5\"><span class=\"badge badge-xs bg-indigo-600 text-white font-mono\">/llms.txt</span> <span>Agent Index</span></a> <a href=\"/docs/openapi.yaml\" target=\"_blank\" download=\"openapi.yaml\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-3 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4\"></path></svg> <span>OpenAPI 3.1 (YAML)</span></a></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</h1><p class=\"text-zinc-500 text-sm mt-1\">Gerencie chaves de API, rotacione segredos de webhook, teste payloads interativos e acesse a documentação OpenAPI 3.1.</p></div><div class=\"flex items-center gap-3\"><a href=\"/docs\" target=\"_blank\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5 shadow-sm\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-emerald-400\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253\"></path></svg> <span>Abrir Scalar Docs (/docs) ↗</span></a> <a href=\"/docs/openapi.yaml\" target=\"_blank\" download=\"openapi.yaml\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-3 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4\"></path></svg> <span>OpenAPI 3.1 (YAML)</span></a></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -221,7 +221,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(data.ErrorMessage)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 122, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 112, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -240,7 +240,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(data.SuccessMessage)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 128, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 118, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -258,7 +258,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(data.Workspace.ID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 156, Col: 131}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 144, Col: 131}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -271,7 +271,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(data.BaseURL)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 170, Col: 113}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 157, Col: 113}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -292,7 +292,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		var templ_7745c5c3_Var15 string
 		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d ativa(s)", len(data.APIKeys)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 205, Col: 102}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 189, Col: 102}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 		if templ_7745c5c3_Err != nil {
@@ -313,7 +313,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("curl -s -H \"Accept: text/markdown\" %s/", data.BaseURL))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 325, Col: 198}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 303, Col: 198}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {
@@ -379,7 +379,7 @@ func WebhookSecretRow(secret *string) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(*secret)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 658, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 626, Col: 107}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
@@ -433,7 +433,7 @@ func APIKeysList(keys []repository.APIKey) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(key.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 686, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 654, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
@@ -446,7 +446,7 @@ func APIKeysList(keys []repository.APIKey) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(key.KeyPrefix)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 687, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 655, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
@@ -469,7 +469,7 @@ func APIKeysList(keys []repository.APIKey) templ.Component {
 				var templ_7745c5c3_Var22 string
 				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/developers/keys/%s", key.ID.String()))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 696, Col: 75}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 664, Col: 75}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 				if templ_7745c5c3_Err != nil {
@@ -482,7 +482,7 @@ func APIKeysList(keys []repository.APIKey) templ.Component {
 				var templ_7745c5c3_Var23 string
 				templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("Deseja realmente revogar a chave '%s'?", key.Name))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 699, Col: 82}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 667, Col: 82}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
 				if templ_7745c5c3_Err != nil {
@@ -538,7 +538,7 @@ func APIKeyCreatedResult(keys []repository.APIKey, newRawKey string, keyName str
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(keyName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 719, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 687, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -551,7 +551,7 @@ func APIKeyCreatedResult(keys []repository.APIKey, newRawKey string, keyName str
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(newRawKey)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 722, Col: 118}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 690, Col: 118}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
@@ -600,7 +600,7 @@ func SandboxValidationResult(res SandboxResultData) templ.Component {
 			var templ_7745c5c3_Var28 string
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(res.Channel)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 745, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 713, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
@@ -613,7 +613,7 @@ func SandboxValidationResult(res SandboxResultData) templ.Component {
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(res.Recipient)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 751, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 718, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
@@ -626,7 +626,7 @@ func SandboxValidationResult(res SandboxResultData) templ.Component {
 			var templ_7745c5c3_Var30 string
 			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(res.MessageType)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 755, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 722, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
@@ -639,7 +639,7 @@ func SandboxValidationResult(res SandboxResultData) templ.Component {
 			var templ_7745c5c3_Var31 string
 			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(res.FallbackPolicy)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 759, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 726, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {
@@ -657,7 +657,7 @@ func SandboxValidationResult(res SandboxResultData) templ.Component {
 				var templ_7745c5c3_Var32 string
 				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(res.DegradedText)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 771, Col: 128}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 737, Col: 128}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 				if templ_7745c5c3_Err != nil {
@@ -680,7 +680,7 @@ func SandboxValidationResult(res SandboxResultData) templ.Component {
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(res.ErrorMessage)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 780, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 746, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
@@ -703,7 +703,7 @@ func SandboxValidationResult(res SandboxResultData) templ.Component {
 					var templ_7745c5c3_Var34 string
 					templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(fe.Field)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 790, Col: 101}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 755, Col: 101}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 					if templ_7745c5c3_Err != nil {
@@ -716,7 +716,7 @@ func SandboxValidationResult(res SandboxResultData) templ.Component {
 					var templ_7745c5c3_Var35 string
 					templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(fe.Message)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 790, Col: 124}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 755, Col: 124}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 					if templ_7745c5c3_Err != nil {

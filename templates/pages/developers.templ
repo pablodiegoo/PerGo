@@ -40,7 +40,7 @@ templ DeveloperTabs(workspaceID uuid.UUID, activeTab string) {
 				templ.KV("border-transparent text-zinc-500 hover:text-zinc-800 hover:border-zinc-300", activeTab != "developers") }
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path>
 			</svg>
 			<span>Console de Desenvolvedores & Sandbox</span>
 		</a>
@@ -51,7 +51,7 @@ templ DeveloperTabs(workspaceID uuid.UUID, activeTab string) {
 				templ.KV("border-transparent text-zinc-500 hover:text-zinc-800 hover:border-zinc-300", activeTab != "chatwoot") }
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
 			</svg>
 			<span>Chatwoot</span>
 		</a>
@@ -62,7 +62,7 @@ templ DeveloperTabs(workspaceID uuid.UUID, activeTab string) {
 				templ.KV("border-transparent text-zinc-500 hover:text-zinc-800 hover:border-zinc-300", activeTab != "typebot") }
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
 			</svg>
 			<span>Typebot</span>
 		</a>
@@ -88,17 +88,9 @@ templ DeveloperContent(data DeveloperPortalData) {
 				class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5 shadow-sm"
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
 				</svg>
 				<span>Abrir Scalar Docs (/docs) ↗</span>
-			</a>
-			<a
-				href="/llms.txt"
-				target="_blank"
-				class="btn btn-secondary border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 btn-sm font-semibold px-3 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5"
-			>
-				<span class="badge badge-xs bg-indigo-600 text-white font-mono">/llms.txt</span>
-				<span>Agent Index</span>
 			</a>
 			<a
 				href="/docs/openapi.yaml"
@@ -107,15 +99,13 @@ templ DeveloperContent(data DeveloperPortalData) {
 				class="btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-3 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5"
 			>
 				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
 				</svg>
 				<span>OpenAPI 3.1 (YAML)</span>
 			</a>
 		</div>
 	</div>
-
 	@DeveloperTabs(data.Workspace.ID, "developers")
-
 	if data.ErrorMessage != "" {
 		<div class="alert bg-rose-50 text-rose-800 border border-rose-200 rounded-lg p-4 mb-6 flex flex-col items-start gap-1">
 			<h3 class="text-sm font-bold">Erro</h3>
@@ -128,7 +118,6 @@ templ DeveloperContent(data DeveloperPortalData) {
 			<p class="text-xs text-emerald-700">{ data.SuccessMessage }</p>
 		</div>
 	}
-
 	<!-- Top Grid: Identifiers & API Keys -->
 	<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
 		<!-- Workspace Credentials & Webhook Secret Card -->
@@ -138,7 +127,7 @@ templ DeveloperContent(data DeveloperPortalData) {
 					<div class="flex items-center gap-2">
 						<div class="p-2 rounded-md bg-zinc-900 text-white">
 							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path>
 							</svg>
 						</div>
 						<div>
@@ -148,7 +137,6 @@ templ DeveloperContent(data DeveloperPortalData) {
 					</div>
 					<span class="badge badge-sm bg-emerald-50 text-emerald-700 border-emerald-200 font-semibold px-2 py-0.5 text-xs">Ativo</span>
 				</div>
-
 				<div class="space-y-4 text-sm">
 					<div>
 						<label class="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">Workspace ID</label>
@@ -163,7 +151,6 @@ templ DeveloperContent(data DeveloperPortalData) {
 							</button>
 						</div>
 					</div>
-
 					<div>
 						<label class="block text-xs font-semibold text-zinc-500 uppercase tracking-wider mb-1">API Base URL</label>
 						<div class="flex items-center gap-2 bg-zinc-50 border border-zinc-200 rounded-md p-2">
@@ -177,19 +164,16 @@ templ DeveloperContent(data DeveloperPortalData) {
 							</button>
 						</div>
 					</div>
-
 					<!-- Webhook Secret with In-Place Rotation -->
 					<div id="webhook-secret-container">
 						@WebhookSecretRow(data.Workspace.WebhookSecret)
 					</div>
 				</div>
 			</div>
-
 			<div class="mt-6 pt-4 border-t border-zinc-100 flex items-center justify-between text-xs text-zinc-500">
 				<span>Autenticação Bearer Token: <code class="font-mono bg-zinc-100 px-1 py-0.5 rounded text-zinc-800">Authorization: Bearer &lt;API_KEY&gt;</code></span>
 			</div>
 		</div>
-
 		<!-- API Keys Management Card -->
 		<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm flex flex-col justify-between">
 			<div>
@@ -197,24 +181,21 @@ templ DeveloperContent(data DeveloperPortalData) {
 					<div class="flex items-center gap-2">
 						<div class="p-2 rounded-md bg-zinc-100 text-zinc-800">
 							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
 							</svg>
 						</div>
 						<h2 class="text-base font-bold text-zinc-900">Chaves de API</h2>
 					</div>
 					<span class="text-xs font-semibold text-zinc-500">{ fmt.Sprintf("%d ativa(s)", len(data.APIKeys)) }</span>
 				</div>
-
 				<p class="text-xs text-zinc-600 mb-3">
 					Chaves protegidas com hash SHA-256 no banco de dados.
 				</p>
-
 				<!-- API Keys List -->
 				<div id="api-keys-list-container" class="space-y-2 mb-4 max-h-44 overflow-y-auto">
 					@APIKeysList(data.APIKeys)
 				</div>
 			</div>
-
 			<!-- Generate API Key Form -->
 			<div class="pt-3 border-t border-zinc-100">
 				<form
@@ -235,7 +216,7 @@ templ DeveloperContent(data DeveloperPortalData) {
 						class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-xs font-semibold px-3 py-1.5 rounded transition shrink-0 flex items-center gap-1 cursor-pointer"
 					>
 						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
 						</svg>
 						<span>Criar Chave</span>
 					</button>
@@ -243,7 +224,6 @@ templ DeveloperContent(data DeveloperPortalData) {
 			</div>
 		</div>
 	</div>
-
 	<!-- Agent Discovery & LLMs Card -->
 	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8">
 		<div class="border-b border-zinc-100 pb-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -286,7 +266,6 @@ templ DeveloperContent(data DeveloperPortalData) {
 				</a>
 			</div>
 		</div>
-
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 			<!-- Direct Discovery Links & Information -->
 			<div class="space-y-3">
@@ -314,7 +293,6 @@ templ DeveloperContent(data DeveloperPortalData) {
 					<span>Descoberta pública e anônima ativada (bypass de autenticação) com headers RFC 8288 <code>Link</code>.</span>
 				</div>
 			</div>
-
 			<!-- Ready-to-use cURL Inspection Snippet -->
 			<div class="space-y-3">
 				<div class="flex items-center justify-between">
@@ -337,7 +315,6 @@ templ DeveloperContent(data DeveloperPortalData) {
 			</div>
 		</div>
 	</div>
-
 	<!-- Interactive Payload Sandbox Testing -->
 	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8">
 		<div class="border-b border-zinc-100 pb-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
@@ -345,7 +322,7 @@ templ DeveloperContent(data DeveloperPortalData) {
 				<div class="flex items-center gap-2">
 					<span class="p-1.5 rounded bg-blue-100 text-blue-900">
 						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
 						</svg>
 					</span>
 					<h2 class="text-lg font-bold text-zinc-900">Sandbox de Teste de Payloads Interativos</h2>
@@ -370,7 +347,6 @@ templ DeveloperContent(data DeveloperPortalData) {
 				</select>
 			</div>
 		</div>
-
 		<form
 			hx-post="/admin/developers/sandbox/test"
 			hx-target="#sandbox-result-area"
@@ -390,11 +366,10 @@ templ DeveloperContent(data DeveloperPortalData) {
 					class="form-input font-mono text-xs text-zinc-800 bg-zinc-900 text-zinc-100 p-3.5 rounded-md border border-zinc-800 w-full leading-relaxed focus:ring-2 focus:ring-zinc-950"
 				></textarea>
 			</div>
-
 			<div class="flex items-center justify-between pt-2">
 				<div class="text-xs text-zinc-500 flex items-center gap-1.5">
 					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
 					</svg>
 					<span>Validação sintática e semântica com verificação de regras de canal.</span>
 				</div>
@@ -403,17 +378,15 @@ templ DeveloperContent(data DeveloperPortalData) {
 					class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none btn-sm font-semibold px-5 py-2 rounded-md transition h-9 flex items-center gap-2 cursor-pointer"
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
 					</svg>
 					<span>Validar & Simular Payload</span>
 				</button>
 			</div>
 		</form>
-
 		<!-- Sandbox Validation Results Area -->
 		<div id="sandbox-result-area" class="mt-6"></div>
 	</div>
-
 	<!-- Interactive HMAC-SHA256 SSO URL Generator Tool -->
 	<div class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8">
 		<div class="border-b border-zinc-100 pb-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
@@ -421,7 +394,7 @@ templ DeveloperContent(data DeveloperPortalData) {
 				<div class="flex items-center gap-2">
 					<span class="p-1.5 rounded bg-amber-100 text-amber-900">
 						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
 						</svg>
 					</span>
 					<h2 class="text-lg font-bold text-zinc-900">Gerador de Links de Single Sign-On (SSO)</h2>
@@ -434,7 +407,6 @@ templ DeveloperContent(data DeveloperPortalData) {
 				<span>TTL máximo: 120s (com proteção contra replay)</span>
 			</div>
 		</div>
-
 		<form
 			hx-post="/admin/developers/sso-generate"
 			hx-target="#sso-result-area"
@@ -453,7 +425,6 @@ templ DeveloperContent(data DeveloperPortalData) {
 					class="form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:ring-zinc-950 bg-white w-full"
 				/>
 			</div>
-
 			<div class="flex flex-col gap-1.5">
 				<label for="sso-redirect" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Página de Destino</label>
 				<select
@@ -469,7 +440,6 @@ templ DeveloperContent(data DeveloperPortalData) {
 					<option value="/admin/">Visão Geral (/admin/)</option>
 				</select>
 			</div>
-
 			<div class="flex flex-col gap-1.5">
 				<label for="sso-ttl" class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Expiração / TTL (Segundos)</label>
 				<div class="flex gap-2">
@@ -492,7 +462,6 @@ templ DeveloperContent(data DeveloperPortalData) {
 				</div>
 			</div>
 		</form>
-
 		<div id="sso-result-area">
 			if data.SSOInitialURL != "" {
 				@SSOGeneratorResult(SSOGeneratorResultData{
@@ -507,7 +476,6 @@ templ DeveloperContent(data DeveloperPortalData) {
 			}
 		</div>
 	</div>
-
 	<!-- Preset Loader Script -->
 	<script>
 		const SANDBOX_PRESETS = {
@@ -648,7 +616,7 @@ templ WebhookSecretRow(secret *string) {
 			class="btn btn-xs bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 rounded px-2 py-0.5 font-medium cursor-pointer transition flex items-center gap-1 self-start sm:self-auto"
 		>
 			<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
 			</svg>
 			<span>Rotacionar Segredo</span>
 		</button>
@@ -744,7 +712,6 @@ templ SandboxValidationResult(res SandboxResultData) {
 				</div>
 				<span class="text-xs font-mono text-emerald-700">Canal: <strong>{ res.Channel }</strong></span>
 			</div>
-
 			<div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
 				<div class="bg-white p-2.5 rounded border border-emerald-100">
 					<span class="text-zinc-500 block text-[11px] uppercase font-semibold">Destinatário</span>
@@ -759,12 +726,11 @@ templ SandboxValidationResult(res SandboxResultData) {
 					<span class="font-semibold text-zinc-800">{ res.FallbackPolicy }</span>
 				</div>
 			</div>
-
 			if res.DegradedText != "" {
 				<div class="pt-2">
 					<div class="text-xs font-bold text-zinc-800 mb-1 flex items-center gap-1.5">
 						<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path>
 						</svg>
 						<span>Simulação de Degradação Automática em Canais de Texto (ex: WhatsApp Web / whatsmeow):</span>
 					</div>
@@ -780,7 +746,6 @@ templ SandboxValidationResult(res SandboxResultData) {
 					<span class="text-xs font-bold text-rose-900">{ res.ErrorMessage }</span>
 				</div>
 			</div>
-
 			if len(res.FieldErrors) > 0 {
 				<div class="space-y-1.5">
 					<div class="text-xs font-bold text-rose-800">Erros de validação por campo:</div>

@@ -36,9 +36,6 @@ func ContentNegotiationMiddleware(markdownPayload []byte) echo.MiddlewareFunc {
 	}
 }
 
-// ContentNegotiationInterceptor is a deprecated alias for ContentNegotiationMiddleware.
-var ContentNegotiationInterceptor = ContentNegotiationMiddleware
-
 type mediaPreference struct {
 	q       float64
 	matched bool

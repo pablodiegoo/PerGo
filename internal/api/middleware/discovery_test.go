@@ -7,7 +7,6 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/pablojhp.pergo/internal/api/middleware"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestAgentDiscoveryMiddleware(t *testing.T) {
@@ -25,8 +24,12 @@ func TestAgentDiscoveryMiddleware(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+		}
+		if got := rec.Header().Get("Link"); got != middleware.DiscoveryLinkHeaderValue {
+			t.Errorf("expected Link header %q, got %q", middleware.DiscoveryLinkHeaderValue, got)
+		}
 	})
 
 	t.Run("Does not inject Link header on route without AgentDiscoveryMiddleware", func(t *testing.T) {
@@ -34,7 +37,11 @@ func TestAgentDiscoveryMiddleware(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Empty(t, rec.Header().Get("Link"))
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+		}
+		if got := rec.Header().Get("Link"); got != "" {
+			t.Errorf("expected empty Link header, got %q", got)
+		}
 	})
 }

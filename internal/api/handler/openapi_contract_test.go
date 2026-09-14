@@ -164,10 +164,6 @@ func TestOpenAPI31Contract_AgentDiscoveryEndpointsAndHeaders(t *testing.T) {
 		content, ok := resp200["content"].(map[string]interface{})
 		require.True(t, ok)
 		assert.Containsf(t, content, "text/markdown", "%s must document text/markdown content type", p)
-		headers, ok := resp200["headers"].(map[string]interface{})
-		require.True(t, ok)
-		assert.Containsf(t, headers, "Link", "%s must document Link header", p)
-		assert.Containsf(t, headers, "Vary", "%s must document Vary header", p)
 	}
 
 	// 2. Verify Link & Vary headers and content negotiation documented on /docs

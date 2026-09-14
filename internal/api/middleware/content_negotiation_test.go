@@ -3,11 +3,11 @@ package middleware_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/labstack/echo/v5"
 	"github.com/pablojhp.pergo/internal/api/middleware"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestContentNegotiationMiddleware(t *testing.T) {
@@ -32,16 +32,24 @@ func TestContentNegotiationMiddleware(t *testing.T) {
 		reqHTML.Header.Set("Accept", "text/html")
 		recHTML := httptest.NewRecorder()
 		e.ServeHTTP(recHTML, reqHTML)
-		assert.Equal(t, http.StatusOK, recHTML.Code)
-		assert.Equal(t, "Accept, Accept-Encoding", recHTML.Header().Get("Vary"))
+		if recHTML.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d", http.StatusOK, recHTML.Code)
+		}
+		if got := recHTML.Header().Get("Vary"); got != "Accept, Accept-Encoding" {
+			t.Errorf("expected Vary header %q, got %q", "Accept, Accept-Encoding", got)
+		}
 
 		// Case 2: Markdown request
 		reqMD := httptest.NewRequest(http.MethodGet, "/resource", nil)
 		reqMD.Header.Set("Accept", "text/markdown")
 		recMD := httptest.NewRecorder()
 		e.ServeHTTP(recMD, reqMD)
-		assert.Equal(t, http.StatusOK, recMD.Code)
-		assert.Equal(t, "Accept, Accept-Encoding", recMD.Header().Get("Vary"))
+		if recMD.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d", http.StatusOK, recMD.Code)
+		}
+		if got := recMD.Header().Get("Vary"); got != "Accept, Accept-Encoding" {
+			t.Errorf("expected Vary header %q, got %q", "Accept, Accept-Encoding", got)
+		}
 	})
 
 	t.Run("Serves markdown directly when Accept: text/markdown is specified", func(t *testing.T) {
@@ -52,10 +60,18 @@ func TestContentNegotiationMiddleware(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
-		assert.Equal(t, string(markdownPayload), rec.Body.String())
-		assert.NotContains(t, rec.Body.String(), "<html")
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+		}
+		if got := rec.Header().Get("Content-Type"); got != "text/markdown; charset=utf-8" {
+			t.Errorf("expected Content-Type %q, got %q", "text/markdown; charset=utf-8", got)
+		}
+		if got := rec.Body.String(); got != string(markdownPayload) {
+			t.Errorf("expected body %q, got %q", string(markdownPayload), got)
+		}
+		if strings.Contains(rec.Body.String(), "<html") {
+			t.Errorf("expected markdown body, got HTML: %s", rec.Body.String())
+		}
 	})
 
 	t.Run("Accept header permutations", func(t *testing.T) {
@@ -116,22 +132,25 @@ func TestContentNegotiationMiddleware(t *testing.T) {
 				rec := httptest.NewRecorder()
 				e.ServeHTTP(rec, req)
 
-				assert.Equal(t, http.StatusOK, rec.Code)
+				if rec.Code != http.StatusOK {
+					t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+				}
 				if tc.expectMarkdown {
-					assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
-					assert.Equal(t, string(markdownPayload), rec.Body.String())
+					if got := rec.Header().Get("Content-Type"); got != "text/markdown; charset=utf-8" {
+						t.Errorf("expected Content-Type %q, got %q", "text/markdown; charset=utf-8", got)
+					}
+					if got := rec.Body.String(); got != string(markdownPayload) {
+						t.Errorf("expected body %q, got %q", string(markdownPayload), got)
+					}
 				} else {
-					assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
-					assert.Equal(t, htmlPayload, rec.Body.String())
+					if got := rec.Header().Get("Content-Type"); !strings.Contains(got, "text/html") {
+						t.Errorf("expected text/html Content-Type, got %q", got)
+					}
+					if got := rec.Body.String(); got != htmlPayload {
+						t.Errorf("expected html body %q, got %q", htmlPayload, got)
+					}
 				}
 			})
 		}
 	})
-
-	t.Run("Backward compatible alias ContentNegotiationInterceptor is functional", func(t *testing.T) {
-		assert.NotNil(t, middleware.ContentNegotiationInterceptor)
-		mw := middleware.ContentNegotiationInterceptor(markdownPayload)
-		assert.NotNil(t, mw)
-	})
 }
-

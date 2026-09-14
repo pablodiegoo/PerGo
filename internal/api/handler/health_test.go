@@ -8,16 +8,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/api/middleware"
-	"github.com/stretchr/testify/assert"
 )
-
-type mockNATSConn struct {
-	err error
-}
-
-func (m *mockNATSConn) Ping() error {
-	return m.err
-}
 
 func TestHealthHandler_DiscoveryLinks(t *testing.T) {
 	e := echo.New()
@@ -32,8 +23,12 @@ func TestHealthHandler_DiscoveryLinks(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+		}
+		if got := rec.Header().Get("Link"); got != middleware.DiscoveryLinkHeaderValue {
+			t.Errorf("expected Link header %q, got %q", middleware.DiscoveryLinkHeaderValue, got)
+		}
 	})
 
 	t.Run("GET /readyz includes RFC 8288 Link header even when unready", func(t *testing.T) {
@@ -41,7 +36,11 @@ func TestHealthHandler_DiscoveryLinks(t *testing.T) {
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
-		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
-		assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Errorf("expected status %d, got %d", http.StatusServiceUnavailable, rec.Code)
+		}
+		if got := rec.Header().Get("Link"); got != middleware.DiscoveryLinkHeaderValue {
+			t.Errorf("expected Link header %q, got %q", middleware.DiscoveryLinkHeaderValue, got)
+		}
 	})
 }

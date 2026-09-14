@@ -145,8 +145,8 @@ func TestDocsHandler_GetLLMsTxt(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
-	assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
-	assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
+	assert.Empty(t, rec.Header().Get("Vary"), "static /llms.txt must not emit Vary header")
+	assert.Empty(t, rec.Header().Get("Link"), "static /llms.txt must not emit circular Link header")
 	body := rec.Body.String()
 	// Validate llmstxt.org v2 format:
 	// 1. Single H1 header
@@ -174,8 +174,8 @@ func TestDocsHandler_GetLLMsFullTxt(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
-	assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
-	assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
+	assert.Empty(t, rec.Header().Get("Vary"), "static /llms-full.txt must not emit Vary header")
+	assert.Empty(t, rec.Header().Get("Link"), "static /llms-full.txt must not emit circular Link header")
 	body := rec.Body.String()
 	// Validate comprehensive documentation payload
 	assert.Greater(t, len(body), 5000, "llms-full.txt must contain the complete documentation set (> 5KB)")

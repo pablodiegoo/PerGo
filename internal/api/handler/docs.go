@@ -37,10 +37,10 @@ func (h *DocsHandler) RegisterRoutes(e *echo.Echo) {
 	e.GET("/docs/scalar.js", h.ServeScalarJS)
 
 	// Curated agent index endpoint (/llms.txt)
-	e.GET("/llms.txt", h.ServeLLMsTxt, discoveryMiddleware)
+	e.GET("/llms.txt", h.ServeLLMsTxt)
 
 	// Full agent documentation endpoint (/llms-full.txt)
-	e.GET("/llms-full.txt", h.ServeLLMsFullTxt, discoveryMiddleware)
+	e.GET("/llms-full.txt", h.ServeLLMsFullTxt)
 }
 
 // ServePortal renders the standalone offline Scalar developer documentation portal.
@@ -108,12 +108,10 @@ func (h *DocsHandler) ServeScalarJS(c *echo.Context) error {
 
 // ServeLLMsTxt returns the curated agent index markdown adhering to llmstxt.org v2 format.
 func (h *DocsHandler) ServeLLMsTxt(c *echo.Context) error {
-	c.Response().Header().Set("Vary", middleware.VaryHeaderValue)
-	return c.Blob(http.StatusOK, "text/markdown; charset=utf-8", api.LLMsTxt)
+	return c.Blob(http.StatusOK, middleware.ContentTypeMarkdown, api.LLMsTxt)
 }
 
 // ServeLLMsFullTxt returns the complete developer documentation markdown payload.
 func (h *DocsHandler) ServeLLMsFullTxt(c *echo.Context) error {
-	c.Response().Header().Set("Vary", middleware.VaryHeaderValue)
-	return c.Blob(http.StatusOK, "text/markdown; charset=utf-8", api.LLMsFullTxt)
+	return c.Blob(http.StatusOK, middleware.ContentTypeMarkdown, api.LLMsFullTxt)
 }
