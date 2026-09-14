@@ -112,3 +112,35 @@ _Avoid_: Proxy tunnel, device VPN, connection IP
 A scheduled background worker that purges expired media blobs from MinIO/S3 and irreversibly scrubs or anonymizes message records exceeding a workspace's compliance retention policy.
 _Avoid_: Cleaner script, purge cron, retention job
 
+### Agent-Readiness & Discovery
+
+**Curated Agent Index (`/llms.txt`)**:
+A standardized, token-efficient Markdown document adhering to the `llmstxt.org` specification, providing AI agents and LLMs with an executive architecture overview and curated links to PerGo CPaaS messaging endpoints, webhook subscriptions, and MCP server capabilities.
+_Avoid_: Agent doc, LLM readme, bot sitemap
+
+**Content Negotiation Interceptor**:
+An HTTP middleware evaluating the `Accept: text/markdown` header on public portal and documentation routes, serving clean Markdown representations with `Vary: Accept, Accept-Encoding` without redirect hops or HTML markup overhead.
+_Avoid_: Markdown filter, format switcher, markdown proxy
+
+**Discovery Link Header**:
+An RFC 8288 compliant HTTP response header (`Link: </llms.txt>; rel="describedby"`) injected across root, health check, and documentation endpoints allowing autonomous agents to locate machine-readable specifications programmatically.
+_Avoid_: Header link, discovery tag, bot header
+
+### Agent MCP Diagnostics & Operations
+
+**Connection Health Diagnostic**:
+A high-value MCP domain tool (`diagnose_connection_health`) inspecting real-time whatsmeow socket liveness, WebSocket handshake status, proxy reachability/latency, and channel credentials (WABA/Telegram), returning structured actionable self-healing guidance for autonomous agents.
+_Avoid_: Socket checker, ping tool, connection probe
+
+**Webhook Event Simulator**:
+A high-value MCP domain tool (`simulate_webhook_event`) executing synchronous synthetic webhook dispatches with HMAC-SHA256 signatures and anti-SSRF protections, returning immediate latency, HTTP status, and response telemetry for integration verification.
+_Avoid_: Webhook tester, mock dispatcher, payload sender
+
+**Webhook Dead-Letter Replay**:
+A high-value MCP domain tool (`replay_webhook_dlq`) re-enqueueing dead-lettered payloads from Postgres back into the NATS JetStream delivery stream (`webhooks.deliveries.>`) or executing immediate dispatches to override URLs for diagnostic verification.
+_Avoid_: DLQ retry button, manual redelivery, payload pusher
+
+**Queue Health Inspector**:
+A high-value MCP domain tool (`inspect_queue_health`) querying real-time NATS JetStream stream capacity, pending consumer acks, and retention queue pressure across message and webhook streams.
+_Avoid_: NATS monitor, queue stats, stream checker
+
