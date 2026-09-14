@@ -227,6 +227,7 @@ func TestMCPServerTools(t *testing.T) {
 	auditRepo := repository.NewAuditRepository(pool)
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
 	webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, enc)
+	webhookDLQRepo := repository.NewWebhookDLQRepository(pool, enc)
 
 	// Create test workspace
 	ws, err := wsRepo.Create(ctx, "MCP Test Workspace")
@@ -258,6 +259,7 @@ func TestMCPServerTools(t *testing.T) {
 		nil,
 		[]byte("test-sso-secret"),
 		"http://localhost:8080",
+		WithWebhookDLQRepo(webhookDLQRepo),
 	)
 
 	t.Run("CreateWorkspace_WithDefaults", func(t *testing.T) {
@@ -1196,6 +1198,11 @@ func TestMCPServerTools(t *testing.T) {
 			{
 				name:    "generate_admin_sso_url_invalid_ws",
 				handler: srv.handleGenerateAdminSSOURL,
+				args:    map[string]any{"workspace_id": "not-a-uuid"},
+			},
+			{
+				name:    "replay_webhook_dlq_invalid_ws",
+				handler: srv.handleReplayWebhookDLQ,
 				args:    map[string]any{"workspace_id": "not-a-uuid"},
 			},
 		}

@@ -25,10 +25,16 @@ import (
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/pkg/slug"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
+	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
 	"github.com/pablojhp.pergo/internal/webhook"
 )
+
+// Publisher is an interface for publishing messages to a message queue.
+type Publisher interface {
+	Publish(ctx context.Context, subject string, data []byte, traceID string) error
+}
 
 // ServerOption is a functional option for configuring the Server.
 type ServerOption func(*Server)
@@ -85,8 +91,10 @@ type Server struct {
 	ingestor          outbound.OutboundProcessor
 	apiKeyRepo        *repository.APIKeyRepository
 	webhookSubRepo    *repository.WebhookSubscriptionRepository
+	webhookDLQRepo    *repository.WebhookDLQRepository
 	sessionManager    *session.Manager
 	webhookDispatcher webhook.WebhookDispatcher
+	publisher         Publisher
 	ssoSecret         []byte
 	externalURL       string
 	safeClient        *http.Client
@@ -94,6 +102,31 @@ type Server struct {
 	nc                *nats.Conn
 	telegramBaseURL   string
 	httpClient        *http.Client
+}
+
+// WithWebhookDLQRepo configures the Webhook DLQ repository.
+func WithWebhookDLQRepo(repo *repository.WebhookDLQRepository) ServerOption {
+	return func(s *Server) {
+		s.webhookDLQRepo = repo
+	}
+}
+
+// WithJetStreamPublisher configures the JetStream publisher.
+func WithJetStreamPublisher(pub *queue.JetStreamPublisher) ServerOption {
+	return func(s *Server) {
+		if pub == nil {
+			s.publisher = nil
+		} else {
+			s.publisher = pub
+		}
+	}
+}
+
+// WithPublisher configures a custom publisher interface (e.g. for testing).
+func WithPublisher(pub Publisher) ServerOption {
+	return func(s *Server) {
+		s.publisher = pub
+	}
 }
 
 // NewServer creates and configures a new PerGo MCP server.
@@ -601,6 +634,41 @@ func (s *Server) registerTools() {
 			},
 		},
 	}, s.handleInspectQueueHealth)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "replay_webhook_dlq",
+		Description: "Re-enqueue dead-lettered webhook payloads back into the NATS JetStream delivery queue or dispatch them immediately with telemetry to verify endpoint recovery.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"dlq_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UUID of a specific dead-letter item to replay.",
+				},
+				"subscription_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UUID of a webhook subscription to filter dead-letter items by.",
+				},
+				"action": map[string]interface{}{
+					"type":        "string",
+					"description": "Action to perform: 're-enqueue' (publish back to NATS delivery stream) or 'dispatch_immediate' (direct synchronous delivery). Default: 're-enqueue'.",
+				},
+				"limit": map[string]interface{}{
+					"type":        "integer",
+					"description": "Maximum number of dead-letter items to replay when dlq_id is not specified (default: 10, max: 50).",
+				},
+				"target_url": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional override destination URL when action is 'dispatch_immediate'.",
+				},
+			},
+			Required: []string{"workspace_id"},
+		},
+	}, s.handleReplayWebhookDLQ)
 }
 
 func (s *Server) handleCreateWorkspace(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
