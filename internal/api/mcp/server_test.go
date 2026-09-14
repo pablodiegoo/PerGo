@@ -1119,6 +1119,16 @@ func TestMCPServerTools(t *testing.T) {
 				args:    map[string]any{"workspace_id": ws.ID.String(), "connection_id": uuid.New().String()},
 			},
 			{
+				name:    "diagnose_connection_health_missing_conn_id",
+				handler: srv.handleDiagnoseConnectionHealth,
+				args:    map[string]any{"workspace_id": ws.ID.String()},
+			},
+			{
+				name:    "diagnose_connection_health_not_found",
+				handler: srv.handleDiagnoseConnectionHealth,
+				args:    map[string]any{"workspace_id": ws.ID.String(), "connection_id": uuid.New().String()},
+			},
+			{
 				name:    "list_connections_invalid_ws",
 				handler: srv.handleListConnections,
 				args:    map[string]any{"workspace_id": "not-a-uuid"},

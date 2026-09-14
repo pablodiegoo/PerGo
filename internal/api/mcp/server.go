@@ -59,6 +59,20 @@ func WithSafeClient(client *http.Client) ServerOption {
 	}
 }
 
+// WithTelegramBaseURL configures a custom Telegram API base URL (useful for testing).
+func WithTelegramBaseURL(url string) ServerOption {
+	return func(s *Server) {
+		s.telegramBaseURL = strings.TrimRight(url, "/")
+	}
+}
+
+// WithHTTPClient configures a custom HTTP client for outgoing diagnostic probes.
+func WithHTTPClient(client *http.Client) ServerOption {
+	return func(s *Server) {
+		s.httpClient = client
+	}
+}
+
 // Server encapsulates the MCP Server instance and its service dependencies.
 type Server struct {
 	MCPServer *server.MCPServer
@@ -78,6 +92,8 @@ type Server struct {
 	safeClient        *http.Client
 	js                jetstream.JetStream
 	nc                *nats.Conn
+	telegramBaseURL   string
+	httpClient        *http.Client
 }
 
 // NewServer creates and configures a new PerGo MCP server.
@@ -266,6 +282,25 @@ func (s *Server) registerTools() {
 			Required: []string{"workspace_id", "connection_id"},
 		},
 	}, s.handleDisconnectConnection)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "diagnose_connection_health",
+		Description: "Perform an end-to-end connection health diagnostic inspecting socket liveness, proxy reachability/latency, and credentials validity with actionable self-healing guidance for agents.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"connection_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the connection to diagnose.",
+				},
+			},
+			Required: []string{"workspace_id", "connection_id"},
+		},
+	}, s.handleDiagnoseConnectionHealth)
 
 	s.MCPServer.AddTool(mcp.Tool{
 		Name:        "list_connections",
