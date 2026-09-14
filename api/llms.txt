@@ -7,9 +7,17 @@ Notas arquiteturais críticas para Agentes de IA e LLMs:
 - API Unificada: Todo envio de mensagens ocorre através do endpoint `POST /messages` (ou `POST /api/v1/messages`), suportando texto puro, mídias (áudio, imagem, documento) e mensagens interativas (botões, listas e Meta Flows).
 - Autenticação: Endpoints operacionais de tenant exigem chave de API no cabeçalho `Authorization: Bearer <WORKSPACE_API_KEY>`. O provisionamento headless de novos workspaces é autenticado com `PERGO_MASTER_KEY` (`Authorization: Bearer <MASTER_KEY>` ou `X-Master-Key`).
 - Acesso Público e Anônimo: As rotas `/llms.txt`, `/llms-full.txt`, `/docs`, `/openapi.json`, `/openapi.yaml`, `/healthz` e `/readyz` não exigem autenticação.
-- Servidor MCP: Servidor Model Context Protocol nativo integrado via stdio (CLI) e SSE/Streamable HTTP em `/api/mcp`, permitindo diagnósticos de conectividade, pareamento QR, consulta de sessões e envio de mensagens.
+- Servidor MCP: Servidor Model Context Protocol nativo integrado via stdio (CLI) e SSE/Streamable HTTP em `/api/mcp`, permitindo diagnósticos de conectividade (`diagnose_connection_health`), simulação de webhooks com anti-SSRF (`simulate_webhook_event`), reprocessamento de dead-letter queue (`replay_webhook_dlq`), inspeção de saúde de filas JetStream (`inspect_queue_health`), pareamento QR, consulta de sessões e envio de mensagens.
 - Degradação Graciosa: Mensagens interativas (botões e listas) enviadas para canais sem suporte nativo degradam automaticamente para menus numerados de texto quando `fallback_behavior` for `"degrade"`.
 - Webhooks Seguros: Todos os webhooks outbound contêm a assinatura criptográfica HMAC-SHA256 no cabeçalho `X-PerGo-Signature` com tolerância anti-replay de 300 segundos.
+
+## Ferramentas MCP de Diagnóstico e Operações
+
+O PerGo disponibiliza ferramentas MCP de alta fidelidade operacionais e diagnósticas para agentes autônomos via stdio e `/api/mcp`:
+- `diagnose_connection_health`: Real-time whatsmeow socket check, proxy reachability/latency probe, credential validation, self-healing guidance.
+- `simulate_webhook_event`: Synchronous synthetic webhook dispatch with HMAC-SHA256 signature, anti-SSRF protections (`netpolicy`), and response telemetry.
+- `replay_webhook_dlq`: Re-enqueue dead-lettered payloads from PostgreSQL into NATS JetStream or immediate dispatch to override URL.
+- `inspect_queue_health`: Query real-time JetStream stream capacity, pending ACKs, and consumer lag.
 
 ## Documentação Principal
 
