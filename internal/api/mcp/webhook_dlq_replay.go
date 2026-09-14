@@ -242,9 +242,7 @@ func (s *Server) handleReplayWebhookDLQ(ctx context.Context, request mcp.CallToo
 					secret = sub.Secret
 				}
 			}
-			if len(secret) == 0 && ws != nil && ws.WebhookSecret != nil && *ws.WebhookSecret != "" {
-				secret = []byte(*ws.WebhookSecret)
-			}
+			secret = resolveWebhookSecret(secret, ws)
 
 			dispatchRes, err := executeWebhookDispatch(ctx, WebhookDispatchOptions{
 				TargetURL: destURL,

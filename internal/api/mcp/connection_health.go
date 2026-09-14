@@ -13,10 +13,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
 )
 
-// ProxyHealth represents the diagnostic probe results for a configured proxy.
+// ProxyHealth represents the diagnostic check results for a configured proxy.
 type ProxyHealth struct {
 	Configured bool   `json:"configured"`
 	Reachable  bool   `json:"reachable"`
@@ -40,20 +41,31 @@ type ConnectionHealthDiagnosticResult struct {
 	SelfHealingGuidance string       `json:"self_healing_guidance"`
 }
 
-// probeProxyTCP dials the proxy host:port with a timeout to verify reachability and measure latency.
-// For SOCKS5 proxies, it executes a SOCKS5 greeting handshake to confirm protocol responsiveness.
-func probeProxyTCP(ctx context.Context, proxyURL string, timeout time.Duration) (bool, int64, error) {
+// verifyProxyConnectivity dials the proxy host:port with a timeout to verify reachability and measure latency.
+// For SOCKS5 proxies, it executes a SOCKS5 greeting handshake (supporting both anonymous and username/password auth)
+// to confirm protocol responsiveness.
+func verifyProxyConnectivity(ctx context.Context, proxyURL string, timeout time.Duration) (bool, int64, error) {
 	if timeout <= 0 {
 		timeout = 3 * time.Second
 	}
 
 	target := strings.TrimSpace(proxyURL)
 	var isSocks5 bool
+	var username, password string
+	var hasAuth bool
+
 	if strings.Contains(target, "://") {
 		if u, err := url.Parse(target); err == nil && u.Host != "" {
 			scheme := strings.ToLower(u.Scheme)
 			if scheme == "socks5" || scheme == "socks5h" {
 				isSocks5 = true
+			}
+			if u.User != nil {
+				username = u.User.Username()
+				password, _ = u.User.Password()
+				if username != "" {
+					hasAuth = true
+				}
 			}
 			target = u.Host
 			if !strings.Contains(target, ":") {
@@ -88,7 +100,12 @@ func probeProxyTCP(ctx context.Context, proxyURL string, timeout time.Duration) 
 			_ = conn.SetDeadline(time.Now().Add(timeout))
 		}
 
-		if _, err := conn.Write([]byte{0x05, 0x01, 0x00}); err != nil {
+		greeting := []byte{0x05, 0x01, 0x00}
+		if hasAuth {
+			greeting = []byte{0x05, 0x02, 0x00, 0x02}
+		}
+
+		if _, err := conn.Write(greeting); err != nil {
 			return false, time.Since(start).Milliseconds(), fmt.Errorf("socks5 greeting write failed: %w", err)
 		}
 
@@ -97,13 +114,212 @@ func probeProxyTCP(ctx context.Context, proxyURL string, timeout time.Duration) 
 			return false, time.Since(start).Milliseconds(), fmt.Errorf("socks5 greeting read failed: %w", err)
 		}
 
-		if buf[0] != 0x05 || buf[1] != 0x00 {
-			return false, time.Since(start).Milliseconds(), fmt.Errorf("socks5 handshake rejected: received version %d method %d", buf[0], buf[1])
+		if buf[0] != 0x05 {
+			return false, time.Since(start).Milliseconds(), fmt.Errorf("socks5 handshake rejected: received version %d", buf[0])
+		}
+
+		if buf[1] == 0xFF {
+			return false, time.Since(start).Milliseconds(), fmt.Errorf("socks5 handshake rejected: no acceptable authentication methods")
+		}
+
+		if buf[1] == 0x02 {
+			if !hasAuth {
+				return false, time.Since(start).Milliseconds(), fmt.Errorf("socks5 server requires authentication but none provided")
+			}
+			authReq := make([]byte, 0, 3+len(username)+len(password))
+			authReq = append(authReq, 0x01, byte(len(username)))
+			authReq = append(authReq, []byte(username)...)
+			authReq = append(authReq, byte(len(password)))
+			authReq = append(authReq, []byte(password)...)
+
+			if _, err := conn.Write(authReq); err != nil {
+				return false, time.Since(start).Milliseconds(), fmt.Errorf("socks5 auth write failed: %w", err)
+			}
+
+			authResp := make([]byte, 2)
+			if _, err := io.ReadFull(conn, authResp); err != nil {
+				return false, time.Since(start).Milliseconds(), fmt.Errorf("socks5 auth response read failed: %w", err)
+			}
+			if authResp[1] != 0x00 {
+				return false, time.Since(start).Milliseconds(), fmt.Errorf("socks5 authentication failed (status %d)", authResp[1])
+			}
+		} else if buf[1] != 0x00 {
+			return false, time.Since(start).Milliseconds(), fmt.Errorf("socks5 handshake rejected: unsupported method %d", buf[1])
 		}
 	}
 
 	latency := time.Since(start).Milliseconds()
 	return true, latency, nil
+}
+
+func diagnoseWhatsAppHealth(conn *repository.Connection, sm *session.Manager) (string, string, bool, bool, string) {
+	socketStatus := "disconnected"
+	pairingStatus := ""
+	lastError := ""
+	credentialsValid := false
+	isAuthFailure := false
+
+	if sm != nil {
+		health, err := sm.SessionHealth(conn.ID)
+		if err == nil && health != nil {
+			if health.State != "" {
+				socketStatus = string(health.State)
+			}
+			if health.LastError != "" {
+				lastError = health.LastError
+			}
+		}
+
+		if evt, ok := sm.GetPairingStateForWorkspace(conn.WorkspaceID, conn.ID.String()); ok && evt != nil {
+			pairingStatus = evt.Status
+		} else if conn.SenderIdentity != "" {
+			if evt, ok := sm.GetPairingStateForWorkspace(conn.WorkspaceID, conn.SenderIdentity); ok && evt != nil {
+				pairingStatus = evt.Status
+			}
+		}
+	}
+
+	if socketStatus == string(session.StateConnected) || (conn.JID != nil && strings.TrimSpace(*conn.JID) != "") || pairingStatus == "paired" {
+		credentialsValid = true
+	}
+	if socketStatus == string(session.StateDisconnectedBanned) || strings.Contains(strings.ToLower(lastError), "banned") || strings.Contains(strings.ToLower(lastError), "logged out") {
+		isAuthFailure = true
+	}
+
+	return socketStatus, pairingStatus, credentialsValid, isAuthFailure, lastError
+}
+
+func (s *Server) diagnoseTelegramHealth(ctx context.Context, conn *repository.Connection) (string, bool, bool, int64, string) {
+	var tgToken string
+	var tgConfig struct {
+		Token string `json:"token"`
+	}
+	if len(conn.Credentials) > 0 {
+		if err := json.Unmarshal(conn.Credentials, &tgConfig); err == nil && strings.TrimSpace(tgConfig.Token) != "" {
+			tgToken = strings.TrimSpace(tgConfig.Token)
+		} else {
+			var rawStr string
+			if err := json.Unmarshal(conn.Credentials, &rawStr); err == nil && strings.TrimSpace(rawStr) != "" {
+				tgToken = strings.TrimSpace(rawStr)
+			} else {
+				tgToken = strings.TrimSpace(string(conn.Credentials))
+			}
+		}
+	}
+
+	if tgToken == "" {
+		return "disconnected", false, true, 0, "missing bot token in credentials"
+	}
+
+	baseURL := s.telegramBaseURL
+	if baseURL == "" {
+		baseURL = "https://api.telegram.org"
+	}
+	endpoint := fmt.Sprintf("%s/bot%s/getMe", baseURL, tgToken)
+
+	httpClient := s.httpClient
+	if httpClient == nil {
+		httpClient = &http.Client{Timeout: 3 * time.Second}
+	}
+
+	reqCtx, reqCancel := context.WithTimeout(ctx, 3*time.Second)
+	defer reqCancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return "disconnected", false, false, 0, fmt.Sprintf("failed to build telegram health check request: %v", err)
+	}
+
+	start := time.Now()
+	resp, err := httpClient.Do(req)
+	tgLatency := time.Since(start).Milliseconds()
+
+	if err != nil {
+		return "disconnected", false, false, tgLatency, fmt.Sprintf("telegram health check request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		return "connected", true, false, tgLatency, ""
+	} else if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound {
+		return "disconnected", false, true, tgLatency, fmt.Sprintf("telegram bot token unauthorized (HTTP %d)", resp.StatusCode)
+	}
+	return "disconnected", false, false, tgLatency, fmt.Sprintf("telegram bot API returned HTTP %d", resp.StatusCode)
+}
+
+func diagnoseWABAHealth(conn *repository.Connection) (string, bool, bool, string) {
+	var wabaCreds struct {
+		PhoneNumberID string `json:"phone_number_id"`
+		Token         string `json:"token"`
+		AccessToken   string `json:"access_token"`
+	}
+
+	if len(conn.Credentials) == 0 {
+		return "not_applicable", false, true, "missing credentials for whatsapp_cloud connection"
+	}
+	if err := json.Unmarshal(conn.Credentials, &wabaCreds); err != nil {
+		return "not_applicable", false, true, fmt.Sprintf("invalid credentials format: %v", err)
+	}
+
+	token := wabaCreds.Token
+	if token == "" {
+		token = wabaCreds.AccessToken
+	}
+	phoneID := strings.TrimSpace(wabaCreds.PhoneNumberID)
+	token = strings.TrimSpace(token)
+
+	if phoneID == "" || token == "" {
+		return "not_applicable", false, true, "missing phone_number_id or token in credentials"
+	}
+
+	for _, ch := range phoneID {
+		if ch < '0' || ch > '9' {
+			return "not_applicable", false, true, "invalid phone_number_id format: expected numeric identifier"
+		}
+	}
+
+	return "connected", true, false, ""
+}
+
+func computeConnectionSelfHealing(
+	channelName string,
+	proxyHealth *ProxyHealth,
+	socketStatus string,
+	isAuthFailure bool,
+	credentialsValid bool,
+	pairingStatus string,
+	lastError string,
+) (string, string, string) {
+	var status string
+	var selfHealingGuidance string
+
+	if proxyHealth != nil && proxyHealth.Configured && !proxyHealth.Reachable {
+		status = "degraded"
+		selfHealingGuidance = "Inspect dedicated proxy host/port and firewall credentials"
+		if lastError == "" && proxyHealth.Error != "" {
+			lastError = fmt.Sprintf("proxy unreachable: %s", proxyHealth.Error)
+		}
+	} else if socketStatus == string(session.StateDisconnectedBanned) || isAuthFailure {
+		status = "banned"
+		selfHealingGuidance = "Session expired or banned by provider; halt reconnections and re-authenticate"
+	} else if channelName == "whatsapp" && (!credentialsValid || pairingStatus == "qr_ready" || pairingStatus == "pairing" || pairingStatus == "unpaired") {
+		status = "disconnected"
+		selfHealingGuidance = "Trigger pairing via get_connection_qr_code"
+	} else if channelName == "whatsapp" && socketStatus == string(session.StateDisconnected) {
+		status = "disconnected"
+		selfHealingGuidance = "Connection is disconnected; verify network connectivity or restart session via session manager"
+	} else if socketStatus == string(session.StateConnecting) || socketStatus == string(session.StateReconnecting) {
+		status = "degraded"
+		selfHealingGuidance = "Connection is establishing or reconnecting; wait for socket handshake to complete"
+	} else if !credentialsValid {
+		status = "error"
+		selfHealingGuidance = "Session expired or banned by provider; halt reconnections and re-authenticate"
+	} else {
+		status = "healthy"
+		selfHealingGuidance = "Connection is healthy and active"
+	}
+
+	return status, selfHealingGuidance, lastError
 }
 
 // handleDiagnoseConnectionHealth implements the diagnose_connection_health MCP tool.
@@ -148,17 +364,17 @@ func (s *Server) handleDiagnoseConnectionHealth(ctx context.Context, request mcp
 
 	if conn.ProxyURL != nil && strings.TrimSpace(*conn.ProxyURL) != "" {
 		proxyHealth.Configured = true
-		reachable, latency, probeErr := probeProxyTCP(ctx, *conn.ProxyURL, 3*time.Second)
+		reachable, latency, checkErr := verifyProxyConnectivity(ctx, *conn.ProxyURL, 3*time.Second)
 		proxyHealth.Reachable = reachable
 		proxyHealth.LatencyMS = latency
 		overallLatency = latency
-		if probeErr != nil {
-			proxyHealth.Error = probeErr.Error()
+		if checkErr != nil {
+			proxyHealth.Error = checkErr.Error()
 		}
 	}
 
 	channelName := strings.ToLower(strings.TrimSpace(conn.Channel))
-	socketStatus := "not_applicable"
+	var socketStatus string
 	pairingStatus := ""
 	lastError := ""
 	credentialsValid := false
@@ -166,170 +382,32 @@ func (s *Server) handleDiagnoseConnectionHealth(ctx context.Context, request mcp
 
 	switch channelName {
 	case "whatsapp":
-		socketStatus = "disconnected"
-		if s.sessionManager != nil {
-			health, err := s.sessionManager.SessionHealth(conn.ID)
-			if err == nil && health != nil {
-				if health.State != "" {
-					socketStatus = string(health.State)
-				}
-				if health.LastError != "" {
-					lastError = health.LastError
-				}
-			}
-
-			if evt, ok := s.sessionManager.GetPairingStateForWorkspace(conn.WorkspaceID, conn.ID.String()); ok && evt != nil {
-				pairingStatus = evt.Status
-			} else if conn.SenderIdentity != "" {
-				if evt, ok := s.sessionManager.GetPairingStateForWorkspace(conn.WorkspaceID, conn.SenderIdentity); ok && evt != nil {
-					pairingStatus = evt.Status
-				}
-			}
-		}
-
-		if socketStatus == string(session.StateConnected) || (conn.JID != nil && strings.TrimSpace(*conn.JID) != "") || pairingStatus == "paired" {
-			credentialsValid = true
-		}
-		if socketStatus == string(session.StateDisconnectedBanned) || strings.Contains(strings.ToLower(lastError), "banned") || strings.Contains(strings.ToLower(lastError), "logged out") {
-			isAuthFailure = true
-		}
+		socketStatus, pairingStatus, credentialsValid, isAuthFailure, lastError = diagnoseWhatsAppHealth(conn, s.sessionManager)
 
 	case "telegram":
-		var tgToken string
-		var tgConfig struct {
-			Token string `json:"token"`
-		}
-		if len(conn.Credentials) > 0 {
-			if err := json.Unmarshal(conn.Credentials, &tgConfig); err == nil && strings.TrimSpace(tgConfig.Token) != "" {
-				tgToken = strings.TrimSpace(tgConfig.Token)
-			} else {
-				var rawStr string
-				if err := json.Unmarshal(conn.Credentials, &rawStr); err == nil && strings.TrimSpace(rawStr) != "" {
-					tgToken = strings.TrimSpace(rawStr)
-				} else {
-					tgToken = strings.TrimSpace(string(conn.Credentials))
-				}
-			}
-		}
-
-		if tgToken == "" {
-			lastError = "missing bot token in credentials"
-			isAuthFailure = true
-		} else {
-			baseURL := s.telegramBaseURL
-			if baseURL == "" {
-				baseURL = "https://api.telegram.org"
-			}
-			endpoint := fmt.Sprintf("%s/bot%s/getMe", baseURL, tgToken)
-
-			httpClient := s.httpClient
-			if httpClient == nil {
-				httpClient = &http.Client{Timeout: 3 * time.Second}
-			}
-
-			reqCtx, reqCancel := context.WithTimeout(ctx, 3*time.Second)
-			defer reqCancel()
-
-			req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint, nil)
-			if err != nil {
-				lastError = fmt.Sprintf("failed to build telegram probe request: %v", err)
-			} else {
-				start := time.Now()
-				resp, err := httpClient.Do(req)
-				tgLatency := time.Since(start).Milliseconds()
-				overallLatency = tgLatency
-
-				if err != nil {
-					lastError = fmt.Sprintf("telegram probe request failed: %v", err)
-				} else {
-					defer resp.Body.Close()
-					if resp.StatusCode == http.StatusOK {
-						credentialsValid = true
-						socketStatus = "connected"
-					} else if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusNotFound {
-						lastError = fmt.Sprintf("telegram bot token unauthorized (HTTP %d)", resp.StatusCode)
-						isAuthFailure = true
-						socketStatus = "disconnected"
-					} else {
-						lastError = fmt.Sprintf("telegram bot API returned HTTP %d", resp.StatusCode)
-						socketStatus = "disconnected"
-					}
-				}
-			}
+		var tgLatency int64
+		socketStatus, credentialsValid, isAuthFailure, tgLatency, lastError = s.diagnoseTelegramHealth(ctx, conn)
+		if tgLatency > 0 {
+			overallLatency = tgLatency
 		}
 
 	case "whatsapp_cloud":
-		var wabaCreds struct {
-			PhoneNumberID string `json:"phone_number_id"`
-			Token         string `json:"token"`
-			AccessToken   string `json:"access_token"`
-		}
-
-		if len(conn.Credentials) == 0 {
-			lastError = "missing credentials for whatsapp_cloud connection"
-			isAuthFailure = true
-		} else if err := json.Unmarshal(conn.Credentials, &wabaCreds); err != nil {
-			lastError = fmt.Sprintf("invalid credentials format: %v", err)
-			isAuthFailure = true
-		} else {
-			token := wabaCreds.Token
-			if token == "" {
-				token = wabaCreds.AccessToken
-			}
-			phoneID := strings.TrimSpace(wabaCreds.PhoneNumberID)
-			token = strings.TrimSpace(token)
-
-			if phoneID == "" || token == "" {
-				lastError = "missing phone_number_id or token in credentials"
-				isAuthFailure = true
-			} else {
-				isNumeric := true
-				for _, ch := range phoneID {
-					if ch < '0' || ch > '9' {
-						isNumeric = false
-						break
-					}
-				}
-				if !isNumeric {
-					lastError = "invalid phone_number_id format: expected numeric identifier"
-					isAuthFailure = true
-				} else {
-					credentialsValid = true
-					socketStatus = "connected"
-				}
-			}
-		}
+		socketStatus, credentialsValid, isAuthFailure, lastError = diagnoseWABAHealth(conn)
 
 	default:
 		socketStatus = "not_applicable"
 		credentialsValid = len(conn.Credentials) > 0
 	}
 
-	var status string
-	var selfHealingGuidance string
-
-	if proxyHealth.Configured && !proxyHealth.Reachable {
-		status = "degraded"
-		selfHealingGuidance = "Inspect dedicated proxy host/port and firewall credentials"
-		if lastError == "" && proxyHealth.Error != "" {
-			lastError = fmt.Sprintf("proxy unreachable: %s", proxyHealth.Error)
-		}
-	} else if socketStatus == string(session.StateDisconnectedBanned) || isAuthFailure {
-		status = "banned"
-		selfHealingGuidance = "Session expired or banned by provider; halt reconnections and re-authenticate"
-	} else if channelName == "whatsapp" && (socketStatus == string(session.StateDisconnected) || !credentialsValid || pairingStatus == "qr_ready" || pairingStatus == "pairing") {
-		status = "disconnected"
-		selfHealingGuidance = "Trigger pairing via get_connection_qr_code"
-	} else if socketStatus == string(session.StateConnecting) || socketStatus == string(session.StateReconnecting) {
-		status = "degraded"
-		selfHealingGuidance = "Connection is establishing or reconnecting; wait for socket handshake to complete"
-	} else if !credentialsValid {
-		status = "error"
-		selfHealingGuidance = "Session expired or banned by provider; halt reconnections and re-authenticate"
-	} else {
-		status = "healthy"
-		selfHealingGuidance = "Connection is healthy and active"
-	}
+	status, selfHealingGuidance, lastError := computeConnectionSelfHealing(
+		channelName,
+		proxyHealth,
+		socketStatus,
+		isAuthFailure,
+		credentialsValid,
+		pairingStatus,
+		lastError,
+	)
 
 	res := ConnectionHealthDiagnosticResult{
 		ConnectionID:        conn.ID,

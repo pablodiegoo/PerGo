@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
+	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/webhook"
 )
 
@@ -101,4 +102,15 @@ func executeWebhookDispatch(ctx context.Context, opts WebhookDispatchOptions) (*
 	}
 
 	return result, nil
+}
+
+// resolveWebhookSecret returns the subscription secret if present, or falls back to the workspace secret.
+func resolveWebhookSecret(subSecret []byte, ws *repository.Workspace) []byte {
+	if len(subSecret) > 0 {
+		return subSecret
+	}
+	if ws != nil && ws.WebhookSecret != nil && *ws.WebhookSecret != "" {
+		return []byte(*ws.WebhookSecret)
+	}
+	return nil
 }

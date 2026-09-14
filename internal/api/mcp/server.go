@@ -50,7 +50,9 @@ func WithQueueInspector(inspector QueueInspector) ServerOption {
 func WithJetStream(js jetstream.JetStream) ServerOption {
 	return func(s *Server) {
 		s.js = js
-		s.queueInspector = NewJetStreamQueueInspector(js, s.nc)
+		if s.queueInspector == nil {
+			s.queueInspector = NewJetStreamQueueInspector(js, s.nc)
+		}
 	}
 }
 
@@ -63,25 +65,27 @@ func WithNATSConn(nc *nats.Conn) ServerOption {
 				s.js = js
 			}
 		}
-		s.queueInspector = NewJetStreamQueueInspector(s.js, nc)
+		if s.queueInspector == nil {
+			s.queueInspector = NewJetStreamQueueInspector(s.js, nc)
+		}
 	}
 }
 
-// WithSafeClient configures a custom HTTP client for safe outbound dispatches (e.g. for testing).
+// WithSafeClient configures the Safe Webhook Transport HTTP client for outbound dispatches.
 func WithSafeClient(client *http.Client) ServerOption {
 	return func(s *Server) {
 		s.safeClient = client
 	}
 }
 
-// WithTelegramBaseURL configures a custom Telegram API base URL (useful for testing).
+// WithTelegramBaseURL configures the Telegram Bot API endpoint URL.
 func WithTelegramBaseURL(url string) ServerOption {
 	return func(s *Server) {
 		s.telegramBaseURL = strings.TrimRight(url, "/")
 	}
 }
 
-// WithHTTPClient configures a custom HTTP client for outgoing diagnostic probes.
+// WithHTTPClient configures the HTTP transport for outgoing diagnostic health checks.
 func WithHTTPClient(client *http.Client) ServerOption {
 	return func(s *Server) {
 		s.httpClient = client
@@ -123,13 +127,7 @@ func WithWebhookDLQRepo(repo *repository.WebhookDLQRepository) ServerOption {
 
 // WithJetStreamPublisher configures the JetStream publisher.
 func WithJetStreamPublisher(pub *queue.JetStreamPublisher) ServerOption {
-	return func(s *Server) {
-		if pub == nil {
-			s.publisher = nil
-		} else {
-			s.publisher = pub
-		}
-	}
+	return WithPublisher(pub)
 }
 
 // WithPublisher configures a custom publisher interface (e.g. for testing).

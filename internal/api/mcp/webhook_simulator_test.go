@@ -350,6 +350,51 @@ func TestWebhookSimulator_SuccessfulDispatch(t *testing.T) {
 		}
 	})
 
+	t.Run("ActiveSubscriptionsFallback_DispatchesToAllActiveSubscriptions", func(t *testing.T) {
+		var mu2 sync.Mutex
+		receivedCount := 0
+		server2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mu2.Lock()
+			receivedCount++
+			mu2.Unlock()
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer server2.Close()
+
+		sub2, err := webhookSubRepo.Create(ctx, ws.ID, server2.URL, []string{"message.delivered"}, []byte("secret-2"))
+		if err != nil {
+			t.Fatalf("failed to create sub2: %v", err)
+		}
+		defer func() { _ = webhookSubRepo.Delete(ctx, sub2.ID) }()
+
+		callReq := mcp.CallToolRequest{}
+		callReq.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"event_type":   "message.delivered",
+			"payload":      map[string]any{"status": "delivered_all"},
+		}
+
+		res, err := srv.handleSimulateWebhookEvent(ctx, callReq)
+		if err != nil {
+			t.Fatalf("unexpected handler error: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("handler returned tool error: %s", extractText(t, res))
+		}
+
+		var telem WebhookSimulationTelemetry
+		if err := json.Unmarshal([]byte(extractText(t, res)), &telem); err != nil {
+			t.Fatalf("failed to parse telemetry JSON: %v", err)
+		}
+
+		if !telem.Success || telem.StatusCode != 200 {
+			t.Errorf("expected success=true, got %+v", telem)
+		}
+		if len(telem.Dispatches) != 2 {
+			t.Errorf("expected 2 dispatches for 2 active subscriptions, got %d", len(telem.Dispatches))
+		}
+	})
+
 	t.Run("ActiveSubscriptionsFallback_NoActiveSubscriptionsError", func(t *testing.T) {
 		wsEmpty, err := wsRepo.Create(ctx, "Empty Subs Workspace")
 		if err != nil {

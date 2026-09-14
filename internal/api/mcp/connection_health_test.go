@@ -291,6 +291,61 @@ func TestConnectionHealthDiagnostic(t *testing.T) {
 		}
 	})
 
+	t.Run("WhatsApp_DisconnectedAndPaired_GuidanceDoesNotAdviseQR", func(t *testing.T) {
+		jidVal := "5511999990099@s.whatsapp.net"
+		conn := &repository.Connection{
+			ID:             uuid.New(),
+			WorkspaceID:    ws.ID,
+			Name:           "WhatsApp Paired Disconnected",
+			Channel:        "whatsapp",
+			SenderIdentity: "+5511999990099",
+			Status:         "active",
+			JID:            &jidVal,
+			CreatedAt:      time.Now().UTC(),
+			UpdatedAt:      time.Now().UTC(),
+		}
+		if err := connRepo.Create(ctx, conn); err != nil {
+			t.Fatalf("failed to create conn: %v", err)
+		}
+		defer func() { _ = connRepo.Delete(ctx, conn.ID) }()
+
+		if err := sessionManager.EmitStatusEvent(ctx, ws.ID, conn.ID, "whatsapp", conn.SenderIdentity, string(session.StateDisconnected)); err != nil {
+			t.Fatalf("failed to emit status event: %v", err)
+		}
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"workspace_id":  ws.ID.String(),
+			"connection_id": conn.ID.String(),
+		}
+
+		res, err := srv.handleDiagnoseConnectionHealth(ctx, req)
+		if err != nil {
+			t.Fatalf("handleDiagnoseConnectionHealth failed: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("expected success, got error: %+v", res.Content)
+		}
+
+		var diag ConnectionHealthDiagnosticResult
+		if err := json.Unmarshal([]byte(extractText(t, res)), &diag); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+
+		if diag.Status != "disconnected" {
+			t.Errorf("expected status 'disconnected', got %q", diag.Status)
+		}
+		if diag.CredentialsValid != true {
+			t.Errorf("expected credentials_valid true for paired JID, got false")
+		}
+		if strings.Contains(diag.SelfHealingGuidance, "get_connection_qr_code") {
+			t.Errorf("paired connection in disconnected state should not advise QR pairing: %q", diag.SelfHealingGuidance)
+		}
+		if !strings.Contains(diag.SelfHealingGuidance, "restart session via session manager") {
+			t.Errorf("expected guidance to advise reconnect/restart session, got %q", diag.SelfHealingGuidance)
+		}
+	})
+
 	t.Run("WhatsApp_Banned", func(t *testing.T) {
 		conn := &repository.Connection{
 			ID:             uuid.New(),
@@ -682,6 +737,91 @@ func TestConnectionHealthDiagnostic(t *testing.T) {
 		}
 		if diag.Status != "degraded" {
 			t.Errorf("expected status 'degraded', got %q", diag.Status)
+		}
+	})
+
+	t.Run("ProxyProbe_SOCKS5UsernamePasswordAuthSuccess", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("failed to listen on local port: %v", err)
+		}
+		defer ln.Close()
+
+		go func() {
+			for {
+				conn, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				go func(c net.Conn) {
+					defer c.Close()
+					// Read greeting
+					greetBuf := make([]byte, 4)
+					_, _ = io.ReadFull(c, greetBuf)
+					// Select method 0x02 (Username/Password)
+					_, _ = c.Write([]byte{0x05, 0x02})
+
+					// Read subnegotiation: version (0x01), ulen, user, plen, pass
+					authVer := make([]byte, 2)
+					_, _ = io.ReadFull(c, authVer)
+					ulen := int(authVer[1])
+					userBuf := make([]byte, ulen)
+					_, _ = io.ReadFull(c, userBuf)
+					plenBuf := make([]byte, 1)
+					_, _ = io.ReadFull(c, plenBuf)
+					plen := int(plenBuf[0])
+					passBuf := make([]byte, plen)
+					_, _ = io.ReadFull(c, passBuf)
+
+					if string(userBuf) == "pergo-user" && string(passBuf) == "secret123" {
+						_, _ = c.Write([]byte{0x01, 0x00}) // auth success
+					} else {
+						_, _ = c.Write([]byte{0x01, 0x01}) // auth failure
+					}
+				}(conn)
+			}
+		}()
+
+		proxyURL := "socks5://pergo-user:secret123@" + ln.Addr().String()
+		jidVal := "5511999990010@s.whatsapp.net"
+		conn := &repository.Connection{
+			ID:             uuid.New(),
+			WorkspaceID:    ws.ID,
+			Name:           "WhatsApp with SOCKS5 Auth",
+			Channel:        "whatsapp",
+			SenderIdentity: "+5511999990010",
+			Status:         "connected",
+			JID:            &jidVal,
+			ProxyURL:       &proxyURL,
+			CreatedAt:      time.Now().UTC(),
+			UpdatedAt:      time.Now().UTC(),
+		}
+		if err := connRepo.Create(ctx, conn); err != nil {
+			t.Fatalf("failed to create conn: %v", err)
+		}
+		defer func() { _ = connRepo.Delete(ctx, conn.ID) }()
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"workspace_id":  ws.ID.String(),
+			"connection_id": conn.ID.String(),
+		}
+
+		res, err := srv.handleDiagnoseConnectionHealth(ctx, req)
+		if err != nil {
+			t.Fatalf("handleDiagnoseConnectionHealth failed: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("expected success, got error: %+v", res.Content)
+		}
+
+		var diag ConnectionHealthDiagnosticResult
+		if err := json.Unmarshal([]byte(extractText(t, res)), &diag); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+
+		if diag.ProxyHealth == nil || !diag.ProxyHealth.Configured || !diag.ProxyHealth.Reachable {
+			t.Fatalf("expected proxy to be reachable with valid socks5 credentials, got %+v", diag.ProxyHealth)
 		}
 	})
 

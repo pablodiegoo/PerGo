@@ -22,6 +22,26 @@ var MonitoredStreams = []string{
 	"INBOUND",
 }
 
+// Queue Health status constants.
+const (
+	QueueStatusHealthy      = "healthy"
+	QueueStatusDegraded     = "degraded"
+	QueueStatusBackpressure = "backpressure"
+	QueueStatusNotFound     = "not_found"
+	QueueStatusError        = "error"
+	QueueStatusOffline      = "offline"
+)
+
+// Backlog and consumer lag evaluation thresholds.
+const (
+	QueueConsumerPendingBackpressureThreshold    = 1000
+	QueueConsumerPendingDegradedThreshold        = 500
+	QueueConsumerAckPendingBackpressureThreshold = 500
+	QueueConsumerAckPendingDegradedThreshold     = 200
+	QueueStreamMsgsBackpressureThreshold         = 1000
+	QueueStreamMsgsDegradedThreshold             = 500
+)
+
 // QueueHealthReport contains the aggregated queue health status and per-stream metrics.
 type QueueHealthReport struct {
 	Status        string               `json:"status"` // "healthy", "degraded", "backpressure", "offline"
@@ -188,21 +208,21 @@ func (j *jetstreamQueueInspector) InspectQueueHealth(ctx context.Context, worksp
 		}
 
 		// Evaluate individual stream status
-		sStatus := "healthy"
+		sStatus := QueueStatusHealthy
 		for _, cs := range streamRep.ConsumerStats {
-			if cs.NumPending > 1000 || cs.NumAckPending > 500 {
-				sStatus = "backpressure"
+			if cs.NumPending > QueueConsumerPendingBackpressureThreshold || cs.NumAckPending > QueueConsumerAckPendingBackpressureThreshold {
+				sStatus = QueueStatusBackpressure
 				break
-			} else if cs.NumPending > 500 || cs.NumAckPending > 200 {
-				if sStatus != "backpressure" {
-					sStatus = "degraded"
+			} else if cs.NumPending > QueueConsumerPendingDegradedThreshold || cs.NumAckPending > QueueConsumerAckPendingDegradedThreshold {
+				if sStatus != QueueStatusBackpressure {
+					sStatus = QueueStatusDegraded
 				}
 			}
 		}
-		if streamRep.Msgs >= 1000 && sStatus != "backpressure" {
-			sStatus = "backpressure"
-		} else if streamRep.Msgs > 500 && sStatus == "healthy" {
-			sStatus = "degraded"
+		if streamRep.Msgs >= QueueStreamMsgsBackpressureThreshold && sStatus != QueueStatusBackpressure {
+			sStatus = QueueStatusBackpressure
+		} else if streamRep.Msgs > QueueStreamMsgsDegradedThreshold && sStatus == QueueStatusHealthy {
+			sStatus = QueueStatusDegraded
 		}
 		streamRep.Status = sStatus
 		report.Streams = append(report.Streams, streamRep)
@@ -215,27 +235,27 @@ func (j *jetstreamQueueInspector) InspectQueueHealth(ctx context.Context, worksp
 	allNotFound := true
 
 	for _, sRep := range report.Streams {
-		if sRep.Status != "not_found" {
+		if sRep.Status != QueueStatusNotFound {
 			allNotFound = false
 		}
 		switch sRep.Status {
-		case "backpressure":
+		case QueueStatusBackpressure:
 			hasBackpressure = true
-		case "degraded":
+		case QueueStatusDegraded:
 			hasDegraded = true
-		case "error":
+		case QueueStatusError:
 			hasError = true
 		}
 	}
 
 	if hasBackpressure {
-		report.Status = "backpressure"
+		report.Status = QueueStatusBackpressure
 		report.Details = "One or more streams/consumers are experiencing backpressure (backlog or unacknowledged messages exceeded safe limits)"
 	} else if hasDegraded || hasError {
-		report.Status = "degraded"
+		report.Status = QueueStatusDegraded
 		report.Details = "One or more streams/consumers are degraded (elevated backlog, pending ACKs, or stream errors)"
 	} else {
-		report.Status = "healthy"
+		report.Status = QueueStatusHealthy
 		if allNotFound {
 			report.Details = "JetStream is operational; monitored streams are not yet provisioned"
 		} else {

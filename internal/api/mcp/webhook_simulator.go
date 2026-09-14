@@ -14,15 +14,16 @@ import (
 
 // WebhookSimulationTelemetry captures the structured execution metrics of a synthetic webhook dispatch.
 type WebhookSimulationTelemetry struct {
-	SubscriptionID *uuid.UUID `json:"subscription_id,omitempty"`
-	TargetURL      string     `json:"target_url"`
-	EventType      string     `json:"event_type"`
-	TraceID        string     `json:"trace_id"`
-	StatusCode     int        `json:"status_code"`
-	LatencyMS      int64      `json:"latency_ms"`
-	Success        bool       `json:"success"`
-	ResponseBody   string     `json:"response_body,omitempty"`
-	Error          string     `json:"error,omitempty"`
+	SubscriptionID *uuid.UUID                   `json:"subscription_id,omitempty"`
+	TargetURL      string                       `json:"target_url"`
+	EventType      string                       `json:"event_type"`
+	TraceID        string                       `json:"trace_id"`
+	StatusCode     int                          `json:"status_code"`
+	LatencyMS      int64                        `json:"latency_ms"`
+	Success        bool                         `json:"success"`
+	ResponseBody   string                       `json:"response_body,omitempty"`
+	Error          string                       `json:"error,omitempty"`
+	Dispatches     []WebhookSimulationTelemetry `json:"dispatches,omitempty"`
 }
 
 func (s *Server) handleSimulateWebhookEvent(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -107,7 +108,7 @@ func (s *Server) handleSimulateWebhookEvent(ctx context.Context, request mcp.Cal
 			secret = sub.Secret
 		}
 	} else if targetURL == "" {
-		// Both subscription_id and target_url are omitted: fallback to first active subscription for workspace.
+		// Both subscription_id and target_url are omitted: fallback to active subscriptions for workspace.
 		if s.webhookSubRepo == nil {
 			return mcp.NewToolResultError("no active webhook subscriptions found for workspace"), nil
 		}
@@ -115,16 +116,84 @@ func (s *Server) handleSimulateWebhookEvent(ctx context.Context, request mcp.Cal
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to query webhook subscriptions: %v", err)), nil
 		}
-		var activeSub *repository.WebhookSubscription
-		for _, s := range subs {
-			if s.Active {
-				activeSub = s
-				break
+		var activeSubs []*repository.WebhookSubscription
+		for _, sub := range subs {
+			if sub.Active {
+				activeSubs = append(activeSubs, sub)
 			}
 		}
-		if activeSub == nil {
+		if len(activeSubs) == 0 {
 			return mcp.NewToolResultError("no active webhook subscriptions found for workspace"), nil
 		}
+
+		// If multiple active subscriptions exist, dispatch to all of them
+		if len(activeSubs) > 1 {
+			var dispatches []WebhookSimulationTelemetry
+			allSuccess := true
+			var totalLatency int64
+			firstStatusCode := 200
+
+			for _, sub := range activeSubs {
+				subSecret := resolveWebhookSecret(sub.Secret, ws)
+				traceID := "mcp-sim-" + uuid.New().String()[:8]
+				dRes, dErr := executeWebhookDispatch(ctx, WebhookDispatchOptions{
+					TargetURL: sub.URL,
+					Payload:   bodyBytes,
+					Secret:    subSecret,
+					EventType: eventType,
+					TraceID:   traceID,
+					ExtraHeaders: map[string]string{
+						"X-PerGo-Simulated": "true",
+					},
+					Client: s.safeClient,
+				})
+
+				dItem := WebhookSimulationTelemetry{
+					SubscriptionID: &sub.ID,
+					TargetURL:      sub.URL,
+					EventType:      eventType,
+					TraceID:        traceID,
+				}
+				if dErr != nil {
+					dItem.Success = false
+					dItem.Error = dErr.Error()
+					allSuccess = false
+				} else {
+					dItem.LatencyMS = dRes.LatencyMS
+					dItem.StatusCode = dRes.StatusCode
+					dItem.Success = dRes.Success
+					dItem.ResponseBody = dRes.ResponseBody
+					dItem.Error = dRes.Error
+					if !dRes.Success {
+						allSuccess = false
+						if firstStatusCode == 200 {
+							firstStatusCode = dRes.StatusCode
+						}
+					}
+					totalLatency += dRes.LatencyMS
+				}
+				dispatches = append(dispatches, dItem)
+			}
+
+			topRes := WebhookSimulationTelemetry{
+				SubscriptionID: &activeSubs[0].ID,
+				TargetURL:      fmt.Sprintf("%d active subscriptions", len(activeSubs)),
+				EventType:      eventType,
+				TraceID:        "mcp-sim-" + uuid.New().String()[:8],
+				LatencyMS:      totalLatency,
+				StatusCode:     firstStatusCode,
+				Success:        allSuccess,
+				Dispatches:     dispatches,
+			}
+
+			resBytes, err := json.MarshalIndent(topRes, "", "  ")
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("failed to marshal simulation result: %v", err)), nil
+			}
+			return mcp.NewToolResultText(string(resBytes)), nil
+		}
+
+		activeSub := activeSubs[0]
 		targetedSubID = &activeSub.ID
 		destURL = activeSub.URL
 		if len(activeSub.Secret) > 0 {
@@ -142,9 +211,7 @@ func (s *Server) handleSimulateWebhookEvent(ctx context.Context, request mcp.Cal
 	}
 
 	// Fallback to workspace secret if subscription secret not set
-	if len(secret) == 0 && ws.WebhookSecret != nil && *ws.WebhookSecret != "" {
-		secret = []byte(*ws.WebhookSecret)
-	}
+	secret = resolveWebhookSecret(secret, ws)
 
 	traceID := "mcp-sim-" + uuid.New().String()[:8]
 
