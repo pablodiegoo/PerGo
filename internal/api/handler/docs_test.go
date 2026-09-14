@@ -23,6 +23,7 @@ func TestDocsHandler_GetDocs(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+		assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
 		assert.Equal(t, `</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"`, rec.Header().Get("Link"))
 		body := rec.Body.String()
 		assert.Contains(t, body, "<title>PerGo API Reference</title>")
@@ -40,8 +41,29 @@ func TestDocsHandler_GetDocs(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+		assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
 		body := rec.Body.String()
 		assert.Contains(t, body, `data-url="/docs/openapi.yaml"`)
+	})
+
+	// Test GET /docs and /docs/ with Accept: text/markdown returns markdown representation
+	t.Run("Accept: text/markdown returns raw Markdown documentation directly without HTML", func(t *testing.T) {
+		endpoints := []string{"/docs", "/docs/"}
+		for _, ep := range endpoints {
+			req := httptest.NewRequest(http.MethodGet, ep, nil)
+			req.Header.Set("Accept", "text/markdown")
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+			assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
+			assert.Equal(t, `</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"`, rec.Header().Get("Link"))
+			body := rec.Body.String()
+			assert.Contains(t, body, "# PerGo Omnichannel CPaaS - Full Developer Documentation")
+			assert.NotContains(t, body, "<html")
+			assert.NotContains(t, body, "<script")
+		}
 	})
 }
 

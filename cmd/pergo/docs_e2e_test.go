@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
+	"github.com/pablojhp.pergo/api"
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
@@ -189,6 +190,124 @@ func TestDocsE2E_AgentDiscoveryHeadersAndMetadata(t *testing.T) {
 		body := rec.Body.String()
 		assert.Contains(t, body, `<link rel="describedby" href="/llms.txt" />`)
 		assert.Contains(t, body, `<link rel="alternate" type="text/markdown" href="/llms-full.txt" title="Full Documentation for LLMs" />`)
+	})
+}
+
+func TestDocsE2E_ContentNegotiation(t *testing.T) {
+	e := echo.New()
+
+	docsHandler := handler.NewDocsHandler()
+	docsHandler.RegisterRoutes(e)
+
+	e.GET("/", func(c *echo.Context) error {
+		return mw.Render(c, http.StatusOK, pages.Landing())
+	}, mw.AgentDiscoveryMiddleware(), mw.ContentNegotiationInterceptor(api.LLMsTxt))
+
+	t.Run("GET /docs with Accept: text/markdown returns full markdown documentation", func(t *testing.T) {
+		endpoints := []string{"/docs", "/docs/"}
+		for _, ep := range endpoints {
+			req := httptest.NewRequest(http.MethodGet, ep, nil)
+			req.Header.Set("Accept", "text/markdown")
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+			assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
+			assert.NotEmpty(t, rec.Header().Get("Link"))
+			body := rec.Body.String()
+			assert.Contains(t, body, "# PerGo Omnichannel CPaaS - Full Developer Documentation")
+			assert.NotContains(t, body, "<html")
+			assert.NotContains(t, body, "<script")
+		}
+	})
+
+	t.Run("GET / with Accept: text/markdown returns raw markdown summary", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Accept", "text/markdown")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+		assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
+		assert.NotEmpty(t, rec.Header().Get("Link"))
+		body := rec.Body.String()
+		assert.Contains(t, body, "# PerGo Omnichannel CPaaS Gateway")
+		assert.NotContains(t, body, "<html")
+		assert.NotContains(t, body, "<script")
+	})
+
+	t.Run("Standard browser requests (Accept: text/html) return HTML with Vary header", func(t *testing.T) {
+		// Test landing page /
+		reqLanding := httptest.NewRequest(http.MethodGet, "/", nil)
+		reqLanding.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		recLanding := httptest.NewRecorder()
+		e.ServeHTTP(recLanding, reqLanding)
+
+		assert.Equal(t, http.StatusOK, recLanding.Code)
+		assert.Contains(t, recLanding.Header().Get("Content-Type"), "text/html")
+		assert.Equal(t, "Accept, Accept-Encoding", recLanding.Header().Get("Vary"))
+		assert.Contains(t, recLanding.Body.String(), "<html")
+
+		// Test docs portal /docs
+		reqDocs := httptest.NewRequest(http.MethodGet, "/docs", nil)
+		reqDocs.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		recDocs := httptest.NewRecorder()
+		e.ServeHTTP(recDocs, reqDocs)
+
+		assert.Equal(t, http.StatusOK, recDocs.Code)
+		assert.Contains(t, recDocs.Header().Get("Content-Type"), "text/html")
+		assert.Equal(t, "Accept, Accept-Encoding", recDocs.Header().Get("Vary"))
+		assert.Contains(t, recDocs.Body.String(), "<title>PerGo API Reference</title>")
+	})
+
+	t.Run("Accept header permutations on /", func(t *testing.T) {
+		tests := []struct {
+			name           string
+			accept         string
+			expectMarkdown bool
+		}{
+			{
+				name:           "text/markdown; charset=utf-8",
+				accept:         "text/markdown; charset=utf-8",
+				expectMarkdown: true,
+			},
+			{
+				name:           "text/markdown preferred over html",
+				accept:         "text/markdown;q=1.0, text/html;q=0.8",
+				expectMarkdown: true,
+			},
+			{
+				name:           "html preferred over markdown",
+				accept:         "text/html;q=1.0, text/markdown;q=0.5",
+				expectMarkdown: false,
+			},
+			{
+				name:           "wildcard */*",
+				accept:         "*/*",
+				expectMarkdown: false,
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, "/", nil)
+				req.Header.Set("Accept", tc.accept)
+				rec := httptest.NewRecorder()
+				e.ServeHTTP(rec, req)
+
+				assert.Equal(t, http.StatusOK, rec.Code)
+				assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
+				if tc.expectMarkdown {
+					assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+					assert.Contains(t, rec.Body.String(), "# PerGo Omnichannel CPaaS Gateway")
+				} else {
+					assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+					assert.Contains(t, rec.Body.String(), "<html")
+				}
+			})
+		}
 	})
 }
 

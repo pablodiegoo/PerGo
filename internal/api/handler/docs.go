@@ -19,8 +19,9 @@ func NewDocsHandler() *DocsHandler {
 // RegisterRoutes mounts the documentation endpoints on Echo.
 func (h *DocsHandler) RegisterRoutes(e *echo.Echo) {
 	disc := middleware.AgentDiscoveryMiddleware()
-	e.GET("/docs", h.ServePortal, disc)
-	e.GET("/docs/", h.ServePortal, disc)
+	neg := middleware.ContentNegotiationInterceptor(api.LLMsFullTxt)
+	e.GET("/docs", h.ServePortal, disc, neg)
+	e.GET("/docs/", h.ServePortal, disc, neg)
 
 	// OpenAPI YAML endpoints
 	e.GET("/docs/openapi.yaml", h.ServeOpenAPISpecYAML)
