@@ -356,6 +356,10 @@ func TestAdminDevelopersE2E_FullLifecycle(t *testing.T) {
 		assert.Contains(t, body, ws.Name)
 		assert.Contains(t, body, "Sandbox de Teste de Payloads Interativos")
 		assert.Contains(t, body, "Abrir Scalar Docs (/docs)")
+		assert.Contains(t, body, "Agent Discovery & LLMs")
+		assert.Contains(t, body, "/llms.txt")
+		assert.Contains(t, body, "/llms-full.txt")
+		assert.Contains(t, body, "Accept: text/markdown")
 	})
 
 	// 2. POST /admin/developers/webhook-secret/rotate

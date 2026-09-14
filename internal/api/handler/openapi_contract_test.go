@@ -108,6 +108,8 @@ func TestOpenAPI31Contract_RequiredEndpointsPresent(t *testing.T) {
 		{"/openapi.json", "get"},
 		{"/api/openapi.json", "get"},
 		{"/docs/scalar.js", "get"},
+		{"/llms.txt", "get"},
+		{"/llms-full.txt", "get"},
 	}
 
 	for _, req := range requiredPaths {
@@ -131,14 +133,67 @@ func TestOpenAPI31Contract_EchoRouteCoverage(t *testing.T) {
 	healthHandler.RegisterRoutes(e)
 
 	for _, r := range e.Router().Routes() {
-		// All registered public documentation and health routes must exist in OpenAPI spec
+		// All registered public documentation, agent discovery, and health routes must exist in OpenAPI spec
 		if r.Path == "/docs" || r.Path == "/docs/openapi.yaml" || r.Path == "/openapi.yaml" || r.Path == "/api/openapi.yaml" ||
 			r.Path == "/docs/openapi.json" || r.Path == "/openapi.json" || r.Path == "/api/openapi.json" ||
+			r.Path == "/docs/scalar.js" || r.Path == "/llms.txt" || r.Path == "/llms-full.txt" ||
 			r.Path == "/health" || r.Path == "/health/ready" || r.Path == "/health/live" {
 			_, ok := doc.Paths[r.Path]
 			assert.Truef(t, ok, "registered Echo route %s must be documented in openapi.yaml", r.Path)
 		}
 	}
+}
+
+func TestOpenAPI31Contract_AgentDiscoveryEndpointsAndHeaders(t *testing.T) {
+	_, doc := loadOpenAPISpec(t)
+
+	// 1. Verify /llms.txt in openapi.yaml
+	llmsTxt, ok := doc.Paths["/llms.txt"]
+	require.True(t, ok, "/llms.txt must be documented in openapi.yaml")
+	llmsGet, ok := llmsTxt["get"].(map[string]interface{})
+	require.True(t, ok, "/llms.txt must define get method")
+	responses, ok := llmsGet["responses"].(map[string]interface{})
+	require.True(t, ok)
+	resp200, ok := responses["200"].(map[string]interface{})
+	require.True(t, ok)
+	content, ok := resp200["content"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Contains(t, content, "text/markdown", "/llms.txt must document text/markdown content type")
+
+	// 2. Verify /llms-full.txt in openapi.yaml
+	llmsFull, ok := doc.Paths["/llms-full.txt"]
+	require.True(t, ok, "/llms-full.txt must be documented in openapi.yaml")
+	llmsFullGet, ok := llmsFull["get"].(map[string]interface{})
+	require.True(t, ok, "/llms-full.txt must define get method")
+	responsesFull, ok := llmsFullGet["responses"].(map[string]interface{})
+	require.True(t, ok)
+	resp200Full, ok := responsesFull["200"].(map[string]interface{})
+	require.True(t, ok)
+	contentFull, ok := resp200Full["content"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Contains(t, contentFull, "text/markdown", "/llms-full.txt must document text/markdown content type")
+
+	// 3. Verify Link headers documented on /docs
+	docsPath, ok := doc.Paths["/docs"]
+	require.True(t, ok, "/docs must be documented in openapi.yaml")
+	docsGet, ok := docsPath["get"].(map[string]interface{})
+	require.True(t, ok)
+	docsResponses, ok := docsGet["responses"].(map[string]interface{})
+	require.True(t, ok)
+	docs200, ok := docsResponses["200"].(map[string]interface{})
+	require.True(t, ok)
+	headers, ok := docs200["headers"].(map[string]interface{})
+	require.True(t, ok, "/docs 200 response must document headers")
+	assert.Contains(t, headers, "Link", "/docs 200 response must document Link header")
+
+	// 4. Verify openapi.json contains /llms.txt and /llms-full.txt
+	var jsonDoc map[string]interface{}
+	err := yaml.Unmarshal(api.OpenAPIJSON, &jsonDoc)
+	require.NoError(t, err)
+	jsonPaths, ok := jsonDoc["paths"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Contains(t, jsonPaths, "/llms.txt", "openapi.json must contain /llms.txt")
+	assert.Contains(t, jsonPaths, "/llms-full.txt", "openapi.json must contain /llms-full.txt")
 }
 
 func TestOpenAPI31Contract_JSONEmbedding(t *testing.T) {

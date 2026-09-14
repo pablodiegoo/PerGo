@@ -121,6 +121,12 @@ paths:
       responses:
         '200':
           description: Scalar API documentation HTML page
+          headers:
+            Link:
+              description: RFC 8288 Web Linking header pointing to agent indexes (/llms.txt, /llms-full.txt)
+              schema:
+                type: string
+                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
           content:
             text/html:
               schema:
@@ -221,6 +227,46 @@ paths:
           description: JavaScript bundle
           content:
             application/javascript:
+              schema:
+                type: string
+
+  /llms.txt:
+    get:
+      summary: Curated LLM and agent index
+      description: Returns the curated agent index in Markdown format adhering to the llmstxt.org specification, linking to full documentation and API contracts.
+      operationId: getLLMsTxt
+      security: []
+      responses:
+        '200':
+          description: Curated agent documentation index in Markdown
+          headers:
+            Link:
+              description: RFC 8288 Web Linking header pointing to full markdown documentation
+              schema:
+                type: string
+                example: '</llms-full.txt>; rel="alternate"; type="text/markdown"'
+          content:
+            text/markdown:
+              schema:
+                type: string
+
+  /llms-full.txt:
+    get:
+      summary: Full LLM developer documentation
+      description: Returns the comprehensive, concatenated developer documentation in Markdown format for ingestion by autonomous AI agents and LLMs.
+      operationId: getLLMsFullTxt
+      security: []
+      responses:
+        '200':
+          description: Full developer documentation in Markdown
+          headers:
+            Link:
+              description: RFC 8288 Web Linking header
+              schema:
+                type: string
+                example: '</llms.txt>; rel="describedby"'
+          content:
+            text/markdown:
               schema:
                 type: string
 

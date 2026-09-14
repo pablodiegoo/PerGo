@@ -205,7 +205,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</h1><p class=\"text-zinc-500 text-sm mt-1\">Gerencie chaves de API, rotacione segredos de webhook, teste payloads interativos e acesse a documentação OpenAPI 3.1.</p></div><div class=\"flex items-center gap-3\"><a href=\"/docs\" target=\"_blank\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5 shadow-sm\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-emerald-400\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253\"></path></svg> <span>Abrir Scalar Docs (/docs) ↗</span></a> <a href=\"/docs/openapi.yaml\" target=\"_blank\" download=\"openapi.yaml\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-3 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4\"></path></svg> <span>OpenAPI 3.1 (YAML)</span></a></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</h1><p class=\"text-zinc-500 text-sm mt-1\">Gerencie chaves de API, rotacione segredos de webhook, teste payloads interativos e acesse a documentação OpenAPI 3.1.</p></div><div class=\"flex items-center gap-3\"><a href=\"/docs\" target=\"_blank\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5 shadow-sm\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-emerald-400\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253\"></path></svg> <span>Abrir Scalar Docs (/docs) ↗</span></a> <a href=\"/llms.txt\" target=\"_blank\" class=\"btn btn-secondary border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 btn-sm font-semibold px-3 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5\"><span class=\"badge badge-xs bg-indigo-600 text-white font-mono\">/llms.txt</span> <span>Agent Index</span></a> <a href=\"/docs/openapi.yaml\" target=\"_blank\" download=\"openapi.yaml\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-3 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4\"></path></svg> <span>OpenAPI 3.1 (YAML)</span></a></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -221,7 +221,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(data.ErrorMessage)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 114, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 122, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -240,7 +240,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(data.SuccessMessage)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 120, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 128, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -258,7 +258,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(data.Workspace.ID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 148, Col: 131}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 156, Col: 131}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -271,7 +271,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(data.BaseURL)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 162, Col: 113}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 170, Col: 113}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -292,7 +292,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		var templ_7745c5c3_Var15 string
 		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d ativa(s)", len(data.APIKeys)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 197, Col: 102}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 205, Col: 102}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 		if templ_7745c5c3_Err != nil {
@@ -306,7 +306,20 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</div></div><!-- Generate API Key Form --><div class=\"pt-3 border-t border-zinc-100\"><form hx-post=\"/admin/developers/keys\" hx-target=\"#api-keys-list-container\" hx-swap=\"innerHTML\" class=\"flex gap-2\"><input type=\"text\" name=\"name\" placeholder=\"Nome da chave (ex: CRM Pro)\" required class=\"form-input border border-zinc-300 rounded px-2.5 py-1 text-xs focus:ring-zinc-950 bg-white flex-1\"> <button type=\"submit\" class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-xs font-semibold px-3 py-1.5 rounded transition shrink-0 flex items-center gap-1 cursor-pointer\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 4v16m8-8H4\"></path></svg> <span>Criar Chave</span></button></form></div></div></div><!-- Interactive Payload Sandbox Testing --><div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8\"><div class=\"border-b border-zinc-100 pb-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-2\"><div><div class=\"flex items-center gap-2\"><span class=\"p-1.5 rounded bg-blue-100 text-blue-900\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z\"></path></svg></span><h2 class=\"text-lg font-bold text-zinc-900\">Sandbox de Teste de Payloads Interativos</h2></div><p class=\"text-xs text-zinc-500 mt-1\">Valide e simule a renderização e degradação de mensagens interativas (botões, listas, Meta Flows, catálogo) contra o contrato OpenAPI 3.1.</p></div><div class=\"flex items-center gap-2\"><label for=\"sandbox-preset\" class=\"text-xs font-semibold text-zinc-500\">Preset:</label> <select id=\"sandbox-preset\" onchange=\"loadSandboxPreset(this.value)\" class=\"select select-bordered select-xs font-medium text-zinc-800 bg-zinc-50 border-zinc-300 rounded\"><option value=\"buttons\" selected>Botões de Resposta Rápida (Reply Buttons)</option> <option value=\"list\">Menu de Lista (Interactive List)</option> <option value=\"flow\">Meta Flow CTA (Formulário Nativo)</option> <option value=\"product\">WhatsApp Produto Individual</option> <option value=\"product_list\">WhatsApp Lista Multi-Produtos</option> <option value=\"text\">Texto Simples com Fallback</option></select></div></div><form hx-post=\"/admin/developers/sandbox/test\" hx-target=\"#sandbox-result-area\" hx-swap=\"innerHTML\" class=\"space-y-4\"><div><div class=\"flex items-center justify-between mb-1.5\"><label for=\"sandbox-payload\" class=\"text-xs font-semibold text-zinc-600 uppercase tracking-wider\">Payload JSON (POST /messages)</label> <span class=\"text-[11px] text-zinc-400 font-mono\">domain.CreateMessageRequest</span></div><textarea id=\"sandbox-payload\" name=\"payload\" rows=\"12\" required class=\"form-input font-mono text-xs text-zinc-800 bg-zinc-900 text-zinc-100 p-3.5 rounded-md border border-zinc-800 w-full leading-relaxed focus:ring-2 focus:ring-zinc-950\"></textarea></div><div class=\"flex items-center justify-between pt-2\"><div class=\"text-xs text-zinc-500 flex items-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-zinc-400\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z\"></path></svg> <span>Validação sintática e semântica com verificação de regras de canal.</span></div><button type=\"submit\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none btn-sm font-semibold px-5 py-2 rounded-md transition h-9 flex items-center gap-2 cursor-pointer\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-emerald-400\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z\"></path></svg> <span>Validar & Simular Payload</span></button></div></form><!-- Sandbox Validation Results Area --><div id=\"sandbox-result-area\" class=\"mt-6\"></div></div><!-- Interactive HMAC-SHA256 SSO URL Generator Tool --><div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8\"><div class=\"border-b border-zinc-100 pb-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-2\"><div><div class=\"flex items-center gap-2\"><span class=\"p-1.5 rounded bg-amber-100 text-amber-900\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z\"></path></svg></span><h2 class=\"text-lg font-bold text-zinc-900\">Gerador de Links de Single Sign-On (SSO)</h2></div><p class=\"text-xs text-zinc-500 mt-1\">Gere URLs assinadas com HMAC-SHA256 para embutir o console nativo do PerGo no seu CRM ou ERP.</p></div><div class=\"flex items-center gap-2 text-xs font-medium text-amber-700 bg-amber-50 px-3 py-1.5 rounded-md border border-amber-200\"><span>TTL máximo: 120s (com proteção contra replay)</span></div></div><form hx-post=\"/admin/developers/sso-generate\" hx-target=\"#sso-result-area\" hx-swap=\"innerHTML\" class=\"grid grid-cols-1 md:grid-cols-4 gap-4 mb-6\"><div class=\"flex flex-col gap-1.5 md:col-span-2\"><label for=\"sso-sub\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Identificador do Operador (sub/email)</label> <input type=\"text\" id=\"sso-sub\" name=\"sub\" value=\"operador@crm.local\" required placeholder=\"ex: operador@empresa.com\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:ring-zinc-950 bg-white w-full\"></div><div class=\"flex flex-col gap-1.5\"><label for=\"sso-redirect\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Página de Destino</label> <select id=\"sso-redirect\" name=\"redirect\" class=\"select select-bordered select-sm w-full font-medium text-zinc-800 bg-white border-zinc-300 h-9 rounded-md\"><option value=\"/admin/connections\" selected>Conexões (/admin/connections)</option> <option value=\"/admin/inbox\">Live Inbox (/admin/inbox)</option> <option value=\"/admin/campaigns\">Campanhas (/admin/campaigns)</option> <option value=\"/admin/developers\">Desenvolvedores (/admin/developers)</option> <option value=\"/admin/webhooks\">Webhooks (/admin/webhooks)</option> <option value=\"/admin/\">Visão Geral (/admin/)</option></select></div><div class=\"flex flex-col gap-1.5\"><label for=\"sso-ttl\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Expiração / TTL (Segundos)</label><div class=\"flex gap-2\"><input type=\"number\" id=\"sso-ttl\" name=\"ttl_seconds\" value=\"60\" min=\"5\" max=\"120\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:ring-zinc-950 bg-white w-24\"> <button type=\"submit\" class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex-1 flex items-center justify-center gap-1.5 cursor-pointer\"><span>Gerar SSO</span></button></div></div></form><div id=\"sso-result-area\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</div></div><!-- Generate API Key Form --><div class=\"pt-3 border-t border-zinc-100\"><form hx-post=\"/admin/developers/keys\" hx-target=\"#api-keys-list-container\" hx-swap=\"innerHTML\" class=\"flex gap-2\"><input type=\"text\" name=\"name\" placeholder=\"Nome da chave (ex: CRM Pro)\" required class=\"form-input border border-zinc-300 rounded px-2.5 py-1 text-xs focus:ring-zinc-950 bg-white flex-1\"> <button type=\"submit\" class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-xs font-semibold px-3 py-1.5 rounded transition shrink-0 flex items-center gap-1 cursor-pointer\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 4v16m8-8H4\"></path></svg> <span>Criar Chave</span></button></form></div></div></div><!-- Agent Discovery & LLMs Card --><div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8\"><div class=\"border-b border-zinc-100 pb-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3\"><div class=\"flex items-center gap-3\"><div class=\"p-2 rounded-md bg-indigo-600 text-white\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-5 w-5\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M13 10V3L4 14h7v7l9-11h-7z\"></path></svg></div><div><div class=\"flex items-center gap-2\"><h2 class=\"text-lg font-bold text-zinc-900\">Agent Discovery &amp; LLMs</h2><span class=\"badge badge-sm bg-indigo-50 text-indigo-700 border-indigo-200 font-mono font-semibold px-2 py-0.5 text-xs\">/llms.txt</span></div><p class=\"text-xs text-zinc-500 mt-0.5\">Recursos e pontos de entrada preparados para agentes de IA autônomos e LLMs via RFC 8288 e llmstxt.org.</p></div></div><div class=\"flex items-center gap-2\"><a href=\"/llms.txt\" target=\"_blank\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-xs font-semibold px-3 py-1.5 rounded transition flex items-center gap-1\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5 text-indigo-600\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14\"></path></svg> <span>Abrir /llms.txt ↗</span></a> <a href=\"/llms-full.txt\" target=\"_blank\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-xs font-semibold px-3 py-1.5 rounded transition flex items-center gap-1\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5 text-indigo-600\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z\"></path></svg> <span>Abrir /llms-full.txt ↗</span></a></div></div><div class=\"grid grid-cols-1 lg:grid-cols-2 gap-6\"><!-- Direct Discovery Links & Information --><div class=\"space-y-3\"><h3 class=\"text-xs font-semibold text-zinc-600 uppercase tracking-wider\">Rotas Canônicas de Descoberta</h3><div class=\"space-y-2 text-xs\"><div class=\"flex items-center justify-between p-2.5 rounded-md border border-zinc-200 bg-zinc-50\"><div class=\"flex flex-col\"><span class=\"font-semibold text-zinc-800 font-mono\">/llms.txt</span> <span class=\"text-zinc-500 text-[11px]\">Índice curado com sumário executivo e regras essenciais de integração</span></div><a href=\"/llms.txt\" target=\"_blank\" class=\"text-indigo-600 hover:text-indigo-800 font-medium ml-2\">Visualizar</a></div><div class=\"flex items-center justify-between p-2.5 rounded-md border border-zinc-200 bg-zinc-50\"><div class=\"flex flex-col\"><span class=\"font-semibold text-zinc-800 font-mono\">/llms-full.txt</span> <span class=\"text-zinc-500 text-[11px]\">Documentação técnica integral consolidada para modelos de contexto longo</span></div><a href=\"/llms-full.txt\" target=\"_blank\" class=\"text-indigo-600 hover:text-indigo-800 font-medium ml-2\">Visualizar</a></div></div><div class=\"pt-2 text-xs text-zinc-500 flex items-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-emerald-600 shrink-0\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z\"></path></svg> <span>Descoberta pública e anônima ativada (bypass de autenticação) com headers RFC 8288 <code>Link</code>.</span></div></div><!-- Ready-to-use cURL Inspection Snippet --><div class=\"space-y-3\"><div class=\"flex items-center justify-between\"><h3 class=\"text-xs font-semibold text-zinc-600 uppercase tracking-wider\">Inspeção via Content-Negotiation (cURL)</h3><span class=\"text-[11px] font-mono text-zinc-400\">Accept: text/markdown</span></div><div class=\"relative bg-zinc-900 rounded-md p-3.5 border border-zinc-800\"><pre class=\"text-xs font-mono text-zinc-200 leading-relaxed overflow-x-auto whitespace-pre\"><code id=\"curl-discovery-cmd\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var16 string
+		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("curl -s -H \"Accept: text/markdown\" %s/", data.BaseURL))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 325, Col: 198}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</code></pre><button type=\"button\" class=\"absolute top-2.5 right-2.5 btn btn-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-none rounded px-2 py-0.5 text-[11px] font-medium cursor-pointer transition\" onclick=\"navigator.clipboard.writeText(document.getElementById('curl-discovery-cmd').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })\">Copiar</button></div><p class=\"text-xs text-zinc-500\">Qualquer requisição com <code>Accept: text/markdown</code> retorna automaticamente a documentação estruturada sem overhead de renderização HTML.</p></div></div></div><!-- Interactive Payload Sandbox Testing --><div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8\"><div class=\"border-b border-zinc-100 pb-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-2\"><div><div class=\"flex items-center gap-2\"><span class=\"p-1.5 rounded bg-blue-100 text-blue-900\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z\"></path></svg></span><h2 class=\"text-lg font-bold text-zinc-900\">Sandbox de Teste de Payloads Interativos</h2></div><p class=\"text-xs text-zinc-500 mt-1\">Valide e simule a renderização e degradação de mensagens interativas (botões, listas, Meta Flows, catálogo) contra o contrato OpenAPI 3.1.</p></div><div class=\"flex items-center gap-2\"><label for=\"sandbox-preset\" class=\"text-xs font-semibold text-zinc-500\">Preset:</label> <select id=\"sandbox-preset\" onchange=\"loadSandboxPreset(this.value)\" class=\"select select-bordered select-xs font-medium text-zinc-800 bg-zinc-50 border-zinc-300 rounded\"><option value=\"buttons\" selected>Botões de Resposta Rápida (Reply Buttons)</option> <option value=\"list\">Menu de Lista (Interactive List)</option> <option value=\"flow\">Meta Flow CTA (Formulário Nativo)</option> <option value=\"product\">WhatsApp Produto Individual</option> <option value=\"product_list\">WhatsApp Lista Multi-Produtos</option> <option value=\"text\">Texto Simples com Fallback</option></select></div></div><form hx-post=\"/admin/developers/sandbox/test\" hx-target=\"#sandbox-result-area\" hx-swap=\"innerHTML\" class=\"space-y-4\"><div><div class=\"flex items-center justify-between mb-1.5\"><label for=\"sandbox-payload\" class=\"text-xs font-semibold text-zinc-600 uppercase tracking-wider\">Payload JSON (POST /messages)</label> <span class=\"text-[11px] text-zinc-400 font-mono\">domain.CreateMessageRequest</span></div><textarea id=\"sandbox-payload\" name=\"payload\" rows=\"12\" required class=\"form-input font-mono text-xs text-zinc-800 bg-zinc-900 text-zinc-100 p-3.5 rounded-md border border-zinc-800 w-full leading-relaxed focus:ring-2 focus:ring-zinc-950\"></textarea></div><div class=\"flex items-center justify-between pt-2\"><div class=\"text-xs text-zinc-500 flex items-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-zinc-400\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z\"></path></svg> <span>Validação sintática e semântica com verificação de regras de canal.</span></div><button type=\"submit\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none btn-sm font-semibold px-5 py-2 rounded-md transition h-9 flex items-center gap-2 cursor-pointer\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 text-emerald-400\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z\"></path></svg> <span>Validar & Simular Payload</span></button></div></form><!-- Sandbox Validation Results Area --><div id=\"sandbox-result-area\" class=\"mt-6\"></div></div><!-- Interactive HMAC-SHA256 SSO URL Generator Tool --><div class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-8\"><div class=\"border-b border-zinc-100 pb-4 mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-2\"><div><div class=\"flex items-center gap-2\"><span class=\"p-1.5 rounded bg-amber-100 text-amber-900\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z\"></path></svg></span><h2 class=\"text-lg font-bold text-zinc-900\">Gerador de Links de Single Sign-On (SSO)</h2></div><p class=\"text-xs text-zinc-500 mt-1\">Gere URLs assinadas com HMAC-SHA256 para embutir o console nativo do PerGo no seu CRM ou ERP.</p></div><div class=\"flex items-center gap-2 text-xs font-medium text-amber-700 bg-amber-50 px-3 py-1.5 rounded-md border border-amber-200\"><span>TTL máximo: 120s (com proteção contra replay)</span></div></div><form hx-post=\"/admin/developers/sso-generate\" hx-target=\"#sso-result-area\" hx-swap=\"innerHTML\" class=\"grid grid-cols-1 md:grid-cols-4 gap-4 mb-6\"><div class=\"flex flex-col gap-1.5 md:col-span-2\"><label for=\"sso-sub\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Identificador do Operador (sub/email)</label> <input type=\"text\" id=\"sso-sub\" name=\"sub\" value=\"operador@crm.local\" required placeholder=\"ex: operador@empresa.com\" class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:ring-zinc-950 bg-white w-full\"></div><div class=\"flex flex-col gap-1.5\"><label for=\"sso-redirect\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Página de Destino</label> <select id=\"sso-redirect\" name=\"redirect\" class=\"select select-bordered select-sm w-full font-medium text-zinc-800 bg-white border-zinc-300 h-9 rounded-md\"><option value=\"/admin/connections\" selected>Conexões (/admin/connections)</option> <option value=\"/admin/inbox\">Live Inbox (/admin/inbox)</option> <option value=\"/admin/campaigns\">Campanhas (/admin/campaigns)</option> <option value=\"/admin/developers\">Desenvolvedores (/admin/developers)</option> <option value=\"/admin/webhooks\">Webhooks (/admin/webhooks)</option> <option value=\"/admin/\">Visão Geral (/admin/)</option></select></div><div class=\"flex flex-col gap-1.5\"><label for=\"sso-ttl\" class=\"text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Expiração / TTL (Segundos)</label><div class=\"flex gap-2\"><input type=\"number\" id=\"sso-ttl\" name=\"ttl_seconds\" value=\"60\" min=\"5\" max=\"120\" required class=\"form-input border border-zinc-300 rounded-md px-3 py-2 text-sm focus:ring-zinc-950 bg-white w-24\"> <button type=\"submit\" class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex-1 flex items-center justify-center gap-1.5 cursor-pointer\"><span>Gerar SSO</span></button></div></div></form><div id=\"sso-result-area\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -324,7 +337,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</div></div><!-- Preset Loader Script --><script>\n\t\tconst SANDBOX_PRESETS = {\n\t\t\tbuttons: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"interactive\",\n\t\t\t\t\"fallback_behavior\": \"degrade\",\n\t\t\t\t\"interactive\": {\n\t\t\t\t\t\"type\": \"button\",\n\t\t\t\t\t\"header\": { \"text\": \"Confirmação de Agendamento\" },\n\t\t\t\t\t\"body\": { \"text\": \"Olá Carlos! Você confirma sua consulta para amanhã às 14:00?\" },\n\t\t\t\t\t\"footer\": { \"text\": \"Clínica PerGo Saúde\" },\n\t\t\t\t\t\"action\": {\n\t\t\t\t\t\t\"buttons\": [\n\t\t\t\t\t\t\t{ \"type\": \"reply\", \"reply\": { \"id\": \"btn_sim\", \"title\": \"Confirmar Sim\" } },\n\t\t\t\t\t\t\t{ \"type\": \"reply\", \"reply\": { \"id\": \"btn_nao\", \"title\": \"Reagendar\" } }\n\t\t\t\t\t\t]\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tlist: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"interactive\",\n\t\t\t\t\"fallback_behavior\": \"degrade\",\n\t\t\t\t\"interactive\": {\n\t\t\t\t\t\"type\": \"list\",\n\t\t\t\t\t\"header\": { \"text\": \"Central de Atendimento\" },\n\t\t\t\t\t\"body\": { \"text\": \"Escolha o departamento desejado no menu abaixo:\" },\n\t\t\t\t\t\"footer\": { \"text\": \"Horário: 08h às 18h\" },\n\t\t\t\t\t\"action\": {\n\t\t\t\t\t\t\"button\": \"Ver Opções\",\n\t\t\t\t\t\t\"sections\": [\n\t\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\t\"title\": \"Suporte\",\n\t\t\t\t\t\t\t\t\"rows\": [\n\t\t\t\t\t\t\t\t\t{ \"id\": \"row_tec\", \"title\": \"Suporte Técnico\", \"description\": \"Problemas de conexão e bugs\" },\n\t\t\t\t\t\t\t\t\t{ \"id\": \"row_fin\", \"title\": \"Financeiro\", \"description\": \"2ª via de faturas e pagamentos\" }\n\t\t\t\t\t\t\t\t]\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\t\"title\": \"Comercial\",\n\t\t\t\t\t\t\t\t\"rows\": [\n\t\t\t\t\t\t\t\t\t{ \"id\": \"row_upg\", \"title\": \"Upgrade de Plano\", \"description\": \"Conheça nossos planos corporativos\" }\n\t\t\t\t\t\t\t\t]\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t]\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tflow: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"interactive\",\n\t\t\t\t\"interactive\": {\n\t\t\t\t\t\"type\": \"flow\",\n\t\t\t\t\t\"header\": { \"text\": \"Cadastro de Paciente\" },\n\t\t\t\t\t\"body\": { \"text\": \"Preencha seus dados cadastrais diretamente pelo WhatsApp:\" },\n\t\t\t\t\t\"footer\": { \"text\": \"Formulário Seguro Criptografado\" },\n\t\t\t\t\t\"action\": {\n\t\t\t\t\t\t\"flow_id\": \"123456789012345\",\n\t\t\t\t\t\t\"flow_cta\": \"Iniciar Formulário\",\n\t\t\t\t\t\t\"flow_action\": \"navigate\",\n\t\t\t\t\t\t\"flow_action_payload\": {\n\t\t\t\t\t\t\t\"screen\": \"APPOINTMENT_SCREEN\",\n\t\t\t\t\t\t\t\"data\": { \"patient_name\": \"Carlos Silva\" }\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tproduct: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"product\",\n\t\t\t\t\"product\": {\n\t\t\t\t\t\"catalog_id\": \"cat_987654321\",\n\t\t\t\t\t\"product_retailer_id\": \"sku_camiseta_pergo_01\",\n\t\t\t\t\t\"body\": \"Confira nosso lançamento oficial!\"\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tproduct_list: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"product_list\",\n\t\t\t\t\"product\": {\n\t\t\t\t\t\"catalog_id\": \"cat_987654321\",\n\t\t\t\t\t\"header\": \"Catálogo de Ofertas\",\n\t\t\t\t\t\"body\": \"Selecione produtos para seu carrinho:\",\n\t\t\t\t\t\"footer\": \"Frete grátis para todo o Brasil\",\n\t\t\t\t\t\"sections\": [\n\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\"title\": \"Vestuário\",\n\t\t\t\t\t\t\t\"product_items\": [\n\t\t\t\t\t\t\t\t{ \"product_retailer_id\": \"sku_camiseta_azul\" },\n\t\t\t\t\t\t\t\t{ \"product_retailer_id\": \"sku_moletom_preto\" }\n\t\t\t\t\t\t\t]\n\t\t\t\t\t\t}\n\t\t\t\t\t]\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\ttext: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp\",\n\t\t\t\t\"body\": \"Olá! Sua mensagem foi recebida com sucesso.\",\n\t\t\t\t\"fallback_channels\": [\"telegram\", \"email\"],\n\t\t\t\t\"ttl_seconds\": 3600\n\t\t\t}, null, 2)\n\t\t};\n\n\t\tfunction loadSandboxPreset(preset) {\n\t\t\tconst textarea = document.getElementById('sandbox-payload');\n\t\t\tif (textarea && SANDBOX_PRESETS[preset]) {\n\t\t\t\ttextarea.value = SANDBOX_PRESETS[preset];\n\t\t\t}\n\t\t}\n\n\t\t// Initial load of default preset\n\t\tdocument.addEventListener('DOMContentLoaded', () => {\n\t\t\tloadSandboxPreset('buttons');\n\t\t});\n\t\tif (document.readyState !== 'loading') {\n\t\t\tloadSandboxPreset('buttons');\n\t\t}\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</div></div><!-- Preset Loader Script --><script>\n\t\tconst SANDBOX_PRESETS = {\n\t\t\tbuttons: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"interactive\",\n\t\t\t\t\"fallback_behavior\": \"degrade\",\n\t\t\t\t\"interactive\": {\n\t\t\t\t\t\"type\": \"button\",\n\t\t\t\t\t\"header\": { \"text\": \"Confirmação de Agendamento\" },\n\t\t\t\t\t\"body\": { \"text\": \"Olá Carlos! Você confirma sua consulta para amanhã às 14:00?\" },\n\t\t\t\t\t\"footer\": { \"text\": \"Clínica PerGo Saúde\" },\n\t\t\t\t\t\"action\": {\n\t\t\t\t\t\t\"buttons\": [\n\t\t\t\t\t\t\t{ \"type\": \"reply\", \"reply\": { \"id\": \"btn_sim\", \"title\": \"Confirmar Sim\" } },\n\t\t\t\t\t\t\t{ \"type\": \"reply\", \"reply\": { \"id\": \"btn_nao\", \"title\": \"Reagendar\" } }\n\t\t\t\t\t\t]\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tlist: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"interactive\",\n\t\t\t\t\"fallback_behavior\": \"degrade\",\n\t\t\t\t\"interactive\": {\n\t\t\t\t\t\"type\": \"list\",\n\t\t\t\t\t\"header\": { \"text\": \"Central de Atendimento\" },\n\t\t\t\t\t\"body\": { \"text\": \"Escolha o departamento desejado no menu abaixo:\" },\n\t\t\t\t\t\"footer\": { \"text\": \"Horário: 08h às 18h\" },\n\t\t\t\t\t\"action\": {\n\t\t\t\t\t\t\"button\": \"Ver Opções\",\n\t\t\t\t\t\t\"sections\": [\n\t\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\t\"title\": \"Suporte\",\n\t\t\t\t\t\t\t\t\"rows\": [\n\t\t\t\t\t\t\t\t\t{ \"id\": \"row_tec\", \"title\": \"Suporte Técnico\", \"description\": \"Problemas de conexão e bugs\" },\n\t\t\t\t\t\t\t\t\t{ \"id\": \"row_fin\", \"title\": \"Financeiro\", \"description\": \"2ª via de faturas e pagamentos\" }\n\t\t\t\t\t\t\t\t]\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\t\"title\": \"Comercial\",\n\t\t\t\t\t\t\t\t\"rows\": [\n\t\t\t\t\t\t\t\t\t{ \"id\": \"row_upg\", \"title\": \"Upgrade de Plano\", \"description\": \"Conheça nossos planos corporativos\" }\n\t\t\t\t\t\t\t\t]\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t]\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tflow: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"interactive\",\n\t\t\t\t\"interactive\": {\n\t\t\t\t\t\"type\": \"flow\",\n\t\t\t\t\t\"header\": { \"text\": \"Cadastro de Paciente\" },\n\t\t\t\t\t\"body\": { \"text\": \"Preencha seus dados cadastrais diretamente pelo WhatsApp:\" },\n\t\t\t\t\t\"footer\": { \"text\": \"Formulário Seguro Criptografado\" },\n\t\t\t\t\t\"action\": {\n\t\t\t\t\t\t\"flow_id\": \"123456789012345\",\n\t\t\t\t\t\t\"flow_cta\": \"Iniciar Formulário\",\n\t\t\t\t\t\t\"flow_action\": \"navigate\",\n\t\t\t\t\t\t\"flow_action_payload\": {\n\t\t\t\t\t\t\t\"screen\": \"APPOINTMENT_SCREEN\",\n\t\t\t\t\t\t\t\"data\": { \"patient_name\": \"Carlos Silva\" }\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tproduct: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"product\",\n\t\t\t\t\"product\": {\n\t\t\t\t\t\"catalog_id\": \"cat_987654321\",\n\t\t\t\t\t\"product_retailer_id\": \"sku_camiseta_pergo_01\",\n\t\t\t\t\t\"body\": \"Confira nosso lançamento oficial!\"\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tproduct_list: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"product_list\",\n\t\t\t\t\"product\": {\n\t\t\t\t\t\"catalog_id\": \"cat_987654321\",\n\t\t\t\t\t\"header\": \"Catálogo de Ofertas\",\n\t\t\t\t\t\"body\": \"Selecione produtos para seu carrinho:\",\n\t\t\t\t\t\"footer\": \"Frete grátis para todo o Brasil\",\n\t\t\t\t\t\"sections\": [\n\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\"title\": \"Vestuário\",\n\t\t\t\t\t\t\t\"product_items\": [\n\t\t\t\t\t\t\t\t{ \"product_retailer_id\": \"sku_camiseta_azul\" },\n\t\t\t\t\t\t\t\t{ \"product_retailer_id\": \"sku_moletom_preto\" }\n\t\t\t\t\t\t\t]\n\t\t\t\t\t\t}\n\t\t\t\t\t]\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\ttext: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp\",\n\t\t\t\t\"body\": \"Olá! Sua mensagem foi recebida com sucesso.\",\n\t\t\t\t\"fallback_channels\": [\"telegram\", \"email\"],\n\t\t\t\t\"ttl_seconds\": 3600\n\t\t\t}, null, 2)\n\t\t};\n\n\t\tfunction loadSandboxPreset(preset) {\n\t\t\tconst textarea = document.getElementById('sandbox-payload');\n\t\t\tif (textarea && SANDBOX_PRESETS[preset]) {\n\t\t\t\ttextarea.value = SANDBOX_PRESETS[preset];\n\t\t\t}\n\t\t}\n\n\t\t// Initial load of default preset\n\t\tdocument.addEventListener('DOMContentLoaded', () => {\n\t\t\tloadSandboxPreset('buttons');\n\t\t});\n\t\tif (document.readyState !== 'loading') {\n\t\t\tloadSandboxPreset('buttons');\n\t\t}\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -349,40 +362,40 @@ func WebhookSecretRow(secret *string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var16 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var16 == nil {
-			templ_7745c5c3_Var16 = templ.NopComponent
+		templ_7745c5c3_Var17 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var17 == nil {
+			templ_7745c5c3_Var17 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<div class=\"flex flex-col sm:flex-row sm:items-center justify-between gap-2\"><label class=\"block text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Webhook Signing Secret (HMAC-SHA256)</label> <button type=\"button\" hx-post=\"/admin/developers/webhook-secret/rotate\" hx-target=\"#webhook-secret-container\" hx-swap=\"innerHTML\" hx-confirm=\"Tem certeza de que deseja rotacionar o segredo de webhook? Aplicações externas deverão ser atualizadas com o novo segredo.\" class=\"btn btn-xs bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 rounded px-2 py-0.5 font-medium cursor-pointer transition flex items-center gap-1 self-start sm:self-auto\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15\"></path></svg> <span>Rotacionar Segredo</span></button></div><div class=\"flex items-center gap-2 bg-zinc-50 border border-zinc-200 rounded-md p-2 mt-1\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<div class=\"flex flex-col sm:flex-row sm:items-center justify-between gap-2\"><label class=\"block text-xs font-semibold text-zinc-500 uppercase tracking-wider\">Webhook Signing Secret (HMAC-SHA256)</label> <button type=\"button\" hx-post=\"/admin/developers/webhook-secret/rotate\" hx-target=\"#webhook-secret-container\" hx-swap=\"innerHTML\" hx-confirm=\"Tem certeza de que deseja rotacionar o segredo de webhook? Aplicações externas deverão ser atualizadas com o novo segredo.\" class=\"btn btn-xs bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 rounded px-2 py-0.5 font-medium cursor-pointer transition flex items-center gap-1 self-start sm:self-auto\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3 w-3\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15\"></path></svg> <span>Rotacionar Segredo</span></button></div><div class=\"flex items-center gap-2 bg-zinc-50 border border-zinc-200 rounded-md p-2 mt-1\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if secret != nil && *secret != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<code id=\"webhook-sec-val\" class=\"text-xs font-mono text-zinc-800 font-medium flex-1 truncate\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<code id=\"webhook-sec-val\" class=\"text-xs font-mono text-zinc-800 font-medium flex-1 truncate\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var17 string
-			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(*secret)
+			var templ_7745c5c3_Var18 string
+			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(*secret)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 556, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 658, Col: 107}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</code> <button type=\"button\" class=\"btn btn-xs bg-zinc-900 hover:bg-zinc-800 text-white border-none rounded px-2.5 py-1 text-xs font-medium cursor-pointer transition\" onclick=\"navigator.clipboard.writeText(document.getElementById('webhook-sec-val').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })\">Copiar</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</code> <button type=\"button\" class=\"btn btn-xs bg-zinc-900 hover:bg-zinc-800 text-white border-none rounded px-2.5 py-1 text-xs font-medium cursor-pointer transition\" onclick=\"navigator.clipboard.writeText(document.getElementById('webhook-sec-val').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })\">Copiar</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<span class=\"text-xs text-zinc-400 italic flex-1\">Nenhum segredo configurado</span> <button type=\"button\" hx-post=\"/admin/developers/webhook-secret/rotate\" hx-target=\"#webhook-secret-container\" hx-swap=\"innerHTML\" class=\"btn btn-xs btn-outline border-zinc-300 text-zinc-700 hover:bg-zinc-100 rounded px-2.5 py-1 text-xs font-medium\">Gerar Segredo</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<span class=\"text-xs text-zinc-400 italic flex-1\">Nenhum segredo configurado</span> <button type=\"button\" hx-post=\"/admin/developers/webhook-secret/rotate\" hx-target=\"#webhook-secret-container\" hx-swap=\"innerHTML\" class=\"btn btn-xs btn-outline border-zinc-300 text-zinc-700 hover:bg-zinc-100 rounded px-2.5 py-1 text-xs font-medium\">Gerar Segredo</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -407,86 +420,86 @@ func APIKeysList(keys []repository.APIKey) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var18 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var18 == nil {
-			templ_7745c5c3_Var18 = templ.NopComponent
+		templ_7745c5c3_Var19 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var19 == nil {
+			templ_7745c5c3_Var19 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		for _, key := range keys {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<div class=\"flex items-center justify-between p-2 rounded bg-zinc-50 border border-zinc-200 text-xs\"><div><div class=\"font-semibold text-zinc-900\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var19 string
-			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(key.Name)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 584, Col: 55}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</div><div class=\"font-mono text-zinc-500 text-[11px]\"><code>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<div class=\"flex items-center justify-between p-2 rounded bg-zinc-50 border border-zinc-200 text-xs\"><div><div class=\"font-semibold text-zinc-900\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var20 string
-			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(key.KeyPrefix)
+			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(key.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 585, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 686, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "...</code></div></div><div class=\"flex items-center gap-2\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</div><div class=\"font-mono text-zinc-500 text-[11px]\"><code>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var21 string
+			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(key.KeyPrefix)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 687, Col: 74}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "...</code></div></div><div class=\"flex items-center gap-2\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if key.RevokedAt != nil {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<span class=\"badge badge-xs bg-rose-50 text-rose-700 border-rose-200\">Revogada</span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<span class=\"badge badge-xs bg-rose-50 text-rose-700 border-rose-200\">Revogada</span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<span class=\"badge badge-xs bg-emerald-50 text-emerald-700 border-emerald-200\">Ativa</span> <button type=\"button\" hx-delete=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var21 string
-				templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/developers/keys/%s", key.ID.String()))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 594, Col: 75}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\" hx-target=\"#api-keys-list-container\" hx-swap=\"innerHTML\" hx-confirm=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<span class=\"badge badge-xs bg-emerald-50 text-emerald-700 border-emerald-200\">Ativa</span> <button type=\"button\" hx-delete=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var22 string
-				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("Deseja realmente revogar a chave '%s'?", key.Name))
+				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/developers/keys/%s", key.ID.String()))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 597, Col: 82}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 696, Col: 75}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" class=\"text-xs text-rose-600 hover:text-rose-800 font-medium cursor-pointer ml-1\">Revogar</button>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "\" hx-target=\"#api-keys-list-container\" hx-swap=\"innerHTML\" hx-confirm=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var23 string
+				templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("Deseja realmente revogar a chave '%s'?", key.Name))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 699, Col: 82}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "\" class=\"text-xs text-rose-600 hover:text-rose-800 font-medium cursor-pointer ml-1\">Revogar</button>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(keys) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<div class=\"text-center py-6 text-xs text-zinc-400\">Nenhuma chave cadastrada.</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<div class=\"text-center py-6 text-xs text-zinc-400\">Nenhuma chave cadastrada.</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -512,39 +525,39 @@ func APIKeyCreatedResult(keys []repository.APIKey, newRawKey string, keyName str
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var23 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var23 == nil {
-			templ_7745c5c3_Var23 = templ.NopComponent
+		templ_7745c5c3_Var24 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var24 == nil {
+			templ_7745c5c3_Var24 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if newRawKey != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<div class=\"p-3 mb-2 rounded-md bg-emerald-50 border border-emerald-300 text-xs animate-fadeIn\"><div class=\"font-bold text-emerald-800 mb-1\">Chave \"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var24 string
-			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(keyName)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 617, Col: 64}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "\" criada com sucesso!</div><p class=\"text-emerald-700 text-[11px] mb-2\">Copie sua chave agora. Ela não poderá ser exibida novamente:</p><div class=\"flex items-center gap-2 bg-white p-1.5 rounded border border-emerald-200\"><code id=\"new-key-raw-val\" class=\"font-mono text-emerald-950 font-semibold flex-1 truncate select-all\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<div class=\"p-3 mb-2 rounded-md bg-emerald-50 border border-emerald-300 text-xs animate-fadeIn\"><div class=\"font-bold text-emerald-800 mb-1\">Chave \"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var25 string
-			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(newRawKey)
+			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(keyName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 620, Col: 118}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 719, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</code> <button type=\"button\" class=\"btn btn-xs bg-emerald-700 hover:bg-emerald-800 text-white border-none rounded px-2 py-1 text-xs font-semibold cursor-pointer\" onclick=\"navigator.clipboard.writeText(document.getElementById('new-key-raw-val').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })\">Copiar</button></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\" criada com sucesso!</div><p class=\"text-emerald-700 text-[11px] mb-2\">Copie sua chave agora. Ela não poderá ser exibida novamente:</p><div class=\"flex items-center gap-2 bg-white p-1.5 rounded border border-emerald-200\"><code id=\"new-key-raw-val\" class=\"font-mono text-emerald-950 font-semibold flex-1 truncate select-all\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var26 string
+			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(newRawKey)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 722, Col: 118}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</code> <button type=\"button\" class=\"btn btn-xs bg-emerald-700 hover:bg-emerald-800 text-white border-none rounded px-2 py-1 text-xs font-semibold cursor-pointer\" onclick=\"navigator.clipboard.writeText(document.getElementById('new-key-raw-val').textContent).then(() => { this.textContent = 'Copiado!'; setTimeout(() => this.textContent = 'Copiar', 2000); })\">Copiar</button></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -574,152 +587,152 @@ func SandboxValidationResult(res SandboxResultData) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var26 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var26 == nil {
-			templ_7745c5c3_Var26 = templ.NopComponent
+		templ_7745c5c3_Var27 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var27 == nil {
+			templ_7745c5c3_Var27 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if res.Status == "valid" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<div class=\"border border-emerald-200 bg-emerald-50/60 rounded-lg p-4 space-y-3 animate-fadeIn\"><div class=\"flex items-center justify-between border-b border-emerald-200/80 pb-2.5\"><div class=\"flex items-center gap-2\"><span class=\"badge badge-sm bg-emerald-600 text-white font-bold px-2 py-0.5 rounded\">✓ Payload Válido</span> <span class=\"text-xs font-semibold text-emerald-900\">Em conformidade com a especificação OpenAPI 3.1</span></div><span class=\"text-xs font-mono text-emerald-700\">Canal: <strong>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var27 string
-			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(res.Channel)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 643, Col: 81}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</strong></span></div><div class=\"grid grid-cols-1 md:grid-cols-3 gap-3 text-xs\"><div class=\"bg-white p-2.5 rounded border border-emerald-100\"><span class=\"text-zinc-500 block text-[11px] uppercase font-semibold\">Destinatário</span> <span class=\"font-mono text-zinc-800 font-bold\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<div class=\"border border-emerald-200 bg-emerald-50/60 rounded-lg p-4 space-y-3 animate-fadeIn\"><div class=\"flex items-center justify-between border-b border-emerald-200/80 pb-2.5\"><div class=\"flex items-center gap-2\"><span class=\"badge badge-sm bg-emerald-600 text-white font-bold px-2 py-0.5 rounded\">✓ Payload Válido</span> <span class=\"text-xs font-semibold text-emerald-900\">Em conformidade com a especificação OpenAPI 3.1</span></div><span class=\"text-xs font-mono text-emerald-700\">Canal: <strong>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var28 string
-			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(res.Recipient)
+			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(res.Channel)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 649, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 745, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</span></div><div class=\"bg-white p-2.5 rounded border border-emerald-100\"><span class=\"text-zinc-500 block text-[11px] uppercase font-semibold\">Tipo de Mensagem</span> <span class=\"font-semibold text-zinc-800\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</strong></span></div><div class=\"grid grid-cols-1 md:grid-cols-3 gap-3 text-xs\"><div class=\"bg-white p-2.5 rounded border border-emerald-100\"><span class=\"text-zinc-500 block text-[11px] uppercase font-semibold\">Destinatário</span> <span class=\"font-mono text-zinc-800 font-bold\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var29 string
-			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(res.MessageType)
+			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(res.Recipient)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 653, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 751, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</span></div><div class=\"bg-white p-2.5 rounded border border-emerald-100\"><span class=\"text-zinc-500 block text-[11px] uppercase font-semibold\">Política de Fallback</span> <span class=\"font-semibold text-zinc-800\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</span></div><div class=\"bg-white p-2.5 rounded border border-emerald-100\"><span class=\"text-zinc-500 block text-[11px] uppercase font-semibold\">Tipo de Mensagem</span> <span class=\"font-semibold text-zinc-800\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var30 string
-			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(res.FallbackPolicy)
+			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(res.MessageType)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 657, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 755, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</span></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</span></div><div class=\"bg-white p-2.5 rounded border border-emerald-100\"><span class=\"text-zinc-500 block text-[11px] uppercase font-semibold\">Política de Fallback</span> <span class=\"font-semibold text-zinc-800\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var31 string
+			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(res.FallbackPolicy)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 759, Col: 67}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</span></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if res.DegradedText != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<div class=\"pt-2\"><div class=\"text-xs font-bold text-zinc-800 mb-1 flex items-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5 text-zinc-500\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 6h16M4 12h16m-7 6h7\"></path></svg> <span>Simulação de Degradação Automática em Canais de Texto (ex: WhatsApp Web / whatsmeow):</span></div><pre class=\"bg-zinc-900 text-zinc-100 p-3 rounded text-xs font-mono whitespace-pre-wrap leading-relaxed\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<div class=\"pt-2\"><div class=\"text-xs font-bold text-zinc-800 mb-1 flex items-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5 text-zinc-500\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 6h16M4 12h16m-7 6h7\"></path></svg> <span>Simulação de Degradação Automática em Canais de Texto (ex: WhatsApp Web / whatsmeow):</span></div><pre class=\"bg-zinc-900 text-zinc-100 p-3 rounded text-xs font-mono whitespace-pre-wrap leading-relaxed\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var31 string
-				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(res.DegradedText)
+				var templ_7745c5c3_Var32 string
+				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(res.DegradedText)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 669, Col: 128}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 771, Col: 128}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</pre></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</pre></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<div class=\"border border-rose-200 bg-rose-50/70 rounded-lg p-4 space-y-3 animate-fadeIn\"><div class=\"flex items-center justify-between border-b border-rose-200 pb-2.5\"><div class=\"flex items-center gap-2\"><span class=\"badge badge-sm bg-rose-600 text-white font-bold px-2 py-0.5 rounded\">✕ Payload Inválido</span> <span class=\"text-xs font-bold text-rose-900\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<div class=\"border border-rose-200 bg-rose-50/70 rounded-lg p-4 space-y-3 animate-fadeIn\"><div class=\"flex items-center justify-between border-b border-rose-200 pb-2.5\"><div class=\"flex items-center gap-2\"><span class=\"badge badge-sm bg-rose-600 text-white font-bold px-2 py-0.5 rounded\">✕ Payload Inválido</span> <span class=\"text-xs font-bold text-rose-900\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var32 string
-			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(res.ErrorMessage)
+			var templ_7745c5c3_Var33 string
+			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(res.ErrorMessage)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 678, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 780, Col: 69}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</span></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</span></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if len(res.FieldErrors) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<div class=\"space-y-1.5\"><div class=\"text-xs font-bold text-rose-800\">Erros de validação por campo:</div><ul class=\"list-disc list-inside space-y-1 text-xs text-rose-700 bg-white p-3 rounded border border-rose-100\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<div class=\"space-y-1.5\"><div class=\"text-xs font-bold text-rose-800\">Erros de validação por campo:</div><ul class=\"list-disc list-inside space-y-1 text-xs text-rose-700 bg-white p-3 rounded border border-rose-100\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for _, fe := range res.FieldErrors {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<li><code class=\"font-mono font-bold text-rose-900 bg-rose-100/60 px-1 py-0.5 rounded\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var33 string
-					templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(fe.Field)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 688, Col: 101}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</code>: ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<li><code class=\"font-mono font-bold text-rose-900 bg-rose-100/60 px-1 py-0.5 rounded\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var34 string
-					templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(fe.Message)
+					templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(fe.Field)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 688, Col: 124}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 790, Col: 101}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</li>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</code>: ")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var35 string
+					templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(fe.Message)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 790, Col: 124}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</li>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</ul></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</ul></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
