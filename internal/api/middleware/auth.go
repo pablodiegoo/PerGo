@@ -27,6 +27,8 @@ func AuthMiddleware(repo *repository.APIKeyRepository) echo.MiddlewareFunc {
 				strings.HasPrefix(path, "/api/openapi") ||
 				path == "/openapi.yaml" ||
 				path == "/openapi.json" ||
+				path == "/llms.txt" ||
+				path == "/llms-full.txt" ||
 				isMasterWorkspacePath(path) {
 				return next(c)
 			}

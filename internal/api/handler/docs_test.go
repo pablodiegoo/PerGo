@@ -107,3 +107,53 @@ func TestDocsHandler_GetScalarJS(t *testing.T) {
 	assert.Contains(t, rec.Header().Get("Content-Type"), "javascript")
 	assert.Greater(t, rec.Body.Len(), 1000, "Scalar bundle must not be empty")
 }
+
+func TestDocsHandler_GetLLMsTxt(t *testing.T) {
+	e := echo.New()
+	docsHandler := handler.NewDocsHandler()
+	docsHandler.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodGet, "/llms.txt", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+	body := rec.Body.String()
+	// Validate llmstxt.org v2 format:
+	// 1. Single H1 header
+	assert.Contains(t, body, "# PerGo Omnichannel CPaaS Gateway")
+	// 2. Blockquote summary
+	assert.Contains(t, body, "> PerGo é uma plataforma de comunicação omnichannel")
+	// 3. Rules and critical architecture context
+	assert.Contains(t, body, "POST /messages")
+	assert.Contains(t, body, "MCP")
+	// 4. Curated markdown links in H2 sections
+	assert.Contains(t, body, "## Documentação Principal")
+	assert.Contains(t, body, "- [")
+	// 5. Canonical llmstxt.org v2 optional section
+	assert.Contains(t, body, "## Optional")
+}
+
+func TestDocsHandler_GetLLMsFullTxt(t *testing.T) {
+	e := echo.New()
+	docsHandler := handler.NewDocsHandler()
+	docsHandler.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodGet, "/llms-full.txt", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+	body := rec.Body.String()
+	// Validate comprehensive documentation payload
+	assert.Greater(t, len(body), 5000, "llms-full.txt must contain the complete documentation set (> 5KB)")
+	assert.Contains(t, body, "# PerGo Omnichannel CPaaS - Full Developer Documentation")
+	assert.Contains(t, body, "Headless CPaaS")
+	assert.Contains(t, body, "X-PerGo-Signature")
+	assert.Contains(t, body, "whatsmeow")
+	assert.Contains(t, body, "Model Context Protocol")
+}
+
+

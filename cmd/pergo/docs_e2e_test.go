@@ -85,7 +85,29 @@ func TestDocsE2E_PortalAndAssetDelivery(t *testing.T) {
 		assert.Greater(t, rec.Body.Len(), 50000, "Scalar standalone JS must be fully embedded and > 50KB")
 	})
 
-	// 5. Verify documentation and OpenAPI endpoints bypass AuthMiddleware without credentials
+	// 5. Verify GET /llms.txt and /llms-full.txt deliver embedded curated and full agent indexes
+	t.Run("GET /llms.txt and /llms-full.txt deliver embedded agent markdown assets", func(t *testing.T) {
+		reqLLMs := httptest.NewRequest(http.MethodGet, "/llms.txt", nil)
+		recLLMs := httptest.NewRecorder()
+		e.ServeHTTP(recLLMs, reqLLMs)
+
+		assert.Equal(t, http.StatusOK, recLLMs.Code)
+		assert.Equal(t, "text/markdown; charset=utf-8", recLLMs.Header().Get("Content-Type"))
+		assert.Contains(t, recLLMs.Body.String(), "# PerGo Omnichannel CPaaS Gateway")
+		assert.Contains(t, recLLMs.Body.String(), "## Documentação Principal")
+		assert.Contains(t, recLLMs.Body.String(), "## Optional")
+
+		reqFull := httptest.NewRequest(http.MethodGet, "/llms-full.txt", nil)
+		recFull := httptest.NewRecorder()
+		e.ServeHTTP(recFull, reqFull)
+
+		assert.Equal(t, http.StatusOK, recFull.Code)
+		assert.Equal(t, "text/markdown; charset=utf-8", recFull.Header().Get("Content-Type"))
+		assert.Greater(t, recFull.Body.Len(), 5000)
+		assert.Contains(t, recFull.Body.String(), "# PerGo Omnichannel CPaaS - Full Developer Documentation")
+	})
+
+	// 6. Verify documentation, OpenAPI, and llms.txt endpoints bypass AuthMiddleware without credentials
 	t.Run("Documentation endpoints bypass AuthMiddleware anonymously", func(t *testing.T) {
 		authEcho := echo.New()
 		authEcho.Use(mw.AuthMiddleware(nil))
@@ -101,6 +123,8 @@ func TestDocsE2E_PortalAndAssetDelivery(t *testing.T) {
 			"/openapi.json",
 			"/api/openapi.json",
 			"/docs/scalar.js",
+			"/llms.txt",
+			"/llms-full.txt",
 		}
 
 		for _, p := range publicPaths {
@@ -112,6 +136,7 @@ func TestDocsE2E_PortalAndAssetDelivery(t *testing.T) {
 		}
 	})
 }
+
 
 func TestAdminDevelopersE2E_FullLifecycle(t *testing.T) {
 	pool := getTestPool(t)

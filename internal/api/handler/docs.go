@@ -32,7 +32,14 @@ func (h *DocsHandler) RegisterRoutes(e *echo.Echo) {
 
 	// Scalar standalone JS asset
 	e.GET("/docs/scalar.js", h.ServeScalarJS)
+
+	// Curated agent index endpoint (/llms.txt)
+	e.GET("/llms.txt", h.ServeLLMsTxt)
+
+	// Full agent documentation endpoint (/llms-full.txt)
+	e.GET("/llms-full.txt", h.ServeLLMsFullTxt)
 }
+
 
 // ServePortal renders the standalone offline Scalar developer documentation portal.
 func (h *DocsHandler) ServePortal(c *echo.Context) error {
@@ -95,3 +102,15 @@ func (h *DocsHandler) ServeScalarJS(c *echo.Context) error {
 	c.Response().Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	return c.Blob(http.StatusOK, "application/javascript; charset=utf-8", api.ScalarJS)
 }
+
+// ServeLLMsTxt returns the curated agent index markdown adhering to llmstxt.org v2 format.
+func (h *DocsHandler) ServeLLMsTxt(c *echo.Context) error {
+	return c.Blob(http.StatusOK, "text/markdown; charset=utf-8", api.LLMsTxt)
+}
+
+// ServeLLMsFullTxt returns the complete developer documentation markdown payload.
+func (h *DocsHandler) ServeLLMsFullTxt(c *echo.Context) error {
+	return c.Blob(http.StatusOK, "text/markdown; charset=utf-8", api.LLMsFullTxt)
+}
+
+
