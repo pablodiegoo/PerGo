@@ -1179,6 +1179,11 @@ func TestMCPServerTools(t *testing.T) {
 				args:    map[string]any{"workspace_id": ws.ID.String(), "subscription_id": uuid.New().String()},
 			},
 			{
+				name:    "simulate_webhook_event_not_found",
+				handler: srv.handleSimulateWebhookEvent,
+				args:    map[string]any{"workspace_id": ws.ID.String(), "subscription_id": uuid.New().String(), "event_type": "test", "payload": map[string]any{"a": 1}},
+			},
+			{
 				name:    "generate_admin_sso_url_invalid_ws",
 				handler: srv.handleGenerateAdminSSOURL,
 				args:    map[string]any{"workspace_id": "not-a-uuid"},
