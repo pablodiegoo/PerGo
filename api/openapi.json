@@ -566,6 +566,508 @@
         ],
         "type": "object"
       },
+      "MCPConnectionHealthDiagnosticResponse": {
+        "properties": {
+          "channel": {
+            "description": "Channel type (whatsapp, whatsapp_cloud, telegram).",
+            "type": "string"
+          },
+          "connection_id": {
+            "description": "The UUID of the connection.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "credentials_valid": {
+            "description": "Whether the credentials are valid and authenticated.",
+            "type": "boolean"
+          },
+          "last_error": {
+            "description": "Last recorded error message if connection is unhealthy.",
+            "type": "string"
+          },
+          "latency_ms": {
+            "description": "Round-trip diagnostic latency in milliseconds.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "name": {
+            "description": "Human-readable name of the connection.",
+            "type": "string"
+          },
+          "pairing_status": {
+            "description": "Active pairing state for WhatsApp Web.",
+            "type": "string"
+          },
+          "proxy_health": {
+            "$ref": "#/components/schemas/MCPProxyHealth"
+          },
+          "self_healing_guidance": {
+            "description": "Actionable guidance for agents to self-heal the connection.",
+            "type": "string"
+          },
+          "socket_status": {
+            "description": "Socket liveness status (connected, disconnected, not_applicable).",
+            "type": "string"
+          },
+          "status": {
+            "description": "Overall connection status (connected, disconnected, pairing, error).",
+            "type": "string"
+          },
+          "workspace_id": {
+            "description": "The UUID of the workspace.",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "connection_id",
+          "workspace_id",
+          "name",
+          "channel",
+          "status",
+          "socket_status",
+          "credentials_valid",
+          "self_healing_guidance"
+        ],
+        "type": "object"
+      },
+      "MCPConsumerHealthReport": {
+        "properties": {
+          "name": {
+            "description": "Durable consumer name.",
+            "type": "string"
+          },
+          "num_ack_pending": {
+            "description": "Number of unacknowledged in-flight messages.",
+            "type": "integer"
+          },
+          "num_pending": {
+            "description": "Number of messages pending delivery (consumer lag).",
+            "type": "integer"
+          },
+          "num_waiting": {
+            "description": "Number of pull requests waiting for messages.",
+            "type": "integer"
+          },
+          "stream": {
+            "description": "Stream name.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "stream",
+          "num_pending",
+          "num_ack_pending",
+          "num_waiting"
+        ],
+        "type": "object"
+      },
+      "MCPDiagnoseConnectionHealthRequest": {
+        "properties": {
+          "connection_id": {
+            "description": "The UUID of the connection to diagnose.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "workspace_id": {
+            "description": "The UUID of the workspace.",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "connection_id"
+        ],
+        "type": "object"
+      },
+      "MCPInspectQueueHealthRequest": {
+        "properties": {
+          "workspace_id": {
+            "description": "Optional workspace UUID to filter or context-tag queue inspection.",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MCPProxyHealth": {
+        "properties": {
+          "configured": {
+            "description": "Whether a proxy URL is configured on the connection.",
+            "type": "boolean"
+          },
+          "error": {
+            "description": "Probe error message if unreachable.",
+            "type": "string"
+          },
+          "latency_ms": {
+            "description": "TCP dial probe latency in milliseconds.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "reachable": {
+            "description": "Whether the proxy endpoint responded to TCP probe.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "configured",
+          "reachable",
+          "latency_ms"
+        ],
+        "type": "object"
+      },
+      "MCPQueueHealthReport": {
+        "properties": {
+          "details": {
+            "description": "Additional diagnostics context or degraded root cause.",
+            "type": "string"
+          },
+          "status": {
+            "description": "Overall queue health status across monitored streams.",
+            "enum": [
+              "healthy",
+              "degraded",
+              "backpressure",
+              "offline"
+            ],
+            "type": "string"
+          },
+          "streams": {
+            "items": {
+              "$ref": "#/components/schemas/MCPStreamHealthReport"
+            },
+            "type": "array"
+          },
+          "timestamp": {
+            "description": "Timestamp when queue health was inspected.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "total_bytes": {
+            "description": "Aggregate storage bytes across monitored streams.",
+            "type": "integer"
+          },
+          "total_messages": {
+            "description": "Aggregate message count across monitored streams.",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "description": "Context-tagged workspace UUID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "timestamp",
+          "total_messages",
+          "total_bytes",
+          "streams"
+        ],
+        "type": "object"
+      },
+      "MCPReplayWebhookDLQRequest": {
+        "properties": {
+          "action": {
+            "default": "re-enqueue",
+            "description": "Action to perform (publish back to NATS or direct delivery).",
+            "enum": [
+              "re-enqueue",
+              "dispatch_immediate"
+            ],
+            "type": "string"
+          },
+          "dlq_id": {
+            "description": "Optional UUID of a specific dead-letter item to replay.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "limit": {
+            "default": 10,
+            "description": "Maximum dead-letter items to replay when dlq_id is not specified.",
+            "maximum": 50,
+            "type": "integer"
+          },
+          "subscription_id": {
+            "description": "Optional UUID of a webhook subscription to filter dead-letter items.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "target_url": {
+            "description": "Optional override destination URL when action is dispatch_immediate.",
+            "format": "uri",
+            "type": "string"
+          },
+          "workspace_id": {
+            "description": "The UUID of the workspace.",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id"
+        ],
+        "type": "object"
+      },
+      "MCPSimulateWebhookEventRequest": {
+        "properties": {
+          "event_type": {
+            "description": "The webhook event type (e.g. message.received, flow.submitted).",
+            "example": "message.received",
+            "type": "string"
+          },
+          "payload": {
+            "description": "Synthetic event payload to dispatch (JSON object or string).",
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "subscription_id": {
+            "description": "Optional UUID of an existing webhook subscription to target.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "target_url": {
+            "description": "Optional destination URL to dispatch to (overrides subscription URL).",
+            "format": "uri",
+            "type": "string"
+          },
+          "workspace_id": {
+            "description": "The UUID of the workspace.",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "event_type",
+          "payload"
+        ],
+        "type": "object"
+      },
+      "MCPStreamHealthReport": {
+        "properties": {
+          "bytes": {
+            "description": "Total storage bytes consumed by the stream.",
+            "type": "integer"
+          },
+          "consumer_stats": {
+            "items": {
+              "$ref": "#/components/schemas/MCPConsumerHealthReport"
+            },
+            "type": "array"
+          },
+          "consumers": {
+            "description": "Number of active pull/push consumers on the stream.",
+            "type": "integer"
+          },
+          "error": {
+            "description": "Error message if stream inspection failed.",
+            "type": "string"
+          },
+          "first_seq": {
+            "description": "Sequence number of the first message in the stream.",
+            "type": "integer"
+          },
+          "last_seq": {
+            "description": "Sequence number of the latest message in the stream.",
+            "type": "integer"
+          },
+          "msgs": {
+            "description": "Total messages stored in the stream.",
+            "type": "integer"
+          },
+          "name": {
+            "description": "JetStream stream name (MESSAGES, WEBHOOKS, WEBHOOK_DELIVERIES, INBOUND).",
+            "type": "string"
+          },
+          "status": {
+            "description": "Health status of this individual stream.",
+            "enum": [
+              "healthy",
+              "degraded",
+              "backpressure",
+              "not_found",
+              "error",
+              "offline"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "msgs",
+          "bytes",
+          "consumers",
+          "first_seq",
+          "last_seq",
+          "consumer_stats"
+        ],
+        "type": "object"
+      },
+      "MCPWebhookDLQReplayItem": {
+        "properties": {
+          "deleted_from_dlq": {
+            "description": "Whether item was purged from PostgreSQL DLQ.",
+            "type": "boolean"
+          },
+          "dlq_id": {
+            "description": "Dead-letter queue item UUID.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "error": {
+            "description": "Error message if replay attempt failed.",
+            "type": "string"
+          },
+          "event_type": {
+            "description": "Webhook event type.",
+            "type": "string"
+          },
+          "latency_ms": {
+            "description": "Round-trip dispatch latency in milliseconds.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "message_id": {
+            "description": "Originating message ID.",
+            "type": "string"
+          },
+          "status_code": {
+            "description": "HTTP status code received.",
+            "type": "integer"
+          },
+          "subject": {
+            "description": "NATS JetStream subject published to.",
+            "type": "string"
+          },
+          "subscription_id": {
+            "description": "Subscription UUID.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "success": {
+            "description": "Whether the delivery or re-enqueue succeeded.",
+            "type": "boolean"
+          },
+          "target_url": {
+            "description": "Destination URL dispatched to.",
+            "type": "string"
+          },
+          "trace_id": {
+            "description": "Message trace ID.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dlq_id",
+          "subscription_id",
+          "event_type",
+          "trace_id",
+          "success"
+        ],
+        "type": "object"
+      },
+      "MCPWebhookDLQReplayResult": {
+        "properties": {
+          "action": {
+            "description": "Replay action executed (re-enqueue or dispatch_immediate).",
+            "type": "string"
+          },
+          "failure_count": {
+            "description": "Number of failed replay attempts.",
+            "type": "integer"
+          },
+          "replayed_items": {
+            "items": {
+              "$ref": "#/components/schemas/MCPWebhookDLQReplayItem"
+            },
+            "type": "array"
+          },
+          "success_count": {
+            "description": "Number of successfully replayed items.",
+            "type": "integer"
+          },
+          "total_processed": {
+            "description": "Total number of dead-letter items processed.",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "description": "The UUID of the workspace.",
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "action",
+          "total_processed",
+          "success_count",
+          "failure_count",
+          "replayed_items"
+        ],
+        "type": "object"
+      },
+      "MCPWebhookSimulationTelemetry": {
+        "properties": {
+          "error": {
+            "description": "Network or policy error message (e.g. anti-SSRF rejection).",
+            "type": "string"
+          },
+          "event_type": {
+            "description": "Dispatched event type.",
+            "type": "string"
+          },
+          "latency_ms": {
+            "description": "Dispatch round-trip latency in milliseconds.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "response_body": {
+            "description": "Response body returned by the subscriber endpoint.",
+            "type": "string"
+          },
+          "status_code": {
+            "description": "HTTP response status code received from subscriber.",
+            "type": "integer"
+          },
+          "subscription_id": {
+            "description": "Targeted subscription UUID if resolved.",
+            "format": "uuid",
+            "type": "string"
+          },
+          "success": {
+            "description": "Whether the dispatch succeeded (2xx HTTP response).",
+            "type": "boolean"
+          },
+          "target_url": {
+            "description": "Actual destination URL dispatched to.",
+            "format": "uri",
+            "type": "string"
+          },
+          "trace_id": {
+            "description": "Trace ID header injected into the dispatch.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_url",
+          "event_type",
+          "trace_id",
+          "status_code",
+          "latency_ms",
+          "success"
+        ],
+        "type": "object"
+      },
       "Media": {
         "properties": {
           "caption": {
@@ -849,7 +1351,7 @@
     }
   },
   "info": {
-    "description": "PerGo is a high-performance, self-hosted open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go.\nIt exposes a single unified REST API (`POST /messages`) that abstracts away multiple messaging providers\n(WhatsApp Web via whatsmeow with SOCKS5 proxy isolation, WhatsApp Cloud WABA, Telegram, Instagram, and Email)\nwith automatic fallback, stateless Meta Flow execution, rich interactive components (buttons, lists, catalog products),\nHMAC-SHA256 webhook signatures, and automated LGPD data retention policies.\n\n---\n\n### ⚡ Quickstart: Time-To-First-Message em \u003c 3 Minutos\n\n1. **Autenticação**:\n   Gere sua API Key no Developer Portal (`/admin/developers`) ou via `POST /api/v1/workspaces`.\n   Envie a chave no cabeçalho `Authorization: Bearer \u003cSUA_API_KEY\u003e` ou query string `?api_key=\u003cSUA_API_KEY\u003e`.\n\n2. **Conectar Canal**:\n   - **WhatsApp Web**: Inicie o pareamento com `POST /api/v1/connections/pair` e escaneie o QR Code retornado.\n   - **WhatsApp Cloud (WABA)**: Cadastre suas credenciais com `POST /api/v1/connections/waba`.\n   - **Telegram**: Cadastre seu bot token com `POST /api/v1/connections/telegram`.\n\n3. **Enviar Mensagem (`POST /messages`)**:\n   ```bash\n   curl -X POST http://localhost:8080/messages \\\n     -H \"Authorization: Bearer \u003cSUA_API_KEY\u003e\" \\\n     -H \"Content-Type: application/json\" \\\n     -d '{\n       \"to\": \"+5511999998888\",\n       \"channel\": \"whatsapp\",\n       \"body\": \"Olá! Minha primeira mensagem enviada via PerGo ⚡\"\n     }'\n   ```\nA mensagem é aceita imediatamente (`202 Accepted`) e enfileirada no NATS JetStream para entrega com telemetria e retry automático.\n",
+    "description": "PerGo is a high-performance, self-hosted open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go.\nIt exposes a single unified REST API (`POST /messages`) that abstracts away multiple messaging providers\n(WhatsApp Web via whatsmeow with SOCKS5 proxy isolation, WhatsApp Cloud WABA, Telegram, Instagram, and Email)\nwith automatic fallback, stateless Meta Flow execution, rich interactive components (buttons, lists, catalog products),\nHMAC-SHA256 webhook signatures, and automated LGPD data retention policies.\n\n---\n\n### ⚡ Quickstart: Time-To-First-Message em < 3 Minutos\n\n1. **Autenticação**:\n   Gere sua API Key no Developer Portal (`/admin/developers`) ou via `POST /api/v1/workspaces`.\n   Envie a chave no cabeçalho `Authorization: Bearer <SUA_API_KEY>` ou query string `?api_key=<SUA_API_KEY>`.\n\n2. **Conectar Canal**:\n   - **WhatsApp Web**: Inicie o pareamento com `POST /api/v1/connections/pair` e escaneie o QR Code retornado.\n   - **WhatsApp Cloud (WABA)**: Cadastre suas credenciais com `POST /api/v1/connections/waba`.\n   - **Telegram**: Cadastre seu bot token com `POST /api/v1/connections/telegram`.\n\n3. **Enviar Mensagem (`POST /messages`)**:\n   ```bash\n   curl -X POST http://localhost:8080/messages \\\n     -H \"Authorization: Bearer <SUA_API_KEY>\" \\\n     -H \"Content-Type: application/json\" \\\n     -d '{\n       \"to\": \"+5511999998888\",\n       \"channel\": \"whatsapp\",\n       \"body\": \"Olá! Minha primeira mensagem enviada via PerGo ⚡\"\n     }'\n   ```\nA mensagem é aceita imediatamente (`202 Accepted`) e enfileirada no NATS JetStream para entrega com telemetria e retry automático.\n",
     "title": "PerGo Omnichannel CPaaS API",
     "version": "2.0.0"
   },
@@ -906,6 +1408,85 @@
         },
         "security": [],
         "summary": "Landing page and agent entrypoint"
+      }
+    },
+    "/api/mcp": {
+      "get": {
+        "description": "Establishes a real-time Server-Sent Events (SSE) connection stream for Model Context Protocol (MCP) clients to discover and invoke tools, resources, and prompts.",
+        "operationId": "getMCPSSEStream",
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Active SSE stream established for MCP session"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [],
+        "summary": "Model Context Protocol (MCP) Server-Sent Events (SSE) Stream"
+      },
+      "post": {
+        "description": "Dispatches JSON-RPC 2.0 requests to the active MCP session, including tool discovery (tools/list) and tool execution (tools/call) for diagnostics (diagnose_connection_health, simulate_webhook_event, replay_webhook_dlq, inspect_queue_health) and operational workflows.",
+        "operationId": "postMCPMessage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "id": {
+                    "example": 1,
+                    "oneOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      }
+                    ]
+                  },
+                  "jsonrpc": {
+                    "example": "2.0",
+                    "type": "string"
+                  },
+                  "method": {
+                    "example": "tools/call",
+                    "type": "string"
+                  },
+                  "params": {
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "jsonrpc",
+                  "method"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "JSON-RPC response or accepted"
+          }
+        },
+        "security": [],
+        "summary": "Model Context Protocol (MCP) JSON-RPC Message Dispatch"
       }
     },
     "/api/openapi.json": {
