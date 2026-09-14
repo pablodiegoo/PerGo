@@ -17,11 +17,11 @@ const (
 	ContentTypeMarkdown = "text/markdown; charset=utf-8"
 )
 
-// ContentNegotiationInterceptor evaluates the Accept header on negotiable routes.
+// ContentNegotiationMiddleware evaluates the Accept header on negotiable routes.
 // When an agent prefers text/markdown, it intercepts the request and directly serves
 // the provided Markdown payload with Content-Type: text/markdown; charset=utf-8.
 // In all cases, it emits Vary: Accept, Accept-Encoding to ensure downstream caches isolate representations.
-func ContentNegotiationInterceptor(markdownPayload []byte) echo.MiddlewareFunc {
+func ContentNegotiationMiddleware(markdownPayload []byte) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			c.Response().Header().Set("Vary", VaryHeaderValue)
@@ -35,6 +35,9 @@ func ContentNegotiationInterceptor(markdownPayload []byte) echo.MiddlewareFunc {
 		}
 	}
 }
+
+// ContentNegotiationInterceptor is a deprecated alias for ContentNegotiationMiddleware.
+var ContentNegotiationInterceptor = ContentNegotiationMiddleware
 
 type mediaPreference struct {
 	q       float64
@@ -62,15 +65,7 @@ func PrefersMarkdown(accept string) bool {
 	for _, part := range parts {
 		mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(part))
 		if err != nil {
-			// Fallback string matching if params are malformed
-			trimmed := strings.ToLower(strings.TrimSpace(part))
-			if strings.HasPrefix(trimmed, "text/markdown") {
-				mediaType = "text/markdown"
-			} else if strings.HasPrefix(trimmed, "text/html") {
-				mediaType = "text/html"
-			} else {
-				continue
-			}
+			continue
 		}
 
 		q := 1.0

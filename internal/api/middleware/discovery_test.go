@@ -20,15 +20,13 @@ func TestAgentDiscoveryMiddleware(t *testing.T) {
 	e.GET("/with-discovery", dummyHandler, middleware.AgentDiscoveryMiddleware())
 	e.GET("/without-discovery", dummyHandler)
 
-	const expectedLink = `</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"`
-
 	t.Run("Injects Link header on route with AgentDiscoveryMiddleware", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/with-discovery", nil)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
 		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, expectedLink, rec.Header().Get("Link"))
+		assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
 	})
 
 	t.Run("Does not inject Link header on route without AgentDiscoveryMiddleware", func(t *testing.T) {

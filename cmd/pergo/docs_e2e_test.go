@@ -95,6 +95,8 @@ func TestDocsE2E_PortalAndAssetDelivery(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, recLLMs.Code)
 		assert.Equal(t, "text/markdown; charset=utf-8", recLLMs.Header().Get("Content-Type"))
+		assert.Equal(t, "Accept, Accept-Encoding", recLLMs.Header().Get("Vary"))
+		assert.Equal(t, mw.DiscoveryLinkHeaderValue, recLLMs.Header().Get("Link"))
 		assert.Contains(t, recLLMs.Body.String(), "# PerGo Omnichannel CPaaS Gateway")
 		assert.Contains(t, recLLMs.Body.String(), "## Documentação Principal")
 		assert.Contains(t, recLLMs.Body.String(), "## Optional")
@@ -105,6 +107,8 @@ func TestDocsE2E_PortalAndAssetDelivery(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, recFull.Code)
 		assert.Equal(t, "text/markdown; charset=utf-8", recFull.Header().Get("Content-Type"))
+		assert.Equal(t, "Accept, Accept-Encoding", recFull.Header().Get("Vary"))
+		assert.Equal(t, mw.DiscoveryLinkHeaderValue, recFull.Header().Get("Link"))
 		assert.Greater(t, recFull.Body.Len(), 5000)
 		assert.Contains(t, recFull.Body.String(), "# PerGo Omnichannel CPaaS - Full Developer Documentation")
 	})
@@ -152,17 +156,15 @@ func TestDocsE2E_AgentDiscoveryHeadersAndMetadata(t *testing.T) {
 		return mw.Render(c, http.StatusOK, pages.Landing())
 	}, mw.AgentDiscoveryMiddleware())
 
-	const expectedLink = `</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"`
-
 	// 1. Verify RFC 8288 Link header across public entrypoints
 	t.Run("Public endpoints return RFC 8288 Link header", func(t *testing.T) {
-		endpoints := []string{"/", "/healthz", "/readyz", "/docs", "/docs/"}
+		endpoints := []string{"/", "/healthz", "/readyz", "/docs", "/docs/", "/llms.txt", "/llms-full.txt"}
 		for _, ep := range endpoints {
 			req := httptest.NewRequest(http.MethodGet, ep, nil)
 			rec := httptest.NewRecorder()
 			e.ServeHTTP(rec, req)
 
-			assert.Equal(t, expectedLink, rec.Header().Get("Link"), "endpoint %s must return RFC 8288 discovery Link header", ep)
+			assert.Equal(t, mw.DiscoveryLinkHeaderValue, rec.Header().Get("Link"), "endpoint %s must return RFC 8288 discovery Link header", ep)
 		}
 	})
 
@@ -189,7 +191,7 @@ func TestDocsE2E_AgentDiscoveryHeadersAndMetadata(t *testing.T) {
 		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
 		body := rec.Body.String()
 		assert.Contains(t, body, `<link rel="describedby" href="/llms.txt" />`)
-		assert.Contains(t, body, `<link rel="alternate" type="text/markdown" href="/llms-full.txt" title="Full Documentation for LLMs" />`)
+		assert.NotContains(t, body, `<link rel="alternate"`)
 	})
 }
 
@@ -201,7 +203,7 @@ func TestDocsE2E_ContentNegotiation(t *testing.T) {
 
 	e.GET("/", func(c *echo.Context) error {
 		return mw.Render(c, http.StatusOK, pages.Landing())
-	}, mw.AgentDiscoveryMiddleware(), mw.ContentNegotiationInterceptor(api.LLMsTxt))
+	}, mw.AgentDiscoveryMiddleware(), mw.ContentNegotiationMiddleware(api.LLMsTxt))
 
 	t.Run("GET /docs with Accept: text/markdown returns full markdown documentation", func(t *testing.T) {
 		endpoints := []string{"/docs", "/docs/"}

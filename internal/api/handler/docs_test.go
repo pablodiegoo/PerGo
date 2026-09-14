@@ -7,6 +7,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/pablojhp.pergo/internal/api/handler"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,11 +25,11 @@ func TestDocsHandler_GetDocs(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
 		assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
-		assert.Equal(t, `</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"`, rec.Header().Get("Link"))
+		assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
 		body := rec.Body.String()
 		assert.Contains(t, body, "<title>PerGo API Reference</title>")
 		assert.Contains(t, body, `<link rel="describedby" href="/llms.txt" />`)
-		assert.Contains(t, body, `<link rel="alternate" type="text/markdown" href="/llms-full.txt" title="Full Documentation for LLMs" />`)
+		assert.NotContains(t, body, `<link rel="alternate"`)
 		assert.Contains(t, body, `data-url="/api/openapi.json"`)
 		assert.Contains(t, body, `<script src="/docs/scalar.js"></script>`)
 	})
@@ -58,7 +59,7 @@ func TestDocsHandler_GetDocs(t *testing.T) {
 			assert.Equal(t, http.StatusOK, rec.Code)
 			assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
 			assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
-			assert.Equal(t, `</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"`, rec.Header().Get("Link"))
+			assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
 			body := rec.Body.String()
 			assert.Contains(t, body, "# PerGo Omnichannel CPaaS - Full Developer Documentation")
 			assert.NotContains(t, body, "<html")
@@ -144,6 +145,8 @@ func TestDocsHandler_GetLLMsTxt(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+	assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
+	assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
 	body := rec.Body.String()
 	// Validate llmstxt.org v2 format:
 	// 1. Single H1 header
@@ -171,6 +174,8 @@ func TestDocsHandler_GetLLMsFullTxt(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+	assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
+	assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
 	body := rec.Body.String()
 	// Validate comprehensive documentation payload
 	assert.Greater(t, len(body), 5000, "llms-full.txt must contain the complete documentation set (> 5KB)")

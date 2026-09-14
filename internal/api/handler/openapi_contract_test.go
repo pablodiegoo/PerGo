@@ -81,6 +81,8 @@ func TestOpenAPI31Contract_RequiredEndpointsPresent(t *testing.T) {
 		{"/health", "get"},
 		{"/health/ready", "get"},
 		{"/health/live", "get"},
+		{"/healthz", "get"},
+		{"/readyz", "get"},
 		{"/api/v1/me", "get"},
 		{"/api/v1/waba/flows/data-exchange", "post"},
 		{"/api/v1/connections", "get"},
@@ -138,6 +140,7 @@ func TestOpenAPI31Contract_EchoRouteCoverage(t *testing.T) {
 		if r.Path == "/docs" || r.Path == "/docs/openapi.yaml" || r.Path == "/openapi.yaml" || r.Path == "/api/openapi.yaml" ||
 			r.Path == "/docs/openapi.json" || r.Path == "/openapi.json" || r.Path == "/api/openapi.json" ||
 			r.Path == "/docs/scalar.js" || r.Path == "/llms.txt" || r.Path == "/llms-full.txt" ||
+			r.Path == "/healthz" || r.Path == "/readyz" ||
 			r.Path == "/health" || r.Path == "/health/ready" || r.Path == "/health/live" {
 			_, ok := doc.Paths[r.Path]
 			assert.Truef(t, ok, "registered Echo route %s must be documented in openapi.yaml", r.Path)
@@ -198,7 +201,22 @@ func TestOpenAPI31Contract_AgentDiscoveryEndpointsAndHeaders(t *testing.T) {
 	assert.Contains(t, rootContent, "text/html", "/ must document text/html")
 	assert.Contains(t, rootContent, "text/markdown", "/ must document text/markdown")
 
-	// 4. Verify openapi.json contains /, /llms.txt and /llms-full.txt
+	// 4. Verify discovery Link header on /healthz and /readyz
+	for _, p := range []string{"/healthz", "/readyz"} {
+		pathItem, ok := doc.Paths[p]
+		require.Truef(t, ok, "%s must be documented in openapi.yaml", p)
+		getMethod, ok := pathItem["get"].(map[string]interface{})
+		require.Truef(t, ok, "%s must define get method", p)
+		responses, ok := getMethod["responses"].(map[string]interface{})
+		require.True(t, ok)
+		resp200, ok := responses["200"].(map[string]interface{})
+		require.True(t, ok)
+		headers, ok := resp200["headers"].(map[string]interface{})
+		require.Truef(t, ok, "%s 200 response must document headers", p)
+		assert.Containsf(t, headers, "Link", "%s 200 response must document Link header", p)
+	}
+
+	// 5. Verify openapi.json contains /, /llms.txt, /llms-full.txt, /healthz and /readyz
 	var jsonDoc map[string]interface{}
 	err := yaml.Unmarshal(api.OpenAPIJSON, &jsonDoc)
 	require.NoError(t, err)
@@ -207,6 +225,8 @@ func TestOpenAPI31Contract_AgentDiscoveryEndpointsAndHeaders(t *testing.T) {
 	assert.Contains(t, jsonPaths, "/", "openapi.json must contain /")
 	assert.Contains(t, jsonPaths, "/llms.txt", "openapi.json must contain /llms.txt")
 	assert.Contains(t, jsonPaths, "/llms-full.txt", "openapi.json must contain /llms-full.txt")
+	assert.Contains(t, jsonPaths, "/healthz", "openapi.json must contain /healthz")
+	assert.Contains(t, jsonPaths, "/readyz", "openapi.json must contain /readyz")
 }
 
 func TestOpenAPI31Contract_JSONEmbedding(t *testing.T) {

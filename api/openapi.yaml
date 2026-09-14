@@ -148,6 +148,61 @@ paths:
         '200':
           description: Process is running
 
+  /healthz:
+    get:
+      summary: Liveness probe
+      description: Fast liveness check for container orchestrators and agents. Always returns 200 OK when the process is running and emits RFC 8288 Link discovery headers.
+      operationId: getHealthz
+      security: []
+      responses:
+        '200':
+          description: Process is running
+          headers:
+            Link:
+              description: RFC 8288 Web Linking header pointing to agent indexes
+              schema:
+                type: string
+                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+
+  /readyz:
+    get:
+      summary: Readiness probe
+      description: Verifies database and NATS JetStream connectivity. Emits RFC 8288 Link discovery headers.
+      operationId: getReadyz
+      security: []
+      responses:
+        '200':
+          description: System is ready to accept traffic
+          headers:
+            Link:
+              description: RFC 8288 Web Linking header pointing to agent indexes
+              schema:
+                type: string
+                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+        '503':
+          description: Underlying services are not ready
+          headers:
+            Link:
+              description: RFC 8288 Web Linking header pointing to agent indexes
+              schema:
+                type: string
+                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: pgx not ready
+
   /docs:
     get:
       summary: Developer documentation portal
@@ -293,10 +348,10 @@ paths:
           description: Curated agent documentation index in Markdown
           headers:
             Link:
-              description: RFC 8288 Web Linking header pointing to full markdown documentation
+              description: RFC 8288 Web Linking header pointing to agent indexes
               schema:
                 type: string
-                example: '</llms-full.txt>; rel="alternate"; type="text/markdown"'
+                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
             Vary:
               description: Informs HTTP caches that representations vary based on request headers
               schema:
@@ -318,10 +373,10 @@ paths:
           description: Full developer documentation in Markdown
           headers:
             Link:
-              description: RFC 8288 Web Linking header
+              description: RFC 8288 Web Linking header pointing to agent indexes
               schema:
                 type: string
-                example: '</llms.txt>; rel="describedby"'
+                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
             Vary:
               description: Informs HTTP caches that representations vary based on request headers
               schema:

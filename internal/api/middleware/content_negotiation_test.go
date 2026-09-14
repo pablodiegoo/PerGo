@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestContentNegotiationInterceptor(t *testing.T) {
+func TestContentNegotiationMiddleware(t *testing.T) {
 	markdownPayload := []byte("# Markdown Title\nContent for agents.")
 	htmlPayload := "<html><body><h1>HTML Title</h1><p>Content for humans.</p></body></html>"
 
@@ -20,7 +20,7 @@ func TestContentNegotiationInterceptor(t *testing.T) {
 			c.Response().Header().Set("Content-Type", "text/html; charset=utf-8")
 			return c.String(http.StatusOK, htmlPayload)
 		}
-		e.GET("/resource", handler, middleware.ContentNegotiationInterceptor(markdownPayload))
+		e.GET("/resource", handler, middleware.ContentNegotiationMiddleware(markdownPayload))
 		return e
 	}
 
@@ -127,4 +127,11 @@ func TestContentNegotiationInterceptor(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("Backward compatible alias ContentNegotiationInterceptor is functional", func(t *testing.T) {
+		assert.NotNil(t, middleware.ContentNegotiationInterceptor)
+		mw := middleware.ContentNegotiationInterceptor(markdownPayload)
+		assert.NotNil(t, mw)
+	})
 }
+

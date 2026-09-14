@@ -7,6 +7,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/pablojhp.pergo/internal/api/handler"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -26,15 +27,13 @@ func TestHealthHandler_DiscoveryLinks(t *testing.T) {
 	}
 	h.RegisterRoutes(e)
 
-	const expectedLink = `</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"`
-
 	t.Run("GET /healthz includes RFC 8288 Link header", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 		rec := httptest.NewRecorder()
 		e.ServeHTTP(rec, req)
 
 		assert.Equal(t, http.StatusOK, rec.Code)
-		assert.Equal(t, expectedLink, rec.Header().Get("Link"))
+		assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
 	})
 
 	t.Run("GET /readyz includes RFC 8288 Link header even when unready", func(t *testing.T) {
@@ -43,6 +42,6 @@ func TestHealthHandler_DiscoveryLinks(t *testing.T) {
 		e.ServeHTTP(rec, req)
 
 		assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
-		assert.Equal(t, expectedLink, rec.Header().Get("Link"))
+		assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
 	})
 }
