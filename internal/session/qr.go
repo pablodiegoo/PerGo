@@ -535,9 +535,6 @@ func (m *Manager) onPairingSuccess(ctx context.Context, wc WhatsAppClientInterfa
 	if actualPhone == "" {
 		actualPhone = phone
 	}
-	if phone == "" {
-		phone = actualPhone
-	}
 
 	if isExisting && m.db != nil {
 		_, err := m.db.ExecContext(ctx, `

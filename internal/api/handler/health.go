@@ -6,6 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 )
 
 // NATSConn is the interface the health handler uses to ping NATS.
@@ -21,8 +22,9 @@ type HealthHandler struct {
 
 // RegisterRoutes wires the health endpoints onto the Echo router.
 func (h *HealthHandler) RegisterRoutes(e *echo.Echo) {
-	e.GET("/healthz", h.Healthz)
-	e.GET("/readyz", h.Readyz)
+	disc := middleware.AgentDiscoveryMiddleware()
+	e.GET("/healthz", h.Healthz, disc)
+	e.GET("/readyz", h.Readyz, disc)
 }
 
 // Healthz returns 200 always (liveness probe).

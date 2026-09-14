@@ -5,6 +5,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/pablojhp.pergo/api"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 )
 
 // DocsHandler serves the embedded Scalar developer documentation portal and OpenAPI specification.
@@ -17,8 +18,10 @@ func NewDocsHandler() *DocsHandler {
 
 // RegisterRoutes mounts the documentation endpoints on Echo.
 func (h *DocsHandler) RegisterRoutes(e *echo.Echo) {
-	e.GET("/docs", h.ServePortal)
-	e.GET("/docs/", h.ServePortal)
+	discoveryMiddleware := middleware.AgentDiscoveryMiddleware()
+	negotiationMiddleware := middleware.ContentNegotiationMiddleware(api.LLMsFullTxt)
+	e.GET("/docs", h.ServePortal, discoveryMiddleware, negotiationMiddleware)
+	e.GET("/docs/", h.ServePortal, discoveryMiddleware, negotiationMiddleware)
 
 	// OpenAPI YAML endpoints
 	e.GET("/docs/openapi.yaml", h.ServeOpenAPISpecYAML)
@@ -32,6 +35,12 @@ func (h *DocsHandler) RegisterRoutes(e *echo.Echo) {
 
 	// Scalar standalone JS asset
 	e.GET("/docs/scalar.js", h.ServeScalarJS)
+
+	// Curated agent index endpoint (/llms.txt)
+	e.GET("/llms.txt", h.ServeLLMsTxt)
+
+	// Full agent documentation endpoint (/llms-full.txt)
+	e.GET("/llms-full.txt", h.ServeLLMsFullTxt)
 }
 
 // ServePortal renders the standalone offline Scalar developer documentation portal.
@@ -47,6 +56,7 @@ func (h *DocsHandler) ServePortal(c *echo.Context) error {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PerGo API Reference</title>
+    <link rel="describedby" href="/llms.txt" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
     <style>
       body {
@@ -94,4 +104,14 @@ func (h *DocsHandler) ServeScalarJS(c *echo.Context) error {
 	c.Response().Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	c.Response().Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	return c.Blob(http.StatusOK, "application/javascript; charset=utf-8", api.ScalarJS)
+}
+
+// ServeLLMsTxt returns the curated agent index markdown adhering to llmstxt.org v2 format.
+func (h *DocsHandler) ServeLLMsTxt(c *echo.Context) error {
+	return c.Blob(http.StatusOK, middleware.ContentTypeMarkdown, api.LLMsTxt)
+}
+
+// ServeLLMsFullTxt returns the complete developer documentation markdown payload.
+func (h *DocsHandler) ServeLLMsFullTxt(c *echo.Context) error {
+	return c.Blob(http.StatusOK, middleware.ContentTypeMarkdown, api.LLMsFullTxt)
 }

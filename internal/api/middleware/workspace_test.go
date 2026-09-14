@@ -55,7 +55,7 @@ func TestActiveWorkspaceMiddleware_ValidResolution(t *testing.T) {
 	defer pool.Close()
 
 	ctx := context.Background()
-	_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
+	_, _ = pool.Exec(ctx, "TRUNCATE workspaces CASCADE")
 
 	repo := repository.NewWorkspaceRepository(pool)
 	_, err := repo.Create(ctx, "Workspace 1")
@@ -116,7 +116,7 @@ func TestActiveWorkspaceMiddleware_MissingCookie_FallbackEarliest(t *testing.T) 
 	defer pool.Close()
 
 	ctx := context.Background()
-	_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
+	_, _ = pool.Exec(ctx, "TRUNCATE workspaces CASCADE")
 
 	repo := repository.NewWorkspaceRepository(pool)
 	ws1, err := repo.Create(ctx, "Earliest Workspace")
@@ -177,7 +177,7 @@ func TestActiveWorkspaceMiddleware_InvalidCookie_AutoHealing(t *testing.T) {
 	defer pool.Close()
 
 	ctx := context.Background()
-	_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
+	_, _ = pool.Exec(ctx, "TRUNCATE workspaces CASCADE")
 
 	repo := repository.NewWorkspaceRepository(pool)
 	ws1, err := repo.Create(ctx, "Earliest Workspace")
@@ -238,7 +238,7 @@ func TestActiveWorkspaceMiddleware_EmptyDatabase_RedirectToNew(t *testing.T) {
 	defer pool.Close()
 
 	ctx := context.Background()
-	_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
+	_, _ = pool.Exec(ctx, "TRUNCATE workspaces CASCADE")
 
 	repo := repository.NewWorkspaceRepository(pool)
 
@@ -278,7 +278,7 @@ func TestActiveWorkspaceMiddleware_EmptyDatabase_AllowCreateRoutes(t *testing.T)
 	defer pool.Close()
 
 	ctx := context.Background()
-	_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
+	_, _ = pool.Exec(ctx, "TRUNCATE workspaces CASCADE")
 
 	repo := repository.NewWorkspaceRepository(pool)
 

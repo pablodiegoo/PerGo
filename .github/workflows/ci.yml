@@ -26,16 +26,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-      nats:
-        image: nats:2.10-alpine
-        ports:
-          - 4222:4222
-        options: >-
-          --health-cmd "nc -z localhost 4222"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -46,16 +36,22 @@ jobs:
           go-version: '1.25.x'
           cache: true
 
+      - name: Start NATS JetStream
+        run: |
+          docker run -d --name nats -p 4222:4222 nats:2.10-alpine -js
+          until nc -z localhost 4222; do sleep 0.1; done
+
       - name: Run Tests
         env:
           PERGO_DATABASE_URL: postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable
           PERGO_NATS_URL: nats://localhost:4222
-        run: go test ./... -race -count=1
+        run: go test -p 1 ./... -race -count=1
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
           version: v1.64
+          install-mode: goinstall
 
       - name: Docker Build Check
         run: docker build . --file Dockerfile

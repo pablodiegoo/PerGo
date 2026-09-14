@@ -7,6 +7,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/pablojhp.pergo/internal/api/handler"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,8 +24,12 @@ func TestDocsHandler_GetDocs(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+		assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
+		assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
 		body := rec.Body.String()
 		assert.Contains(t, body, "<title>PerGo API Reference</title>")
+		assert.Contains(t, body, `<link rel="describedby" href="/llms.txt" />`)
+		assert.NotContains(t, body, `<link rel="alternate"`)
 		assert.Contains(t, body, `data-url="/api/openapi.json"`)
 		assert.Contains(t, body, `<script src="/docs/scalar.js"></script>`)
 	})
@@ -37,8 +42,29 @@ func TestDocsHandler_GetDocs(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+		assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
 		body := rec.Body.String()
 		assert.Contains(t, body, `data-url="/docs/openapi.yaml"`)
+	})
+
+	// Test GET /docs and /docs/ with Accept: text/markdown returns markdown representation
+	t.Run("Accept: text/markdown returns raw Markdown documentation directly without HTML", func(t *testing.T) {
+		endpoints := []string{"/docs", "/docs/"}
+		for _, ep := range endpoints {
+			req := httptest.NewRequest(http.MethodGet, ep, nil)
+			req.Header.Set("Accept", "text/markdown")
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+			assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
+			assert.Equal(t, middleware.DiscoveryLinkHeaderValue, rec.Header().Get("Link"))
+			body := rec.Body.String()
+			assert.Contains(t, body, "# PerGo Omnichannel CPaaS - Full Developer Documentation")
+			assert.NotContains(t, body, "<html")
+			assert.NotContains(t, body, "<script")
+		}
 	})
 }
 
@@ -106,4 +132,56 @@ func TestDocsHandler_GetScalarJS(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Contains(t, rec.Header().Get("Content-Type"), "javascript")
 	assert.Greater(t, rec.Body.Len(), 1000, "Scalar bundle must not be empty")
+}
+
+func TestDocsHandler_GetLLMsTxt(t *testing.T) {
+	e := echo.New()
+	docsHandler := handler.NewDocsHandler()
+	docsHandler.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodGet, "/llms.txt", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+	assert.Empty(t, rec.Header().Get("Vary"), "static /llms.txt must not emit Vary header")
+	assert.Empty(t, rec.Header().Get("Link"), "static /llms.txt must not emit circular Link header")
+	body := rec.Body.String()
+	// Validate llmstxt.org v2 format:
+	// 1. Single H1 header
+	assert.Contains(t, body, "# PerGo Omnichannel CPaaS Gateway")
+	// 2. Blockquote summary
+	assert.Contains(t, body, "> PerGo é uma plataforma de comunicação omnichannel")
+	// 3. Rules and critical architecture context
+	assert.Contains(t, body, "POST /messages")
+	assert.Contains(t, body, "MCP")
+	// 4. Curated markdown links in H2 sections
+	assert.Contains(t, body, "## Documentação Principal")
+	assert.Contains(t, body, "- [")
+	// 5. Canonical llmstxt.org v2 optional section
+	assert.Contains(t, body, "## Optional")
+}
+
+func TestDocsHandler_GetLLMsFullTxt(t *testing.T) {
+	e := echo.New()
+	docsHandler := handler.NewDocsHandler()
+	docsHandler.RegisterRoutes(e)
+
+	req := httptest.NewRequest(http.MethodGet, "/llms-full.txt", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+	assert.Empty(t, rec.Header().Get("Vary"), "static /llms-full.txt must not emit Vary header")
+	assert.Empty(t, rec.Header().Get("Link"), "static /llms-full.txt must not emit circular Link header")
+	body := rec.Body.String()
+	// Validate comprehensive documentation payload
+	assert.Greater(t, len(body), 5000, "llms-full.txt must contain the complete documentation set (> 5KB)")
+	assert.Contains(t, body, "# PerGo Omnichannel CPaaS - Full Developer Documentation")
+	assert.Contains(t, body, "Headless CPaaS")
+	assert.Contains(t, body, "X-PerGo-Signature")
+	assert.Contains(t, body, "whatsmeow")
+	assert.Contains(t, body, "Model Context Protocol")
 }

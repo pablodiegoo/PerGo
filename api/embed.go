@@ -19,3 +19,13 @@ var OpenAPIJSON []byte
 //
 //go:embed scalar.standalone.js
 var ScalarJS []byte
+
+// LLMsTxt contains the curated agent index conforming to llmstxt.org v2 format.
+//
+//go:embed llms.txt
+var LLMsTxt []byte
+
+// LLMsFullTxt contains the complete developer documentation in a single markdown payload.
+//
+//go:embed llms-full.txt
+var LLMsFullTxt []byte

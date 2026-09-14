@@ -69,6 +69,10 @@ func TestDeveloperHandler_GetPortal(t *testing.T) {
 	assert.Contains(t, body, ws.ID.String())
 	assert.Contains(t, body, "Sandbox")
 	assert.Contains(t, body, "Scalar Docs")
+	assert.Contains(t, body, "Agent Discovery & LLMs")
+	assert.Contains(t, body, "/llms.txt")
+	assert.Contains(t, body, "/llms-full.txt")
+	assert.Contains(t, body, "Accept: text/markdown")
 }
 
 func TestDeveloperHandler_RotateWebhookSecret(t *testing.T) {

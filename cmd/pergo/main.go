@@ -20,6 +20,7 @@ import (
 	"github.com/nats-io/nats.go"
 
 	mcpserver "github.com/mark3labs/mcp-go/server"
+	"github.com/pablojhp.pergo/api"
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	apipkg "github.com/pablojhp.pergo/internal/api/handler/api"
@@ -578,7 +579,7 @@ func main() {
 	// --- Landing Page ---
 	e.GET("/", func(c *echo.Context) error {
 		return middleware.Render(c, http.StatusOK, pages.Landing())
-	})
+	}, middleware.AgentDiscoveryMiddleware(), middleware.ContentNegotiationMiddleware(api.LLMsTxt))
 
 	// --- Admin panel routes ---
 	// Repositories for admin dashboard

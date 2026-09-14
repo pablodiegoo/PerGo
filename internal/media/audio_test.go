@@ -1424,7 +1424,7 @@ func TestAACFrameEnergyExtraction(t *testing.T) {
 		h1 := make([]byte, 7)
 		h1[0] = 0xFF
 		h1[1] = 0xF1
-		h1[2] = byte((1 << 6) | ((4 & 0x0F) << 2) | 0)
+		h1[2] = byte((1 << 6) | ((4 & 0x0F) << 2))
 		h1[3] = byte(((60 >> 11) & 0x03))
 		h1[4] = byte((60 >> 3) & 0xFF)
 		h1[5] = byte(((60 & 0x07) << 5) | 0x1F)
@@ -1437,7 +1437,7 @@ func TestAACFrameEnergyExtraction(t *testing.T) {
 		h2 := make([]byte, 7)
 		h2[0] = 0xFF
 		h2[1] = 0xF1
-		h2[2] = byte((1 << 6) | ((4 & 0x0F) << 2) | 0)
+		h2[2] = byte((1 << 6) | ((4 & 0x0F) << 2))
 		h2[3] = byte(((15 >> 11) & 0x03))
 		h2[4] = byte((15 >> 3) & 0xFF)
 		h2[5] = byte(((15 & 0x07) << 5) | 0x1F)

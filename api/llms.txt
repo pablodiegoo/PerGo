@@ -1,0 +1,27 @@
+# PerGo Omnichannel CPaaS Gateway
+
+> PerGo é uma plataforma de comunicação omnichannel de alta performance em Go para WhatsApp (whatsmeow), WhatsApp Cloud (WABA) e Telegram, com API REST unificada, mensagens interativas ricas e suporte nativo ao Model Context Protocol (MCP).
+
+Notas arquiteturais críticas para Agentes de IA e LLMs:
+- PerGo Core OSS é estritamente o Data Plane (CPaaS). Ele é agnóstico de faturamento, billing e cartões de crédito (faturamento multi-tenant e proxies residenciais pertencem ao PergoCloud).
+- API Unificada: Todo envio de mensagens ocorre através do endpoint `POST /messages` (ou `POST /api/v1/messages`), suportando texto puro, mídias (áudio, imagem, documento) e mensagens interativas (botões, listas e Meta Flows).
+- Autenticação: Endpoints operacionais de tenant exigem chave de API no cabeçalho `Authorization: Bearer <WORKSPACE_API_KEY>`. O provisionamento headless de novos workspaces é autenticado com `PERGO_MASTER_KEY` (`Authorization: Bearer <MASTER_KEY>` ou `X-Master-Key`).
+- Acesso Público e Anônimo: As rotas `/llms.txt`, `/llms-full.txt`, `/docs`, `/openapi.json`, `/openapi.yaml`, `/healthz` e `/readyz` não exigem autenticação.
+- Servidor MCP: Servidor Model Context Protocol nativo integrado via stdio (CLI) e SSE/Streamable HTTP em `/api/mcp`, permitindo diagnósticos de conectividade, pareamento QR, consulta de sessões e envio de mensagens.
+- Degradação Graciosa: Mensagens interativas (botões e listas) enviadas para canais sem suporte nativo degradam automaticamente para menus numerados de texto quando `fallback_behavior` for `"degrade"`.
+- Webhooks Seguros: Todos os webhooks outbound contêm a assinatura criptográfica HMAC-SHA256 no cabeçalho `X-PerGo-Signature` com tolerância anti-replay de 300 segundos.
+
+## Documentação Principal
+
+- [Documentação Completa de Desenvolvedor](/llms-full.txt): Concatenação integral de contratos, guias de integração, webhooks e APIs headless
+- [Especificação OpenAPI JSON](/openapi.json): Especificação canônica OpenAPI 3.1 da API REST do PerGo
+- [Especificação OpenAPI YAML](/openapi.yaml): Especificação legível OpenAPI 3.1 em formato YAML
+- [Portal Interativo de Documentação](/docs): Visualizador offline Scalar de documentação e explorador de endpoints
+- [Servidor Model Context Protocol (MCP)](/api/mcp): Endpoint Streamable HTTP / SSE para agentes autônomos e IDEs
+- [Repositório e Código Fonte](https://github.com/pablodiegoo/PerGo): Código fonte e documentação estática no GitHub
+
+## Optional
+
+- [Portal Interativo Scalar](/docs): Interface web standalone offline para exploração humana e testes de requisição
+- [Sonda de Liveness e Healthcheck](/healthz): Verificação de integridade operacional do PostgreSQL e NATS
+- [Sonda de Readiness](/readyz): Verificação de prontidão para recebimento de tráfego

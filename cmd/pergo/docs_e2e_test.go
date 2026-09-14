@@ -10,10 +10,12 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
+	"github.com/pablojhp.pergo/api"
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/pages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -85,7 +87,33 @@ func TestDocsE2E_PortalAndAssetDelivery(t *testing.T) {
 		assert.Greater(t, rec.Body.Len(), 50000, "Scalar standalone JS must be fully embedded and > 50KB")
 	})
 
-	// 5. Verify documentation and OpenAPI endpoints bypass AuthMiddleware without credentials
+	// 5. Verify GET /llms.txt and /llms-full.txt deliver embedded curated and full agent indexes
+	t.Run("GET /llms.txt and /llms-full.txt deliver embedded agent markdown assets", func(t *testing.T) {
+		reqLLMs := httptest.NewRequest(http.MethodGet, "/llms.txt", nil)
+		recLLMs := httptest.NewRecorder()
+		e.ServeHTTP(recLLMs, reqLLMs)
+
+		assert.Equal(t, http.StatusOK, recLLMs.Code)
+		assert.Equal(t, "text/markdown; charset=utf-8", recLLMs.Header().Get("Content-Type"))
+		assert.Empty(t, recLLMs.Header().Get("Vary"))
+		assert.Empty(t, recLLMs.Header().Get("Link"))
+		assert.Contains(t, recLLMs.Body.String(), "# PerGo Omnichannel CPaaS Gateway")
+		assert.Contains(t, recLLMs.Body.String(), "## Documentação Principal")
+		assert.Contains(t, recLLMs.Body.String(), "## Optional")
+
+		reqFull := httptest.NewRequest(http.MethodGet, "/llms-full.txt", nil)
+		recFull := httptest.NewRecorder()
+		e.ServeHTTP(recFull, reqFull)
+
+		assert.Equal(t, http.StatusOK, recFull.Code)
+		assert.Equal(t, "text/markdown; charset=utf-8", recFull.Header().Get("Content-Type"))
+		assert.Empty(t, recFull.Header().Get("Vary"))
+		assert.Empty(t, recFull.Header().Get("Link"))
+		assert.Greater(t, recFull.Body.Len(), 5000)
+		assert.Contains(t, recFull.Body.String(), "# PerGo Omnichannel CPaaS - Full Developer Documentation")
+	})
+
+	// 6. Verify documentation, OpenAPI, and llms.txt endpoints bypass AuthMiddleware without credentials
 	t.Run("Documentation endpoints bypass AuthMiddleware anonymously", func(t *testing.T) {
 		authEcho := echo.New()
 		authEcho.Use(mw.AuthMiddleware(nil))
@@ -101,6 +129,8 @@ func TestDocsE2E_PortalAndAssetDelivery(t *testing.T) {
 			"/openapi.json",
 			"/api/openapi.json",
 			"/docs/scalar.js",
+			"/llms.txt",
+			"/llms-full.txt",
 		}
 
 		for _, p := range publicPaths {
@@ -109,6 +139,176 @@ func TestDocsE2E_PortalAndAssetDelivery(t *testing.T) {
 			authEcho.ServeHTTP(rec, req)
 
 			assert.Equal(t, http.StatusOK, rec.Code, "path %s must be anonymously accessible through AuthMiddleware", p)
+		}
+	})
+}
+
+func TestDocsE2E_AgentDiscoveryHeadersAndMetadata(t *testing.T) {
+	e := echo.New()
+
+	docsHandler := handler.NewDocsHandler()
+	docsHandler.RegisterRoutes(e)
+
+	healthHandler := &handler.HealthHandler{}
+	healthHandler.RegisterRoutes(e)
+
+	e.GET("/", func(c *echo.Context) error {
+		return mw.Render(c, http.StatusOK, pages.Landing())
+	}, mw.AgentDiscoveryMiddleware())
+
+	// 1. Verify RFC 8288 Link header across public entrypoints
+	t.Run("Public endpoints return RFC 8288 Link header", func(t *testing.T) {
+		endpoints := []string{"/", "/healthz", "/readyz", "/docs", "/docs/"}
+		for _, ep := range endpoints {
+			req := httptest.NewRequest(http.MethodGet, ep, nil)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			assert.Equal(t, mw.DiscoveryLinkHeaderValue, rec.Header().Get("Link"), "endpoint %s must return RFC 8288 discovery Link header", ep)
+		}
+	})
+
+	// 2. Verify Landing page HTML contains discovery <link> tags in <head>
+	t.Run("Landing page HTML <head> includes discovery link tags", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+		body := rec.Body.String()
+		assert.Contains(t, body, `<link rel="describedby" href="/llms.txt"`)
+		assert.Contains(t, body, `<link rel="alternate" type="text/markdown" href="/llms-full.txt" title="Full Documentation for LLMs"`)
+	})
+
+	// 3. Verify Developer documentation portal HTML contains discovery <link> tags in <head>
+	t.Run("Developer documentation portal HTML <head> includes discovery link tags", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+		body := rec.Body.String()
+		assert.Contains(t, body, `<link rel="describedby" href="/llms.txt" />`)
+		assert.NotContains(t, body, `<link rel="alternate"`)
+	})
+}
+
+func TestDocsE2E_ContentNegotiation(t *testing.T) {
+	e := echo.New()
+
+	docsHandler := handler.NewDocsHandler()
+	docsHandler.RegisterRoutes(e)
+
+	e.GET("/", func(c *echo.Context) error {
+		return mw.Render(c, http.StatusOK, pages.Landing())
+	}, mw.AgentDiscoveryMiddleware(), mw.ContentNegotiationMiddleware(api.LLMsTxt))
+
+	t.Run("GET /docs with Accept: text/markdown returns full markdown documentation", func(t *testing.T) {
+		endpoints := []string{"/docs", "/docs/"}
+		for _, ep := range endpoints {
+			req := httptest.NewRequest(http.MethodGet, ep, nil)
+			req.Header.Set("Accept", "text/markdown")
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			assert.Equal(t, http.StatusOK, rec.Code)
+			assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+			assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
+			assert.NotEmpty(t, rec.Header().Get("Link"))
+			body := rec.Body.String()
+			assert.Contains(t, body, "# PerGo Omnichannel CPaaS - Full Developer Documentation")
+			assert.NotContains(t, body, "<html")
+			assert.NotContains(t, body, "<script")
+		}
+	})
+
+	t.Run("GET / with Accept: text/markdown returns raw markdown summary", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Accept", "text/markdown")
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+		assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
+		assert.NotEmpty(t, rec.Header().Get("Link"))
+		body := rec.Body.String()
+		assert.Contains(t, body, "# PerGo Omnichannel CPaaS Gateway")
+		assert.NotContains(t, body, "<html")
+		assert.NotContains(t, body, "<script")
+	})
+
+	t.Run("Standard browser requests (Accept: text/html) return HTML with Vary header", func(t *testing.T) {
+		// Test landing page /
+		reqLanding := httptest.NewRequest(http.MethodGet, "/", nil)
+		reqLanding.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		recLanding := httptest.NewRecorder()
+		e.ServeHTTP(recLanding, reqLanding)
+
+		assert.Equal(t, http.StatusOK, recLanding.Code)
+		assert.Contains(t, recLanding.Header().Get("Content-Type"), "text/html")
+		assert.Equal(t, "Accept, Accept-Encoding", recLanding.Header().Get("Vary"))
+		assert.Contains(t, recLanding.Body.String(), "<html")
+
+		// Test docs portal /docs
+		reqDocs := httptest.NewRequest(http.MethodGet, "/docs", nil)
+		reqDocs.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		recDocs := httptest.NewRecorder()
+		e.ServeHTTP(recDocs, reqDocs)
+
+		assert.Equal(t, http.StatusOK, recDocs.Code)
+		assert.Contains(t, recDocs.Header().Get("Content-Type"), "text/html")
+		assert.Equal(t, "Accept, Accept-Encoding", recDocs.Header().Get("Vary"))
+		assert.Contains(t, recDocs.Body.String(), "<title>PerGo API Reference</title>")
+	})
+
+	t.Run("Accept header permutations on /", func(t *testing.T) {
+		tests := []struct {
+			name           string
+			accept         string
+			expectMarkdown bool
+		}{
+			{
+				name:           "text/markdown; charset=utf-8",
+				accept:         "text/markdown; charset=utf-8",
+				expectMarkdown: true,
+			},
+			{
+				name:           "text/markdown preferred over html",
+				accept:         "text/markdown;q=1.0, text/html;q=0.8",
+				expectMarkdown: true,
+			},
+			{
+				name:           "html preferred over markdown",
+				accept:         "text/html;q=1.0, text/markdown;q=0.5",
+				expectMarkdown: false,
+			},
+			{
+				name:           "wildcard */*",
+				accept:         "*/*",
+				expectMarkdown: false,
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, "/", nil)
+				req.Header.Set("Accept", tc.accept)
+				rec := httptest.NewRecorder()
+				e.ServeHTTP(rec, req)
+
+				assert.Equal(t, http.StatusOK, rec.Code)
+				assert.Equal(t, "Accept, Accept-Encoding", rec.Header().Get("Vary"))
+				if tc.expectMarkdown {
+					assert.Equal(t, "text/markdown; charset=utf-8", rec.Header().Get("Content-Type"))
+					assert.Contains(t, rec.Body.String(), "# PerGo Omnichannel CPaaS Gateway")
+				} else {
+					assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+					assert.Contains(t, rec.Body.String(), "<html")
+				}
+			})
 		}
 	})
 }
@@ -158,6 +358,10 @@ func TestAdminDevelopersE2E_FullLifecycle(t *testing.T) {
 		assert.Contains(t, body, ws.Name)
 		assert.Contains(t, body, "Sandbox de Teste de Payloads Interativos")
 		assert.Contains(t, body, "Abrir Scalar Docs (/docs)")
+		assert.Contains(t, body, "Agent Discovery & LLMs")
+		assert.Contains(t, body, "/llms.txt")
+		assert.Contains(t, body, "/llms-full.txt")
+		assert.Contains(t, body, "Accept: text/markdown")
 	})
 
 	// 2. POST /admin/developers/webhook-secret/rotate

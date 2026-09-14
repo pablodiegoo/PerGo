@@ -41,6 +41,42 @@ security:
   - BearerAuth: []
 
 paths:
+  /:
+    get:
+      summary: Landing page and agent entrypoint
+      description: "Serves the landing page HTML for human visitors, or negotiated Markdown summary for agents supplying Accept: text/markdown."
+      operationId: getLanding
+      security: []
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          description: Media type preference for content negotiation. Set to `text/markdown` for agent Markdown format.
+          schema:
+            type: string
+            example: text/markdown
+      responses:
+        '200':
+          description: Landing page HTML or negotiated Markdown summary
+          headers:
+            Link:
+              description: RFC 8288 Web Linking header pointing to agent indexes
+              schema:
+                type: string
+                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
+            Vary:
+              description: Informs HTTP caches that representation varies based on Accept and Accept-Encoding headers
+              schema:
+                type: string
+                example: 'Accept, Accept-Encoding'
+          content:
+            text/html:
+              schema:
+                type: string
+            text/markdown:
+              schema:
+                type: string
+
   /messages:
     post:
       summary: Send unified message
@@ -112,17 +148,94 @@ paths:
         '200':
           description: Process is running
 
-  /docs:
+  /healthz:
     get:
-      summary: Developer documentation portal
-      description: Renders the embedded standalone Scalar developer documentation portal.
-      operationId: getDocs
+      summary: Liveness probe
+      description: Fast liveness check for container orchestrators and agents. Always returns 200 OK when the process is running and emits RFC 8288 Link discovery headers.
+      operationId: getHealthz
       security: []
       responses:
         '200':
-          description: Scalar API documentation HTML page
+          description: Process is running
+          headers:
+            Link:
+              description: RFC 8288 Web Linking header pointing to agent indexes
+              schema:
+                type: string
+                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+
+  /readyz:
+    get:
+      summary: Readiness probe
+      description: Verifies database and NATS JetStream connectivity. Emits RFC 8288 Link discovery headers.
+      operationId: getReadyz
+      security: []
+      responses:
+        '200':
+          description: System is ready to accept traffic
+          headers:
+            Link:
+              description: RFC 8288 Web Linking header pointing to agent indexes
+              schema:
+                type: string
+                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+        '503':
+          description: Underlying services are not ready
+          headers:
+            Link:
+              description: RFC 8288 Web Linking header pointing to agent indexes
+              schema:
+                type: string
+                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: pgx not ready
+
+  /docs:
+    get:
+      summary: Developer documentation portal
+      description: "Renders the embedded standalone Scalar developer documentation portal for human operators, or serves full Markdown documentation when requested with Accept: text/markdown."
+      operationId: getDocs
+      security: []
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          description: Media type preference for content negotiation. Pass text/markdown to receive raw Markdown documentation.
+          schema:
+            type: string
+            example: text/markdown
+      responses:
+        '200':
+          description: Scalar API documentation HTML page or full Markdown documentation
+          headers:
+            Link:
+              description: RFC 8288 Web Linking header pointing to agent indexes (/llms.txt, /llms-full.txt)
+              schema:
+                type: string
+                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
+            Vary:
+              description: Informs HTTP caches that representations vary based on Accept and Accept-Encoding headers
+              schema:
+                type: string
+                example: 'Accept, Accept-Encoding'
           content:
             text/html:
+              schema:
+                type: string
+            text/markdown:
               schema:
                 type: string
 
@@ -221,6 +334,34 @@ paths:
           description: JavaScript bundle
           content:
             application/javascript:
+              schema:
+                type: string
+
+  /llms.txt:
+    get:
+      summary: Curated LLM and agent index
+      description: Returns the curated agent index in Markdown format adhering to the llmstxt.org specification, linking to full documentation and API contracts.
+      operationId: getLLMsTxt
+      security: []
+      responses:
+        '200':
+          description: Curated agent documentation index in Markdown
+          content:
+            text/markdown:
+              schema:
+                type: string
+
+  /llms-full.txt:
+    get:
+      summary: Full LLM developer documentation
+      description: Returns the comprehensive, concatenated developer documentation in Markdown format for ingestion by autonomous AI agents and LLMs.
+      operationId: getLLMsFullTxt
+      security: []
+      responses:
+        '200':
+          description: Full developer documentation in Markdown
+          content:
+            text/markdown:
               schema:
                 type: string
 
