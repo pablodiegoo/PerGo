@@ -578,7 +578,7 @@ func main() {
 	// --- Landing Page ---
 	e.GET("/", func(c *echo.Context) error {
 		return middleware.Render(c, http.StatusOK, pages.Landing())
-	})
+	}, middleware.AgentDiscoveryMiddleware())
 
 	// --- Admin panel routes ---
 	// Repositories for admin dashboard

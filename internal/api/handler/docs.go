@@ -5,6 +5,7 @@ import (
 
 	"github.com/labstack/echo/v5"
 	"github.com/pablojhp.pergo/api"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 )
 
 // DocsHandler serves the embedded Scalar developer documentation portal and OpenAPI specification.
@@ -17,8 +18,9 @@ func NewDocsHandler() *DocsHandler {
 
 // RegisterRoutes mounts the documentation endpoints on Echo.
 func (h *DocsHandler) RegisterRoutes(e *echo.Echo) {
-	e.GET("/docs", h.ServePortal)
-	e.GET("/docs/", h.ServePortal)
+	disc := middleware.AgentDiscoveryMiddleware()
+	e.GET("/docs", h.ServePortal, disc)
+	e.GET("/docs/", h.ServePortal, disc)
 
 	// OpenAPI YAML endpoints
 	e.GET("/docs/openapi.yaml", h.ServeOpenAPISpecYAML)
@@ -40,7 +42,6 @@ func (h *DocsHandler) RegisterRoutes(e *echo.Echo) {
 	e.GET("/llms-full.txt", h.ServeLLMsFullTxt)
 }
 
-
 // ServePortal renders the standalone offline Scalar developer documentation portal.
 func (h *DocsHandler) ServePortal(c *echo.Context) error {
 	specURL := "/api/openapi.json"
@@ -54,6 +55,8 @@ func (h *DocsHandler) ServePortal(c *echo.Context) error {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>PerGo API Reference</title>
+    <link rel="describedby" href="/llms.txt" />
+    <link rel="alternate" type="text/markdown" href="/llms-full.txt" title="Full Documentation for LLMs" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
     <style>
       body {
@@ -112,5 +115,3 @@ func (h *DocsHandler) ServeLLMsTxt(c *echo.Context) error {
 func (h *DocsHandler) ServeLLMsFullTxt(c *echo.Context) error {
 	return c.Blob(http.StatusOK, "text/markdown; charset=utf-8", api.LLMsFullTxt)
 }
-
-

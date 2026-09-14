@@ -14,6 +14,7 @@ import (
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/templates/pages"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -137,6 +138,59 @@ func TestDocsE2E_PortalAndAssetDelivery(t *testing.T) {
 	})
 }
 
+func TestDocsE2E_AgentDiscoveryHeadersAndMetadata(t *testing.T) {
+	e := echo.New()
+
+	docsHandler := handler.NewDocsHandler()
+	docsHandler.RegisterRoutes(e)
+
+	healthHandler := &handler.HealthHandler{}
+	healthHandler.RegisterRoutes(e)
+
+	e.GET("/", func(c *echo.Context) error {
+		return mw.Render(c, http.StatusOK, pages.Landing())
+	}, mw.AgentDiscoveryMiddleware())
+
+	const expectedLink = `</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"`
+
+	// 1. Verify RFC 8288 Link header across public entrypoints
+	t.Run("Public endpoints return RFC 8288 Link header", func(t *testing.T) {
+		endpoints := []string{"/", "/healthz", "/readyz", "/docs", "/docs/"}
+		for _, ep := range endpoints {
+			req := httptest.NewRequest(http.MethodGet, ep, nil)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			assert.Equal(t, expectedLink, rec.Header().Get("Link"), "endpoint %s must return RFC 8288 discovery Link header", ep)
+		}
+	})
+
+	// 2. Verify Landing page HTML contains discovery <link> tags in <head>
+	t.Run("Landing page HTML <head> includes discovery link tags", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+		body := rec.Body.String()
+		assert.Contains(t, body, `<link rel="describedby" href="/llms.txt"`)
+		assert.Contains(t, body, `<link rel="alternate" type="text/markdown" href="/llms-full.txt" title="Full Documentation for LLMs"`)
+	})
+
+	// 3. Verify Developer documentation portal HTML contains discovery <link> tags in <head>
+	t.Run("Developer documentation portal HTML <head> includes discovery link tags", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+		body := rec.Body.String()
+		assert.Contains(t, body, `<link rel="describedby" href="/llms.txt" />`)
+		assert.Contains(t, body, `<link rel="alternate" type="text/markdown" href="/llms-full.txt" title="Full Documentation for LLMs" />`)
+	})
+}
 
 func TestAdminDevelopersE2E_FullLifecycle(t *testing.T) {
 	pool := getTestPool(t)

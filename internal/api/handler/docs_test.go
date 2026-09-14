@@ -23,8 +23,11 @@ func TestDocsHandler_GetDocs(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Contains(t, rec.Header().Get("Content-Type"), "text/html")
+		assert.Equal(t, `</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"`, rec.Header().Get("Link"))
 		body := rec.Body.String()
 		assert.Contains(t, body, "<title>PerGo API Reference</title>")
+		assert.Contains(t, body, `<link rel="describedby" href="/llms.txt" />`)
+		assert.Contains(t, body, `<link rel="alternate" type="text/markdown" href="/llms-full.txt" title="Full Documentation for LLMs" />`)
 		assert.Contains(t, body, `data-url="/api/openapi.json"`)
 		assert.Contains(t, body, `<script src="/docs/scalar.js"></script>`)
 	})
@@ -155,5 +158,3 @@ func TestDocsHandler_GetLLMsFullTxt(t *testing.T) {
 	assert.Contains(t, body, "whatsmeow")
 	assert.Contains(t, body, "Model Context Protocol")
 }
-
-
