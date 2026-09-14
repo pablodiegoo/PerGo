@@ -342,26 +342,26 @@ func EncodeWAV(pcm16 []int16, sampleRate int, channels int) []byte {
 
 	// RIFF header
 	buf.WriteString("RIFF")
-	binary.Write(buf, binary.LittleEndian, uint32(36+dataSize))
+	_ = binary.Write(buf, binary.LittleEndian, uint32(36+dataSize))
 	buf.WriteString("WAVE")
 
 	// fmt subchunk
 	buf.WriteString("fmt ")
-	binary.Write(buf, binary.LittleEndian, uint32(16)) // subchunk1size (16 for PCM)
-	binary.Write(buf, binary.LittleEndian, uint16(1))  // audio format (1 = PCM)
-	binary.Write(buf, binary.LittleEndian, uint16(channels))
-	binary.Write(buf, binary.LittleEndian, uint32(sampleRate))
+	_ = binary.Write(buf, binary.LittleEndian, uint32(16)) // subchunk1size (16 for PCM)
+	_ = binary.Write(buf, binary.LittleEndian, uint16(1))  // audio format (1 = PCM)
+	_ = binary.Write(buf, binary.LittleEndian, uint16(channels))
+	_ = binary.Write(buf, binary.LittleEndian, uint32(sampleRate))
 	byteRate := uint32(sampleRate * channels * 2)
-	binary.Write(buf, binary.LittleEndian, byteRate)
+	_ = binary.Write(buf, binary.LittleEndian, byteRate)
 	blockAlign := uint16(channels * 2)
-	binary.Write(buf, binary.LittleEndian, blockAlign)
-	binary.Write(buf, binary.LittleEndian, uint16(16)) // bits per sample
+	_ = binary.Write(buf, binary.LittleEndian, blockAlign)
+	_ = binary.Write(buf, binary.LittleEndian, uint16(16)) // bits per sample
 
 	// data subchunk
 	buf.WriteString("data")
-	binary.Write(buf, binary.LittleEndian, dataSize)
+	_ = binary.Write(buf, binary.LittleEndian, dataSize)
 	for _, s := range pcm16 {
-		binary.Write(buf, binary.LittleEndian, s)
+		_ = binary.Write(buf, binary.LittleEndian, s)
 	}
 
 	return buf.Bytes()
@@ -427,10 +427,10 @@ func encodeOggOpus(pcm []int16, sampleRate int, durationMs int) []byte {
 	buf.WriteString("OggS")
 	buf.WriteByte(0)
 	buf.WriteByte(0x02) // BOS
-	binary.Write(buf, binary.LittleEndian, uint64(0))
-	binary.Write(buf, binary.LittleEndian, uint32(12345))
-	binary.Write(buf, binary.LittleEndian, uint32(0))
-	binary.Write(buf, binary.LittleEndian, uint32(0))
+	_ = binary.Write(buf, binary.LittleEndian, uint64(0))
+	_ = binary.Write(buf, binary.LittleEndian, uint32(12345))
+	_ = binary.Write(buf, binary.LittleEndian, uint32(0))
+	_ = binary.Write(buf, binary.LittleEndian, uint32(0))
 	buf.WriteByte(1)
 	opusHead := []byte{
 		'O', 'p', 'u', 's', 'H', 'e', 'a', 'd',
@@ -443,10 +443,10 @@ func encodeOggOpus(pcm []int16, sampleRate int, durationMs int) []byte {
 	buf.WriteString("OggS")
 	buf.WriteByte(0)
 	buf.WriteByte(0x00)
-	binary.Write(buf, binary.LittleEndian, uint64(0))
-	binary.Write(buf, binary.LittleEndian, uint32(12345))
-	binary.Write(buf, binary.LittleEndian, uint32(1))
-	binary.Write(buf, binary.LittleEndian, uint32(0))
+	_ = binary.Write(buf, binary.LittleEndian, uint64(0))
+	_ = binary.Write(buf, binary.LittleEndian, uint32(12345))
+	_ = binary.Write(buf, binary.LittleEndian, uint32(1))
+	_ = binary.Write(buf, binary.LittleEndian, uint32(0))
 	buf.WriteByte(1)
 	opusTags := []byte{
 		'O', 'p', 'u', 's', 'T', 'a', 'g', 's',
@@ -461,10 +461,10 @@ func encodeOggOpus(pcm []int16, sampleRate int, durationMs int) []byte {
 	buf.WriteString("OggS")
 	buf.WriteByte(0)
 	buf.WriteByte(0x04) // EOS
-	binary.Write(buf, binary.LittleEndian, totalSamples48k)
-	binary.Write(buf, binary.LittleEndian, uint32(12345))
-	binary.Write(buf, binary.LittleEndian, uint32(2))
-	binary.Write(buf, binary.LittleEndian, uint32(0))
+	_ = binary.Write(buf, binary.LittleEndian, totalSamples48k)
+	_ = binary.Write(buf, binary.LittleEndian, uint32(12345))
+	_ = binary.Write(buf, binary.LittleEndian, uint32(2))
+	_ = binary.Write(buf, binary.LittleEndian, uint32(0))
 	buf.WriteByte(1)
 
 	rms := CalculateRMS(pcm)
@@ -607,18 +607,18 @@ func DecodeWAV(data []byte) ([]int16, *AudioTelemetry, error) {
 			if chunkSize < 16 {
 				return nil, nil, fmt.Errorf("%w: invalid fmt chunk size", ErrCorruptAudioData)
 			}
-			binary.Read(reader, binary.LittleEndian, &audioFormat)
-			binary.Read(reader, binary.LittleEndian, &numChannels)
-			binary.Read(reader, binary.LittleEndian, &sampleRate)
+			_ = binary.Read(reader, binary.LittleEndian, &audioFormat)
+			_ = binary.Read(reader, binary.LittleEndian, &numChannels)
+			_ = binary.Read(reader, binary.LittleEndian, &sampleRate)
 			var byteRate uint32
 			var blockAlign uint16
-			binary.Read(reader, binary.LittleEndian, &byteRate)
-			binary.Read(reader, binary.LittleEndian, &blockAlign)
-			binary.Read(reader, binary.LittleEndian, &bitsPerSample)
+			_ = binary.Read(reader, binary.LittleEndian, &byteRate)
+			_ = binary.Read(reader, binary.LittleEndian, &blockAlign)
+			_ = binary.Read(reader, binary.LittleEndian, &bitsPerSample)
 
 			// Skip any extra format bytes
 			if chunkSize > 16 {
-				reader.Seek(int64(chunkSize-16), io.SeekCurrent)
+				_, _ = reader.Seek(int64(chunkSize-16), io.SeekCurrent)
 			}
 		} else if id == "data" {
 			dataBytes := make([]byte, chunkSize)
@@ -659,7 +659,7 @@ func DecodeWAV(data []byte) ([]int16, *AudioTelemetry, error) {
 			}
 		} else {
 			// Skip other chunks
-			reader.Seek(int64(chunkSize), io.SeekCurrent)
+			_, _ = reader.Seek(int64(chunkSize), io.SeekCurrent)
 		}
 	}
 

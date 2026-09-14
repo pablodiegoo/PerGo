@@ -50,7 +50,7 @@ jobs:
         env:
           PERGO_DATABASE_URL: postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable
           PERGO_NATS_URL: nats://localhost:4222
-        run: go test ./... -race -count=1
+        run: go test -p 1 ./... -race -count=1
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6

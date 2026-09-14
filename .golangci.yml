@@ -34,6 +34,8 @@ linters-settings:
       - net.Conn.Write
       - (net.Conn).Write
       - crypto/rand.Read
+      - encoding/binary.Write
+      - encoding/binary.Read
       - (*github.com/pablojhp.pergo/internal/repository.WorkspaceRepository).Delete
   gosec:
     excludes:
