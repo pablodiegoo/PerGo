@@ -147,31 +147,20 @@ func TestOpenAPI31Contract_EchoRouteCoverage(t *testing.T) {
 func TestOpenAPI31Contract_AgentDiscoveryEndpointsAndHeaders(t *testing.T) {
 	_, doc := loadOpenAPISpec(t)
 
-	// 1. Verify /llms.txt in openapi.yaml
-	llmsTxt, ok := doc.Paths["/llms.txt"]
-	require.True(t, ok, "/llms.txt must be documented in openapi.yaml")
-	llmsGet, ok := llmsTxt["get"].(map[string]interface{})
-	require.True(t, ok, "/llms.txt must define get method")
-	responses, ok := llmsGet["responses"].(map[string]interface{})
-	require.True(t, ok)
-	resp200, ok := responses["200"].(map[string]interface{})
-	require.True(t, ok)
-	content, ok := resp200["content"].(map[string]interface{})
-	require.True(t, ok)
-	assert.Contains(t, content, "text/markdown", "/llms.txt must document text/markdown content type")
-
-	// 2. Verify /llms-full.txt in openapi.yaml
-	llmsFull, ok := doc.Paths["/llms-full.txt"]
-	require.True(t, ok, "/llms-full.txt must be documented in openapi.yaml")
-	llmsFullGet, ok := llmsFull["get"].(map[string]interface{})
-	require.True(t, ok, "/llms-full.txt must define get method")
-	responsesFull, ok := llmsFullGet["responses"].(map[string]interface{})
-	require.True(t, ok)
-	resp200Full, ok := responsesFull["200"].(map[string]interface{})
-	require.True(t, ok)
-	contentFull, ok := resp200Full["content"].(map[string]interface{})
-	require.True(t, ok)
-	assert.Contains(t, contentFull, "text/markdown", "/llms-full.txt must document text/markdown content type")
+	// 1. Verify markdown endpoints (/llms.txt and /llms-full.txt) in openapi.yaml
+	for _, p := range []string{"/llms.txt", "/llms-full.txt"} {
+		pathItem, ok := doc.Paths[p]
+		require.Truef(t, ok, "%s must be documented in openapi.yaml", p)
+		getMethod, ok := pathItem["get"].(map[string]interface{})
+		require.Truef(t, ok, "%s must define get method", p)
+		responses, ok := getMethod["responses"].(map[string]interface{})
+		require.True(t, ok)
+		resp200, ok := responses["200"].(map[string]interface{})
+		require.True(t, ok)
+		content, ok := resp200["content"].(map[string]interface{})
+		require.True(t, ok)
+		assert.Containsf(t, content, "text/markdown", "%s must document text/markdown content type", p)
+	}
 
 	// 3. Verify Link headers documented on /docs
 	docsPath, ok := doc.Paths["/docs"]
