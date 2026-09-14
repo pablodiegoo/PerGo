@@ -855,6 +855,59 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/": {
+      "get": {
+        "description": "Serves the landing page HTML for human visitors, or negotiated Markdown summary for agents supplying Accept: text/markdown.",
+        "operationId": "getLanding",
+        "parameters": [
+          {
+            "description": "Media type preference for content negotiation. Set to `text/markdown` for agent Markdown format.",
+            "example": "text/markdown",
+            "in": "header",
+            "name": "Accept",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Landing page HTML or negotiated Markdown summary",
+            "headers": {
+              "Link": {
+                "description": "RFC 8288 Web Linking header pointing to agent indexes",
+                "example": "</llms.txt>; rel=\"describedby\", </llms-full.txt>; rel=\"alternate\"; type=\"text/markdown\"",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Vary": {
+                "description": "Informs HTTP caches that representation varies based on Accept and Accept-Encoding headers",
+                "example": "Accept, Accept-Encoding",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [],
+        "summary": "Landing page and agent entrypoint"
+      }
+    },
     "/api/openapi.json": {
       "get": {
         "description": "Returns the raw OpenAPI 3.1 JSON specification directly from embedded binary assets.",
@@ -1585,6 +1638,18 @@
       "get": {
         "description": "Renders the embedded standalone Scalar developer documentation portal.",
         "operationId": "getDocs",
+        "parameters": [
+          {
+            "description": "Media type preference for content negotiation. Pass text/markdown to receive raw Markdown documentation.",
+            "example": "text/markdown",
+            "in": "header",
+            "name": "Accept",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1592,13 +1657,25 @@
                 "schema": {
                   "type": "string"
                 }
+              },
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
               }
             },
-            "description": "Scalar API documentation HTML page",
+            "description": "Scalar API documentation HTML page or full Markdown documentation",
             "headers": {
               "Link": {
                 "description": "RFC 8288 Web Linking header pointing to agent indexes (/llms.txt, /llms-full.txt)",
                 "example": "</llms.txt>; rel=\"describedby\", </llms-full.txt>; rel=\"alternate\"; type=\"text/markdown\"",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Vary": {
+                "description": "Informs HTTP caches that representations vary based on Accept and Accept-Encoding headers",
+                "example": "Accept, Accept-Encoding",
                 "schema": {
                   "type": "string"
                 }
@@ -1736,6 +1813,13 @@
                 "schema": {
                   "type": "string"
                 }
+              },
+              "Vary": {
+                "description": "Informs HTTP caches that representations vary based on request headers",
+                "example": "Accept, Accept-Encoding",
+                "schema": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -1762,6 +1846,13 @@
               "Link": {
                 "description": "RFC 8288 Web Linking header pointing to full markdown documentation",
                 "example": "</llms-full.txt>; rel=\"alternate\"; type=\"text/markdown\"",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Vary": {
+                "description": "Informs HTTP caches that representations vary based on request headers",
+                "example": "Accept, Accept-Encoding",
                 "schema": {
                   "type": "string"
                 }

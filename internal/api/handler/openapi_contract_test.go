@@ -76,6 +76,7 @@ func TestOpenAPI31Contract_RequiredEndpointsPresent(t *testing.T) {
 		Path   string
 		Method string
 	}{
+		{"/", "get"},
 		{"/messages", "post"},
 		{"/health", "get"},
 		{"/health/ready", "get"},
@@ -160,9 +161,13 @@ func TestOpenAPI31Contract_AgentDiscoveryEndpointsAndHeaders(t *testing.T) {
 		content, ok := resp200["content"].(map[string]interface{})
 		require.True(t, ok)
 		assert.Containsf(t, content, "text/markdown", "%s must document text/markdown content type", p)
+		headers, ok := resp200["headers"].(map[string]interface{})
+		require.True(t, ok)
+		assert.Containsf(t, headers, "Link", "%s must document Link header", p)
+		assert.Containsf(t, headers, "Vary", "%s must document Vary header", p)
 	}
 
-	// 3. Verify Link headers documented on /docs
+	// 2. Verify Link & Vary headers and content negotiation documented on /docs
 	docsPath, ok := doc.Paths["/docs"]
 	require.True(t, ok, "/docs must be documented in openapi.yaml")
 	docsGet, ok := docsPath["get"].(map[string]interface{})
@@ -174,13 +179,32 @@ func TestOpenAPI31Contract_AgentDiscoveryEndpointsAndHeaders(t *testing.T) {
 	headers, ok := docs200["headers"].(map[string]interface{})
 	require.True(t, ok, "/docs 200 response must document headers")
 	assert.Contains(t, headers, "Link", "/docs 200 response must document Link header")
+	assert.Contains(t, headers, "Vary", "/docs 200 response must document Vary header")
+	docsContent, ok := docs200["content"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Contains(t, docsContent, "text/html", "/docs must document text/html")
+	assert.Contains(t, docsContent, "text/markdown", "/docs must document text/markdown")
 
-	// 4. Verify openapi.json contains /llms.txt and /llms-full.txt
+	// 3. Verify content negotiation on root endpoint /
+	rootPath, ok := doc.Paths["/"]
+	require.True(t, ok, "/ must be documented in openapi.yaml")
+	rootGet, ok := rootPath["get"].(map[string]interface{})
+	require.True(t, ok)
+	root200 := rootGet["responses"].(map[string]interface{})["200"].(map[string]interface{})
+	rootHeaders := root200["headers"].(map[string]interface{})
+	assert.Contains(t, rootHeaders, "Link", "/ must document Link header")
+	assert.Contains(t, rootHeaders, "Vary", "/ must document Vary header")
+	rootContent := root200["content"].(map[string]interface{})
+	assert.Contains(t, rootContent, "text/html", "/ must document text/html")
+	assert.Contains(t, rootContent, "text/markdown", "/ must document text/markdown")
+
+	// 4. Verify openapi.json contains /, /llms.txt and /llms-full.txt
 	var jsonDoc map[string]interface{}
 	err := yaml.Unmarshal(api.OpenAPIJSON, &jsonDoc)
 	require.NoError(t, err)
 	jsonPaths, ok := jsonDoc["paths"].(map[string]interface{})
 	require.True(t, ok)
+	assert.Contains(t, jsonPaths, "/", "openapi.json must contain /")
 	assert.Contains(t, jsonPaths, "/llms.txt", "openapi.json must contain /llms.txt")
 	assert.Contains(t, jsonPaths, "/llms-full.txt", "openapi.json must contain /llms-full.txt")
 }

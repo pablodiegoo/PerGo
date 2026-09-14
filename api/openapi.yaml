@@ -41,6 +41,42 @@ security:
   - BearerAuth: []
 
 paths:
+  /:
+    get:
+      summary: Landing page and agent entrypoint
+      description: "Serves the landing page HTML for human visitors, or negotiated Markdown summary for agents supplying Accept: text/markdown."
+      operationId: getLanding
+      security: []
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          description: Media type preference for content negotiation. Set to `text/markdown` for agent Markdown format.
+          schema:
+            type: string
+            example: text/markdown
+      responses:
+        '200':
+          description: Landing page HTML or negotiated Markdown summary
+          headers:
+            Link:
+              description: RFC 8288 Web Linking header pointing to agent indexes
+              schema:
+                type: string
+                example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
+            Vary:
+              description: Informs HTTP caches that representation varies based on Accept and Accept-Encoding headers
+              schema:
+                type: string
+                example: 'Accept, Accept-Encoding'
+          content:
+            text/html:
+              schema:
+                type: string
+            text/markdown:
+              schema:
+                type: string
+
   /messages:
     post:
       summary: Send unified message
@@ -115,20 +151,36 @@ paths:
   /docs:
     get:
       summary: Developer documentation portal
-      description: Renders the embedded standalone Scalar developer documentation portal.
+      description: "Renders the embedded standalone Scalar developer documentation portal for human operators, or serves full Markdown documentation when requested with Accept: text/markdown."
       operationId: getDocs
       security: []
+      parameters:
+        - name: Accept
+          in: header
+          required: false
+          description: Media type preference for content negotiation. Pass text/markdown to receive raw Markdown documentation.
+          schema:
+            type: string
+            example: text/markdown
       responses:
         '200':
-          description: Scalar API documentation HTML page
+          description: Scalar API documentation HTML page or full Markdown documentation
           headers:
             Link:
               description: RFC 8288 Web Linking header pointing to agent indexes (/llms.txt, /llms-full.txt)
               schema:
                 type: string
                 example: '</llms.txt>; rel="describedby", </llms-full.txt>; rel="alternate"; type="text/markdown"'
+            Vary:
+              description: Informs HTTP caches that representations vary based on Accept and Accept-Encoding headers
+              schema:
+                type: string
+                example: 'Accept, Accept-Encoding'
           content:
             text/html:
+              schema:
+                type: string
+            text/markdown:
               schema:
                 type: string
 
@@ -245,6 +297,11 @@ paths:
               schema:
                 type: string
                 example: '</llms-full.txt>; rel="alternate"; type="text/markdown"'
+            Vary:
+              description: Informs HTTP caches that representations vary based on request headers
+              schema:
+                type: string
+                example: 'Accept, Accept-Encoding'
           content:
             text/markdown:
               schema:
@@ -265,6 +322,11 @@ paths:
               schema:
                 type: string
                 example: '</llms.txt>; rel="describedby"'
+            Vary:
+              description: Informs HTTP caches that representations vary based on request headers
+              schema:
+                type: string
+                example: 'Accept, Accept-Encoding'
           content:
             text/markdown:
               schema:
