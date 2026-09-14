@@ -18,6 +18,8 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
@@ -27,6 +29,28 @@ import (
 	"github.com/pablojhp.pergo/internal/session"
 	"github.com/pablojhp.pergo/internal/webhook"
 )
+
+// ServerOption is a functional option for configuring the Server.
+type ServerOption func(*Server)
+
+// WithJetStream injects a NATS JetStream client into the Server.
+func WithJetStream(js jetstream.JetStream) ServerOption {
+	return func(s *Server) {
+		s.js = js
+	}
+}
+
+// WithNATSConn injects a NATS connection into the Server.
+func WithNATSConn(nc *nats.Conn) ServerOption {
+	return func(s *Server) {
+		s.nc = nc
+		if s.js == nil && nc != nil {
+			if js, err := jetstream.New(nc); err == nil {
+				s.js = js
+			}
+		}
+	}
+}
 
 // Server encapsulates the MCP Server instance and its service dependencies.
 type Server struct {
@@ -44,6 +68,9 @@ type Server struct {
 	webhookDispatcher webhook.WebhookDispatcher
 	ssoSecret         []byte
 	externalURL       string
+
+	js jetstream.JetStream
+	nc *nats.Conn
 }
 
 // NewServer creates and configures a new PerGo MCP server.
@@ -59,6 +86,7 @@ func NewServer(
 	webhookDispatcher webhook.WebhookDispatcher,
 	ssoSecret []byte,
 	externalURL string,
+	opts ...ServerOption,
 ) *Server {
 	mcpSrv := server.NewMCPServer("PerGo CPaaS Gateway", "1.2.0")
 
@@ -75,6 +103,10 @@ func NewServer(
 		webhookDispatcher: webhookDispatcher,
 		ssoSecret:         ssoSecret,
 		externalURL:       externalURL,
+	}
+
+	for _, opt := range opts {
+		opt(s)
 	}
 
 	s.registerTools()
@@ -482,6 +514,20 @@ func (s *Server) registerTools() {
 			Required: []string{"workspace_id"},
 		},
 	}, s.handleGenerateAdminSSOURL)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "inspect_queue_health",
+		Description: "Query real-time NATS JetStream stream capacity, consumer lag, pending ACKs, and queue health status across message and webhook streams.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional workspace UUID to filter or context-tag queue inspection metrics.",
+				},
+			},
+		},
+	}, s.handleInspectQueueHealth)
 }
 
 func (s *Server) handleCreateWorkspace(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
