@@ -365,6 +365,57 @@ paths:
               schema:
                 type: string
 
+  /api/mcp:
+    get:
+      summary: Model Context Protocol (MCP) Server-Sent Events (SSE) Stream
+      description: Establishes a real-time Server-Sent Events (SSE) connection stream for Model Context Protocol (MCP) clients to discover and invoke tools, resources, and prompts.
+      operationId: getMCPSSEStream
+      security: []
+      responses:
+        '200':
+          description: Active SSE stream established for MCP session
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '500':
+          description: Internal server error
+    post:
+      summary: Model Context Protocol (MCP) JSON-RPC Message Dispatch
+      description: Dispatches JSON-RPC 2.0 requests to the active MCP session, including tool discovery (tools/list) and tool execution (tools/call) for diagnostics (diagnose_connection_health, simulate_webhook_event, replay_webhook_dlq, inspect_queue_health) and operational workflows.
+      operationId: postMCPMessage
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - jsonrpc
+                - method
+              properties:
+                jsonrpc:
+                  type: string
+                  example: "2.0"
+                id:
+                  oneOf:
+                    - type: string
+                    - type: integer
+                  example: 1
+                method:
+                  type: string
+                  example: "tools/call"
+                params:
+                  type: object
+      responses:
+        '200':
+          description: JSON-RPC response or accepted
+          content:
+            application/json:
+              schema:
+                type: object
+
   /api/v1/me:
     get:
       summary: Authenticated workspace profile
@@ -1399,3 +1450,396 @@ components:
           type: string
         secret_token:
           type: string
+
+    MCPDiagnoseConnectionHealthRequest:
+      type: object
+      required:
+        - workspace_id
+        - connection_id
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+          description: The UUID of the workspace.
+        connection_id:
+          type: string
+          format: uuid
+          description: The UUID of the connection to diagnose.
+
+    MCPConnectionHealthDiagnosticResponse:
+      type: object
+      required:
+        - connection_id
+        - workspace_id
+        - name
+        - channel
+        - status
+        - socket_status
+        - credentials_valid
+        - self_healing_guidance
+      properties:
+        connection_id:
+          type: string
+          format: uuid
+          description: The UUID of the connection.
+        workspace_id:
+          type: string
+          format: uuid
+          description: The UUID of the workspace.
+        name:
+          type: string
+          description: Human-readable name of the connection.
+        channel:
+          type: string
+          description: Channel type (whatsapp, whatsapp_cloud, telegram).
+        status:
+          type: string
+          description: Overall connection status (connected, disconnected, pairing, error).
+        socket_status:
+          type: string
+          description: Socket liveness status (connected, disconnected, not_applicable).
+        proxy_health:
+          $ref: '#/components/schemas/MCPProxyHealth'
+        credentials_valid:
+          type: boolean
+          description: Whether the credentials are valid and authenticated.
+        latency_ms:
+          type: integer
+          format: int64
+          description: Round-trip diagnostic latency in milliseconds.
+        pairing_status:
+          type: string
+          description: Active pairing state for WhatsApp Web.
+        last_error:
+          type: string
+          description: Last recorded error message if connection is unhealthy.
+        self_healing_guidance:
+          type: string
+          description: Actionable guidance for agents to self-heal the connection.
+
+    MCPProxyHealth:
+      type: object
+      required:
+        - configured
+        - reachable
+        - latency_ms
+      properties:
+        configured:
+          type: boolean
+          description: Whether a proxy URL is configured on the connection.
+        reachable:
+          type: boolean
+          description: Whether the proxy endpoint responded to TCP probe.
+        latency_ms:
+          type: integer
+          format: int64
+          description: TCP dial probe latency in milliseconds.
+        error:
+          type: string
+          description: Probe error message if unreachable.
+
+    MCPSimulateWebhookEventRequest:
+      type: object
+      required:
+        - workspace_id
+        - event_type
+        - payload
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+          description: The UUID of the workspace.
+        event_type:
+          type: string
+          description: The webhook event type (e.g. message.received, flow.submitted).
+          example: "message.received"
+        payload:
+          description: Synthetic event payload to dispatch (JSON object or string).
+          oneOf:
+            - type: object
+            - type: string
+        subscription_id:
+          type: string
+          format: uuid
+          description: Optional UUID of an existing webhook subscription to target.
+        target_url:
+          type: string
+          format: uri
+          description: Optional destination URL to dispatch to (overrides subscription URL).
+
+    MCPWebhookSimulationTelemetry:
+      type: object
+      required:
+        - target_url
+        - event_type
+        - trace_id
+        - status_code
+        - latency_ms
+        - success
+      properties:
+        subscription_id:
+          type: string
+          format: uuid
+          description: Targeted subscription UUID if resolved.
+        target_url:
+          type: string
+          format: uri
+          description: Actual destination URL dispatched to.
+        event_type:
+          type: string
+          description: Dispatched event type.
+        trace_id:
+          type: string
+          description: Trace ID header injected into the dispatch.
+        status_code:
+          type: integer
+          description: HTTP response status code received from subscriber.
+        latency_ms:
+          type: integer
+          format: int64
+          description: Dispatch round-trip latency in milliseconds.
+        success:
+          type: boolean
+          description: Whether the dispatch succeeded (2xx HTTP response).
+        response_body:
+          type: string
+          description: Response body returned by the subscriber endpoint.
+        error:
+          type: string
+          description: Network or policy error message (e.g. anti-SSRF rejection).
+
+    MCPReplayWebhookDLQRequest:
+      type: object
+      required:
+        - workspace_id
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+          description: The UUID of the workspace.
+        dlq_id:
+          type: string
+          format: uuid
+          description: Optional UUID of a specific dead-letter item to replay.
+        subscription_id:
+          type: string
+          format: uuid
+          description: Optional UUID of a webhook subscription to filter dead-letter items.
+        action:
+          type: string
+          enum:
+            - re-enqueue
+            - dispatch_immediate
+          default: re-enqueue
+          description: Action to perform (publish back to NATS or direct delivery).
+        limit:
+          type: integer
+          default: 10
+          maximum: 50
+          description: Maximum dead-letter items to replay when dlq_id is not specified.
+        target_url:
+          type: string
+          format: uri
+          description: Optional override destination URL when action is dispatch_immediate.
+
+    MCPWebhookDLQReplayResult:
+      type: object
+      required:
+        - workspace_id
+        - action
+        - total_processed
+        - success_count
+        - failure_count
+        - replayed_items
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+          description: The UUID of the workspace.
+        action:
+          type: string
+          description: Replay action executed (re-enqueue or dispatch_immediate).
+        total_processed:
+          type: integer
+          description: Total number of dead-letter items processed.
+        success_count:
+          type: integer
+          description: Number of successfully replayed items.
+        failure_count:
+          type: integer
+          description: Number of failed replay attempts.
+        replayed_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MCPWebhookDLQReplayItem'
+
+    MCPWebhookDLQReplayItem:
+      type: object
+      required:
+        - dlq_id
+        - subscription_id
+        - event_type
+        - trace_id
+        - success
+      properties:
+        dlq_id:
+          type: string
+          format: uuid
+          description: Dead-letter queue item UUID.
+        subscription_id:
+          type: string
+          format: uuid
+          description: Subscription UUID.
+        event_type:
+          type: string
+          description: Webhook event type.
+        trace_id:
+          type: string
+          description: Message trace ID.
+        message_id:
+          type: string
+          description: Originating message ID.
+        target_url:
+          type: string
+          description: Destination URL dispatched to.
+        subject:
+          type: string
+          description: NATS JetStream subject published to.
+        status_code:
+          type: integer
+          description: HTTP status code received.
+        latency_ms:
+          type: integer
+          format: int64
+          description: Round-trip dispatch latency in milliseconds.
+        success:
+          type: boolean
+          description: Whether the delivery or re-enqueue succeeded.
+        response_body:
+          type: string
+          description: Response body payload from the destination webhook receiver (truncated to 4KB).
+        deleted_from_dlq:
+          type: boolean
+          description: Whether item was purged from PostgreSQL DLQ.
+        error:
+          type: string
+          description: Error message if replay attempt failed.
+
+    MCPInspectQueueHealthRequest:
+      type: object
+      properties:
+        workspace_id:
+          type: string
+          format: uuid
+          description: Optional workspace UUID to filter or context-tag queue inspection.
+
+    MCPQueueHealthReport:
+      type: object
+      required:
+        - status
+        - timestamp
+        - total_messages
+        - total_bytes
+        - streams
+      properties:
+        status:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - backpressure
+            - offline
+          description: Overall queue health status across monitored streams.
+        timestamp:
+          type: string
+          format: date-time
+          description: Timestamp when queue health was inspected.
+        workspace_id:
+          type: string
+          description: Context-tagged workspace UUID.
+        total_messages:
+          type: integer
+          description: Aggregate message count across monitored streams.
+        total_bytes:
+          type: integer
+          description: Aggregate storage bytes across monitored streams.
+        streams:
+          type: array
+          items:
+            $ref: '#/components/schemas/MCPStreamHealthReport'
+        details:
+          type: string
+          description: Additional diagnostics context or degraded root cause.
+
+    MCPStreamHealthReport:
+      type: object
+      required:
+        - name
+        - status
+        - msgs
+        - bytes
+        - consumers
+        - first_seq
+        - last_seq
+        - consumer_stats
+      properties:
+        name:
+          type: string
+          description: JetStream stream name (MESSAGES, WEBHOOKS, WEBHOOK_DELIVERIES, INBOUND).
+        status:
+          type: string
+          enum:
+            - healthy
+            - degraded
+            - backpressure
+            - not_found
+            - error
+            - offline
+          description: Health status of this individual stream.
+        msgs:
+          type: integer
+          description: Total messages stored in the stream.
+        bytes:
+          type: integer
+          description: Total storage bytes consumed by the stream.
+        consumers:
+          type: integer
+          description: Number of active pull/push consumers on the stream.
+        first_seq:
+          type: integer
+          description: Sequence number of the first message in the stream.
+        last_seq:
+          type: integer
+          description: Sequence number of the latest message in the stream.
+        consumer_stats:
+          type: array
+          items:
+            $ref: '#/components/schemas/MCPConsumerHealthReport'
+        error:
+          type: string
+          description: Error message if stream inspection failed.
+
+    MCPConsumerHealthReport:
+      type: object
+      required:
+        - name
+        - stream
+        - num_pending
+        - num_ack_pending
+        - num_waiting
+      properties:
+        name:
+          type: string
+          description: Durable consumer name.
+        stream:
+          type: string
+          description: Stream name.
+        num_pending:
+          type: integer
+          description: Number of messages pending delivery (consumer lag).
+        num_ack_pending:
+          type: integer
+          description: Number of unacknowledged in-flight messages.
+        num_waiting:
+          type: integer
+          description: Number of pull requests waiting for messages.

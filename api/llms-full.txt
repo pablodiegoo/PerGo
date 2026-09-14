@@ -489,12 +489,80 @@ PerGo embeds a native Model Context Protocol (MCP) server running via `stdio` (f
 ### Tools Exposed
 - `list_workspaces`: Lists available tenant workspaces and active configurations.
 - `create_workspace`: Provisions a new workspace and generates operational credentials.
+- `get_workspace`: Retrieves workspace details and configuration by workspace UUID.
+- `create_connection`: Provisions a new channel connection (whatsapp, whatsapp_cloud, telegram).
+- `list_connections`: Lists all configured communication channel connections for a workspace.
 - `get_connection_status`: Fetches socket health, uptime, and state for any configured connection.
 - `get_connection_qr_code`: Retrieves base64 pairing QR codes for WhatsApp Web.
 - `disconnect_connection`: Safely tears down channel connections.
+- `search_contacts`: Search/list contacts in the workspace database.
 - `send_message`: Dispatches unified messages with optional idempotency keys.
-- `diagnose_connection_health`: Evaluates socket ping, proxy latency, and credential validity.
-- `simulate_webhook_event`: Dispatches synthetic webhook events and captures the subscriber's response code and latency.
+- `get_audit_logs`: Query latest audit logs for a given workspace.
+- `create_webhook_subscription`: Register a new webhook subscription with event filters and secret.
+- `list_webhook_subscriptions`: List all configured webhook subscriptions for a workspace.
+- `delete_webhook_subscription`: Delete a webhook subscription by ID.
+- `rotate_webhook_secret`: Rotate HMAC-SHA256 signing secret for a subscription.
+- `test_ping_webhook`: Send an immediate test ping payload to a webhook subscription endpoint.
+- `generate_admin_sso_url`: Generate a signed HMAC-SHA256 Single Sign-On (SSO) URL for human operator hand-off.
+- `diagnose_connection_health`: Real-time whatsmeow socket check, proxy reachability/latency probe, credential validation, self-healing guidance.
+- `simulate_webhook_event`: Synchronous synthetic webhook dispatch with HMAC-SHA256 signature, anti-SSRF protections (`netpolicy`), and response telemetry.
+- `replay_webhook_dlq`: Re-enqueue dead-lettered payloads from PostgreSQL into NATS JetStream or immediate dispatch to override URL.
+- `inspect_queue_health`: Query real-time JetStream stream capacity, pending ACKs, and consumer lag.
+
+### 6.1 Diagnostic & Operations Tools (Deep Specification)
+
+#### `diagnose_connection_health`
+Performs an end-to-end connection health diagnostic inspecting socket liveness, proxy reachability/latency, and credentials validity with actionable self-healing guidance for agents.
+* **Input Schema:**
+  * `workspace_id` (string, required, UUID): The UUID of the workspace.
+  * `connection_id` (string, required, UUID): The UUID of the connection to diagnose.
+* **Diagnostics Executed:**
+  * **WhatsApp Web**: Verifies whatsmeow socket connection status and active pairing state.
+  * **Dedicated Proxy Probe**: If `proxy_url` is configured (HTTP or SOCKS5), performs a TCP probe with a 3-second timeout and measures millisecond latency.
+  * **Telegram**: Probes the Telegram Bot API (`getMe`) with a 3-second timeout to validate the bot token.
+  * **WhatsApp Cloud (WABA)**: Validates token presence and phone number ID format.
+* **Self-Healing Guidance Output:**
+  * Automatically calculates domain-specific recovery recommendations: e.g. "Trigger pairing via get_connection_qr_code", "Inspect dedicated proxy host/port and firewall credentials", or "Session expired or banned by provider; halt reconnections and re-authenticate".
+
+#### `simulate_webhook_event`
+Dispatches a synthetic webhook event to a subscription endpoint or custom target URL with HMAC-SHA256 signature and anti-SSRF protection to verify webhook integration.
+* **Input Schema:**
+  * `workspace_id` (string, required, UUID): The UUID of the workspace.
+  * `event_type` (string, required): The webhook event type (e.g. `message.received`, `message.delivered`, `flow.submitted`).
+  * `payload` (object or string, required): Synthetic event payload to dispatch.
+  * `subscription_id` (string, optional, UUID): Optional UUID of an existing webhook subscription to target.
+  * `target_url` (string, optional, URI): Optional destination URL to dispatch to (overrides subscription URL or uses workspace signing secret).
+* **Security & Telemetry:**
+  * Enforces strict anti-SSRF network validation via `netpolicy.NewSafeClient`, immediately rejecting loopback (`127.0.0.1`), cloud metadata (`169.254.169.254`), and RFC 1918 private subnets (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`).
+  * Injects canonical signature headers: `X-PerGo-Signature` (`t=<unix>,v1=<hmac>`), `X-PerGo-Simulated: true`, `X-PerGo-Event`, and `X-Trace-ID`.
+  * Returns detailed HTTP response telemetry: `status_code`, `latency_ms`, `response_body`, and `success`.
+
+#### `replay_webhook_dlq`
+Re-enqueues dead-lettered webhook payloads back into the NATS JetStream delivery queue or dispatches them immediately with telemetry to verify endpoint recovery.
+* **Input Schema:**
+  * `workspace_id` (string, required, UUID): The UUID of the workspace.
+  * `dlq_id` (string, optional, UUID): Optional UUID of a specific dead-letter item to replay.
+  * `subscription_id` (string, optional, UUID): Optional UUID of a webhook subscription to filter dead-letter items by.
+  * `action` (string, optional, default `"re-enqueue"`): Action to perform: `"re-enqueue"` (publishes back to NATS JetStream `webhooks.deliveries.>`) or `"dispatch_immediate"` (direct synchronous delivery).
+  * `limit` (integer, optional, default `10`, max `50`): Maximum dead-letter items to replay when `dlq_id` is omitted.
+  * `target_url` (string, optional, URI): Optional override destination URL when action is `"dispatch_immediate"`.
+* **Execution Modes:**
+  * **Re-enqueue**: Reconstructs `webhook.WebhookDeliveryTask`, publishes to JetStream, and purges successfully published items from the PostgreSQL DLQ.
+  * **Dispatch Immediate**: Direct synchronous delivery with anti-SSRF validation, returning status code and latency telemetry for each replayed item.
+
+#### `inspect_queue_health`
+Queries real-time NATS JetStream stream capacity, consumer lag, pending ACKs, and queue health status across message and webhook streams.
+* **Input Schema:**
+  * `workspace_id` (string, optional, UUID): Optional workspace UUID to context-tag queue inspection metrics.
+* **Monitored JetStream Streams:**
+  * `MESSAGES` (`messages.>`): Outbound message dispatch queue.
+  * `WEBHOOKS` (`webhooks.events`): Inbound and outbound webhook event stream.
+  * `WEBHOOK_DELIVERIES` (`webhooks.deliveries.>`): Active webhook endpoint delivery queue.
+  * `INBOUND` (`inbound.events.>`): Inbound channel ingestion stream.
+* **Health Evaluation Logic:**
+  * Checks stream message counts, bytes, consumer counts, and sequence ranges.
+  * Inspects consumer lag (`NumPending`), unacknowledged in-flight messages (`NumAckPending`), and waiting consumers (`NumWaiting`).
+  * Reports status: `"healthy"`, `"degraded"` (if pending > 500 or ack pending > 200), or `"backpressure"`.
 
 ---
 

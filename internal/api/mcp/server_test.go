@@ -227,6 +227,7 @@ func TestMCPServerTools(t *testing.T) {
 	auditRepo := repository.NewAuditRepository(pool)
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
 	webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, enc)
+	webhookDLQRepo := repository.NewWebhookDLQRepository(pool, enc)
 
 	// Create test workspace
 	ws, err := wsRepo.Create(ctx, "MCP Test Workspace")
@@ -258,6 +259,7 @@ func TestMCPServerTools(t *testing.T) {
 		nil,
 		[]byte("test-sso-secret"),
 		"http://localhost:8080",
+		WithWebhookDLQRepo(webhookDLQRepo),
 	)
 
 	t.Run("CreateWorkspace_WithDefaults", func(t *testing.T) {
@@ -1119,6 +1121,16 @@ func TestMCPServerTools(t *testing.T) {
 				args:    map[string]any{"workspace_id": ws.ID.String(), "connection_id": uuid.New().String()},
 			},
 			{
+				name:    "diagnose_connection_health_missing_conn_id",
+				handler: srv.handleDiagnoseConnectionHealth,
+				args:    map[string]any{"workspace_id": ws.ID.String()},
+			},
+			{
+				name:    "diagnose_connection_health_not_found",
+				handler: srv.handleDiagnoseConnectionHealth,
+				args:    map[string]any{"workspace_id": ws.ID.String(), "connection_id": uuid.New().String()},
+			},
+			{
 				name:    "list_connections_invalid_ws",
 				handler: srv.handleListConnections,
 				args:    map[string]any{"workspace_id": "not-a-uuid"},
@@ -1179,8 +1191,18 @@ func TestMCPServerTools(t *testing.T) {
 				args:    map[string]any{"workspace_id": ws.ID.String(), "subscription_id": uuid.New().String()},
 			},
 			{
+				name:    "simulate_webhook_event_not_found",
+				handler: srv.handleSimulateWebhookEvent,
+				args:    map[string]any{"workspace_id": ws.ID.String(), "subscription_id": uuid.New().String(), "event_type": "test", "payload": map[string]any{"a": 1}},
+			},
+			{
 				name:    "generate_admin_sso_url_invalid_ws",
 				handler: srv.handleGenerateAdminSSOURL,
+				args:    map[string]any{"workspace_id": "not-a-uuid"},
+			},
+			{
+				name:    "replay_webhook_dlq_invalid_ws",
+				handler: srv.handleReplayWebhookDLQ,
 				args:    map[string]any{"workspace_id": "not-a-uuid"},
 			},
 		}

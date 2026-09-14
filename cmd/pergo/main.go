@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/pablojhp.pergo/api"
@@ -118,6 +119,11 @@ func main() {
 			os.Exit(1)
 		}
 		defer nc.Close()
+		js, err := jetstream.New(nc)
+		if err != nil {
+			slog.Error("failed to initialize JetStream context in MCP stdio mode", "error", err)
+			os.Exit(1)
+		}
 		publisher := queue.NewJetStreamPublisher(nc)
 
 		wsRepo := repository.NewWorkspaceRepository(pool)
@@ -150,6 +156,10 @@ func main() {
 			webhookDispatcher,
 			[]byte(cfg.SessionSecret),
 			cfg.ExternalURL,
+			mcp.WithWebhookDLQRepo(webhookDLQRepo),
+			mcp.WithJetStreamPublisher(publisher),
+			mcp.WithJetStream(js),
+			mcp.WithNATSConn(nc),
 		)
 
 		stdServer := mcpserver.NewStdioServer(mcpServer.MCPServer)
@@ -204,6 +214,11 @@ func main() {
 	slog.Info("connected to NATS", "url", cfg.NATSUrl)
 
 	// --- JetStream ---
+	js, err := jetstream.New(nc)
+	if err != nil {
+		slog.Error("failed to create JetStream client", "error", err)
+		os.Exit(1)
+	}
 	stream, err := queue.EnsureStream(ctx, nc)
 	if err != nil {
 		slog.Error("failed to create JetStream stream", "error", err)
@@ -515,6 +530,10 @@ func main() {
 		webhookDispatcher,
 		[]byte(cfg.SessionSecret),
 		cfg.ExternalURL,
+		mcp.WithWebhookDLQRepo(webhookDLQRepo),
+		mcp.WithJetStreamPublisher(publisher),
+		mcp.WithJetStream(js),
+		mcp.WithNATSConn(nc),
 	)
 	e.Any("/api/mcp/*", echo.WrapHandler(mcpServer.SSEServer))
 
