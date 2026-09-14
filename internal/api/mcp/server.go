@@ -44,6 +44,17 @@ type Server struct {
 	webhookDispatcher webhook.WebhookDispatcher
 	ssoSecret         []byte
 	externalURL       string
+	safeClient        *http.Client
+}
+
+// ServerOption configures an MCP Server instance.
+type ServerOption func(*Server)
+
+// WithSafeClient configures a custom HTTP client for safe outbound dispatches (e.g. for testing).
+func WithSafeClient(client *http.Client) ServerOption {
+	return func(s *Server) {
+		s.safeClient = client
+	}
 }
 
 // NewServer creates and configures a new PerGo MCP server.
@@ -59,6 +70,7 @@ func NewServer(
 	webhookDispatcher webhook.WebhookDispatcher,
 	ssoSecret []byte,
 	externalURL string,
+	opts ...ServerOption,
 ) *Server {
 	mcpSrv := server.NewMCPServer("PerGo CPaaS Gateway", "1.2.0")
 
@@ -75,6 +87,10 @@ func NewServer(
 		webhookDispatcher: webhookDispatcher,
 		ssoSecret:         ssoSecret,
 		externalURL:       externalURL,
+	}
+
+	for _, opt := range opts {
+		opt(s)
 	}
 
 	s.registerTools()
@@ -482,6 +498,37 @@ func (s *Server) registerTools() {
 			Required: []string{"workspace_id"},
 		},
 	}, s.handleGenerateAdminSSOURL)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "simulate_webhook_event",
+		Description: "Dispatch a synthetic webhook event to a subscription endpoint or custom target URL with HMAC-SHA256 signature and anti-SSRF protection to verify webhook integration.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"event_type": map[string]interface{}{
+					"type":        "string",
+					"description": "The webhook event type (e.g. 'message.received', 'message.delivered', 'flow.submitted').",
+				},
+				"payload": map[string]interface{}{
+					"type":        []string{"object", "string"},
+					"description": "Synthetic event payload to dispatch (JSON object or string).",
+				},
+				"subscription_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UUID of an existing webhook subscription to target.",
+				},
+				"target_url": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional destination URL to dispatch to (overrides subscription URL, or used with workspace signing secret).",
+				},
+			},
+			Required: []string{"workspace_id", "event_type", "payload"},
+		},
+	}, s.handleSimulateWebhookEvent)
 }
 
 func (s *Server) handleCreateWorkspace(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

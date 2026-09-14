@@ -155,6 +155,12 @@ func NewPublicHTTPClient(opts ...Option) *http.Client {
 	}
 }
 
+// NewSafeClient returns an *http.Client configured with TCP-level SSRF validation.
+// It is an alias for NewPublicHTTPClient enforcing socket-level anti-SSRF protections.
+func NewSafeClient(opts ...Option) *http.Client {
+	return NewPublicHTTPClient(opts...)
+}
+
 // ValidateURL validates a URL against SSRF policy rules.
 // It checks scheme (http/https), host presence, and validates that IP addresses or hostnames
 // do not resolve to loopback, private, link-local, or restricted IP ranges unless allowlisted.
