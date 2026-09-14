@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -40,17 +41,23 @@ type ConnectionHealthDiagnosticResult struct {
 }
 
 // probeProxyTCP dials the proxy host:port with a timeout to verify reachability and measure latency.
+// For SOCKS5 proxies, it executes a SOCKS5 greeting handshake to confirm protocol responsiveness.
 func probeProxyTCP(ctx context.Context, proxyURL string, timeout time.Duration) (bool, int64, error) {
 	if timeout <= 0 {
 		timeout = 3 * time.Second
 	}
 
 	target := strings.TrimSpace(proxyURL)
+	var isSocks5 bool
 	if strings.Contains(target, "://") {
 		if u, err := url.Parse(target); err == nil && u.Host != "" {
+			scheme := strings.ToLower(u.Scheme)
+			if scheme == "socks5" || scheme == "socks5h" {
+				isSocks5 = true
+			}
 			target = u.Host
 			if !strings.Contains(target, ":") {
-				switch strings.ToLower(u.Scheme) {
+				switch scheme {
 				case "https":
 					target += ":443"
 				case "socks5", "socks5h":
@@ -69,11 +76,33 @@ func probeProxyTCP(ctx context.Context, proxyURL string, timeout time.Duration) 
 	start := time.Now()
 	d := net.Dialer{Timeout: timeout}
 	conn, err := d.DialContext(ctx, "tcp", target)
-	latency := time.Since(start).Milliseconds()
 	if err != nil {
-		return false, latency, err
+		return false, time.Since(start).Milliseconds(), err
 	}
-	_ = conn.Close()
+	defer conn.Close()
+
+	if isSocks5 {
+		if deadline, ok := ctx.Deadline(); ok {
+			_ = conn.SetDeadline(deadline)
+		} else {
+			_ = conn.SetDeadline(time.Now().Add(timeout))
+		}
+
+		if _, err := conn.Write([]byte{0x05, 0x01, 0x00}); err != nil {
+			return false, time.Since(start).Milliseconds(), fmt.Errorf("socks5 greeting write failed: %w", err)
+		}
+
+		buf := make([]byte, 2)
+		if _, err := io.ReadFull(conn, buf); err != nil {
+			return false, time.Since(start).Milliseconds(), fmt.Errorf("socks5 greeting read failed: %w", err)
+		}
+
+		if buf[0] != 0x05 || buf[1] != 0x00 {
+			return false, time.Since(start).Milliseconds(), fmt.Errorf("socks5 handshake rejected: received version %d method %d", buf[0], buf[1])
+		}
+	}
+
+	latency := time.Since(start).Milliseconds()
 	return true, latency, nil
 }
 
@@ -208,9 +237,7 @@ func (s *Server) handleDiagnoseConnectionHealth(ctx context.Context, request mcp
 				start := time.Now()
 				resp, err := httpClient.Do(req)
 				tgLatency := time.Since(start).Milliseconds()
-				if overallLatency == 0 {
-					overallLatency = tgLatency
-				}
+				overallLatency = tgLatency
 
 				if err != nil {
 					lastError = fmt.Sprintf("telegram probe request failed: %v", err)

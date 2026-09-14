@@ -1,11 +1,9 @@
 package mcp
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -13,7 +11,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/webhook"
 )
@@ -30,6 +27,7 @@ type WebhookDLQReplayItemResult struct {
 	StatusCode     int       `json:"status_code,omitempty"`
 	LatencyMS      int64     `json:"latency_ms,omitempty"`
 	Success        bool      `json:"success"`
+	ResponseBody   string    `json:"response_body,omitempty"`
 	DeletedFromDLQ bool      `json:"deleted_from_dlq,omitempty"`
 	Error          string    `json:"error,omitempty"`
 }
@@ -130,19 +128,38 @@ func (s *Server) handleReplayWebhookDLQ(ctx context.Context, request mcp.CallToo
 		} else {
 			items = []*repository.WebhookDLQ{item}
 		}
-	} else {
-		rawItems, err := s.webhookDLQRepo.ListDLQ(ctx, workspaceID, limit, 0)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to list DLQ items: %v", err)), nil
+	} else if filterSubID != uuid.Nil {
+		batchSize := 50
+		if limit > batchSize {
+			batchSize = limit
 		}
-		if filterSubID != uuid.Nil {
-			for _, it := range rawItems {
+		offset := 0
+		for len(items) < limit {
+			batch, err := s.webhookDLQRepo.ListDLQ(ctx, workspaceID, batchSize, offset)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("failed to list DLQ items: %v", err)), nil
+			}
+			if len(batch) == 0 {
+				break
+			}
+			for _, it := range batch {
 				if it.SubscriptionID == filterSubID {
 					items = append(items, it)
+					if len(items) >= limit {
+						break
+					}
 				}
 			}
-		} else {
-			items = rawItems
+			offset += len(batch)
+			if len(batch) < batchSize {
+				break
+			}
+		}
+	} else {
+		var err error
+		items, err = s.webhookDLQRepo.ListDLQ(ctx, workspaceID, limit, 0)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to list DLQ items: %v", err)), nil
 		}
 	}
 
@@ -219,15 +236,6 @@ func (s *Server) handleReplayWebhookDLQ(ctx context.Context, request mcp.CallToo
 				continue
 			}
 
-			u, err := url.ParseRequestURI(destURL)
-			if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-				itemResult.Success = false
-				itemResult.Error = fmt.Sprintf("invalid destination URL %q: scheme must be http or https", destURL)
-				res.FailureCount++
-				res.ReplayedItems = append(res.ReplayedItems, itemResult)
-				continue
-			}
-
 			var secret []byte
 			if s.webhookSubRepo != nil && item.SubscriptionID != uuid.Nil {
 				if sub, err := s.webhookSubRepo.Get(ctx, item.SubscriptionID); err == nil && sub != nil && len(sub.Secret) > 0 {
@@ -238,55 +246,35 @@ func (s *Server) handleReplayWebhookDLQ(ctx context.Context, request mcp.CallToo
 				secret = []byte(*ws.WebhookSecret)
 			}
 
-			var signature string
-			if len(secret) > 0 {
-				timestamp := fmt.Sprintf("%d", time.Now().Unix())
-				signature = webhook.SignPayload(item.Payload, secret, timestamp)
-			}
-
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, destURL, bytes.NewReader(item.Payload))
+			dispatchRes, err := executeWebhookDispatch(ctx, WebhookDispatchOptions{
+				TargetURL: destURL,
+				Payload:   item.Payload,
+				Secret:    secret,
+				EventType: item.EventType,
+				TraceID:   item.TraceID,
+				MessageID: item.MessageID,
+				ExtraHeaders: map[string]string{
+					"X-PerGo-Replayed": "true",
+				},
+				Client: s.safeClient,
+			})
 			if err != nil {
 				itemResult.Success = false
-				itemResult.Error = fmt.Sprintf("failed to create HTTP request: %v", err)
+				itemResult.Error = err.Error()
 				res.FailureCount++
 				res.ReplayedItems = append(res.ReplayedItems, itemResult)
 				continue
 			}
 
-			req.Header.Set("Content-Type", "application/json")
-			if signature != "" {
-				req.Header.Set("X-PerGo-Signature", signature)
-			}
-			req.Header.Set("X-PerGo-Replayed", "true")
-			req.Header.Set("X-PerGo-Event", item.EventType)
-			req.Header.Set("X-Trace-ID", item.TraceID)
-			if item.MessageID != "" {
-				req.Header.Set("X-Message-ID", item.MessageID)
-			}
-
-			client := s.safeClient
-			if client == nil {
-				client = netpolicy.NewSafeClient(netpolicy.WithTimeout(10 * time.Second))
-			}
-
-			start := time.Now()
-			resp, reqErr := client.Do(req)
-			itemResult.LatencyMS = time.Since(start).Milliseconds()
-
-			if reqErr != nil {
-				itemResult.Success = false
-				itemResult.Error = fmt.Sprintf("dispatch error: %v", reqErr)
-				res.FailureCount++
+			itemResult.StatusCode = dispatchRes.StatusCode
+			itemResult.LatencyMS = dispatchRes.LatencyMS
+			itemResult.Success = dispatchRes.Success
+			itemResult.ResponseBody = dispatchRes.ResponseBody
+			itemResult.Error = dispatchRes.Error
+			if dispatchRes.Success {
+				res.SuccessCount++
 			} else {
-				itemResult.StatusCode = resp.StatusCode
-				itemResult.Success = resp.StatusCode >= 200 && resp.StatusCode < 300
-				_ = resp.Body.Close()
-				if itemResult.Success {
-					res.SuccessCount++
-				} else {
-					itemResult.Error = fmt.Sprintf("HTTP %s", resp.Status)
-					res.FailureCount++
-				}
+				res.FailureCount++
 			}
 			res.ReplayedItems = append(res.ReplayedItems, itemResult)
 		}

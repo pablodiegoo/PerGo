@@ -642,3 +642,58 @@ func TestQueueHealth_LiveNATSIntegration(t *testing.T) {
 		t.Errorf("stream MESSAGES not found in live report")
 	}
 }
+
+type mockQueueInspector struct {
+	report *QueueHealthReport
+	err    error
+}
+
+func (m *mockQueueInspector) InspectQueueHealth(ctx context.Context, workspaceID *uuid.UUID) (*QueueHealthReport, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m.report, nil
+}
+
+func TestQueueHealth_CustomQueueInspectorSeam(t *testing.T) {
+	ctx := context.Background()
+
+	mockRep := &QueueHealthReport{
+		Status:        "healthy",
+		Timestamp:     time.Now().UTC(),
+		TotalMessages: 42,
+		Details:       "custom mock inspector report",
+	}
+
+	inspector := &mockQueueInspector{report: mockRep}
+	srv := NewServer(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", WithQueueInspector(inspector))
+
+	req := mcp.CallToolRequest{}
+	res, err := srv.handleInspectQueueHealth(ctx, req)
+	if err != nil {
+		t.Fatalf("handleInspectQueueHealth failed: %v", err)
+	}
+
+	report := parseQueueHealthReport(t, res)
+	if report.Status != "healthy" {
+		t.Errorf("expected status 'healthy', got %q", report.Status)
+	}
+	if report.TotalMessages != 42 {
+		t.Errorf("expected total_messages 42, got %d", report.TotalMessages)
+	}
+	if report.Details != "custom mock inspector report" {
+		t.Errorf("expected details 'custom mock inspector report', got %q", report.Details)
+	}
+
+	// Test error propagation from custom inspector
+	errInspector := &mockQueueInspector{err: errors.New("custom inspection failed")}
+	errSrv := NewServer(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "", WithQueueInspector(errInspector))
+
+	errRes, err := errSrv.handleInspectQueueHealth(ctx, req)
+	if err != nil {
+		t.Fatalf("handleInspectQueueHealth returned unexpected error: %v", err)
+	}
+	if !errRes.IsError {
+		t.Errorf("expected error tool result, got success")
+	}
+}

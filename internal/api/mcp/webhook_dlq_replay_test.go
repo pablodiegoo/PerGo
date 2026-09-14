@@ -457,6 +457,9 @@ func TestWebhookDLQReplay_ImmediateDispatch(t *testing.T) {
 		if !replayResult.ReplayedItems[0].Success {
 			t.Errorf("expected success=true, got false")
 		}
+		if replayResult.ReplayedItems[0].ResponseBody != `{"received":true}` {
+			t.Errorf("expected ResponseBody '{\"received\":true}', got %q", replayResult.ReplayedItems[0].ResponseBody)
+		}
 
 		mu.Lock()
 		reqHeaders := receivedHeaders
@@ -882,5 +885,98 @@ func TestWebhookDLQReplay_ValidationAndIsolation(t *testing.T) {
 				t.Errorf("expected error to contain %q, got %q", tc.expectedErr, extractText(t, res))
 			}
 		})
+	}
+}
+
+func TestWebhookDLQReplay_SubscriptionFilterPaginationAvoidsStarvation(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	kek := make([]byte, 32)
+	copy(kek, []byte("dev-development-key-32-bytes-kek"))
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	subRepo := repository.NewWebhookSubscriptionRepository(pool, enc)
+	dlqRepo := repository.NewWebhookDLQRepository(pool, enc)
+
+	ws, err := wsRepo.Create(ctx, "DLQ Starvation Test WS")
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	subA, err := subRepo.Create(ctx, ws.ID, "https://example.com/subA", []string{"event.a"}, []byte("secret-a"))
+	if err != nil {
+		t.Fatalf("failed to create subA: %v", err)
+	}
+	subB, err := subRepo.Create(ctx, ws.ID, "https://example.com/subB", []string{"event.b"}, []byte("secret-b"))
+	if err != nil {
+		t.Fatalf("failed to create subB: %v", err)
+	}
+
+	// Insert DLQ items such that subB items appear first in DESC created_at order:
+	_ = dlqRepo.InsertDLQ(ctx, ws.ID, subA.ID, "trace-a1", "msg-a1", "event.a", []byte(`{"a":1}`), subA.URL, 1, nil)
+	time.Sleep(10 * time.Millisecond)
+	_ = dlqRepo.InsertDLQ(ctx, ws.ID, subB.ID, "trace-b1", "msg-b1", "event.b", []byte(`{"b":1}`), subB.URL, 1, nil)
+	time.Sleep(10 * time.Millisecond)
+	_ = dlqRepo.InsertDLQ(ctx, ws.ID, subA.ID, "trace-a2", "msg-a2", "event.a", []byte(`{"a":2}`), subA.URL, 1, nil)
+	time.Sleep(10 * time.Millisecond)
+	_ = dlqRepo.InsertDLQ(ctx, ws.ID, subB.ID, "trace-b2", "msg-b2", "event.b", []byte(`{"b":2}`), subB.URL, 1, nil)
+	time.Sleep(10 * time.Millisecond)
+	_ = dlqRepo.InsertDLQ(ctx, ws.ID, subB.ID, "trace-b3", "msg-b3", "event.b", []byte(`{"b":3}`), subB.URL, 1, nil)
+
+	pub := &mockPublisher{}
+	srv := NewServer(
+		wsRepo,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		subRepo,
+		nil,
+		nil,
+		[]byte("test-sso-secret"),
+		"http://localhost:8080",
+		WithWebhookDLQRepo(dlqRepo),
+		WithPublisher(pub),
+	)
+
+	// Filter by subA with limit=2. Top 2 items in the workspace DLQ are subB (b3, b2).
+	// Without pagination, subA would be starved. With pagination, it pages until limit (2) subA items are gathered.
+	callReq := mcp.CallToolRequest{}
+	callReq.Params.Arguments = map[string]any{
+		"workspace_id":    ws.ID.String(),
+		"subscription_id": subA.ID.String(),
+		"action":          "re-enqueue",
+		"limit":           2,
+	}
+
+	res, err := srv.handleReplayWebhookDLQ(ctx, callReq)
+	if err != nil {
+		t.Fatalf("unexpected handler error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("handler returned tool error: %s", extractText(t, res))
+	}
+
+	var replayResult WebhookDLQReplayResult
+	if err := json.Unmarshal([]byte(extractText(t, res)), &replayResult); err != nil {
+		t.Fatalf("failed to parse replay result JSON: %v", err)
+	}
+
+	if replayResult.TotalProcessed != 2 || replayResult.SuccessCount != 2 {
+		t.Fatalf("expected 2 processed and 2 successes for subA, got %+v", replayResult)
+	}
+
+	for _, item := range replayResult.ReplayedItems {
+		if item.SubscriptionID != subA.ID {
+			t.Errorf("expected item for subA %s, got %s", subA.ID, item.SubscriptionID)
+		}
 	}
 }
