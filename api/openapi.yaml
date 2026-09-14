@@ -1715,6 +1715,9 @@ components:
         success:
           type: boolean
           description: Whether the delivery or re-enqueue succeeded.
+        response_body:
+          type: string
+          description: Response body payload from the destination webhook receiver (truncated to 4KB).
         deleted_from_dlq:
           type: boolean
           description: Whether item was purged from PostgreSQL DLQ.

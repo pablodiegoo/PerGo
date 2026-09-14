@@ -39,10 +39,18 @@ type Publisher interface {
 // ServerOption is a functional option for configuring the Server.
 type ServerOption func(*Server)
 
+// WithQueueInspector configures a custom QueueInspector (e.g. for testing doubles).
+func WithQueueInspector(inspector QueueInspector) ServerOption {
+	return func(s *Server) {
+		s.queueInspector = inspector
+	}
+}
+
 // WithJetStream injects a NATS JetStream client into the Server.
 func WithJetStream(js jetstream.JetStream) ServerOption {
 	return func(s *Server) {
 		s.js = js
+		s.queueInspector = NewJetStreamQueueInspector(js, s.nc)
 	}
 }
 
@@ -55,6 +63,7 @@ func WithNATSConn(nc *nats.Conn) ServerOption {
 				s.js = js
 			}
 		}
+		s.queueInspector = NewJetStreamQueueInspector(s.js, nc)
 	}
 }
 
@@ -100,6 +109,7 @@ type Server struct {
 	safeClient        *http.Client
 	js                jetstream.JetStream
 	nc                *nats.Conn
+	queueInspector    QueueInspector
 	telegramBaseURL   string
 	httpClient        *http.Client
 }
@@ -163,6 +173,10 @@ func NewServer(
 
 	for _, opt := range opts {
 		opt(s)
+	}
+
+	if s.queueInspector == nil {
+		s.queueInspector = NewJetStreamQueueInspector(s.js, s.nc)
 	}
 
 	s.registerTools()

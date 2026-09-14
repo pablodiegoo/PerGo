@@ -941,6 +941,10 @@
             "description": "Originating message ID.",
             "type": "string"
           },
+          "response_body": {
+            "description": "Response body payload from the destination webhook receiver (truncated to 4KB).",
+            "type": "string"
+          },
           "status_code": {
             "description": "HTTP status code received.",
             "type": "integer"

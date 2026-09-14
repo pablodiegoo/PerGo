@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -536,6 +537,236 @@ func TestConnectionHealthDiagnostic(t *testing.T) {
 		}
 		if diag.SelfHealingGuidance != "Inspect dedicated proxy host/port and firewall credentials" {
 			t.Errorf("expected proxy unreachable guidance, got %q", diag.SelfHealingGuidance)
+		}
+	})
+
+	t.Run("ProxyProbe_SOCKS5HandshakeSuccess", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("failed to create local TCP listener: %v", err)
+		}
+		defer ln.Close()
+
+		go func() {
+			for {
+				conn, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				go func(c net.Conn) {
+					defer c.Close()
+					buf := make([]byte, 3)
+					_, _ = io.ReadFull(c, buf)
+					if buf[0] == 0x05 {
+						_, _ = c.Write([]byte{0x05, 0x00})
+					}
+				}(conn)
+			}
+		}()
+
+		proxyURL := "socks5://" + ln.Addr().String()
+		jidVal := "5511999990008@s.whatsapp.net"
+		conn := &repository.Connection{
+			ID:             uuid.New(),
+			WorkspaceID:    ws.ID,
+			Name:           "WhatsApp with Working SOCKS5 Proxy",
+			Channel:        "whatsapp",
+			SenderIdentity: "+5511999990008",
+			Status:         "connected",
+			JID:            &jidVal,
+			ProxyURL:       &proxyURL,
+			CreatedAt:      time.Now().UTC(),
+			UpdatedAt:      time.Now().UTC(),
+		}
+		if err := connRepo.Create(ctx, conn); err != nil {
+			t.Fatalf("failed to create conn: %v", err)
+		}
+		defer func() { _ = connRepo.Delete(ctx, conn.ID) }()
+
+		if err := sessionManager.EmitStatusEvent(ctx, ws.ID, conn.ID, "whatsapp", conn.SenderIdentity, string(session.StateConnected)); err != nil {
+			t.Fatalf("failed to emit status event: %v", err)
+		}
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"workspace_id":  ws.ID.String(),
+			"connection_id": conn.ID.String(),
+		}
+
+		res, err := srv.handleDiagnoseConnectionHealth(ctx, req)
+		if err != nil {
+			t.Fatalf("handleDiagnoseConnectionHealth failed: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("expected success, got error: %+v", res.Content)
+		}
+
+		var diag ConnectionHealthDiagnosticResult
+		if err := json.Unmarshal([]byte(extractText(t, res)), &diag); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+
+		if diag.ProxyHealth == nil || !diag.ProxyHealth.Configured || !diag.ProxyHealth.Reachable {
+			t.Fatalf("expected proxy_health reachable true for socks5 handshake, got %+v", diag.ProxyHealth)
+		}
+		if diag.Status != "healthy" {
+			t.Errorf("expected status 'healthy', got %q", diag.Status)
+		}
+	})
+
+	t.Run("ProxyProbe_SOCKS5HandshakeRejected", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("failed to create local TCP listener: %v", err)
+		}
+		defer ln.Close()
+
+		go func() {
+			for {
+				conn, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				go func(c net.Conn) {
+					defer c.Close()
+					buf := make([]byte, 3)
+					_, _ = io.ReadFull(c, buf)
+					_, _ = c.Write([]byte{0x05, 0xFF})
+				}(conn)
+			}
+		}()
+
+		proxyURL := "socks5://" + ln.Addr().String()
+		jidVal := "5511999990009@s.whatsapp.net"
+		conn := &repository.Connection{
+			ID:             uuid.New(),
+			WorkspaceID:    ws.ID,
+			Name:           "WhatsApp with Rejected SOCKS5 Proxy",
+			Channel:        "whatsapp",
+			SenderIdentity: "+5511999990009",
+			Status:         "connected",
+			JID:            &jidVal,
+			ProxyURL:       &proxyURL,
+			CreatedAt:      time.Now().UTC(),
+			UpdatedAt:      time.Now().UTC(),
+		}
+		if err := connRepo.Create(ctx, conn); err != nil {
+			t.Fatalf("failed to create conn: %v", err)
+		}
+		defer func() { _ = connRepo.Delete(ctx, conn.ID) }()
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"workspace_id":  ws.ID.String(),
+			"connection_id": conn.ID.String(),
+		}
+
+		res, err := srv.handleDiagnoseConnectionHealth(ctx, req)
+		if err != nil {
+			t.Fatalf("handleDiagnoseConnectionHealth failed: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("expected success result, got error: %+v", res.Content)
+		}
+
+		var diag ConnectionHealthDiagnosticResult
+		if err := json.Unmarshal([]byte(extractText(t, res)), &diag); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+
+		if diag.ProxyHealth == nil || !diag.ProxyHealth.Configured || diag.ProxyHealth.Reachable {
+			t.Fatalf("expected proxy_health reachable false for rejected socks5 handshake, got %+v", diag.ProxyHealth)
+		}
+		if !strings.Contains(diag.ProxyHealth.Error, "socks5 handshake rejected") {
+			t.Errorf("expected 'socks5 handshake rejected' in error, got %q", diag.ProxyHealth.Error)
+		}
+		if diag.Status != "degraded" {
+			t.Errorf("expected status 'degraded', got %q", diag.Status)
+		}
+	})
+
+	t.Run("ProxyProbe_TelegramChannelProbeLatencyRecorded", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("failed to create local TCP listener: %v", err)
+		}
+		defer ln.Close()
+
+		go func() {
+			for {
+				conn, err := ln.Accept()
+				if err != nil {
+					return
+				}
+				_ = conn.Close()
+			}
+		}()
+
+		tgServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			time.Sleep(40 * time.Millisecond)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true,"result":{"id":12345,"is_bot":true,"first_name":"TestBot"}}`))
+		}))
+		defer tgServer.Close()
+
+		srvWithTG := NewServer(
+			wsRepo,
+			connRepo,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			[]byte("test-sso-secret"),
+			"http://localhost:8080",
+			WithTelegramBaseURL(tgServer.URL),
+		)
+
+		proxyURL := "http://" + ln.Addr().String()
+		tgCreds, _ := json.Marshal(map[string]string{"token": "test-bot-token-12345"})
+		conn := &repository.Connection{
+			ID:          uuid.New(),
+			WorkspaceID: ws.ID,
+			Name:        "Telegram with Proxy and Latency",
+			Channel:     "telegram",
+			Status:      "connected",
+			Credentials: tgCreds,
+			ProxyURL:    &proxyURL,
+			CreatedAt:   time.Now().UTC(),
+			UpdatedAt:   time.Now().UTC(),
+		}
+		if err := connRepo.Create(ctx, conn); err != nil {
+			t.Fatalf("failed to create conn: %v", err)
+		}
+		defer func() { _ = connRepo.Delete(ctx, conn.ID) }()
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"workspace_id":  ws.ID.String(),
+			"connection_id": conn.ID.String(),
+		}
+
+		res, err := srvWithTG.handleDiagnoseConnectionHealth(ctx, req)
+		if err != nil {
+			t.Fatalf("handleDiagnoseConnectionHealth failed: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("expected success, got error: %+v", res.Content)
+		}
+
+		var diag ConnectionHealthDiagnosticResult
+		if err := json.Unmarshal([]byte(extractText(t, res)), &diag); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+
+		if diag.ProxyHealth == nil || !diag.ProxyHealth.Reachable {
+			t.Fatalf("expected proxy to be reachable, got %+v", diag.ProxyHealth)
+		}
+		if diag.LatencyMS < 30 {
+			t.Errorf("expected channel probe latency >= 30ms, got %d ms", diag.LatencyMS)
 		}
 	})
 

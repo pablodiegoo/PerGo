@@ -317,6 +317,65 @@ func TestWebhookSimulator_SuccessfulDispatch(t *testing.T) {
 			t.Errorf("HMAC signature mismatch with workspace secret")
 		}
 	})
+
+	t.Run("ActiveSubscriptionsFallback_AutoDispatchesFirstActive", func(t *testing.T) {
+		callReq := mcp.CallToolRequest{}
+		callReq.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"event_type":   "message.delivered",
+			"payload":      map[string]any{"status": "delivered"},
+		}
+
+		res, err := srv.handleSimulateWebhookEvent(ctx, callReq)
+		if err != nil {
+			t.Fatalf("unexpected handler error: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("handler returned tool error: %s", extractText(t, res))
+		}
+
+		var telem WebhookSimulationTelemetry
+		if err := json.Unmarshal([]byte(extractText(t, res)), &telem); err != nil {
+			t.Fatalf("failed to parse telemetry JSON: %v", err)
+		}
+
+		if !telem.Success || telem.StatusCode != 200 {
+			t.Errorf("expected success=true, status_code=200, got %+v", telem)
+		}
+		if telem.SubscriptionID == nil || *telem.SubscriptionID != sub.ID {
+			t.Errorf("expected subscription_id %v, got %v", sub.ID, telem.SubscriptionID)
+		}
+		if telem.TargetURL != mockReceiver.URL {
+			t.Errorf("expected target_url %q, got %q", mockReceiver.URL, telem.TargetURL)
+		}
+	})
+
+	t.Run("ActiveSubscriptionsFallback_NoActiveSubscriptionsError", func(t *testing.T) {
+		wsEmpty, err := wsRepo.Create(ctx, "Empty Subs Workspace")
+		if err != nil {
+			t.Fatalf("failed to create workspace: %v", err)
+		}
+		defer func() { _ = wsRepo.Delete(ctx, wsEmpty.ID) }()
+
+		callReq := mcp.CallToolRequest{}
+		callReq.Params.Arguments = map[string]any{
+			"workspace_id": wsEmpty.ID.String(),
+			"event_type":   "message.delivered",
+			"payload":      map[string]any{"status": "delivered"},
+		}
+
+		res, err := srv.handleSimulateWebhookEvent(ctx, callReq)
+		if err != nil {
+			t.Fatalf("unexpected handler error: %v", err)
+		}
+		if !res.IsError {
+			t.Fatalf("expected error when no active subscriptions exist, got success")
+		}
+		errText := extractText(t, res)
+		if !strings.Contains(errText, "no active webhook subscriptions found") {
+			t.Errorf("expected 'no active webhook subscriptions found' error, got %q", errText)
+		}
+	})
 }
 
 func TestWebhookSimulator_SSRFRejection(t *testing.T) {

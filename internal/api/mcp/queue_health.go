@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 )
 
@@ -54,24 +55,52 @@ type ConsumerHealthReport struct {
 	NumWaiting    int    `json:"num_waiting"`
 }
 
-func (s *Server) handleInspectQueueHealth(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
-	if wsIDStr != "" {
-		if _, err := uuid.Parse(wsIDStr); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("invalid workspace_id: %v", err)), nil
-		}
+// QueueInspector is the port interface for inspecting message queue health and telemetry.
+type QueueInspector interface {
+	InspectQueueHealth(ctx context.Context, workspaceID *uuid.UUID) (*QueueHealthReport, error)
+}
+
+// jetstreamQueueInspector is the default QueueInspector adapter inspecting NATS JetStream.
+type jetstreamQueueInspector struct {
+	js jetstream.JetStream
+	nc *nats.Conn
+}
+
+// NewJetStreamQueueInspector returns a QueueInspector backed by NATS JetStream.
+func NewJetStreamQueueInspector(js jetstream.JetStream, nc *nats.Conn) QueueInspector {
+	return &jetstreamQueueInspector{
+		js: js,
+		nc: nc,
+	}
+}
+
+// extractConsumerInfo maps a jetstream.ConsumerInfo to a ConsumerHealthReport.
+func extractConsumerInfo(cInfo *jetstream.ConsumerInfo, streamName string) ConsumerHealthReport {
+	return ConsumerHealthReport{
+		Name:          cInfo.Name,
+		Stream:        streamName,
+		NumPending:    cInfo.NumPending,
+		NumAckPending: cInfo.NumAckPending,
+		NumWaiting:    cInfo.NumWaiting,
+	}
+}
+
+func (j *jetstreamQueueInspector) InspectQueueHealth(ctx context.Context, workspaceID *uuid.UUID) (*QueueHealthReport, error) {
+	var wsIDStr string
+	if workspaceID != nil {
+		wsIDStr = workspaceID.String()
 	}
 
-	js := s.js
-	if js == nil && s.nc != nil && !s.nc.IsClosed() {
-		if newJS, err := jetstream.New(s.nc); err == nil {
+	js := j.js
+	if js == nil && j.nc != nil && !j.nc.IsClosed() {
+		if newJS, err := jetstream.New(j.nc); err == nil {
 			js = newJS
 		}
 	}
 
 	// If JetStream is not configured or connection is closed, return graceful offline report.
-	if js == nil || (s.nc != nil && s.nc.IsClosed()) {
-		report := QueueHealthReport{
+	if js == nil || (j.nc != nil && j.nc.IsClosed()) {
+		report := &QueueHealthReport{
 			Status:        "offline",
 			Timestamp:     time.Now().UTC(),
 			WorkspaceID:   wsIDStr,
@@ -87,17 +116,13 @@ func (s *Server) handleInspectQueueHealth(ctx context.Context, request mcp.CallT
 				ConsumerStats: make([]ConsumerHealthReport, 0),
 			})
 		}
-		resBytes, err := json.MarshalIndent(report, "", "  ")
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to marshal queue health report: %v", err)), nil
-		}
-		return mcp.NewToolResultText(string(resBytes)), nil
+		return report, nil
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	report := QueueHealthReport{
+	report := &QueueHealthReport{
 		Timestamp:     time.Now().UTC(),
 		WorkspaceID:   wsIDStr,
 		Streams:       make([]StreamHealthReport, 0, len(MonitoredStreams)),
@@ -144,13 +169,7 @@ func (s *Server) handleInspectQueueHealth(ctx context.Context, request mcp.CallT
 		if lister := stream.ListConsumers(ctx); lister != nil {
 			for cInfo := range lister.Info() {
 				if cInfo != nil {
-					streamRep.ConsumerStats = append(streamRep.ConsumerStats, ConsumerHealthReport{
-						Name:          cInfo.Name,
-						Stream:        streamName,
-						NumPending:    cInfo.NumPending,
-						NumAckPending: cInfo.NumAckPending,
-						NumWaiting:    cInfo.NumWaiting,
-					})
+					streamRep.ConsumerStats = append(streamRep.ConsumerStats, extractConsumerInfo(cInfo, streamName))
 				}
 			}
 		}
@@ -161,13 +180,7 @@ func (s *Server) handleInspectQueueHealth(ctx context.Context, request mcp.CallT
 				for cName := range namesLister.Name() {
 					if c, err := stream.Consumer(ctx, cName); err == nil {
 						if cInfo, err := c.Info(ctx); err == nil && cInfo != nil {
-							streamRep.ConsumerStats = append(streamRep.ConsumerStats, ConsumerHealthReport{
-								Name:          cInfo.Name,
-								Stream:        streamName,
-								NumPending:    cInfo.NumPending,
-								NumAckPending: cInfo.NumAckPending,
-								NumWaiting:    cInfo.NumWaiting,
-							})
+							streamRep.ConsumerStats = append(streamRep.ConsumerStats, extractConsumerInfo(cInfo, streamName))
 						}
 					}
 				}
@@ -228,6 +241,30 @@ func (s *Server) handleInspectQueueHealth(ctx context.Context, request mcp.CallT
 		} else {
 			report.Details = "All monitored streams and consumers are healthy and within operating limits"
 		}
+	}
+
+	return report, nil
+}
+
+func (s *Server) handleInspectQueueHealth(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
+	var wsID *uuid.UUID
+	if wsIDStr != "" {
+		parsed, err := uuid.Parse(wsIDStr)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("invalid workspace_id: %v", err)), nil
+		}
+		wsID = &parsed
+	}
+
+	inspector := s.queueInspector
+	if inspector == nil {
+		inspector = NewJetStreamQueueInspector(s.js, s.nc)
+	}
+
+	report, err := inspector.InspectQueueHealth(ctx, wsID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to inspect queue health: %v", err)), nil
 	}
 
 	resBytes, err := json.MarshalIndent(report, "", "  ")

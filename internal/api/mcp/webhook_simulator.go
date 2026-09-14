@@ -1,21 +1,15 @@
 package mcp
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"github.com/pablojhp.pergo/internal/platform/netpolicy"
-	"github.com/pablojhp.pergo/internal/webhook"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // WebhookSimulationTelemetry captures the structured execution metrics of a synthetic webhook dispatch.
@@ -100,6 +94,9 @@ func (s *Server) handleSimulateWebhookEvent(ctx context.Context, request mcp.Cal
 			return mcp.NewToolResultError(fmt.Sprintf("invalid subscription_id UUID: %v", err)), nil
 		}
 
+		if s.webhookSubRepo == nil {
+			return mcp.NewToolResultError("webhook subscription repository is not configured on this MCP server"), nil
+		}
 		sub, err := s.webhookSubRepo.Get(ctx, subID)
 		if err != nil || sub == nil || sub.WorkspaceID != workspaceID {
 			return mcp.NewToolResultError("webhook subscription not found for workspace"), nil
@@ -108,6 +105,30 @@ func (s *Server) handleSimulateWebhookEvent(ctx context.Context, request mcp.Cal
 		destURL = sub.URL
 		if len(sub.Secret) > 0 {
 			secret = sub.Secret
+		}
+	} else if targetURL == "" {
+		// Both subscription_id and target_url are omitted: fallback to first active subscription for workspace.
+		if s.webhookSubRepo == nil {
+			return mcp.NewToolResultError("no active webhook subscriptions found for workspace"), nil
+		}
+		subs, err := s.webhookSubRepo.ListByWorkspace(ctx, workspaceID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to query webhook subscriptions: %v", err)), nil
+		}
+		var activeSub *repository.WebhookSubscription
+		for _, s := range subs {
+			if s.Active {
+				activeSub = s
+				break
+			}
+		}
+		if activeSub == nil {
+			return mcp.NewToolResultError("no active webhook subscriptions found for workspace"), nil
+		}
+		targetedSubID = &activeSub.ID
+		destURL = activeSub.URL
+		if len(activeSub.Secret) > 0 {
+			secret = activeSub.Secret
 		}
 	}
 
@@ -125,63 +146,33 @@ func (s *Server) handleSimulateWebhookEvent(ctx context.Context, request mcp.Cal
 		secret = []byte(*ws.WebhookSecret)
 	}
 
-	u, err := url.ParseRequestURI(destURL)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-		return mcp.NewToolResultError(fmt.Sprintf("invalid destination URL %q: scheme must be http or https", destURL)), nil
-	}
-
-	var signature string
-	if len(secret) > 0 {
-		timestamp := fmt.Sprintf("%d", time.Now().Unix())
-		signature = webhook.SignPayload(bodyBytes, secret, timestamp)
-	}
-
 	traceID := "mcp-sim-" + uuid.New().String()[:8]
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, destURL, bytes.NewReader(bodyBytes))
+	dispatchRes, err := executeWebhookDispatch(ctx, WebhookDispatchOptions{
+		TargetURL: destURL,
+		Payload:   bodyBytes,
+		Secret:    secret,
+		EventType: eventType,
+		TraceID:   traceID,
+		ExtraHeaders: map[string]string{
+			"X-PerGo-Simulated": "true",
+		},
+		Client: s.safeClient,
+	})
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to create dispatch request: %v", err)), nil
+		return mcp.NewToolResultError(err.Error()), nil
 	}
-
-	req.Header.Set("Content-Type", "application/json")
-	if signature != "" {
-		req.Header.Set("X-PerGo-Signature", signature)
-	}
-	req.Header.Set("X-PerGo-Simulated", "true")
-	req.Header.Set("X-PerGo-Event", eventType)
-	req.Header.Set("X-Trace-ID", traceID)
-
-	client := s.safeClient
-	if client == nil {
-		client = netpolicy.NewSafeClient(netpolicy.WithTimeout(10 * time.Second))
-	}
-
-	start := time.Now()
-	resp, reqErr := client.Do(req)
-	latency := time.Since(start).Milliseconds()
 
 	res := WebhookSimulationTelemetry{
 		SubscriptionID: targetedSubID,
 		TargetURL:      destURL,
 		EventType:      eventType,
 		TraceID:        traceID,
-		LatencyMS:      latency,
-	}
-
-	if reqErr != nil {
-		res.Success = false
-		res.Error = fmt.Sprintf("dispatch error: %v", reqErr)
-	} else {
-		defer resp.Body.Close()
-		res.StatusCode = resp.StatusCode
-		res.Success = resp.StatusCode >= 200 && resp.StatusCode < 300
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		if len(respBody) > 0 {
-			res.ResponseBody = string(respBody)
-		}
-		if !res.Success {
-			res.Error = fmt.Sprintf("HTTP %s", resp.Status)
-		}
+		LatencyMS:      dispatchRes.LatencyMS,
+		StatusCode:     dispatchRes.StatusCode,
+		Success:        dispatchRes.Success,
+		ResponseBody:   dispatchRes.ResponseBody,
+		Error:          dispatchRes.Error,
 	}
 
 	resBytes, err := json.MarshalIndent(res, "", "  ")
