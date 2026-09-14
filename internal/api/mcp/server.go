@@ -44,6 +44,26 @@ type Server struct {
 	webhookDispatcher webhook.WebhookDispatcher
 	ssoSecret         []byte
 	externalURL       string
+
+	telegramBaseURL string
+	httpClient      *http.Client
+}
+
+// ServerOption configures an optional parameter for Server.
+type ServerOption func(*Server)
+
+// WithTelegramBaseURL configures a custom Telegram API base URL (useful for testing).
+func WithTelegramBaseURL(url string) ServerOption {
+	return func(s *Server) {
+		s.telegramBaseURL = strings.TrimRight(url, "/")
+	}
+}
+
+// WithHTTPClient configures a custom HTTP client for outgoing diagnostic probes.
+func WithHTTPClient(client *http.Client) ServerOption {
+	return func(s *Server) {
+		s.httpClient = client
+	}
 }
 
 // NewServer creates and configures a new PerGo MCP server.
@@ -59,6 +79,7 @@ func NewServer(
 	webhookDispatcher webhook.WebhookDispatcher,
 	ssoSecret []byte,
 	externalURL string,
+	opts ...ServerOption,
 ) *Server {
 	mcpSrv := server.NewMCPServer("PerGo CPaaS Gateway", "1.2.0")
 
@@ -75,6 +96,10 @@ func NewServer(
 		webhookDispatcher: webhookDispatcher,
 		ssoSecret:         ssoSecret,
 		externalURL:       externalURL,
+	}
+
+	for _, opt := range opts {
+		opt(s)
 	}
 
 	s.registerTools()
@@ -227,6 +252,25 @@ func (s *Server) registerTools() {
 			Required: []string{"workspace_id", "connection_id"},
 		},
 	}, s.handleDisconnectConnection)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "diagnose_connection_health",
+		Description: "Perform an end-to-end connection health diagnostic inspecting socket liveness, proxy reachability/latency, and credentials validity with actionable self-healing guidance for agents.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"connection_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the connection to diagnose.",
+				},
+			},
+			Required: []string{"workspace_id", "connection_id"},
+		},
+	}, s.handleDiagnoseConnectionHealth)
 
 	s.MCPServer.AddTool(mcp.Tool{
 		Name:        "list_connections",
