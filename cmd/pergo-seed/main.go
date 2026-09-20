@@ -1,26 +1,22 @@
-// Command pergo-seed bootstraps a local PerGo instance with WABA connection
-// data and sample conversations so the admin inbox can be exercised without
-// a live provider webhook. Reads credentials from .env.seed.
+// Command pergo-seed bootstraps a local PerGo instance with rich, deterministic
+// mock fixtures and zero real PII so that all platform views (Omnichannel Inbox,
+// Broadcaster, Connections, Contacts, Templates, Scalar Docs) can be explored
+// and captured at 1440x900 resolution without requiring live third-party provider accounts.
 package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math/rand"
 	"os"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/config"
-	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/obs"
-	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // WABAConfig matches the credentials JSON expected by the WABA adapter.
@@ -61,32 +57,13 @@ func main() {
 }
 
 func run(ctx context.Context, cfg *config.Config) error {
-	workspaceName := envOrDefault("PERGO_WORKSPACE", "Agora")
+	workspaceName := envOrDefault("PERGO_WORKSPACE", "PerGo Demo")
 
-	// Resolve WABA credentials from .env.seed.
-	token := envOrDefault("ACCESS_TOKEN", "")
-	phoneID := envOrDefault("PHONE_NUMBER_ID", "")
-	wabaID := envOrDefault("WHATSAPP_BUSINESS_ACCOUNT_ID", "")
-	if token == "" || phoneID == "" || wabaID == "" {
-		return fmt.Errorf("missing WABA credentials in .env.seed: need ACCESS_TOKEN, PHONE_NUMBER_ID, WHATSAPP_BUSINESS_ACCOUNT_ID")
-	}
-
-	// Derive display phone number used as the recipient identity.
-	// Queries Meta Graph API to resolve the real DisplayPhoneNumber if not explicitly provided.
-	displayPhone := envOrDefault("DISPLAY_PHONE_NUMBER", "")
-	if displayPhone == "" {
-		metaClient := client.NewWABAMetaClient(nil, "")
-		if details, err := metaClient.FetchPhoneNumberDetails(ctx, phoneID, token); err == nil && details != nil && details.DisplayPhoneNumber != "" {
-			if clean, valid := domain.SanitizePhone(details.DisplayPhoneNumber); valid {
-				displayPhone = clean
-			} else {
-				displayPhone = details.DisplayPhoneNumber
-			}
-			slog.Info("resolved WABA display phone number from Meta API", "display_phone", displayPhone, "verified_name", details.VerifiedName)
+	var workspaceID *uuid.UUID
+	if wsIDStr := envOrDefault("DEFAULT_WORKSPACE_ID", envOrDefault("PERGO_DEV_WORKSPACE_ID", "")); wsIDStr != "" {
+		if id, err := uuid.Parse(wsIDStr); err == nil && id != uuid.Nil {
+			workspaceID = &id
 		}
-	}
-	if displayPhone == "" {
-		displayPhone = phoneID
 	}
 
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
@@ -105,116 +82,36 @@ func run(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("init encryptor: %w", err)
 	}
 
-	wsRepo := repository.NewWorkspaceRepository(pool)
-	connRepo := repository.NewConnectionRepository(pool, encryptor)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
+	opts := SeedOptions{
+		WorkspaceName: workspaceName,
+		WorkspaceID:   workspaceID,
+		Deterministic: true,
+	}
 
-	// 1. Workspace (dynamically resolve existing or create workspace).
-	ws, err := resolveSeedWorkspace(ctx, wsRepo, workspaceName)
+	res, err := Seed(ctx, pool, encryptor, opts)
 	if err != nil {
-		return fmt.Errorf("workspace setup: %w", err)
-	}
-	slog.Info("workspace ready", "id", ws.ID, "name", ws.Name)
-
-	// 2. WABA connection (create if missing for this workspace).
-	credJSON, _ := json.Marshal(WABAConfig{
-		PhoneNumberID: phoneID,
-		Token:         token,
-		WABAAccountID: wabaID,
-		VerifyToken:   "pergo-verify-token",
-	})
-	conn, err := ensureConnection(ctx, connRepo, ws.ID, displayPhone, credJSON)
-	if err != nil {
-		return fmt.Errorf("connection setup: %w", err)
-	}
-	slog.Info("connection ready", "id", conn.ID, "channel", conn.Channel, "sender", conn.SenderIdentity)
-
-	// 3. Seed sample conversations (two contacts) so the inbox has content.
-	if err := seedConversations(ctx, pool, sessRepo, ws.ID, conn); err != nil {
-		return fmt.Errorf("seed conversations: %w", err)
+		return fmt.Errorf("seed harness: %w", err)
 	}
 
-	fmt.Printf("\nSeeded workspace %q (%s)\n", ws.Name, ws.ID)
-	fmt.Printf("Seeded WABA connection %q (%s) sender_identity=%s\n", conn.Name, conn.ID, conn.SenderIdentity)
-	fmt.Printf("Inbox URL: http://localhost:%s/admin/inbox\n", cfg.ServerPort)
-	fmt.Println("To trigger an inbound (toast test), POST a WABA webhook to:")
-	fmt.Printf("  POST http://localhost:%s/webhooks/waba/%s\n", cfg.ServerPort, ws.ID)
-	return nil
-}
+	fmt.Println("\n=======================================================")
+	fmt.Printf("✓ Seeded Workspace:  %q (%s)\n", res.Workspace.Name, res.Workspace.ID)
+	fmt.Printf("✓ Channels/Connections: %d (WABA Cloud, WhatsApp Web, Telegram)\n", len(res.Connections))
+	fmt.Printf("✓ Tags Configured:   %d (VIP, Lead Qualificado, Cliente Ativo, etc.)\n", len(res.Tags))
+	fmt.Printf("✓ Contacts Seeded:   %d (with multi-channel identities & custom attributes)\n", len(res.Contacts))
+	fmt.Printf("✓ Templates Seeded:  %d (approved Meta utility & marketing templates)\n", len(res.Templates))
+	fmt.Printf("✓ Campaigns Seeded:  %d (with delivery metrics & recipient records)\n", len(res.Campaigns))
+	fmt.Printf("✓ Conversations:     %d threads (%d total messages seeded)\n", res.ConversationCount, res.MessageCount)
+	fmt.Println("✓ PII Safety:        100% synthetic mock fixtures, zero real PII")
+	fmt.Println("=======================================================")
+	fmt.Printf("\nKey Views for 1440x900 Screenshot Capture (see docs/SCREENSHOTS.md):\n")
+	fmt.Printf("  • Live Omnichannel Inbox:  http://localhost:%s/admin/inbox\n", cfg.ServerPort)
+	fmt.Printf("  • Campaign Broadcaster:    http://localhost:%s/admin/campaigns\n", cfg.ServerPort)
+	fmt.Printf("  • Channel Connections:     http://localhost:%s/admin/connections\n", cfg.ServerPort)
+	fmt.Printf("  • Contact Management:      http://localhost:%s/admin/contacts\n", cfg.ServerPort)
+	fmt.Printf("  • WABA Template Manager:   http://localhost:%s/admin/templates\n", cfg.ServerPort)
+	fmt.Printf("  • Scalar Interactive Docs: http://localhost:%s/docs\n", cfg.ServerPort)
+	fmt.Printf("  • Operator Dashboard:      http://localhost:%s/admin\n\n", cfg.ServerPort)
 
-func resolveSeedWorkspace(ctx context.Context, wsRepo *repository.WorkspaceRepository, workspaceName string) (*repository.Workspace, error) {
-	if wsIDStr := envOrDefault("DEFAULT_WORKSPACE_ID", envOrDefault("PERGO_DEV_WORKSPACE_ID", "")); wsIDStr != "" {
-		if id, err := uuid.Parse(wsIDStr); err == nil && id != uuid.Nil {
-			return wsRepo.CreateWithID(ctx, id, workspaceName)
-		}
-	}
-	return wsRepo.EnsureWorkspace(ctx, workspaceName)
-}
-
-func ensureConnection(ctx context.Context, repo *repository.ConnectionRepository, wsID uuid.UUID, displayPhone string, cred []byte) (*repository.Connection, error) {
-	existing, err := repo.ListByWorkspace(ctx, wsID)
-	if err == nil {
-		for _, c := range existing {
-			if c.Channel == "whatsapp_cloud" {
-				return c, nil
-			}
-		}
-	}
-	sender := displayPhone
-	if sender == "" {
-		sender = "15551357931" // placeholder display number for seed
-	}
-	conn := &repository.Connection{
-		WorkspaceID:    wsID,
-		Name:           "WABA Seed",
-		Channel:        "whatsapp_cloud",
-		SenderIdentity: sender,
-		Status:         "connected",
-		IsDefault:      true,
-		Credentials:    cred,
-	}
-	if err := repo.Create(ctx, conn); err != nil {
-		return nil, err
-	}
-	return conn, nil
-}
-
-func seedConversations(ctx context.Context, pool *pgxpool.Pool, sessRepo *repository.RecipientSessionRepository, wsID uuid.UUID, conn *repository.Connection) error {
-	now := time.Now().UTC()
-	contacts := []struct {
-		from string
-		body string
-	}{
-		{"15551234567", "Oi, tudo bem? Vi o anúncio de vocês."},
-		{"15551234567", "Quanto custa o plano mensal?"},
-		{"15557654321", "Bom dia! Gostaria de tirar uma dúvida."},
-	}
-	recipientIdentity := conn.SenderIdentity
-
-	for _, ct := range contacts {
-		trace := uuid.New().String()
-		payload, _ := json.Marshal(inboundPayload{
-			Event:       "inbound_message",
-			TraceID:     trace,
-			MessageID:   "wamid." + randToken(8),
-			Channel:     "whatsapp_cloud",
-			Timestamp:   now.Format(time.RFC3339),
-			WorkspaceID: wsID.String(),
-			From:        ct.from,
-			To:          recipientIdentity,
-			Body:        ct.body,
-		})
-		// Insert directly via pool so we don't depend on the buffered writer.
-		_, err := pool.Exec(ctx,
-			`INSERT INTO audit_logs (workspace_id, trace_id, event_type, payload, created_at) VALUES ($1, $2, 'inbound_message', $3, $4)`,
-			wsID, trace, payload, now.Add(-time.Duration(rand.Intn(3600))*time.Second))
-		if err != nil {
-			return fmt.Errorf("insert audit log: %w", err)
-		}
-		// Upsert recipient session so the window checker and unread tracking work.
-		_ = sessRepo.Upsert(ctx, domain.NewSessionKey(wsID, ct.from, "whatsapp_cloud", recipientIdentity), now, "standard")
-		slog.Info("seeded inbound", "from", ct.from, "body", ct.body)
-	}
 	return nil
 }
 
