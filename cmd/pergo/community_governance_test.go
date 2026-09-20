@@ -189,12 +189,12 @@ func TestContributingGuide(t *testing.T) {
 		t.Errorf("CONTRIBUTING.md should reference SECURITY.md")
 	}
 
-	// Must reference correct docs/context paths
-	if !strings.Contains(content, "docs/context/GETTING-STARTED.md") {
-		t.Errorf("CONTRIBUTING.md should link to docs/context/GETTING-STARTED.md")
+	// Must reference correct canonical docs paths
+	if !strings.Contains(content, "docs/getting-started/installation.md") {
+		t.Errorf("CONTRIBUTING.md should link to docs/getting-started/installation.md")
 	}
-	if !strings.Contains(content, "docs/context/DEVELOPMENT.md") {
-		t.Errorf("CONTRIBUTING.md should link to docs/context/DEVELOPMENT.md")
+	if !strings.Contains(content, "docs/development/index.md") {
+		t.Errorf("CONTRIBUTING.md should link to docs/development/index.md")
 	}
 }
 

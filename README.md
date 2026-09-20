@@ -49,18 +49,17 @@ It is built for backend developers integrating omnichannel messaging into CRMs/E
 * `static/`: Static assets (CSS, images) for the operator console.
 * `templates/`: `a-h/templ` components and views.
 
-## Documentação
+## Documentation
 
-Para guias detalhados de configuração, desenvolvimento e implantação do PerGo, consulte a documentação oficial:
+For detailed technical specifications, architecture blueprints, channel setup guides, and deployment workflows, consult the official documentation:
 
-* **Arquitetura do PerGo:** [Visão Geral de Arquitetura](file:///home/pablo/Coding/PerGo/docs/architecture/README.md)
-* **Como Começar:** [Guia de Início Rápido (Getting Started)](file:///home/pablo/Coding/PerGo/docs/GETTING-STARTED.md)
-* **Configurações:** [Variáveis de Ambiente (.env)](file:///home/pablo/Coding/PerGo/docs/CONFIGURATION.md)
-* **Referência da API:** [Endpoints, Payloads e Erros](file:///home/pablo/Coding/PerGo/docs/API.md)
-* **Configuração de Provedores:** [Telegram, WABA e WhatsApp Web Setup](file:///home/pablo/Coding/PerGo/docs/CHANNELS.md)
-* **Desenvolvimento:** [Estrutura de Pastas e Diretrizes](file:///home/pablo/Coding/PerGo/docs/DEVELOPMENT.md)
-* **Testes:** [Guia de Escrita e Execução de Testes](file:///home/pablo/Coding/PerGo/docs/TESTING.md)
-* **Implantação (Deploy):** [Dockerfile e Compose para Produção](file:///home/pablo/Coding/PerGo/docs/DEPLOYMENT.md)
+* **[Getting Started](docs/getting-started/index.md):** Local installation, Docker Compose dependencies, and 1-Click VPS quickstart.
+* **[Architecture](docs/architecture/index.md):** Architectural summary, NATS JetStream concurrency, resilience, and database schema.
+* **[Channels](docs/channels/index.md):** WhatsApp Web (`whatsmeow`), WhatsApp Cloud (Meta WABA), and Telegram bot integrations.
+* **[API Reference](docs/api/index.md):** Endpoints reference, HMAC webhook signatures, and interactive Scalar developer portal.
+* **[Production Deployment](docs/deployment/index.md):** Production Docker Compose (`docker-compose.prod.yml`), Traefik v3 reverse proxy, and Let's Encrypt SSL/TLS.
+* **[Configuration](docs/getting-started/configuration.md):** Complete 12-factor environment variables (`.env`) specification.
+* **[Testing Guide](docs/development/testing.md):** Writing and running unit, race detection, and integration test suites.
 
 ---
 
@@ -139,10 +138,9 @@ To set up PerGo on your local machine or server:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/pablodiegoo/OmniGo.git
-   cd OmniGo
+   git clone https://github.com/pablodiegoo/PerGo.git
+   cd PerGo
    ```
-   <!-- VERIFY: The repository URL is https://github.com/pablodiegoo/OmniGo.git -->
 
 2. **Install Go dependencies:**
    Make sure you have Go 1.26+ installed, then download the dependencies:
@@ -265,7 +263,7 @@ We welcome contributions to PerGo! If you want to contribute, please follow thes
    make test-race
    ```
 
-Refer to the [DEVELOPMENT.md](file:///home/pablo/Coding/PerGo/docs/DEVELOPMENT.md) guide for folder structure details.
+Refer to the [Development Guide](docs/development/index.md) for folder structure details.
 <!-- VERIFY: CONTRIBUTING.md file exists and contributing instructions point to standard fork-and-pull-request flow -->
 
 ---

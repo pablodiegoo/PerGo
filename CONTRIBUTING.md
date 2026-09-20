@@ -16,7 +16,7 @@ PerGo adheres to standard open-source governance guidelines:
 ## Getting Started & Local Setup
 
 1. **Prerequisites**: Go 1.25+, Docker & Docker Compose, and Make.
-2. **First Run**: Review [GETTING-STARTED.md](docs/context/GETTING-STARTED.md) for quick installation and setup.
+2. **First Run**: Review [Installation Guide](docs/getting-started/installation.md) for quick installation and setup.
 3. **Local Development**:
    - Start shared infrastructure (Postgres, NATS, Redis, MinIO, Mailpit):
      ```bash
@@ -26,7 +26,7 @@ PerGo adheres to standard open-source governance guidelines:
      ```bash
      make dev
      ```
-   - For detailed architecture and configuration, consult [DEVELOPMENT.md](docs/context/DEVELOPMENT.md).
+   - For detailed architecture and configuration, consult [Development Guide](docs/development/index.md).
 
 ---
 
