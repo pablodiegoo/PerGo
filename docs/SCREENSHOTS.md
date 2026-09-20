@@ -129,12 +129,17 @@ cwebp -q 85 raw_scalar_docs.png -o docs/assets/screenshots/scalar-docs.webp
 cwebp -q 85 raw_dashboard.png -o docs/assets/screenshots/dashboard.webp
 ```
 
-### Verification Checklist:
-- [ ] Viewport resolution is exactly `1440x900`.
-- [ ] File format is `.webp` (or crushed `.png`).
-- [ ] File size is under 300 KB per asset.
-- [ ] Zero real personal identifying information (PII) is visible.
-- [ ] Image filename matches the canonical table in `docs/assets/screenshots/README.md`.
+### Automated Capture Pipeline (Recommended)
+
+An automated capture script (`scripts/capture_screenshots.js`) uses Google Chrome via DevTools Protocol (CDP) to deterministically navigate, interact with each view, and capture all 5 primary screenshots at exact 1440x900 resolution with instant WebP compression:
+
+```bash
+# Ensure server is running, then execute:
+make screenshots
+
+# Or directly via Node.js:
+node scripts/capture_screenshots.js
+```
 
 ---
 

@@ -32,6 +32,7 @@ type SeedResult struct {
 	Contacts          []domain.Contact
 	Templates         []repository.WABATemplate
 	Campaigns         []domain.Campaign
+	APIKeyCount       int
 	ConversationCount int
 	MessageCount      int
 }
@@ -94,6 +95,21 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 	}
 
 	connections := []*repository.Connection{wabaConn, waWebConn, tgConn}
+
+	// 2.1 Ensure an active API key exists for this workspace
+	apiKeyRepo := repository.NewAPIKeyRepository(pool)
+	existingKeys, err := apiKeyRepo.ListByWorkspace(ctx, ws.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list api keys: %w", err)
+	}
+	apiKeyCount := len(existingKeys)
+	if apiKeyCount == 0 {
+		_, _, err = apiKeyRepo.Create(ctx, ws.ID, "Produção - CRM Omnichannel Key")
+		if err != nil {
+			return nil, fmt.Errorf("ensure api key: %w", err)
+		}
+		apiKeyCount = 1
+	}
 
 	// 3. Load Fixtures
 	fixtures := getDeterministicFixtures(wabaConn.SenderIdentity)
@@ -439,6 +455,7 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 		Contacts:          seededContacts,
 		Templates:         seededTemplates,
 		Campaigns:         seededCampaigns,
+		APIKeyCount:       apiKeyCount,
 		ConversationCount: conversationCount,
 		MessageCount:      messageCount,
 	}, nil

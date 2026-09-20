@@ -83,6 +83,7 @@ func run(ctx context.Context, cfg *config.Config) error {
 	fmt.Println("\n=======================================================")
 	fmt.Printf("✓ Seeded Workspace:  %q (%s)\n", res.Workspace.Name, res.Workspace.ID)
 	fmt.Printf("✓ Channels/Connections: %d (WABA Cloud, WhatsApp Web, Telegram)\n", len(res.Connections))
+	fmt.Printf("✓ API Keys Active:   %d (CRM & Omnichannel Ingest Key)\n", res.APIKeyCount)
 	fmt.Printf("✓ Tags Configured:   %d (VIP, Lead Qualificado, Cliente Ativo, etc.)\n", len(res.Tags))
 	fmt.Printf("✓ Contacts Seeded:   %d (with multi-channel identities & custom attributes)\n", len(res.Contacts))
 	fmt.Printf("✓ Templates Seeded:  %d (approved Meta utility & marketing templates)\n", len(res.Templates))

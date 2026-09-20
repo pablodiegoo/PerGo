@@ -127,6 +127,11 @@ down:
 lint:
 	@golangci-lint run
 
+## screenshots: captura os 5 screenshots oficiais (1440x900) via Chrome CDP
+screenshots:
+	@echo "→ Capturando screenshots de UI (1440x900)..."
+	@node scripts/capture_screenshots.js
+
 ## clean: remove binários e arquivos temporários
 clean:
 	@rm -rf bin/ tmp/
