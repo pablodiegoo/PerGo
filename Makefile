@@ -12,7 +12,7 @@
 #    make lint       → golangci-lint
 # ─────────────────────────────────────────────────────────────
 
-.PHONY: dev prod infra infra-down build generate test test-race test-integration coverage migrate-up migrate-down lint clean help down
+.PHONY: dev prod infra infra-down build generate test test-race test-integration coverage migrate-up migrate-down lint verify-docs clean help down
 
 # Carrega variáveis do .env se ele existir (sem expor no shell pai)
 ifneq (,$(wildcard .env))
@@ -95,11 +95,11 @@ generate: _check-templ
 
 ## test: executa testes rápidos (sem race detector)
 test:
-	@go test ./... -short
+	@go test ./... -short -p 1
 
 ## test-race: executa testes com race detector
 test-race:
-	@go test ./... -race -count=1
+	@go test ./... -race -count=1 -p 1
 
 
 ## test-integration: executa os testes de integração
@@ -126,6 +126,10 @@ down:
 ## lint: análise estática com golangci-lint
 lint:
 	@golangci-lint run
+
+## verify-docs: valida governança, links markdown e ausência de strings legadas
+verify-docs:
+	@./scripts/verify-docs.sh
 
 ## screenshots: captura os 5 screenshots oficiais (1440x900) via Chrome CDP
 screenshots:

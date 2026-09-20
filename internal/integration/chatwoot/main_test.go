@@ -54,7 +54,7 @@ func run(m *testing.M) int {
 
 	// Connect to pool with retries
 	var pool *pgxpool.Pool
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 15; i++ {
 		pool, err = pgxpool.New(ctx, pgConnStr)
 		if err == nil {
 			err = pool.Ping(ctx)
@@ -63,7 +63,7 @@ func run(m *testing.M) int {
 			}
 			pool.Close()
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(1 * time.Second)
 	}
 	if err != nil {
 		log.Fatalf("failed to ping postgres container: %v", err)

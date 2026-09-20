@@ -15,7 +15,9 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
+	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/platform/audit"
+	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -45,7 +47,11 @@ func TestDashboardHandler_Index_Onboarding(t *testing.T) {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	auditQuerier := audit.NewQuerier(pool)
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
-	connRepo := repository.NewConnectionRepository(pool, nil) // nil encryptor for test is fine if not saving keys
+	encryptor, err := crypto.NewEncryptor([]byte("01234567890123456789012345678901"))
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	connRepo := repository.NewConnectionRepository(pool, encryptor)
 
 	// Create workspace
 	ws, err := wsRepo.Create(ctx, fmt.Sprintf("Dashboard Test Workspace %s", uuid.New().String()))
@@ -67,8 +73,9 @@ func TestDashboardHandler_Index_Onboarding(t *testing.T) {
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/admin/", nil)
-	// Inject active workspace cookie
+	// Inject active workspace cookie and context
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	req = req.WithContext(mw.WithActiveWorkspace(req.Context(), ws))
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 

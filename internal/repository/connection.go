@@ -487,11 +487,15 @@ func (r *ConnectionRepository) scanRowAndDecrypt(rows pgx.Rows) (*Connection, er
 	}
 
 	if len(ciphertext) > 0 {
-		plaintext, err := r.provider.Decrypt(ciphertext)
-		if err != nil {
-			slog.Error("failed to decrypt connection credentials", "connection_id", c.ID, "error", err)
+		if r.provider == nil {
+			slog.Error("cannot decrypt connection credentials: crypto provider is nil", "connection_id", c.ID)
 		} else {
-			c.Credentials = plaintext
+			plaintext, err := r.provider.Decrypt(ciphertext)
+			if err != nil {
+				slog.Error("failed to decrypt connection credentials", "connection_id", c.ID, "error", err)
+			} else {
+				c.Credentials = plaintext
+			}
 		}
 	}
 
