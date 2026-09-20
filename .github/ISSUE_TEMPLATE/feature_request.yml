@@ -1,0 +1,55 @@
+name: "Feature Request"
+description: "Propose a new feature, capability, or architectural enhancement for PerGo"
+title: "[Feat]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature! Please provide as much detail as possible so the community can evaluate the design and implementation.
+
+  - type: textarea
+    id: problem_statement
+    attributes:
+      label: Problem Statement / Use Case
+      description: |
+        What problem does this feature solve? Describe the real-world use cases and motivations.
+      placeholder: "As a developer using PerGo, I need to ... so that ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: technical_proposal
+    attributes:
+      label: Technical Design Proposal
+      description: |
+        Describe the proposed solution. Include architectural considerations, API endpoints, data models, or protocol flows where applicable.
+      placeholder: "Propose the architecture, package structure, data models, or endpoints..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: community_impact
+    attributes:
+      label: Community Impact & Ecosystem Value
+      description: |
+        Who benefits from this feature? How does this impact the PerGo ecosystem, existing workflows, or integrations?
+      placeholder: "This will enable all users who integrate with ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives_considered
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative designs, workarounds, or approaches you've considered.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: "I am willing to submit a pull request to implement this feature proposal."
+          required: false

@@ -1,0 +1,65 @@
+name: "New Messaging Channel Request"
+description: "Request or propose support for a new communication channel (Discord, Instagram, RCS, Email, etc.)"
+title: "[Channel]: "
+labels: ["channel-request", "enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        PerGo is designed as an omnichannel CPaaS platform. Use this form to propose first-class adapter support for a new messaging provider.
+
+  - type: dropdown
+    id: channel_provider
+    attributes:
+      label: Target Messaging Provider
+      description: Select the provider or protocol you are requesting.
+      options:
+        - "Discord (Bot / Webhooks)"
+        - "Instagram Direct (Graph API / Messenger API)"
+        - "RCS (Rich Communication Services / Google Business Messages)"
+        - "Email (SES / SendGrid / Inbound IMAP)"
+        - "Telegram Bot API enhancement"
+        - "Other Provider"
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use Case & Business Value
+      description: |
+        Why should PerGo support this channel? Describe the user scenario and expected volume.
+      placeholder: "We need Discord support to bridge community alerts..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: documentation_links
+    attributes:
+      label: Provider Documentation & API Specs
+      description: |
+        Please provide links to official API documentation, webhook specifications, authentication guides, and rate limits.
+      placeholder: "https://discord.com/developers/docs/..."
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: channel_features
+    attributes:
+      label: Required Channel Capabilities
+      description: Check all message types and capabilities relevant for this channel integration.
+      options:
+        - label: "Outbound Text Messaging"
+        - label: "Inbound Text Messaging & Webhook Ingestion"
+        - label: "Rich Media (Images, Audio, Video, Documents)"
+        - label: "Interactive Elements (Buttons, Menus, Quick Replies)"
+        - label: "Delivery Status Receipts (Sent, Delivered, Read, Failed)"
+        - label: "Two-Way Template Messaging / Session Windows"
+
+  - type: textarea
+    id: technical_notes
+    attributes:
+      label: Implementation Notes & Considerations
+      description: Authentication methods (OAuth2, API keys), webhook security (HMAC verification), or SDK libraries.
+    validations:
+      required: false

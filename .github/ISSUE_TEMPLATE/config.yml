@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "PerGo Community Discussions"
+    url: "https://github.com/pablodiegoo/PerGo/discussions"
+    about: "Ask general questions, request troubleshooting help, and share architectural ideas."
+  - name: "Security Vulnerability Disclosure"
+    url: "https://github.com/pablodiegoo/PerGo/security/advisories/new"
+    about: "Report security vulnerabilities confidentially to the PerGo maintainers."
+  - name: "PerGo Documentation & Guides"
+    url: "https://github.com/pablodiegoo/PerGo/tree/main/docs"
+    about: "Read setup guides, architecture overviews, and API references."
