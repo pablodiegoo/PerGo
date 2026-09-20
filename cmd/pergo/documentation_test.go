@@ -176,13 +176,18 @@ func TestDocumentation_READMEOverhaul(t *testing.T) {
 	}
 	text := string(content)
 
+	assertAsset := func(relAsset string) {
+		t.Helper()
+		if !strings.Contains(text, relAsset) {
+			t.Errorf("README.md must reference asset %s", relAsset)
+		}
+		if _, err := os.Stat(filepath.Join(root, relAsset)); os.IsNotExist(err) {
+			t.Errorf("Asset %s does not exist on disk", relAsset)
+		}
+	}
+
 	// 1. Header banner SVG
-	if !strings.Contains(text, "docs/assets/pergo-banner.svg") {
-		t.Errorf("README.md must reference header banner at docs/assets/pergo-banner.svg")
-	}
-	if _, err := os.Stat(filepath.Join(root, "docs", "assets", "pergo-banner.svg")); os.IsNotExist(err) {
-		t.Errorf("Header banner docs/assets/pergo-banner.svg does not exist on disk")
-	}
+	assertAsset("docs/assets/pergo-banner.svg")
 
 	// 2. All 5 screenshot previews must be referenced and exist
 	screenshots := []string{
@@ -193,20 +198,20 @@ func TestDocumentation_READMEOverhaul(t *testing.T) {
 		"docs/assets/screenshots/api-docs.png",
 	}
 	for _, sc := range screenshots {
-		if !strings.Contains(text, sc) {
-			t.Errorf("README.md must reference screenshot %s", sc)
-		}
-		if _, err := os.Stat(filepath.Join(root, sc)); os.IsNotExist(err) {
-			t.Errorf("Screenshot asset %s does not exist on disk", sc)
-		}
+		assertAsset(sc)
 	}
 
-	// 3. Top hero preview: inbox-hero.png must appear before the 2x2 feature showcase
+	// 3. Top hero preview: inbox-hero.png must appear right beneath the header/badges, before Overview and 2x2 showcase
 	inboxIdx := strings.Index(text, "inbox-hero.png")
+	overviewIdx := strings.Index(text, "## Overview")
 	dashboardIdx := strings.Index(text, "dashboard.png")
 	if inboxIdx == -1 {
 		t.Errorf("README.md missing top hero inbox preview (inbox-hero.png)")
-	} else if dashboardIdx != -1 && inboxIdx > dashboardIdx {
+	}
+	if overviewIdx != -1 && inboxIdx > overviewIdx {
+		t.Errorf("Top hero preview (inbox-hero.png) must appear right beneath header, before Overview section")
+	}
+	if dashboardIdx != -1 && inboxIdx > dashboardIdx {
 		t.Errorf("Top hero preview (inbox-hero.png) must appear before secondary feature showcase screenshots")
 	}
 

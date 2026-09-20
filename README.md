@@ -12,9 +12,17 @@
   <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker" alt="Docker"></a>
   <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql" alt="PostgreSQL 16"></a>
   <a href="https://nats.io/"><img src="https://img.shields.io/badge/NATS-JetStream-27AAE1?style=flat-square&logo=natsdotio" alt="NATS JetStream"></a>
-  <a href="https://github.com/pablodiegoo/PerGo/actions"><img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="CI Build"></a>
+  <a href="https://github.com/pablodiegoo/PerGo/actions"><img src="https://img.shields.io/github/actions/workflow/status/pablodiegoo/PerGo/ci.yml?style=flat-square&logo=github&label=CI%20Build" alt="CI Build"></a>
   <a href="https://spec.openapis.org/oas/v3.1.0"><img src="https://img.shields.io/badge/OpenAPI-3.1-85EA2D?style=flat-square&logo=openapiinitiative" alt="OpenAPI 3.1"></a>
-  <a href="https://github.com/pablodiegoo/PerGo"><img src="https://img.shields.io/badge/Agent%20Ready-/llms.txt-8A2BE2?style=flat-square" alt="Agent-Ready"></a>
+</p>
+
+<p align="center">
+  <a href="docs/assets/screenshots/inbox-hero.png">
+    <img src="docs/assets/screenshots/inbox-hero.png" alt="PerGo Live Omnichannel Inbox" width="100%">
+  </a>
+</p>
+<p align="center">
+  <em>Live Omnichannel Chat Inbox: Unified multi-turn conversation timeline across WhatsApp Web, WABA, and Telegram with real-time delivery telemetry, contact badges, and channel indicators.</em>
 </p>
 
 ---
@@ -23,18 +31,7 @@
 
 **PerGo** is a self-hosted, open-source Omnichannel Communication Platform as a Service (CPaaS) engineered from the ground up in Go. It abstracts away provider fragmentation by exposing a single, unified REST API (`POST /api/v1/messages`) that routes messages across **WhatsApp Web** (unofficial multi-device via `whatsmeow`), **WhatsApp Cloud API** (official Meta WABA), and **Telegram Bot API** under a standardized JSON contract with automatic fallback pipelines.
 
-Built for developers integrating mission-critical messaging into CRMs, ERPs, and autonomous AI agent workflows, PerGo delivers extreme resource efficiency (<50MB RAM), durable queuing via NATS JetStream, human-like anti-ban dispatch jitter, and 100% on-premise data sovereignty with zero per-message vendor markup.
-
----
-
-## Live Omnichannel Experience
-
-<p align="center">
-  <img src="docs/assets/screenshots/inbox-hero.png" alt="PerGo Live Omnichannel Inbox" width="100%">
-</p>
-<p align="center">
-  <em>Live Omnichannel Chat Inbox: Unified multi-turn conversation threads across WhatsApp Web, WABA, and Telegram with real-time delivery telemetry, contact badges, and channel indicators.</em>
-</p>
+Built for backend developers integrating mission-critical messaging into CRMs, ERPs, and autonomous AI agent workflows, PerGo delivers extreme resource efficiency (<50MB RAM), durable queuing via NATS JetStream, human-like anti-ban dispatch jitter, and 100% on-premise data sovereignty with zero per-message vendor markup.
 
 ---
 
@@ -57,7 +54,7 @@ PerGo bridges this gap by combining the speed, safety, and memory footprint of c
 
 ---
 
-## Architecture
+## Interactive Architecture
 
 PerGo enforces clean separation of concerns: inbound HTTP requests and external provider events are ingested and immediately enqueued into a durable **NATS JetStream** work-queue boundary, insulating external networks and API consumers from transient surges.
 
@@ -200,7 +197,7 @@ Deploy PerGo directly to any fresh Ubuntu/Debian VPS with **Traefik v3**, automa
 curl -fsSL https://raw.githubusercontent.com/pablodiegoo/PerGo/main/install.sh | bash
 ```
 
-Or run non-interactively with your environment variables:
+Or run non-interactively with your parameters:
 
 ```bash
 ./install.sh --domain api.pergo.yourdomain.com --email admin@yourdomain.com --yes
@@ -208,32 +205,37 @@ Or run non-interactively with your environment variables:
 
 ---
 
-### Option B: Local Docker Compose (Recommended for Evaluation)
+### Option B: Local Docker Compose (1-Command Full Stack)
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/pablodiegoo/PerGo.git
-   cd PerGo
-   ```
+Spin up the entire PerGo stack (PerGo server on `:8080`, PostgreSQL 16 on `:5432`, and NATS JetStream on `:4222`) in one command:
 
-2. **Launch dependencies:**
-   ```bash
-   docker compose up -d
-   ```
+```bash
+git clone https://github.com/pablodiegoo/PerGo.git
+cd PerGo
+docker compose up -d
+```
 
-3. **Run PerGo locally:**
-   ```bash
-   # Copy environment defaults
-   cp .env.example .env
-   
-   # Run with hot reload (or 'go run ./cmd/pergo')
-   make dev
-   ```
+Open your browser:
+- **Operator Console:** [http://localhost:8080/admin](http://localhost:8080/admin) (Default password: `troque-esta-senha`)
+- **Interactive API Documentation:** [http://localhost:8080/docs](http://localhost:8080/docs)
+- **Health Probe:** [http://localhost:8080/healthz](http://localhost:8080/healthz)
 
-4. **Open your browser:**
-   - **Operator Console:** [http://localhost:8080/admin](http://localhost:8080/admin) (Password: `troque-esta-senha`)
-   - **Interactive API Documentation:** [http://localhost:8080/docs](http://localhost:8080/docs)
-   - **Health Probe:** [http://localhost:8080/healthz](http://localhost:8080/healthz)
+---
+
+### Option C: Native Go Development (with Hot Reload)
+
+To run PerGo directly with the Go toolchain:
+
+```bash
+# 1. Start backing services
+docker compose up -d postgres nats
+
+# 2. Configure environment
+cp .env.example .env
+
+# 3. Launch with hot reload
+make dev
+```
 
 ---
 
@@ -298,7 +300,7 @@ curl -X POST http://localhost:8080/api/v1/messages \
       {
         "type": "body",
         "parameters": [
-          {"type": "text", "text": "Pablo Diego"},
+          {"type": "text", "text": "Jane Doe"},
           {"type": "text", "text": "ORD-2026-9821"}
         ]
       }
