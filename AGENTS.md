@@ -10,7 +10,7 @@ PerGo is a self-hosted, open-source Omnichannel Communications Platform as a Ser
 
 ### Constraints
 
-- **Tech stack**: Go 1.22+ with Echo (HTTP), a-h/templ + HTMX (admin UI), NATS JetStream (broker), PostgreSQL via pgx/v5 (persistence), whatsmeow (WhatsApp Web), golang.org/x/time/rate (rate limiting), log/slog (logging) — per `docs/architecture/02-technical-decisions.md`
+- **Tech stack**: Go 1.22+ with Echo (HTTP), a-h/templ + HTMX (admin UI), NATS JetStream (broker), PostgreSQL via pgx/v5 (persistence), whatsmeow (WhatsApp Web), golang.org/x/time/rate (rate limiting), log/slog (logging) — per `docs/architecture/summary.md`
 - **Performance**: >= 500 messages/sec sustained throughput; <= 50ms p99 ingestion latency; < 512MB RAM on 2 vCPU — measured against real production loads
 - **Reliability**: >= 99.5% delivery success across all active channels; 100% trace-correlated logging for all requests and webhooks
 - **Security**: AES-256-GCM encryption at rest for credentials; SHA-256 hashed API keys; data sovereignty (self-hosted, GDPR/LGPD compliant)

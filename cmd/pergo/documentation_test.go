@@ -9,6 +9,55 @@ import (
 	"testing"
 )
 
+func collectMarkdownFiles(t *testing.T, root string, extraFiles ...string) []string {
+	t.Helper()
+	mdFiles := append([]string{}, extraFiles...)
+	err := filepath.Walk(filepath.Join(root, "docs"), func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(path, ".md") {
+			mdFiles = append(mdFiles, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Failed to scan docs directory: %v", err)
+	}
+	return mdFiles
+}
+
+func resolveLinkPath(root, fileDir, rawTarget string) (string, bool) {
+	// Skip external links, mailto, anchor-only links
+	if strings.HasPrefix(rawTarget, "http://") ||
+		strings.HasPrefix(rawTarget, "https://") ||
+		strings.HasPrefix(rawTarget, "mailto:") ||
+		strings.HasPrefix(rawTarget, "#") {
+		return "", false
+	}
+
+	// Strip fragment anchor (#section)
+	targetClean := rawTarget
+	if idx := strings.Index(targetClean, "#"); idx != -1 {
+		targetClean = targetClean[:idx]
+	}
+	if targetClean == "" {
+		return "", false
+	}
+
+	// Parse URL to handle possible queries or url-encoding
+	parsedURL, err := url.Parse(targetClean)
+	if err == nil && parsedURL.Path != "" {
+		targetClean = parsedURL.Path
+	}
+
+	// Resolve target path relative to current file directory or repo root
+	if strings.HasPrefix(targetClean, "/") {
+		return filepath.Join(root, targetClean), true
+	}
+	return filepath.Join(fileDir, targetClean), true
+}
+
 // TestDocumentation_CanonicalHierarchy verifies that the documentation
 // has been reorganized into the canonical public directories and docs/context is deleted.
 func TestDocumentation_CanonicalHierarchy(t *testing.T) {
@@ -60,20 +109,7 @@ func TestDocumentation_CanonicalHierarchy(t *testing.T) {
 // (file:///home/pablo) or legacy repo links (OmniGo) exist in docs or README.md.
 func TestDocumentation_NoDeadLocalOrLegacyLinks(t *testing.T) {
 	root := findRepoRoot(t)
-
-	mdFiles := []string{filepath.Join(root, "README.md")}
-	err := filepath.Walk(filepath.Join(root, "docs"), func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && strings.HasSuffix(path, ".md") {
-			mdFiles = append(mdFiles, path)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("Failed to scan docs directory: %v", err)
-	}
+	mdFiles := collectMarkdownFiles(t, root, filepath.Join(root, "README.md"))
 
 	for _, file := range mdFiles {
 		content, err := os.ReadFile(file)
@@ -96,23 +132,10 @@ func TestDocumentation_NoDeadLocalOrLegacyLinks(t *testing.T) {
 // between documentation files resolve to existing files on disk without 404s.
 func TestDocumentation_RelativeLinksResolve(t *testing.T) {
 	root := findRepoRoot(t)
-
-	mdFiles := []string{
+	mdFiles := collectMarkdownFiles(t, root,
 		filepath.Join(root, "README.md"),
 		filepath.Join(root, "CONTRIBUTING.md"),
-	}
-	err := filepath.Walk(filepath.Join(root, "docs"), func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && strings.HasSuffix(path, ".md") {
-			mdFiles = append(mdFiles, path)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("Failed to scan docs directory: %v", err)
-	}
+	)
 
 	// Match markdown links: [label](target)
 	linkRegex := regexp.MustCompile(`\[[^\]]+\]\(([^)]+)\)`)
@@ -128,37 +151,9 @@ func TestDocumentation_RelativeLinksResolve(t *testing.T) {
 		matches := linkRegex.FindAllStringSubmatch(string(content), -1)
 		for _, m := range matches {
 			rawTarget := strings.TrimSpace(m[1])
-
-			// Skip external links, mailto, anchor-only links
-			if strings.HasPrefix(rawTarget, "http://") ||
-				strings.HasPrefix(rawTarget, "https://") ||
-				strings.HasPrefix(rawTarget, "mailto:") ||
-				strings.HasPrefix(rawTarget, "#") {
+			resolvedPath, ok := resolveLinkPath(root, fileDir, rawTarget)
+			if !ok {
 				continue
-			}
-
-			// Strip fragment anchor (#section)
-			targetClean := rawTarget
-			if idx := strings.Index(targetClean, "#"); idx != -1 {
-				targetClean = targetClean[:idx]
-			}
-			if targetClean == "" {
-				continue
-			}
-
-			// Parse URL to handle possible queries or url-encoding
-			parsedURL, err := url.Parse(targetClean)
-			if err == nil && parsedURL.Path != "" {
-				targetClean = parsedURL.Path
-			}
-
-			// Resolve target path relative to current file directory
-			var resolvedPath string
-			if strings.HasPrefix(targetClean, "/") {
-				// Absolute to repo root
-				resolvedPath = filepath.Join(root, targetClean)
-			} else {
-				resolvedPath = filepath.Join(fileDir, targetClean)
 			}
 
 			// Check if target file or directory exists
