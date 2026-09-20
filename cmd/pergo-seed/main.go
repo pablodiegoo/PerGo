@@ -27,19 +27,6 @@ type WABAConfig struct {
 	VerifyToken   string `json:"verify_token"`
 }
 
-// inboundPayload matches the audit_logs event payload for inbound messages.
-type inboundPayload struct {
-	Event       string `json:"event"`
-	TraceID     string `json:"trace_id"`
-	MessageID   string `json:"message_id"`
-	Channel     string `json:"channel"`
-	Timestamp   string `json:"timestamp"`
-	WorkspaceID string `json:"workspace_id"`
-	From        string `json:"from"`
-	To          string `json:"to"`
-	Body        string `json:"body"`
-}
-
 func main() {
 	slog.SetDefault(slog.New(obs.NewRedactingHandler(slog.NewJSONHandler(os.Stdout, nil))))
 	cfg := config.Load()
@@ -60,7 +47,7 @@ func run(ctx context.Context, cfg *config.Config) error {
 	workspaceName := envOrDefault("PERGO_WORKSPACE", "PerGo Demo")
 
 	var workspaceID *uuid.UUID
-	if wsIDStr := envOrDefault("DEFAULT_WORKSPACE_ID", envOrDefault("PERGO_DEV_WORKSPACE_ID", "")); wsIDStr != "" {
+	if wsIDStr := envOrDefault("PERGO_DEV_WORKSPACE_ID", ""); wsIDStr != "" {
 		if id, err := uuid.Parse(wsIDStr); err == nil && id != uuid.Nil {
 			workspaceID = &id
 		}

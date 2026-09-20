@@ -46,30 +46,3 @@ func TestWABAConfigJSONMarshaling(t *testing.T) {
 		t.Errorf("unexpected json payload: %s", string(data))
 	}
 }
-
-func TestInboundPayloadJSONMarshaling(t *testing.T) {
-	testWSID := "11111111-2222-3333-4444-555555555555"
-	payload := inboundPayload{
-		Event:       "inbound_message",
-		TraceID:     "trace-1",
-		MessageID:   "wamid.1234",
-		Channel:     "whatsapp_cloud",
-		Timestamp:   "2026-08-17T12:00:00Z",
-		WorkspaceID: testWSID,
-		From:        "15551234567",
-		To:          "15559876543",
-		Body:        "Hello PerGo",
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatalf("failed to marshal inboundPayload: %v", err)
-	}
-
-	var parsed inboundPayload
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		t.Fatalf("failed to unmarshal inboundPayload: %v", err)
-	}
-	if parsed.WorkspaceID != testWSID || parsed.Body != "Hello PerGo" {
-		t.Errorf("unexpected unmarshaled payload: %+v", parsed)
-	}
-}

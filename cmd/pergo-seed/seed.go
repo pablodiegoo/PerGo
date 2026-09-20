@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/pkg/slug"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -323,65 +324,74 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 
 		conversationCount++
 		var lastInboundAt, lastOutboundAt time.Time
+		contactSlug := slug.Generate(conv.ContactName)
 
-		for _, msg := range conv.Messages {
+		for msgIdx, msg := range conv.Messages {
 			msgTime := now.Add(-time.Duration(msg.OffsetMinutes) * time.Minute)
-			traceID := uuid.New().String()
+			traceID := fmt.Sprintf("trace-seed-%s-%s-%d", ws.ID.String()[:8], contactSlug, msgIdx)
+			messageID := fmt.Sprintf("wamid.seed.%s.%d", contactSlug, msgIdx)
 			messageCount++
+
+			var alreadyExists bool
+			_ = pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM audit_logs WHERE workspace_id = $1 AND trace_id = $2)`, ws.ID, traceID).Scan(&alreadyExists)
 
 			if msg.Direction == "inbound" {
 				if msgTime.After(lastInboundAt) {
 					lastInboundAt = msgTime
 				}
-				payload, _ := buildInboundAuditPayload(
-					ws.ID,
-					traceID,
-					"wamid."+randToken(16),
-					conv.Channel,
-					contactPhone,
-					conv.RecipientIdentity,
-					msg.Body,
-					msgTime,
-				)
-				_, err = pool.Exec(ctx, `
-					INSERT INTO audit_logs (workspace_id, trace_id, event_type, payload, created_at)
-					VALUES ($1, $2, 'inbound_message', $3, $4)
-				`, ws.ID, traceID, payload, msgTime)
-				if err != nil {
-					return nil, fmt.Errorf("insert inbound audit log: %w", err)
+				if !alreadyExists {
+					payload, _ := buildInboundAuditPayload(
+						ws.ID,
+						traceID,
+						messageID,
+						conv.Channel,
+						contactPhone,
+						conv.RecipientIdentity,
+						msg.Body,
+						msgTime,
+					)
+					_, err = pool.Exec(ctx, `
+						INSERT INTO audit_logs (workspace_id, trace_id, event_type, payload, created_at)
+						VALUES ($1, $2, 'inbound_message', $3, $4)
+					`, ws.ID, traceID, payload, msgTime)
+					if err != nil {
+						return nil, fmt.Errorf("insert inbound audit log: %w", err)
+					}
 				}
 			} else {
 				if msgTime.After(lastOutboundAt) {
 					lastOutboundAt = msgTime
 				}
-				payload, _ := buildOutboundAuditPayload(
-					ws.ID,
-					traceID,
-					conv.Channel,
-					conv.RecipientIdentity,
-					contactPhone,
-					msg.Body,
-					msgTime,
-				)
-				_, err = pool.Exec(ctx, `
-					INSERT INTO audit_logs (workspace_id, trace_id, event_type, payload, created_at)
-					VALUES ($1, $2, 'outbound_message', $3, $4)
-				`, ws.ID, traceID, payload, msgTime)
-				if err != nil {
-					return nil, fmt.Errorf("insert outbound audit log: %w", err)
-				}
+				if !alreadyExists {
+					payload, _ := buildOutboundAuditPayload(
+						ws.ID,
+						traceID,
+						conv.Channel,
+						conv.RecipientIdentity,
+						contactPhone,
+						msg.Body,
+						msgTime,
+					)
+					_, err = pool.Exec(ctx, `
+						INSERT INTO audit_logs (workspace_id, trace_id, event_type, payload, created_at)
+						VALUES ($1, $2, 'outbound_message', $3, $4)
+					`, ws.ID, traceID, payload, msgTime)
+					if err != nil {
+						return nil, fmt.Errorf("insert outbound audit log: %w", err)
+					}
 
-				status := msg.Status
-				if status == "" {
-					status = "delivered"
-				}
-				_, err = pool.Exec(ctx, `
-					INSERT INTO message_dispatches (workspace_id, trace_id, current_channel, status, created_at, updated_at)
-					VALUES ($1, $2, $3, $4, $5, $5)
-					ON CONFLICT (trace_id) DO NOTHING
-				`, ws.ID, traceID, conv.Channel, status, msgTime)
-				if err != nil {
-					return nil, fmt.Errorf("insert message dispatch: %w", err)
+					status := msg.Status
+					if status == "" {
+						status = "delivered"
+					}
+					_, err = pool.Exec(ctx, `
+						INSERT INTO message_dispatches (workspace_id, trace_id, current_channel, status, created_at, updated_at)
+						VALUES ($1, $2, $3, $4, $5, $5)
+						ON CONFLICT (trace_id) DO NOTHING
+					`, ws.ID, traceID, conv.Channel, status, msgTime)
+					if err != nil {
+						return nil, fmt.Errorf("insert message dispatch: %w", err)
+					}
 				}
 			}
 		}
@@ -412,10 +422,14 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 	}
 	for _, al := range actionLogs {
 		logTime := now.Add(-time.Duration(al.Minutes) * time.Minute)
-		_, _ = pool.Exec(ctx, `
-			INSERT INTO user_action_logs (workspace_id, actor_type, actor_id, actor_name, action, source, created_at)
-			VALUES ($1, 'system_operator', 'seed-admin', $2, $3, $4, $5)
-		`, ws.ID, al.ActorName, al.Action, al.Source, logTime)
+		var actionExists bool
+		_ = pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM user_action_logs WHERE workspace_id = $1 AND action = $2 AND source = 'pergo-seed')`, ws.ID, al.Action).Scan(&actionExists)
+		if !actionExists {
+			_, _ = pool.Exec(ctx, `
+				INSERT INTO user_action_logs (workspace_id, actor_type, actor_id, actor_name, action, source, created_at)
+				VALUES ($1, 'system_operator', 'seed-admin', $2, $3, $4, $5)
+			`, ws.ID, al.ActorName, al.Action, al.Source, logTime)
+		}
 	}
 
 	return &SeedResult{

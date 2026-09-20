@@ -20,7 +20,8 @@ Fixes #
 
 ## Visual UI Gate (UI & Template Changes)
 
-<!-- PerGo enforces a visual UI gate for changes touching templ files, CSS, Tailwind, or frontend components. -->
+<!-- PerGo enforces a visual UI gate for changes touching templ files, CSS, Tailwind, or frontend components. See docs/SCREENSHOTS.md and docs/adr/0013-visual-asset-standards-and-screenshot-lifecycle.md -->
+- [ ] **UI changed: screenshots updated according to docs/SCREENSHOTS.md**
 - [ ] **Visual Verification**: I have attached Before / After screenshots or a screen recording demonstrating the UI behavior.
 - [ ] **N/A**: This PR does not touch templates, CSS, or user-facing UI.
 

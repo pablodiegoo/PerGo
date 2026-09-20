@@ -238,6 +238,7 @@ func TestSeedDatabase_Integration(t *testing.T) {
 	}
 
 	// Verify conversation thread for first contact
+	var initialThreadCount int
 	if len(conversations) > 0 {
 		thread, err := auditRepo.ListThreadByContact(ctx, result.Workspace.ID, conversations[0].ContactID, nil)
 		if err != nil {
@@ -245,6 +246,29 @@ func TestSeedDatabase_Integration(t *testing.T) {
 		}
 		if len(thread) < 2 {
 			t.Errorf("expected thread to have at least 2 messages, got %d", len(thread))
+		}
+		initialThreadCount = len(thread)
+	}
+
+	// Idempotency check: run Seed again and verify counts do not inflate
+	secondResult, err := Seed(ctx, pool, encryptor, opts)
+	if err != nil {
+		t.Fatalf("second Seed run failed: %v", err)
+	}
+	secondConversations, err := auditRepo.ListConversations(ctx, secondResult.Workspace.ID, "")
+	if err != nil {
+		t.Fatalf("ListConversations on second run failed: %v", err)
+	}
+	if len(secondConversations) != len(conversations) {
+		t.Errorf("expected conversation count to remain %d, got %d", len(conversations), len(secondConversations))
+	}
+	if len(secondConversations) > 0 {
+		secondThread, err := auditRepo.ListThreadByContact(ctx, secondResult.Workspace.ID, secondConversations[0].ContactID, nil)
+		if err != nil {
+			t.Fatalf("ListThreadByContact on second run failed: %v", err)
+		}
+		if len(secondThread) != initialThreadCount {
+			t.Errorf("expected thread message count to remain %d, got %d (duplicate messages created)", initialThreadCount, len(secondThread))
 		}
 	}
 }

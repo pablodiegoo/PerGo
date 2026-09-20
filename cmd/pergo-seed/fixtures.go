@@ -3,11 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/domain"
 )
 
@@ -43,17 +41,6 @@ func resolveWABACredentials(ctx context.Context) ResolvedCredentials {
 		}
 	}
 
-	if displayPhone == "" {
-		metaClient := client.NewWABAMetaClient(nil, "")
-		if details, err := metaClient.FetchPhoneNumberDetails(ctx, phoneID, token); err == nil && details != nil && details.DisplayPhoneNumber != "" {
-			if clean, valid := domain.SanitizePhone(details.DisplayPhoneNumber); valid {
-				displayPhone = clean
-			} else {
-				displayPhone = details.DisplayPhoneNumber
-			}
-			slog.Info("resolved WABA display phone number from Meta API", "display_phone", displayPhone, "verified_name", details.VerifiedName)
-		}
-	}
 	if displayPhone == "" {
 		displayPhone = phoneID
 	}
