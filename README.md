@@ -1,140 +1,214 @@
-# PerGo
+<p align="center">
+  <a href="https://github.com/pablodiegoo/PerGo">
+    <img src="docs/assets/pergo-banner.svg" alt="PerGo CPaaS Banner" width="100%">
+  </a>
+</p>
 
-PerGo is a self-hosted, open-source Omnichannel Communications Platform as a Service (CPaaS) engineered in Go. It exposes a single, unified REST API (`POST /api/v1/messages`) that abstracts away the fragmentation of managing multiple messaging providers—WhatsApp Web (unofficial via `whatsmeow`), WhatsApp Cloud (WABA), and Telegram—under a single standardized JSON payload.
+<h3 align="center">High-Performance, Self-Hosted Omnichannel CPaaS Engineered in Go</h3>
 
-It is built for backend developers integrating omnichannel messaging into CRMs/ERPs and for system operators managing channel connections, compliance, and logs under full data custody.
-
-> **⚡ 1-Click VPS Deployment (Production):**
-> ```bash
-> curl -fsSL https://raw.githubusercontent.com/pablodiegoo/Ecoar/main/PerGo/install.sh | bash
-> ```
-> Automated setup with Traefik v3 reverse proxy, Let's Encrypt SSL/TLS, PostgreSQL 16, and NATS JetStream.
->
-> **Interactive Documentation:** Real-time OpenAPI 3.1 & Scalar Portal embedded at `/docs`.
-
----
-
-## Core Value
-
-* **Unified API:** A single API request delivers a message through any configured channel with automatic fallback.
-* **Self-Hosted & Cost-Effective:** No per-message vendor markup. High-performance, self-hosted platform under your full custody (fully GDPR/LGPD compliant).
-* **Backpressure & Reliability:** Enforces a 1,000-message per-session queue limit before enqueue (yielding HTTP 429/422 on overload). Powered by NATS JetStream for durable queuing.
-* **Safety Primitives:** Staggered dispatch (1–3s random delay) for WhatsApp Web to mimic human behavior and minimize account suspension risk.
+<p align="center">
+  <a href="https://golang.org/"><img src="https://img.shields.io/badge/Go-1.25%2B-00ADD8?style=flat-square&logo=go" alt="Go 1.25+"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="MIT License"></a>
+  <a href="https://www.docker.com/"><img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker" alt="Docker"></a>
+  <a href="https://www.postgresql.org/"><img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql" alt="PostgreSQL 16"></a>
+  <a href="https://nats.io/"><img src="https://img.shields.io/badge/NATS-JetStream-27AAE1?style=flat-square&logo=natsdotio" alt="NATS JetStream"></a>
+  <a href="https://github.com/pablodiegoo/PerGo/actions"><img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="CI Build"></a>
+  <a href="https://spec.openapis.org/oas/v3.1.0"><img src="https://img.shields.io/badge/OpenAPI-3.1-85EA2D?style=flat-square&logo=openapiinitiative" alt="OpenAPI 3.1"></a>
+  <a href="https://github.com/pablodiegoo/PerGo"><img src="https://img.shields.io/badge/Agent%20Ready-/llms.txt-8A2BE2?style=flat-square" alt="Agent-Ready"></a>
+</p>
 
 ---
 
-## Technical Stack
+## Overview
 
-* **Language:** Go 1.25+ (Toolchain 1.26+)
-* **HTTP Router:** Echo v5 (`github.com/labstack/echo/v5`)
-* **Admin Dashboard:** `a-h/templ` (type-safe compile-time HTML template engine) + HTMX (for server-driven interactive components)
-* **Broker / Work-Queue:** NATS JetStream (durable delivery boundary)
-* **Persistence:** PostgreSQL via `pgx/v5` (driver) with `goose` for embedded schema migrations
-* **WhatsApp Web Integration:** `whatsmeow` (unofficial multi-device WhatsApp adapter)
-* **Rate Limiting:** `golang.org/x/time/rate` (token-bucket rate limiting)
+**PerGo** is a self-hosted, open-source Omnichannel Communication Platform as a Service (CPaaS) engineered from the ground up in Go. It abstracts away provider fragmentation by exposing a single, unified REST API (`POST /api/v1/messages`) that routes messages across **WhatsApp Web** (unofficial multi-device via `whatsmeow`), **WhatsApp Cloud API** (official Meta WABA), and **Telegram Bot API** under a standardized JSON contract with automatic fallback pipelines.
+
+Built for developers integrating mission-critical messaging into CRMs, ERPs, and autonomous AI agent workflows, PerGo delivers extreme resource efficiency (<50MB RAM), durable queuing via NATS JetStream, human-like anti-ban dispatch jitter, and 100% on-premise data sovereignty with zero per-message vendor markup.
 
 ---
 
-## Repository Directory Layout
+## Live Omnichannel Experience
 
-* `cmd/pergo/`: Server entry point and composition root.
-* `internal/`: Core application modules.
-*   `api/`: API handlers (health, messages, admin dashboard) and middlewares (auth, HTMX, rate limiter, trace).
-*   `channel/`: Message dispatch registry and channel adapters (WhatsApp Web, WABA, Telegram).
-*   `config/`: Configurations loaded from 12-factor environment variables.
-*   `domain/`: Core messaging domain structures.
-*   `platform/`: Shared infrastructural components (audit writer, crypto, database connections, NATS queue worker, shutdown orchestrator).
-*   `repository/`: Database repositories (workspaces, API keys, connections, audit).
-*   `session/`: WhatsApp device sessions and registry.
-* `static/`: Static assets (CSS, images) for the operator console.
-* `templates/`: `a-h/templ` components and views.
-
-## Documentation
-
-For detailed technical specifications, architecture blueprints, channel setup guides, and deployment workflows, consult the official documentation:
-
-* **[Getting Started](docs/getting-started/index.md):** Local installation, Docker Compose dependencies, and 1-Click VPS quickstart.
-* **[Architecture](docs/architecture/index.md):** Architectural summary, NATS JetStream concurrency, resilience, and database schema.
-* **[Channels](docs/channels/index.md):** WhatsApp Web (`whatsmeow`), WhatsApp Cloud (Meta WABA), and Telegram bot integrations.
-* **[API Reference](docs/api/index.md):** Endpoints reference, HMAC webhook signatures, and interactive Scalar developer portal.
-* **[Production Deployment](docs/deployment/index.md):** Production Docker Compose (`docker-compose.prod.yml`), Traefik v3 reverse proxy, and Let's Encrypt SSL/TLS.
-* **[Configuration](docs/getting-started/configuration.md):** Complete 12-factor environment variables (`.env`) specification.
-* **[Testing Guide](docs/development/testing.md):** Writing and running unit, race detection, and integration test suites.
+<p align="center">
+  <img src="docs/assets/screenshots/inbox-hero.png" alt="PerGo Live Omnichannel Inbox" width="100%">
+</p>
+<p align="center">
+  <em>Live Omnichannel Chat Inbox: Unified multi-turn conversation threads across WhatsApp Web, WABA, and Telegram with real-time delivery telemetry, contact badges, and channel indicators.</em>
+</p>
 
 ---
 
-## Getting Started
+## Why PerGo? Competitive Differentiators
 
-### Prerequisites
+Most open-source messaging solutions rely on heavy Node.js runtimes that consume hundreds of megabytes per session and suffer from event-loop starvation under high broadcast load. Commercial CPaaS vendors charge substantial per-message markups and force sensitive customer communication through third-party cloud infrastructure.
 
-* Go 1.26+ installed locally (if running outside Docker)
-* Docker and Docker Compose (recommended for dependencies)
-* PostgreSQL 16+ (if not running via Docker)
-* NATS Server (if not running via Docker)
+PerGo bridges this gap by combining the speed, safety, and memory footprint of compiled Go with enterprise-grade durability primitives:
 
-### 1. Run Dependencies (Postgres & NATS)
-
-Use Docker Compose to spin up the local environment dependencies:
-```bash
-docker compose up -d
-```
-
-This starts:
-* **PostgreSQL** on port `5433` (Username/Password/Database: `postgres`/`postgres`/`pergo`)
-* **NATS** on port `4222` (and management console on `8222`)
-
-### 2. Environment Variables
-
-Configure your local environment. Default variables are structured in the app configuration:
-* `PERGO_DATABASE_URL`: Connection string for PostgreSQL (e.g. `postgres://postgres:postgres@localhost:5433/pergo?sslmode=disable`)
-* `PERGO_NATS_URL`: Connection string for NATS (e.g. `nats://localhost:4222`)
-* `PERGO_ADMIN_PASSWORD`: Plain password to access the `/admin` operator console.
-* `PERGO_SESSION_SECRET`: Key used for signing administration cookies.
-
-### 3. Running Locally
-
-To start the application, run:
-```bash
-make dev
-```
-or
-```bash
-go run ./cmd/pergo
-```
-
-On start, goose database migrations will automatically be executed to set up the necessary PostgreSQL schemas.
-
-### 4. Running via Docker
-
-To build and run the entire stack (including the `pergo` binary itself) inside Docker:
-```bash
-docker compose up --build
-```
+| Dimension | PerGo | Node.js Bot Frameworks<br/>*(Evolution API, WPPConnect)* | Legacy SaaS CPaaS<br/>*(Twilio, Zenvia, Take Blip)* |
+| :--- | :--- | :--- | :--- |
+| **Memory Footprint** | **<50MB RAM** (Single compiled Go binary) | 300MB–800MB+ RAM per instance | N/A (Closed-source cloud API) |
+| **Pricing & Markup** | **100% Free & Open Source** (Zero markup per message) | Free / Open Source (self-hosted) | $0.005–$0.05+ markup per message + recurring SaaS tiers |
+| **Runtime & Concurrency** | **Compiled Go binary** with lightweight goroutines | Single-threaded JavaScript event loop | Multi-tenant cloud black box |
+| **Message Backpressure** | **NATS JetStream** durable work queues with strict session limits | In-memory queues or Redis without native backpressure | Proprietary cloud queuing |
+| **Anti-Ban Safety** | **Human-like anti-ban jitter** (1–3s randomized delay) + token bucket | Rudimentary fixed delay | Not applicable (official APIs only) |
+| **Data Custody & Privacy** | **100% On-Premise / Self-Hosted** (Strict GDPR & LGPD compliance) | Self-hosted | Multi-tenant cloud: customer data leaves your perimeter |
+| **Developer Experience** | **Embedded Scalar OpenAPI 3.1 & `/llms.txt` Agent Discovery** | Static markdown or basic Swagger | Proprietary SDKs & documentation |
+| **Channel Redundancy** | **Built-in Automatic Fallback Pipelines** (e.g. Telegram → WABA) | Manual implementation per script | Vendor lock-in within proprietary ecosystem |
 
 ---
 
-## Verification & Testing
+## Architecture
 
-To run the unit tests:
-```bash
-make test
-```
+PerGo enforces clean separation of concerns: inbound HTTP requests and external provider events are ingested and immediately enqueued into a durable **NATS JetStream** work-queue boundary, insulating external networks and API consumers from transient surges.
 
-To run tests with race condition detection:
-```bash
-make test-race
-```
+```mermaid
+flowchart TD
+    subgraph Clients["Clients & Upstream Services"]
+        API["Backend Apps / CRMs / Autonomous Agents"]
+        WebhookSub["Customer Webhook Endpoints"]
+    end
 
-To lint the codebase:
-```bash
-make lint
+    subgraph PerGo["PerGo CPaaS Engine"]
+        HTTP["Echo v5 HTTP Server & Ingestion Engine"]
+        Scalar["Embedded Scalar OpenAPI 3.1 (/docs)"]
+        AgentIdx["Curated Agent Index (/llms.txt)"]
+
+        subgraph Queue["Durable Message Broker"]
+            JetStream["NATS JetStream Work-Queue Boundary<br/>(Durable Storage, At-Least-Once Delivery, Backpressure)"]
+        end
+
+        subgraph Processors["Pipeline Processors"]
+            OutboundProc["Outbound Dispatch Processor<br/>(Token-Bucket Limiter + Human Anti-Ban Jitter)"]
+            InboundProc["Inbound Event Processor<br/>(Normalization, Deduplication & Delivery Timing)"]
+        end
+
+        subgraph Adapters["Channel Adapters"]
+            WABA["WhatsApp Cloud API (Meta Graph API)"]
+            WhatsMeow["WhatsApp Web (whatsmeow Multi-Device)"]
+            Telegram["Telegram Bot API"]
+        end
+
+        subgraph Storage["Persistence & Crypto Layer"]
+            PG[(PostgreSQL 16 with pgx/v5)]
+            Crypto["AES-256-GCM Envelope Encryption (KEK/DEK)"]
+        end
+    end
+
+    subgraph Networks["External Messaging Networks"]
+        MetaCloud["Meta WhatsApp Cloud Infrastructure"]
+        WAWeb["WhatsApp Multi-Device WebSocket Network"]
+        TGNet["Telegram MTProto / Bot Network"]
+    end
+
+    API -->|POST /api/v1/messages| HTTP
+    HTTP -->|Enqueue Outbound Job| JetStream
+    JetStream -->|Consume Work Item| OutboundProc
+    OutboundProc -->|Dispatch Message| Adapters
+    Adapters -->|HTTPS REST| MetaCloud
+    Adapters -->|TLS WebSocket| WAWeb
+    Adapters -->|HTTPS Bot API| TGNet
+
+    MetaCloud -->|Inbound Webhook| HTTP
+    WAWeb -->|Inbound Socket Frame| WhatsMeow
+    TGNet -->|Inbound Webhook| HTTP
+
+    WhatsMeow -->|Raw Socket Event| InboundProc
+    HTTP -->|Ingest Provider Webhook| InboundProc
+    InboundProc -->|Safe Webhook Delivery (HMAC)| WebhookSub
+    InboundProc -->|Persist Inbound Message| PG
+    OutboundProc -->|Persist Dispatch Status| PG
+    Adapters <-->|Secure Device Session Storage| Crypto
+    Crypto <--> PG
 ```
 
 ---
 
-## Installation
+## Feature Showcase
 
-To set up PerGo on your local machine or server:
+<table>
+  <tr>
+    <td width="50%">
+      <h4 align="center">Real-Time Operator Dashboard</h4>
+      <a href="docs/assets/screenshots/dashboard.png">
+        <img src="docs/assets/screenshots/dashboard.png" alt="Operator Dashboard" width="100%">
+      </a>
+      <p align="center"><em>Live delivery throughput, active connection health cards, and workspace metrics.</em></p>
+    </td>
+    <td width="50%">
+      <h4 align="center">Device Connections & QR Pairing</h4>
+      <a href="docs/assets/screenshots/devices-qr.png">
+        <img src="docs/assets/screenshots/devices-qr.png" alt="WhatsApp QR Pairing" width="100%">
+      </a>
+      <p align="center"><em>Instant WhatsApp Web pairing via browser QR scan and live connection state management.</em></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h4 align="center">Broadcast Campaign Manager</h4>
+      <a href="docs/assets/screenshots/campaigns.png">
+        <img src="docs/assets/screenshots/campaigns.png" alt="Broadcast Campaigns" width="100%">
+      </a>
+      <p align="center"><em>Segmented message campaigns with tag filtering, token-bucket pacing, and delivery progress.</em></p>
+    </td>
+    <td width="50%">
+      <h4 align="center">Embedded Scalar API Explorer</h4>
+      <a href="docs/assets/screenshots/api-docs.png">
+        <img src="docs/assets/screenshots/api-docs.png" alt="Scalar OpenAPI 3.1 Portal" width="100%">
+      </a>
+      <p align="center"><em>Zero-dependency OpenAPI 3.1 interactive testing console served at <code>/docs</code>.</em></p>
+    </td>
+  </tr>
+</table>
+
+---
+
+## ☁️ PerGo Cloud (Coming Soon)
+
+Are you looking for an enterprise managed solution without the operational overhead of running Docker, configuring reverse proxies, or rotating IP proxies for WhatsApp Web?
+
+**PerGo Cloud** is our commercial managed SaaS platform engineered for agencies, growth teams, and enterprise systems that require guaranteed delivery SLAs and turnkey Meta onboarding:
+
+| Feature / Capability | Self-Hosted Community Edition | ☁️ PerGo Cloud (Managed SaaS) |
+| :--- | :--- | :--- |
+| **License & Source Code** | 100% Free & Open-Source (MIT) | Commercial Managed Control Plane |
+| **Infrastructure & Hosting** | Self-managed VPS, Docker, or Bare Metal | High-Availability Managed Multi-Region Cloud |
+| **Maintenance & Updates** | Manual Docker Compose updates & database migrations | Zero-downtime rolling updates & automated off-site backups |
+| **WhatsApp Cloud (WABA)** | Manual Meta App & System User configuration | 1-Click Embedded Meta Tech Provider Onboarding |
+| **WhatsApp Web Anti-Ban** | Single static server IP (higher suspension risk) | Managed Residential Proxy Pools with dynamic geo-rotation |
+| **Message Queuing & Broker** | Single-node NATS JetStream container | Fault-tolerant Clustered NATS JetStream with DLQ alerting |
+| **Multi-Tenancy & Billing** | Single organization per installation | Multi-tenant organization hierarchies, seat RBAC & invoicing |
+| **Support & SLAs** | Community GitHub Discussions & Issues | 24/7 Dedicated Support, SLA guarantees & private Slack channel |
+
+<p align="center">
+  <a href="mailto:pablodiegoo@gmail.com?subject=[PerGo%20Cloud]%20Early%20Access%20Request">
+    <img src="https://img.shields.io/badge/☁️%20Request%20Early%20Access-PerGo%20Cloud-007ACC?style=for-the-badge&logo=googlecloud" alt="Request Early Access">
+  </a>
+</p>
+
+> **Join the Early Access Program:** Interested in testing PerGo Cloud before public launch?  
+> Send an email to [**pablodiegoo@gmail.com**](mailto:pablodiegoo@gmail.com?subject=[PerGo%20Cloud]%20Early%20Access%20Request) with your estimated monthly message volume and channel requirements to receive an invitation to our private beta.
+
+---
+
+## 60-Second Quickstart
+
+### Option A: Automated 1-Click VPS Installer (Recommended for Production)
+
+Deploy PerGo directly to any fresh Ubuntu/Debian VPS with **Traefik v3**, automated Let's Encrypt SSL/TLS certificates, PostgreSQL 16, and NATS JetStream:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pablodiegoo/PerGo/main/install.sh | bash
+```
+
+Or run non-interactively with your environment variables:
+
+```bash
+./install.sh --domain api.pergo.yourdomain.com --email admin@yourdomain.com --yes
+```
+
+---
+
+### Option B: Local Docker Compose (Recommended for Evaluation)
 
 1. **Clone the repository:**
    ```bash
@@ -142,105 +216,90 @@ To set up PerGo on your local machine or server:
    cd PerGo
    ```
 
-2. **Install Go dependencies:**
-   Make sure you have Go 1.26+ installed, then download the dependencies:
+2. **Launch dependencies:**
    ```bash
-   go mod download
+   docker compose up -d
    ```
 
-3. **Install Code-Generation Tools:**
-   PerGo uses `a-h/templ` for the admin UI. Install it to your path:
+3. **Run PerGo locally:**
    ```bash
-   go install github.com/a-h/templ/cmd/templ@latest
+   # Copy environment defaults
+   cp .env.example .env
+   
+   # Run with hot reload (or 'go run ./cmd/pergo')
+   make dev
    ```
 
-4. **Generate Templ Files:**
-   Generate the Go templates from the `.templ` source files:
-   ```bash
-   make generate
-   ```
-
-5. **Build the Application:**
-   Compile the binary to `./bin/pergo`:
-   ```bash
-   make build
-   ```
+4. **Open your browser:**
+   - **Operator Console:** [http://localhost:8080/admin](http://localhost:8080/admin) (Password: `troque-esta-senha`)
+   - **Interactive API Documentation:** [http://localhost:8080/docs](http://localhost:8080/docs)
+   - **Health Probe:** [http://localhost:8080/healthz](http://localhost:8080/healthz)
 
 ---
 
-## Usage Examples
+## API Usage Examples
 
-PerGo exposes a single unified REST endpoint at `POST /api/v1/messages` to send messages. All requests must include a workspace API Key passed in the `Authorization` header.
+PerGo exposes a unified endpoint at `POST /api/v1/messages`. All requests authenticate using a Workspace API key generated in the operator console.
 
-### Authenticating
-Generate an API key in the admin dashboard (by default at `http://localhost:8080/admin`).
-Include it in your request headers:
-```http
-Authorization: Bearer <your_api_key>
-```
-
-### 1. Send a Text Message (WhatsApp Web)
+### 1. Send WhatsApp Web Message
 ```bash
 curl -X POST http://localhost:8080/api/v1/messages \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_WORKSPACE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "to": "5511999999999",
     "channel": "whatsapp",
-    "body": "Hello from PerGo!"
+    "body": "Hello from PerGo! Unified CPaaS in action."
   }'
 ```
 
-### 2. Send a Text Message with Fallbacks (Telegram with WABA fallback)
+### 2. Send Telegram Message with Automatic WABA Fallback
 ```bash
 curl -X POST http://localhost:8080/api/v1/messages \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_WORKSPACE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "to": "5511999999999",
     "channel": "telegram",
-    "body": "Hello from PerGo with Fallbacks!",
+    "body": "Critical alert: your invoice has been generated.",
     "fallback_channels": ["whatsapp_cloud"]
   }'
 ```
 
-### 3. Send a Media Message
+### 3. Send Media Document (PDF / Image / Voice Note)
 ```bash
 curl -X POST http://localhost:8080/api/v1/messages \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_WORKSPACE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "to": "5511999999999",
     "channel": "whatsapp_cloud",
     "body": "",
     "media": {
-      "media_url": "https://example.com/invoice.pdf",
+      "media_url": "https://example.com/monthly-statement.pdf",
       "media_type": "document",
-      "filename": "invoice.pdf",
-      "caption": "Your monthly invoice"
+      "filename": "monthly-statement.pdf",
+      "caption": "Your monthly statement is ready."
     }
   }'
 ```
 
-### 4. Send a WhatsApp Template (WhatsApp Cloud API)
+### 4. Send Pre-Approved WhatsApp Cloud Template (WABA)
 ```bash
 curl -X POST http://localhost:8080/api/v1/messages \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_WORKSPACE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "to": "5511999999999",
     "channel": "whatsapp_cloud",
-    "body": "",
-    "template_name": "welcome_message",
+    "template_name": "order_confirmation",
     "language": "en_US",
     "components": [
       {
         "type": "body",
         "parameters": [
-          {
-            "type": "text",
-            "text": "Jane Doe"
-          }
+          {"type": "text", "text": "Pablo Diego"},
+          {"type": "text", "text": "ORD-2026-9821"}
         ]
       }
     ]
@@ -249,99 +308,50 @@ curl -X POST http://localhost:8080/api/v1/messages \
 
 ---
 
-## Contributing
+## 🤖 Agent-Ready CPaaS & Autonomous AI
 
-We welcome contributions to PerGo! If you want to contribute, please follow these guidelines:
+PerGo is engineered for autonomous AI agents and modern LLM orchestration frameworks:
 
-1. **Open an Issue:** Discuss significant changes by creating an issue first.
-2. **Submit a Pull Request:** Fork the repository, create a branch, and submit your PR.
-3. **Format & Verify:** Ensure that the linter passes and all unit tests run successfully before committing:
+* **Curated Agent Index (`/llms.txt` & `/llms-full.txt`)**: Machine-readable specification detailing system architecture, message schemas, and API constraints for rapid agent context ingestion.
+* **Content Negotiation**: Requesting any documented route with `Accept: text/markdown` automatically yields clean, token-efficient Markdown instead of HTML.
+* **Model Context Protocol (MCP) Server**: PerGo includes a built-in MCP diagnostic suite allowing AI agents (like Claude Desktop, Cursor, or custom sidecars) to audit and control messaging infrastructure programmatically:
+  - `diagnose_connection_health`: Test socket connections, decrypt credentials, and verify provider tokens.
+  - `simulate_webhook_event`: Synthesize mock inbound messages, button clicks, and delivery receipts for automated pipeline testing.
+  - `replay_webhook_dlq`: Inspect and replay failed webhook deliveries from the encrypted Dead-Letter Queue.
+  - `inspect_queue_health`: Real-time telemetry on NATS JetStream consumer lag, delivery rates, and pending dispatches.
+
+---
+
+## Official Documentation Hub
+
+For exhaustive technical blueprints, channel credential guides, and deployment playbooks, visit the official documentation:
+
+* **[Getting Started](docs/getting-started/index.md):** Local installation, configuration variables, and dependencies.
+* **[Architecture Blueprint](docs/architecture/index.md):** Detailed concurrency model, JetStream resilience, and schema designs.
+* **[Channel Integrations](docs/channels/index.md):** Setup guides for WhatsApp Web (`whatsmeow`), WhatsApp Cloud (WABA), and Telegram.
+* **[API Reference](docs/api/index.md):** Complete OpenAPI 3.1 specification, HMAC webhooks, and endpoint contracts.
+* **[Production Deployment](docs/deployment/index.md):** Production Docker Compose (`docker-compose.prod.yml`), Traefik v3, and TLS.
+* **[Visual Asset Guidelines](docs/SCREENSHOTS.md):** Deterministic mock data seeding and UI screenshot capture lifecycle (ADR 0013).
+* **[Contributing Guide](CONTRIBUTING.md):** Branching model, code standards, and PR workflows.
+* **[Code of Conduct](CODE_OF_CONDUCT.md):** Contributor Covenant v2.1 standards.
+* **[Security Policy](SECURITY.md):** Vulnerability reporting and disclosure policies.
+
+---
+
+## Community & Contributing
+
+We welcome community contributions! Please read our **[Contributing Guide](CONTRIBUTING.md)** before submitting a Pull Request.
+
+1. **Bug Reports & Feature Requests:** Use our structured [GitHub Issue Forms](https://github.com/pablodiegoo/PerGo/issues/new/choose).
+2. **Pre-flight Checks:** Verify your changes pass formatting, race condition testing, and linting:
    ```bash
    make lint
-   ```
-   ```bash
    make test-race
    ```
-
-Refer to the [Development Guide](docs/development/index.md) for folder structure details.
-<!-- VERIFY: CONTRIBUTING.md file exists and contributing instructions point to standard fork-and-pull-request flow -->
+3. **UI Contributions:** If your pull request modifies UI templates or styles, update the official screenshots using `make screenshots` according to **[docs/SCREENSHOTS.md](docs/SCREENSHOTS.md)**.
 
 ---
 
 ## License
 
-This project is licensed under the MIT License.
-<!-- VERIFY: The project is licensed under the MIT License -->
-
----
-
----
-
-## Production Deployment (VPS & Docker Compose)
-
-PerGo provides an enterprise-ready, standalone Docker Compose architecture (`docker-compose.prod.yml`) featuring **Traefik v3** for automated Let's Encrypt SSL/TLS certificate provisioning and zero-config HTTP-to-HTTPS redirection.
-
-### Option A: Automated 1-Click Installer (Recommended)
-
-Run the production installer on any clean Ubuntu/Debian/Linux VPS:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/pablodiegoo/Ecoar/main/PerGo/install.sh | bash
-```
-
-Or run non-interactively with predefined parameters:
-
-```bash
-./install.sh --domain api.pergo.yourdomain.com --email admin@yourdomain.com --yes
-```
-
-The script automatically:
-1. Validates and installs required dependencies (Docker Engine and Docker Compose plugin).
-2. Prompts for your domain and Let's Encrypt notification email.
-3. Generates cryptographically secure secrets (`PERGO_KEK_BASE64` 32-byte master encryption key, session secrets, and database passwords).
-4. Writes a hardened `.env` file with `chmod 600` permissions.
-5. Launches the full production stack via `docker compose -f docker-compose.prod.yml up -d` and verifies service health.
-
-### Option B: Manual Production Setup
-
-1. **Configure Environment:**
-   Copy the production environment template:
-   ```bash
-   cp .env.production.example .env
-   chmod 600 .env
-   ```
-   Edit `.env` and fill in:
-   - `DOMAIN`: Your public FQDN (DNS A record must point to your server IP).
-   - `ACME_EMAIL`: Contact email for Let's Encrypt certificate renewals.
-   - `PERGO_KEK_BASE64`: 32-byte Base64 key (`openssl rand -base64 32`).
-   - `POSTGRES_PASSWORD`: Strong password for PostgreSQL.
-   - `PERGO_ADMIN_PASSWORD`: Password for the `/admin` operator console.
-   - `PERGO_SESSION_SECRET`: Random 32-character string.
-
-2. **Launch the Production Stack:**
-   ```bash
-   make prod-stack
-   # or: docker compose -f docker-compose.prod.yml up -d
-   ```
-
-3. **Verify Deployment:**
-   - **Public API & Health:** `https://<YOUR_DOMAIN>/healthz`
-   - **Readiness Probe:** `https://<YOUR_DOMAIN>/readyz`
-   - **Interactive API Documentation:** `https://<YOUR_DOMAIN>/docs`
-   - **Operator Dashboard:** `https://<YOUR_DOMAIN>/admin`
-
-### Useful Production Commands
-
-```bash
-# View live logs across all containers
-docker compose -f docker-compose.prod.yml logs -f
-
-# Check container health and status
-docker compose -f docker-compose.prod.yml ps
-
-# Restart services
-docker compose -f docker-compose.prod.yml restart
-
-# Stop services
-docker compose -f docker-compose.prod.yml down
-```
+This project is licensed under the [MIT License](LICENSE).

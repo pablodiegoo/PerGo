@@ -163,3 +163,108 @@ func TestDocumentation_RelativeLinksResolve(t *testing.T) {
 		}
 	}
 }
+
+// TestDocumentation_READMEOverhaul verifies that README.md satisfies all
+// acceptance criteria from Issue #131: visual assets, differentiators, hero inbox,
+// 2x2 showcase, interactive architecture, PerGo Cloud spotlight, quickstart, and agent discovery.
+func TestDocumentation_READMEOverhaul(t *testing.T) {
+	root := findRepoRoot(t)
+	readmePath := filepath.Join(root, "README.md")
+	content, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("Failed to read README.md: %v", err)
+	}
+	text := string(content)
+
+	// 1. Header banner SVG
+	if !strings.Contains(text, "docs/assets/pergo-banner.svg") {
+		t.Errorf("README.md must reference header banner at docs/assets/pergo-banner.svg")
+	}
+	if _, err := os.Stat(filepath.Join(root, "docs", "assets", "pergo-banner.svg")); os.IsNotExist(err) {
+		t.Errorf("Header banner docs/assets/pergo-banner.svg does not exist on disk")
+	}
+
+	// 2. All 5 screenshot previews must be referenced and exist
+	screenshots := []string{
+		"docs/assets/screenshots/inbox-hero.png",
+		"docs/assets/screenshots/dashboard.png",
+		"docs/assets/screenshots/devices-qr.png",
+		"docs/assets/screenshots/campaigns.png",
+		"docs/assets/screenshots/api-docs.png",
+	}
+	for _, sc := range screenshots {
+		if !strings.Contains(text, sc) {
+			t.Errorf("README.md must reference screenshot %s", sc)
+		}
+		if _, err := os.Stat(filepath.Join(root, sc)); os.IsNotExist(err) {
+			t.Errorf("Screenshot asset %s does not exist on disk", sc)
+		}
+	}
+
+	// 3. Top hero preview: inbox-hero.png must appear before the 2x2 feature showcase
+	inboxIdx := strings.Index(text, "inbox-hero.png")
+	dashboardIdx := strings.Index(text, "dashboard.png")
+	if inboxIdx == -1 {
+		t.Errorf("README.md missing top hero inbox preview (inbox-hero.png)")
+	} else if dashboardIdx != -1 && inboxIdx > dashboardIdx {
+		t.Errorf("Top hero preview (inbox-hero.png) must appear before secondary feature showcase screenshots")
+	}
+
+	// 4. Badges / Shields
+	for _, badge := range []string{"Go", "MIT", "Docker", "PostgreSQL", "NATS", "OpenAPI"} {
+		if !strings.Contains(text, badge) {
+			t.Errorf("README.md missing badge/technology indicator for %q", badge)
+		}
+	}
+
+	// 5. Competitive Differentiators matrix
+	for _, diff := range []string{"Evolution API", "WPPConnect", "Twilio", "Zenvia", "<50MB"} {
+		if !strings.Contains(text, diff) {
+			t.Errorf("README.md missing competitive differentiator item %q", diff)
+		}
+	}
+
+	// 6. Interactive Architecture (Mermaid)
+	if !strings.Contains(text, "```mermaid") {
+		t.Errorf("README.md must include a mermaid architecture diagram")
+	}
+	for _, flowItem := range []string{"Inbound", "Outbound", "JetStream"} {
+		if !strings.Contains(text, flowItem) {
+			t.Errorf("Mermaid architecture diagram missing flow node %q", flowItem)
+		}
+	}
+
+	// 7. PerGo Cloud Spotlight & Early Access CTA
+	cloudCTA := "mailto:pablodiegoo@gmail.com?subject=[PerGo%20Cloud]%20Early%20Access%20Request"
+	if !strings.Contains(text, cloudCTA) {
+		t.Errorf("README.md must include early access CTA link: %s", cloudCTA)
+	}
+	if !strings.Contains(text, "PerGo Cloud") {
+		t.Errorf("README.md must contain a dedicated 'PerGo Cloud' section")
+	}
+	if !strings.Contains(text, "Self-Hosted") && !strings.Contains(text, "Community") {
+		t.Errorf("PerGo Cloud section must include comparison table with Self-Hosted Community")
+	}
+
+	// 8. 60-Second Quickstart with verifiable 1-Click VPS installer pointing to pablodiegoo/PerGo on main
+	expectedCurl := "curl -fsSL https://raw.githubusercontent.com/pablodiegoo/PerGo/main/install.sh | bash"
+	if !strings.Contains(text, expectedCurl) {
+		t.Errorf("README.md must include 1-Click VPS installer pointing to: %s", expectedCurl)
+	}
+
+	// 9. Agent-Ready CPaaS (/llms.txt and MCP diagnostics)
+	if !strings.Contains(text, "/llms.txt") {
+		t.Errorf("README.md must reference /llms.txt")
+	}
+	if !strings.Contains(text, "Model Context Protocol") && !strings.Contains(text, "MCP") {
+		t.Errorf("README.md must reference Model Context Protocol (MCP)")
+	}
+
+	// 10. Hygiene: No legacy OmniGo or local paths
+	if strings.Contains(text, "OmniGo") {
+		t.Errorf("README.md must not contain legacy string 'OmniGo'")
+	}
+	if strings.Contains(text, "file:///home/pablo") {
+		t.Errorf("README.md must not contain local path 'file:///home/pablo'")
+	}
+}
