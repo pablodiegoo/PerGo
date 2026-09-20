@@ -12,7 +12,7 @@
 #    make lint       → golangci-lint
 # ─────────────────────────────────────────────────────────────
 
-.PHONY: dev prod infra infra-down build generate test test-race test-integration coverage migrate-up migrate-down lint verify-docs clean help down
+.PHONY: dev prod infra infra-down build generate test test-race test-integration coverage migrate-up migrate-down lint verify-docs clean help down hooks
 
 # Carrega variáveis do .env se ele existir (sem expor no shell pai)
 ifneq (,$(wildcard .env))
@@ -135,6 +135,12 @@ verify-docs:
 screenshots:
 	@echo "→ Capturando screenshots de UI (1440x900)..."
 	@node scripts/capture_screenshots.js
+
+## hooks: configura git hooks locais para proteção contra vazamento de segredos
+hooks:
+	@git config core.hooksPath .githooks
+	@chmod +x .githooks/*
+	@echo "✓ Git hooks configurados com sucesso em .githooks"
 
 ## clean: remove binários e arquivos temporários
 clean:

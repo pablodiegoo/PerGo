@@ -88,7 +88,7 @@ Enables external platforms to provision and configure tenant workspaces dynamica
   "id": "a5e8c1b2-3f4d-4e5a-8b9c-0d1e2f3a4b5c",
   "name": "Acme Corp",
   "api_key": "pgo_live_8f3d1b9a7c2e4f0a1b2c3d4e5f6a7b8c",
-  "webhook_secret": "whsec_9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d",
+  "webhook_secret": "whsec_example_dummy_placeholder",
   "created_at": "2026-08-14T18:00:00Z"
 }
 ```

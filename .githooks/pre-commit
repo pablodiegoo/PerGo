@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# PerGo Pre-Commit Security Hook
+# Prevents accidental commits of secrets and sensitive credentials to the public repository.
+
+set -e
+
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# 1. Block staging of actual .env files (except examples and templates)
+staged_env_files=$(git diff --cached --name-only --diff-filter=ACM | grep -E '^(\.env|\.env\.local|\.env\.production|\.env\.staging)$' || true)
+if [ -n "$staged_env_files" ]; then
+    echo -e "${RED}${BOLD}[ERROR] Pre-commit Hook: Attempting to commit active environment file:${NC}"
+    echo -e "${RED}$staged_env_files${NC}"
+    echo -e "${YELLOW}Active .env files must never be committed to a public repository.${NC}"
+    echo -e "${YELLOW}Use .env.example with dummy placeholders instead.${NC}"
+    exit 1
+fi
+
+# 2. Check for Gitleaks binary
+GITLEAKS_BIN=""
+if command -v gitleaks >/dev/null 2>&1; then
+    GITLEAKS_BIN="gitleaks"
+elif [ -x "$HOME/go/bin/gitleaks" ]; then
+    GITLEAKS_BIN="$HOME/go/bin/gitleaks"
+elif [ -n "$GOPATH" ] && [ -x "$GOPATH/bin/gitleaks" ]; then
+    GITLEAKS_BIN="$GOPATH/bin/gitleaks"
+fi
+
+if [ -n "$GITLEAKS_BIN" ]; then
+    echo -e "${GREEN}[INFO] Running Gitleaks on staged changes...${NC}"
+    CONFIG_FLAG=""
+    if [ -f ".gitleaks.toml" ]; then
+        CONFIG_FLAG="--config=.gitleaks.toml"
+    fi
+
+    if ! "$GITLEAKS_BIN" protect --staged --verbose $CONFIG_FLAG; then
+        echo -e "${RED}${BOLD}[BLOCKED] Gitleaks detected potential secrets in your staged changes!${NC}"
+        echo -e "${YELLOW}Please remove the secrets or update .gitleaks.toml allowlist if this is a false positive.${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}[OK] Gitleaks check passed.${NC}"
+    exit 0
+fi
+
+# 3. Fallback: Fast built-in pattern check on staged diff if Gitleaks is not installed
+echo -e "${YELLOW}[WARN] Gitleaks binary not found. Running built-in secret pattern heuristics...${NC}"
+echo -e "${YELLOW}(Install Gitleaks for complete detection: go install github.com/zricethezav/gitleaks/v8@latest)${NC}"
+
+# Patterns for high-confidence secrets
+PATTERNS=(
+    "-----BEGIN (RSA|DSA|EC|OPENSSH|PGP|PRIVATE) KEY-----"
+    "AKIA[0-9A-Z]{16}"
+    "ghp_[a-zA-Z0-9]{36}"
+    "github_pat_[a-zA-Z0-9_]{82}"
+    "sk_live_[0-9a-zA-Z]{24}"
+    "xox[baprs]-[0-9a-zA-Z]{10,48}"
+    "whsec_[0-9a-zA-Z]{32}"
+)
+
+# Scan staged diff (added lines only)
+diff_content=$(git diff --cached -U0 | grep -E '^\+[^+]' || true)
+
+has_leak=0
+for pattern in "${PATTERNS[@]}"; do
+    matched=$(echo "$diff_content" | grep -E -e "$pattern" || true)
+    if [ -n "$matched" ]; then
+        # Check if line contains known test/mock keywords
+        is_safe=1
+        while IFS= read -r line; do
+            if [ -n "$line" ] && ! echo "$line" | grep -qiE "mock|dummy|placeholder|example|_test\.go"; then
+                is_safe=0
+                echo -e "${RED}${BOLD}[LEAK DETECTED] Match for pattern: ${pattern}${NC}"
+                echo -e "${RED}Line: ${line}${NC}"
+            fi
+        done <<< "$matched"
+
+        if [ "$is_safe" -eq 0 ]; then
+            has_leak=1
+        fi
+    fi
+done
+
+if [ "$has_leak" -eq 1 ]; then
+    echo -e "${RED}${BOLD}[BLOCKED] High-risk secret detected in staged commit!${NC}"
+    echo -e "${RED}Aborting commit to protect public repository.${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}[OK] Secret pre-commit heuristics passed.${NC}"
+exit 0

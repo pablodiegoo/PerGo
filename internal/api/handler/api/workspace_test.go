@@ -48,7 +48,7 @@ func (m *mockWorkspaceRepo) GenerateWebhookSecret(ctx context.Context, id uuid.U
 	if m.generateSecretFunc != nil {
 		return m.generateSecretFunc(ctx, id)
 	}
-	return "whsec_mocked1234567890abcdef1234567890abcdef", nil
+	return "mock_whsec_placeholder_secret", nil
 }
 
 func (m *mockWorkspaceRepo) SetFlowWebhookURL(ctx context.Context, id uuid.UUID, flowWebhookURL *string) error {
@@ -130,8 +130,8 @@ func TestWorkspaceAPIHandler_Create_Success(t *testing.T) {
 	if res.APIKey == nil || *res.APIKey != "pgo_live_mocked1234567890abcdef" {
 		t.Errorf("expected api_key 'pgo_live_mocked1234567890abcdef', got %v", res.APIKey)
 	}
-	if res.WebhookSecret == nil || *res.WebhookSecret != "whsec_mocked1234567890abcdef1234567890abcdef" {
-		t.Errorf("expected webhook_secret 'whsec_mocked1234567890abcdef1234567890abcdef', got %v", res.WebhookSecret)
+	if res.WebhookSecret == nil || *res.WebhookSecret != "mock_whsec_placeholder_secret" {
+		t.Errorf("expected webhook_secret 'mock_whsec_placeholder_secret', got %v", res.WebhookSecret)
 	}
 }
 

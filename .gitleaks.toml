@@ -1,0 +1,23 @@
+title = "PerGo Gitleaks Configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist for tests, docs, and mock fixtures"
+paths = [
+  '''_test\.go$''',
+  '''docs/specs/''',
+  '''test/''',
+]
+stopwords = [
+  "mock",
+  "dummy",
+  "example",
+  "placeholder",
+]
+regexes = [
+  '''pgo_live_mocked[a-zA-Z0-9]+''',
+  '''mock_whsec_[a-zA-Z0-9_]+''',
+  '''whsec_example_[a-zA-Z0-9_]+''',
+]
