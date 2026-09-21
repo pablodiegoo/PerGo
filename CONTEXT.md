@@ -144,3 +144,32 @@ _Avoid_: DLQ retry button, manual redelivery, payload pusher
 A high-value MCP domain tool (`inspect_queue_health`) querying real-time NATS JetStream stream capacity, pending consumer acks, and retention queue pressure across message and webhook streams.
 _Avoid_: NATS monitor, queue stats, stream checker
 
+### Localization & Presentation
+
+**Supported Locale**:
+An explicitly supported IETF BCP 47 language tag (such as `en` or `pt-BR`) for which compiled translation bundles exist and pass validation tests.
+_Avoid_: Available language, valid locale, allowed dialect
+
+**Default Locale**:
+The canonical fallback locale (`en` / English) utilized whenever an incoming request does not specify a locale or when a translation key is missing in a secondary language.
+_Avoid_: System language, standard language, base locale
+
+**Translation Bundle**:
+An embedded, compiled catalog of localized strings and pluralization rules loaded via `go-i18n` at application startup.
+_Avoid_: Language file, text dictionary, string table
+
+**Language Switcher**:
+The UI component allowing operators to immediately toggle between supported interface locales across the System Operator Console, persisting the selection in session cookies.
+_Avoid_: Language dropdown, translation picker, locale selector
+
+**Design System Token**:
+A standardized semantic UI variable (typography scale, color token, spacing step) defined across Templ components and Tailwind classes to preserve visual consistency across localized viewports.
+_Avoid_: CSS variable, style constant, UI theme value
+
+**Locale**:
+An IETF BCP 47 language tag (e.g. `en`, `pt-BR`) specifying the resolved language for web console presentation.
+_Avoid_: Language code, dialect, region ID
+
+**SSO Locale Claim**:
+An optional attribute included within the cryptographically signed SSO hand-off token propagating the operator's active language from PergoCloud to PerGo.
+_Avoid_: Auth lang, hand-off locale param
