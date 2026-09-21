@@ -12,7 +12,7 @@
 #    make lint       → golangci-lint
 # ─────────────────────────────────────────────────────────────
 
-.PHONY: dev prod infra infra-down build generate test test-race test-integration coverage migrate-up migrate-down lint verify-docs clean help down hooks
+.PHONY: dev prod infra infra-down build generate test test-race test-integration coverage migrate-up migrate-down lint lint-design verify-docs clean help down hooks
 
 # Carrega variáveis do .env se ele existir (sem expor no shell pai)
 ifneq (,$(wildcard .env))
@@ -126,6 +126,9 @@ down:
 ## lint: análise estática com golangci-lint
 lint:
 	@golangci-lint run
+
+## lint-design: valida DESIGN.md com @google/design.md
+lint-design: ; npx @google/design.md lint DESIGN.md
 
 ## verify-docs: valida governança, links markdown e ausência de strings legadas
 verify-docs:
