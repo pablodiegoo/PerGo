@@ -15,6 +15,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/i18n"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -431,6 +432,51 @@ func TestHandleSSO(t *testing.T) {
 
 		if rec.Code != http.StatusFound {
 			t.Errorf("expected status 302, got %d", rec.Code)
+		}
+	})
+
+	t.Run("sets pergo_locale cookie and context when locale claim is present in SSO token", func(t *testing.T) {
+		token, err := admin.GenerateSSOToken(admin.SSOClaims{
+			Sub:         "admin@example.com",
+			WorkspaceID: targetWsID.String(),
+			Locale:      "pt-BR",
+		}, secret)
+		if err != nil {
+			t.Fatalf("failed to generate token: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodGet, "/admin/sso?token="+token, nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.HandleSSO(c); err != nil {
+			t.Fatalf("HandleSSO returned unexpected error: %v", err)
+		}
+
+		if rec.Code != http.StatusFound {
+			t.Errorf("expected status 302, got %d", rec.Code)
+		}
+
+		// Assert pergo_locale cookie was set
+		cookies := rec.Result().Cookies()
+		var localeCookie *http.Cookie
+		for _, ck := range cookies {
+			if ck.Name == mw.LocaleCookieName {
+				localeCookie = ck
+				break
+			}
+		}
+		if localeCookie == nil {
+			t.Fatal("expected pergo_locale cookie to be set")
+		}
+		if localeCookie.Value != "pt-BR" {
+			t.Errorf("expected pergo_locale cookie to have value pt-BR, got %s", localeCookie.Value)
+		}
+
+		// Assert context has locale
+		ctxLocale := i18n.GetLocale(c.Request().Context())
+		if ctxLocale != "pt-BR" {
+			t.Errorf("expected request context to have locale pt-BR, got %s", ctxLocale)
 		}
 	})
 }

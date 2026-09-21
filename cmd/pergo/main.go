@@ -489,6 +489,7 @@ func main() {
 
 	// Middleware stack: RequestID → Trace → Recover → Auth (on protected routes)
 	e.Use(middleware.TraceMiddleware())
+	e.Use(middleware.LocaleMiddleware())
 
 	// Auth middleware — protects /api/* routes
 	e.Use(middleware.AuthMiddleware(apiKeyRepo))
@@ -629,6 +630,8 @@ func main() {
 	adminPublic.GET("/sso/", func(c *echo.Context) error {
 		return ssoHandler.HandleSSO(c)
 	})
+	adminPublic.POST("/locale", admin.SetLocale)
+	adminPublic.POST("/locale/", admin.SetLocale)
 
 	// Protected admin routes (session auth required)
 	adminGroup := e.Group("/admin")

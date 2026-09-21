@@ -19,6 +19,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/i18n"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -47,6 +48,7 @@ type SSOClaims struct {
 	Iat         int64  `json:"iat,omitempty"`
 	Exp         int64  `json:"exp"`
 	Nonce       string `json:"nonce,omitempty"`
+	Locale      string `json:"locale,omitempty"`
 }
 
 // SSOHandler handles seamless single sign-on authentication requests.
@@ -143,7 +145,17 @@ func (h *SSOHandler) HandleSSO(c *echo.Context) error {
 		c.SetCookie(activeWsCookie)
 	}
 
-	// 3. Perform sanitized redirect
+	// 3. Set locale cookie and update request context if specified and valid in claims
+	if claims.Locale != "" {
+		if normLocale := i18n.NormalizeLocale(claims.Locale); normLocale != "" {
+			mw.SetLocaleCookie(c, normLocale)
+			req := c.Request()
+			c.SetRequest(req.WithContext(i18n.WithLocale(req.Context(), normLocale)))
+			c.Set("locale", normLocale)
+		}
+	}
+
+	// 4. Perform sanitized redirect
 	redirectURL := SanitizeRedirect(c.QueryParam("redirect"))
 	return c.Redirect(http.StatusFound, redirectURL)
 }
