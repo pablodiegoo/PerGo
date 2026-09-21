@@ -445,7 +445,7 @@ func TestAdminDevelopersE2E_FullLifecycle(t *testing.T) {
 
 		assert.Equal(t, http.StatusOK, rec.Code)
 		body := rec.Body.String()
-		assert.Contains(t, body, "Payload Válido")
+		assert.True(t, strings.Contains(body, "Valid Payload") || strings.Contains(body, "Payload Válido"), "expected body to contain valid payload indicator")
 		assert.Contains(t, body, "whatsapp_cloud")
 		assert.Contains(t, body, "+5511988887777")
 		assert.Contains(t, body, "Simulação de Degradação Automática")

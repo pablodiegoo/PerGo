@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -79,23 +80,62 @@ func (h *SSOHandler) HandleSSO(c *echo.Context) error {
 		}
 	}
 
-	if token == "" {
-		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
-			"message": "missing sso token",
-		})
-	}
-
 	secret := h.Secret
 	if len(secret) == 0 {
 		secret = mw.GetSessionSecret()
 	}
 
-	claims, err := VerifySSOToken(token, secret)
-	if err != nil {
+	var claims *SSOClaims
+	var err error
+
+	if token != "" {
+		claims, err = VerifySSOToken(token, secret)
+		if err != nil {
+			return c.JSON(http.StatusUnauthorized, map[string]string{
+				"code":    "unauthorized",
+				"message": err.Error(),
+			})
+		}
+	} else if sig := strings.TrimSpace(c.QueryParam("signature")); sig != "" {
+		wsIDStr := c.QueryParam("workspace_id")
+		userIDStr := c.QueryParam("user_id")
+		roleStr := c.QueryParam("role")
+		expStr := c.QueryParam("expires_at")
+		localeStr := c.QueryParam("locale")
+		expUnix, parseErr := strconv.ParseInt(expStr, 10, 64)
+		if parseErr != nil || expUnix <= 0 {
+			return c.JSON(http.StatusUnauthorized, map[string]string{
+				"code":    "unauthorized",
+				"message": "invalid expires_at in sso query",
+			})
+		}
+		if expUnix < time.Now().Unix() {
+			return c.JSON(http.StatusUnauthorized, map[string]string{
+				"code":    "unauthorized",
+				"message": ErrTokenExpired.Error(),
+			})
+		}
+		msg := fmt.Sprintf("%s:%s:%s:%d", wsIDStr, userIDStr, roleStr, expUnix)
+		mac := hmac.New(sha256.New, secret)
+		mac.Write([]byte(msg))
+		expectedHex := hex.EncodeToString(mac.Sum(nil))
+		if subtle.ConstantTimeCompare([]byte(expectedHex), []byte(sig)) != 1 {
+			return c.JSON(http.StatusUnauthorized, map[string]string{
+				"code":    "unauthorized",
+				"message": ErrInvalidSignature.Error(),
+			})
+		}
+		claims = &SSOClaims{
+			Sub:         userIDStr,
+			WorkspaceID: wsIDStr,
+			Role:        roleStr,
+			Exp:         expUnix,
+			Locale:      localeStr,
+		}
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
-			"message": err.Error(),
+			"message": "missing sso token",
 		})
 	}
 
@@ -145,14 +185,16 @@ func (h *SSOHandler) HandleSSO(c *echo.Context) error {
 		c.SetCookie(activeWsCookie)
 	}
 
-	// 3. Set locale cookie and update request context if specified and valid in claims
-	if claims.Locale != "" {
-		if normLocale := i18n.NormalizeLocale(claims.Locale); normLocale != "" {
-			mw.SetLocaleCookie(c, normLocale)
-			req := c.Request()
-			c.SetRequest(req.WithContext(i18n.WithLocale(req.Context(), normLocale)))
-			c.Set("locale", normLocale)
-		}
+	// 3. Set locale cookie and update request context
+	targetLocale := claims.Locale
+	if targetLocale == "" {
+		targetLocale = i18n.DefaultLocale
+	}
+	if normLocale := i18n.NormalizeLocale(targetLocale); normLocale != "" {
+		mw.SetLocaleCookie(c, normLocale)
+		req := c.Request()
+		c.SetRequest(req.WithContext(i18n.WithLocale(req.Context(), normLocale)))
+		c.Set("locale", normLocale)
 	}
 
 	// 4. Perform sanitized redirect
