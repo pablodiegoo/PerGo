@@ -67,7 +67,7 @@ func DeviceListContent(connections []*repository.Connection) templ.Component {
 			templ_7745c5c3_Var2 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end\"><div><h1 class=\"text-2xl font-bold tracking-tight text-zinc-900\">Conexões</h1><p class=\"text-zinc-500 text-sm mt-1\">Conecte e autentique seus canais de comunicação unificados.</p></div><button class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition\" hx-get=\"/admin/devices/pair-form\" hx-target=\"#modal-container\" hx-swap=\"innerHTML\">Nova Conexão</button></div><div id=\"connections-table-container\" class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"w-full space-y-6\"><div class=\"border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end\"><div><h1 class=\"text-2xl font-bold tracking-tight text-zinc-900 font-['Outfit',sans-serif]\">Conexões</h1><p class=\"text-zinc-500 text-sm mt-1\">Conecte e autentique seus canais de comunicação unificados.</p></div><button class=\"btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition cursor-pointer\" hx-get=\"/admin/devices/pair-form\" hx-target=\"#modal-container\" hx-swap=\"innerHTML\">Nova Conexão</button></div><div id=\"connections-table-container\" class=\"bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -75,7 +75,7 @@ func DeviceListContent(connections []*repository.Connection) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -158,7 +158,7 @@ func ConnectionRow(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue("connection-row-" + conn.ID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 67, Col: 103}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 69, Col: 103}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 		if templ_7745c5c3_Err != nil {
@@ -171,7 +171,7 @@ func ConnectionRow(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 68, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 70, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
@@ -184,7 +184,7 @@ func ConnectionRow(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var7 string
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/devices/" + conn.ID.String() + "/slug")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 71, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 73, Col: 60}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 		if templ_7745c5c3_Err != nil {
@@ -197,7 +197,7 @@ func ConnectionRow(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.Slug)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 79, Col: 22}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 81, Col: 22}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 		if templ_7745c5c3_Err != nil {
@@ -210,7 +210,7 @@ func ConnectionRow(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue("Editar slug da conexão " + conn.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 81, Col: 56}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 83, Col: 56}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 		if templ_7745c5c3_Err != nil {
@@ -239,7 +239,7 @@ func ConnectionRow(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(conn.SenderIdentity)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 93, Col: 77}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 95, Col: 77}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -253,7 +253,7 @@ func ConnectionRow(conn *repository.Connection) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(conn.ConnectedSince.Format("02/01/2006 15:04:05"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 96, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 98, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -272,7 +272,7 @@ func ConnectionRow(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var12 templ.SafeURL
 		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinURLErrs(templ.URL("/admin/inbox?channel=" + conn.Channel))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 104, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 106, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 		if templ_7745c5c3_Err != nil {
@@ -290,7 +290,7 @@ func ConnectionRow(conn *repository.Connection) templ.Component {
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/devices/flow-key?id=" + conn.ID.String())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 112, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 114, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 			if templ_7745c5c3_Err != nil {
@@ -308,7 +308,7 @@ func ConnectionRow(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/devices/test?id=" + conn.ID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 121, Col: 58}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 123, Col: 58}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 		if templ_7745c5c3_Err != nil {
@@ -321,7 +321,7 @@ func ConnectionRow(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var15 string
 		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/devices/" + conn.ID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 129, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 131, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 		if templ_7745c5c3_Err != nil {
@@ -334,7 +334,7 @@ func ConnectionRow(conn *repository.Connection) templ.Component {
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue("Tem certeza que deseja excluir a conexão " + conn.Name + "?")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 132, Col: 80}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 134, Col: 80}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 		if templ_7745c5c3_Err != nil {
@@ -394,7 +394,7 @@ func ChannelIcon(channel string) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(channel)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 158, Col: 13}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 160, Col: 13}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
@@ -465,7 +465,7 @@ func ConnectionStatusBadge(status string) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(status)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 177, Col: 116}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 179, Col: 116}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
@@ -556,7 +556,7 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 335, Col: 117}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 337, Col: 117}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
@@ -577,7 +577,7 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 				var templ_7745c5c3_Var24 string
 				templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.SafeURL(qrPNG))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 343, Col: 34}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 345, Col: 34}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 				if templ_7745c5c3_Err != nil {
@@ -595,7 +595,7 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 				var templ_7745c5c3_Var25 string
 				templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(code)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 355, Col: 149}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 357, Col: 149}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 				if templ_7745c5c3_Err != nil {
@@ -608,7 +608,7 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 				var templ_7745c5c3_Var26 string
 				templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(code)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 356, Col: 19}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 358, Col: 19}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 				if templ_7745c5c3_Err != nil {
@@ -631,7 +631,7 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 			var templ_7745c5c3_Var27 string
 			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.ResolveAttributeValue("/admin/devices/qr?id=" + phone)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 370, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 372, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var27)
 			if templ_7745c5c3_Err != nil {
@@ -642,7 +642,7 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 				return templ_7745c5c3_Err
 			}
 		case "paired":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<div class=\"qr-success text-center py-6 bg-emerald-50/50 border border-emerald-100 rounded-xl p-5 max-w-sm mx-auto\" role=\"status\" aria-live=\"polite\"><div class=\"w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold\" aria-hidden=\"true\">✓</div><h3 class=\"text-base font-bold text-zinc-900 mb-1\">Dispositivo Pareado com Sucesso!</h3>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<div class=\"qr-success text-center py-6 bg-emerald-50/50 border border-emerald-100 rounded-xl p-5 max-w-sm mx-auto\" role=\"status\" aria-live=\"polite\"><div class=\"w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3\" aria-hidden=\"true\"><svg class=\"w-6 h-6\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" stroke-width=\"2.5\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 13l4 4L19 7\"></path></svg></div><h3 class=\"text-base font-bold text-zinc-900 mb-1\">Dispositivo Pareado com Sucesso!</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -654,7 +654,7 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 				var templ_7745c5c3_Var28 string
 				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(phone)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 382, Col: 61}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 384, Col: 61}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
@@ -665,19 +665,19 @@ func QRFragment(code string, qrPNG string, phone string, status string, message 
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<button class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white px-5 py-2 rounded-md font-semibold text-xs border-none shadow-sm transition\" onclick=\"\n\t\t\t\t\t\t\tconst table = document.getElementById('connections-table-container');\n\t\t\t\t\t\t\tconst form = document.getElementById('campaign-create-form');\n\t\t\t\t\t\t\tif (table) {\n\t\t\t\t\t\t\t\thtmx.ajax('GET', '/admin/devices', {target: 'main', swap: 'innerHTML'});\n\t\t\t\t\t\t\t} else if (form) {\n\t\t\t\t\t\t\t\tdocument.body.dispatchEvent(new CustomEvent('connection-created', { bubbles: true }));\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\tthis.closest('.modal-backdrop').remove();\n\t\t\t\t\t\t\">Ver Conexões</button></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<button class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white px-5 py-2 rounded-md font-semibold text-xs border-none shadow-sm transition cursor-pointer\" onclick=\"\n\t\t\t\t\t\t\tconst table = document.getElementById('connections-table-container');\n\t\t\t\t\t\t\tconst form = document.getElementById('campaign-create-form');\n\t\t\t\t\t\t\tif (table) {\n\t\t\t\t\t\t\t\thtmx.ajax('GET', '/admin/devices', {target: 'main', swap: 'innerHTML'});\n\t\t\t\t\t\t\t} else if (form) {\n\t\t\t\t\t\t\t\tdocument.body.dispatchEvent(new CustomEvent('connection-created', { bubbles: true }));\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\tthis.closest('.modal-backdrop').remove();\n\t\t\t\t\t\t\">Ver Conexões</button></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		case "error":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<div class=\"qr-error text-center py-6 bg-rose-50/50 border border-rose-100 rounded-xl p-5 max-w-sm mx-auto\" role=\"alert\" aria-live=\"assertive\"><div class=\"w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl font-bold\" aria-hidden=\"true\">✕</div><h3 class=\"text-base font-bold text-zinc-900 mb-1\">Falha no Pareamento</h3><p class=\"text-xs text-rose-600 mb-4 font-medium\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<div class=\"qr-error text-center py-6 bg-rose-50/50 border border-rose-100 rounded-xl p-5 max-w-sm mx-auto\" role=\"alert\" aria-live=\"assertive\"><div class=\"w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3\" aria-hidden=\"true\"><svg class=\"w-6 h-6\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" stroke-width=\"2.5\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M6 18L18 6M6 6l12 12\"></path></svg></div><h3 class=\"text-base font-bold text-zinc-900 mb-1\">Falha no Pareamento</h3><p class=\"text-xs text-rose-600 mb-4 font-medium\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 406, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 408, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
@@ -725,7 +725,7 @@ func TestConnectionModal(conn *repository.Connection, templates []repository.WAB
 		var templ_7745c5c3_Var31 string
 		templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 432, Col: 98}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 434, Col: 98}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 		if templ_7745c5c3_Err != nil {
@@ -738,7 +738,7 @@ func TestConnectionModal(conn *repository.Connection, templates []repository.WAB
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.ResolveAttributeValue(conn.ID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 445, Col: 72}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 447, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 		if templ_7745c5c3_Err != nil {
@@ -751,7 +751,7 @@ func TestConnectionModal(conn *repository.Connection, templates []repository.WAB
 		var templ_7745c5c3_Var33 string
 		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Channel)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 450, Col: 62}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 452, Col: 62}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 		if templ_7745c5c3_Err != nil {
@@ -764,7 +764,7 @@ func TestConnectionModal(conn *repository.Connection, templates []repository.WAB
 		var templ_7745c5c3_Var34 string
 		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(conn.SenderIdentity)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 454, Col: 79}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 456, Col: 79}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {
@@ -787,7 +787,7 @@ func TestConnectionModal(conn *repository.Connection, templates []repository.WAB
 				var templ_7745c5c3_Var35 string
 				templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 485, Col: 25}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 487, Col: 25}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var35)
 				if templ_7745c5c3_Err != nil {
@@ -800,7 +800,7 @@ func TestConnectionModal(conn *repository.Connection, templates []repository.WAB
 				var templ_7745c5c3_Var36 string
 				templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.ResolveAttributeValue(t.Language)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 486, Col: 37}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 488, Col: 37}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var36)
 				if templ_7745c5c3_Err != nil {
@@ -813,7 +813,7 @@ func TestConnectionModal(conn *repository.Connection, templates []repository.WAB
 				var templ_7745c5c3_Var37 string
 				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.ResolveAttributeValue(string(t.Components))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 487, Col: 49}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 489, Col: 49}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
 				if templ_7745c5c3_Err != nil {
@@ -826,7 +826,7 @@ func TestConnectionModal(conn *repository.Connection, templates []repository.WAB
 				var templ_7745c5c3_Var38 string
 				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%s (%s)", t.Name, t.Language))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 488, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 490, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 				if templ_7745c5c3_Err != nil {
@@ -847,7 +847,7 @@ func TestConnectionModal(conn *repository.Connection, templates []repository.WAB
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "<button type=\"submit\" id=\"test-conn-submit-btn\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none w-full font-semibold py-2 rounded-md transition h-10 flex items-center justify-center gap-2\"><span id=\"test-submit-spinner\" class=\"htmx-indicator spinner border-2 border-white border-t-transparent rounded-full w-4 h-4 animate-spin\" aria-hidden=\"true\"></span> <span>Enviar Mensagem de Teste</span></button></form></div><!-- Right column: Live stream --><div hx-ext=\"ws\" ws-connect=\"/admin/devices/test/ws\" class=\"flex flex-col h-full border border-zinc-200 rounded-lg p-4 bg-zinc-50\"><h4 class=\"text-xs font-bold text-zinc-700 uppercase tracking-wider mb-3 flex items-center gap-2\"><span class=\"w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse\"></span> Atividade em Tempo Real (NATS)</h4><div class=\"event-list flex-1 overflow-y-auto min-h-[250px] max-h-[350px] space-y-2\" id=\"playground-events\" role=\"log\" aria-live=\"polite\"><div class=\"text-center text-zinc-400 italic text-xs py-10\" id=\"playground-empty\">Nenhum evento recebido ainda. Envie um teste para ver logs em tempo real.</div></div></div></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\" onclick=\"this.closest('.modal-backdrop').remove()\">Fechar</button></div></div></div><script>\n\t\tfunction showTestTemplatePreview(selectEl) {\n\t\t\tvar container = document.getElementById('test-template-vars');\n\t\t\tvar contentContainer = document.getElementById('test-template-vars-content');\n\t\t\tvar langInput = document.getElementById('test-template-language');\n\t\t\tif (!selectEl) return;\n\t\t\tvar selectedOption = selectEl.options ? selectEl.options[selectEl.selectedIndex] : null;\n\n\t\t\tif (!selectedOption || !selectedOption.value) {\n\t\t\t\tif (container) container.classList.add('hidden');\n\t\t\t\tif (contentContainer) contentContainer.innerHTML = '';\n\t\t\t\tif (langInput) langInput.value = '';\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tvar lang = selectedOption.getAttribute('data-language') || 'pt_BR';\n\t\t\tif (langInput) langInput.value = lang;\n\n\t\t\tif (container) container.classList.remove('hidden');\n\n\t\t\tvar componentsRaw = selectedOption.getAttribute('data-components');\n\t\t\tif (!componentsRaw) {\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200\">ℹ️ Este template é estático e não requer variáveis.</p>';\n\t\t\t\t}\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\ttry {\n\t\t\t\tvar components = JSON.parse(componentsRaw);\n\t\t\t\tvar matches = [];\n\t\t\t\tif (Array.isArray(components)) {\n\t\t\t\t\tfor (var i = 0; i < components.length; i++) {\n\t\t\t\t\t\tvar c = components[i];\n\t\t\t\t\t\tvar cType = (c.type || '').toUpperCase();\n\t\t\t\t\t\tif ((cType === 'BODY' || cType === 'HEADER') && c.text) {\n\t\t\t\t\t\t\tvar found = c.text.match(/\\{\\{(\\d+)\\}\\}/g);\n\t\t\t\t\t\t\tif (found) {\n\t\t\t\t\t\t\t\tfor (var j = 0; j < found.length; j++) {\n\t\t\t\t\t\t\t\t\tmatches.push(found[j]);\n\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\n\t\t\t\tif (matches.length === 0) {\n\t\t\t\t\tif (contentContainer) {\n\t\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200\">ℹ️ Este template é estático e não requer variáveis.</p>';\n\t\t\t\t\t}\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tvar uniqueMap = {};\n\t\t\t\tfor (var k = 0; k < matches.length; k++) {\n\t\t\t\t\tuniqueMap[matches[k]] = true;\n\t\t\t\t}\n\t\t\t\tvar uniqueParams = Object.keys(uniqueMap).sort(function(a, b) {\n\t\t\t\t\tvar numA = parseInt(a.replace(/[{}]/g, ''));\n\t\t\t\t\tvar numB = parseInt(b.replace(/[{}]/g, ''));\n\t\t\t\t\treturn numA - numB;\n\t\t\t\t});\n\n\t\t\t\tvar html = '';\n\t\t\t\tfor (var idx = 0; idx < uniqueParams.length; idx++) {\n\t\t\t\t\tvar param = uniqueParams[idx];\n\t\t\t\t\tvar paramNum = parseInt(param.replace(/[{}]/g, ''));\n\t\t\t\t\thtml += '<div class=\"flex items-center gap-2\">' +\n\t\t\t\t\t\t'<span class=\"text-xs text-zinc-500 font-mono font-semibold w-12 text-center bg-zinc-200 py-1.5 rounded\">' + param + '</span>' +\n\t\t\t\t\t\t'<input type=\"text\" name=\"param_' + paramNum + '\" required placeholder=\"Valor para ' + param + '\" class=\"flex-1 rounded border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white\" />' +\n\t\t\t\t\t'</div>';\n\t\t\t\t}\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = html;\n\t\t\t\t}\n\t\t\t} catch (e) {\n\t\t\t\tconsole.error(\"Failed to parse template components:\", e);\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200\">ℹ️ Este template é estático e não requer variáveis.</p>';\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "<button type=\"submit\" id=\"test-conn-submit-btn\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none w-full font-semibold py-2 rounded-md transition h-10 flex items-center justify-center gap-2\"><span id=\"test-submit-spinner\" class=\"htmx-indicator spinner border-2 border-white border-t-transparent rounded-full w-4 h-4 animate-spin\" aria-hidden=\"true\"></span> <span>Enviar Mensagem de Teste</span></button></form></div><!-- Right column: Live stream --><div hx-ext=\"ws\" ws-connect=\"/admin/devices/test/ws\" class=\"flex flex-col h-full border border-zinc-200 rounded-lg p-4 bg-zinc-50\"><h4 class=\"text-xs font-bold text-zinc-700 uppercase tracking-wider mb-3 flex items-center gap-2\"><span class=\"w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse\"></span> Atividade em Tempo Real (NATS)</h4><div class=\"event-list flex-1 overflow-y-auto min-h-[250px] max-h-[350px] space-y-2\" id=\"playground-events\" role=\"log\" aria-live=\"polite\"><div class=\"text-center text-zinc-400 italic text-xs py-10\" id=\"playground-empty\">Nenhum evento recebido ainda. Envie um teste para ver logs em tempo real.</div></div></div></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\" onclick=\"this.closest('.modal-backdrop').remove()\">Fechar</button></div></div></div><script>\n\t\tfunction showTestTemplatePreview(selectEl) {\n\t\t\tvar container = document.getElementById('test-template-vars');\n\t\t\tvar contentContainer = document.getElementById('test-template-vars-content');\n\t\t\tvar langInput = document.getElementById('test-template-language');\n\t\t\tif (!selectEl) return;\n\t\t\tvar selectedOption = selectEl.options ? selectEl.options[selectEl.selectedIndex] : null;\n\n\t\t\tif (!selectedOption || !selectedOption.value) {\n\t\t\t\tif (container) container.classList.add('hidden');\n\t\t\t\tif (contentContainer) contentContainer.innerHTML = '';\n\t\t\t\tif (langInput) langInput.value = '';\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tvar lang = selectedOption.getAttribute('data-language') || 'pt_BR';\n\t\t\tif (langInput) langInput.value = lang;\n\n\t\t\tif (container) container.classList.remove('hidden');\n\n\t\t\tvar componentsRaw = selectedOption.getAttribute('data-components');\n\t\t\tif (!componentsRaw) {\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200 flex items-center gap-1.5\"><svg class=\"w-3.5 h-3.5 text-sky-600 shrink-0\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z\"/></svg><span>Este template é estático e não requer variáveis.</span></p>';\n\t\t\t\t}\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\ttry {\n\t\t\t\tvar components = JSON.parse(componentsRaw);\n\t\t\t\tvar matches = [];\n\t\t\t\tif (Array.isArray(components)) {\n\t\t\t\t\tfor (var i = 0; i < components.length; i++) {\n\t\t\t\t\t\tvar c = components[i];\n\t\t\t\t\t\tvar cType = (c.type || '').toUpperCase();\n\t\t\t\t\t\tif ((cType === 'BODY' || cType === 'HEADER') && c.text) {\n\t\t\t\t\t\t\tvar found = c.text.match(/\\{\\{(\\d+)\\}\\}/g);\n\t\t\t\t\t\t\tif (found) {\n\t\t\t\t\t\t\t\tfor (var j = 0; j < found.length; j++) {\n\t\t\t\t\t\t\t\t\tmatches.push(found[j]);\n\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\n\t\t\t\tif (matches.length === 0) {\n\t\t\t\t\tif (contentContainer) {\n\t\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200 flex items-center gap-1.5\"><svg class=\"w-3.5 h-3.5 text-sky-600 shrink-0\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z\"/></svg><span>Este template é estático e não requer variáveis.</span></p>';\n\t\t\t\t\t}\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tvar uniqueMap = {};\n\t\t\t\tfor (var k = 0; k < matches.length; k++) {\n\t\t\t\t\tuniqueMap[matches[k]] = true;\n\t\t\t\t}\n\t\t\t\tvar uniqueParams = Object.keys(uniqueMap).sort(function(a, b) {\n\t\t\t\t\tvar numA = parseInt(a.replace(/[{}]/g, ''));\n\t\t\t\t\tvar numB = parseInt(b.replace(/[{}]/g, ''));\n\t\t\t\t\treturn numA - numB;\n\t\t\t\t});\n\n\t\t\t\tvar html = '';\n\t\t\t\tfor (var idx = 0; idx < uniqueParams.length; idx++) {\n\t\t\t\t\tvar param = uniqueParams[idx];\n\t\t\t\t\tvar paramNum = parseInt(param.replace(/[{}]/g, ''));\n\t\t\t\t\thtml += '<div class=\"flex items-center gap-2\">' +\n\t\t\t\t\t\t'<span class=\"text-xs text-zinc-500 font-mono font-semibold w-12 text-center bg-zinc-200 py-1.5 rounded\">' + param + '</span>' +\n\t\t\t\t\t\t'<input type=\"text\" name=\"param_' + paramNum + '\" required placeholder=\"Valor para ' + param + '\" class=\"flex-1 rounded border border-zinc-300 px-2.5 py-1.5 text-xs text-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent bg-white\" />' +\n\t\t\t\t\t'</div>';\n\t\t\t\t}\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = html;\n\t\t\t\t}\n\t\t\t} catch (e) {\n\t\t\t\tconsole.error(\"Failed to parse template components:\", e);\n\t\t\t\tif (contentContainer) {\n\t\t\t\t\tcontentContainer.innerHTML = '<p class=\"text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200 flex items-center gap-1.5\"><svg class=\"w-3.5 h-3.5 text-sky-600 shrink-0\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z\"/></svg><span>Este template é estático e não requer variáveis.</span></p>';\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -909,7 +909,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		var templ_7745c5c3_Var42 string
 		templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(eventType)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 633, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 635, Col: 90}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 		if templ_7745c5c3_Err != nil {
@@ -922,7 +922,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		var templ_7745c5c3_Var43 string
 		templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(timeStr)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 634, Col: 53}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 636, Col: 53}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 		if templ_7745c5c3_Err != nil {
@@ -935,7 +935,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		var templ_7745c5c3_Var44 string
 		templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 636, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 638, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 		if templ_7745c5c3_Err != nil {
@@ -948,7 +948,7 @@ func TestEventRow(eventType string, badgeClass string, title string, timeStr str
 		var templ_7745c5c3_Var45 string
 		templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(details)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 637, Col: 120}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 639, Col: 120}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 		if templ_7745c5c3_Err != nil {
@@ -991,7 +991,7 @@ func FlowKeyModal(conn *repository.Connection, publicKeyPEM string) templ.Compon
 		var templ_7745c5c3_Var47 string
 		templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(conn.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 649, Col: 66}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 651, Col: 66}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 		if templ_7745c5c3_Err != nil {
@@ -1004,26 +1004,26 @@ func FlowKeyModal(conn *repository.Connection, publicKeyPEM string) templ.Compon
 		var templ_7745c5c3_Var48 string
 		templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(conn.SenderIdentity)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 649, Col: 91}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 651, Col: 91}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, ")</p></div><button type=\"button\" class=\"text-zinc-400 hover:text-zinc-600 text-lg font-bold p-1 leading-none\" onclick=\"this.closest('.modal-backdrop').remove()\">&times;</button></div><div class=\"modal-body space-y-4\"><div class=\"rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1\"><p class=\"font-semibold\">Como usar no Meta Flow Builder:</p><p>Copie a chave pública abaixo e cole no seu WhatsApp Flow (no Meta Business Manager ou Flow Builder em <strong>Flow Settings &gt; Endpoint encryption</strong>) para registrar este endpoint.</p></div><div class=\"flex flex-col gap-1.5\"><div class=\"flex items-center justify-between\"><label for=\"flow-pub-key-textarea\" class=\"text-xs font-semibold text-zinc-600 uppercase tracking-wider\">Chave Pública RSA (2048 bits PEM)</label> <button type=\"button\" id=\"copy-flow-key-btn\" class=\"text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer\" onclick=\"\n\t\t\t\t\t\t\t\tconst textarea = document.getElementById('flow-pub-key-textarea');\n\t\t\t\t\t\t\t\tif (textarea) {\n\t\t\t\t\t\t\t\t\tnavigator.clipboard.writeText(textarea.value);\n\t\t\t\t\t\t\t\t\tthis.innerText = '✓ Copiado!';\n\t\t\t\t\t\t\t\t\tsetTimeout(() => this.innerText = 'Copiar Chave', 2000);\n\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t\">Copiar Chave</button></div><textarea id=\"flow-pub-key-textarea\" readonly rows=\"8\" class=\"form-input border border-zinc-300 rounded-md p-2.5 text-xs font-mono bg-zinc-50 text-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent w-full select-all\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, ")</p></div><button type=\"button\" class=\"text-zinc-400 hover:text-zinc-600 text-lg font-bold p-1 leading-none\" onclick=\"this.closest('.modal-backdrop').remove()\">&times;</button></div><div class=\"modal-body space-y-4\"><div class=\"rounded-md bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1\"><p class=\"font-semibold\">Como usar no Meta Flow Builder:</p><p>Copie a chave pública abaixo e cole no seu WhatsApp Flow (no Meta Business Manager ou Flow Builder em <strong>Flow Settings &gt; Endpoint encryption</strong>) para registrar este endpoint.</p></div><div class=\"flex flex-col gap-1.5\"><div class=\"flex items-center justify-between\"><label for=\"flow-pub-key-textarea\" class=\"text-xs font-semibold text-zinc-600 uppercase tracking-wider\">Chave Pública RSA (2048 bits PEM)</label> <button type=\"button\" id=\"copy-flow-key-btn\" class=\"text-xs font-semibold text-blue-600 hover:text-blue-800 flex items-center gap-1 cursor-pointer\" onclick=\"\n\t\t\t\t\t\t\t\tconst textarea = document.getElementById('flow-pub-key-textarea');\n\t\t\t\t\t\t\t\tif (textarea) {\n\t\t\t\t\t\t\t\t\tnavigator.clipboard.writeText(textarea.value);\n\t\t\t\t\t\t\t\t\tthis.innerText = 'Copiado!';\n\t\t\t\t\t\t\t\t\tsetTimeout(() => this.innerText = 'Copiar Chave', 2000);\n\t\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t\">Copiar Chave</button></div><textarea id=\"flow-pub-key-textarea\" readonly rows=\"8\" class=\"form-input border border-zinc-300 rounded-md p-2.5 text-xs font-mono bg-zinc-50 text-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-950 focus:border-transparent w-full select-all\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var49 string
 		templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(publicKeyPEM)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 683, Col: 20}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/devices.templ`, Line: 685, Col: 20}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "</textarea></div></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button type=\"button\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\" onclick=\"this.closest('.modal-backdrop').remove()\">Fechar</button> <button type=\"button\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5\" onclick=\"\n\t\t\t\t\t\tconst textarea = document.getElementById('flow-pub-key-textarea');\n\t\t\t\t\t\tif (textarea) {\n\t\t\t\t\t\t\tnavigator.clipboard.writeText(textarea.value);\n\t\t\t\t\t\t\tthis.innerText = '✓ Copiado com Sucesso!';\n\t\t\t\t\t\t\tsetTimeout(() => this.innerText = 'Copiar e Fechar', 2000);\n\t\t\t\t\t\t}\n\t\t\t\t\t\">Copiar e Fechar</button></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "</textarea></div></div><div class=\"modal-footer pt-4 border-t border-zinc-200 flex justify-end gap-2 mt-6\"><button type=\"button\" class=\"btn btn-secondary border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-700 btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center\" onclick=\"this.closest('.modal-backdrop').remove()\">Fechar</button> <button type=\"button\" class=\"btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white border-none btn-sm font-semibold px-4 py-2 rounded-md transition h-9 flex items-center justify-center gap-1.5\" onclick=\"\n\t\t\t\t\t\tconst textarea = document.getElementById('flow-pub-key-textarea');\n\t\t\t\t\t\tif (textarea) {\n\t\t\t\t\t\t\tnavigator.clipboard.writeText(textarea.value);\n\t\t\t\t\t\t\tthis.innerText = 'Copiado com Sucesso!';\n\t\t\t\t\t\t\tsetTimeout(() => this.innerText = 'Copiar e Fechar', 2000);\n\t\t\t\t\t\t}\n\t\t\t\t\t\">Copiar e Fechar</button></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

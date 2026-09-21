@@ -1,15 +1,15 @@
-/* PerGo Admin Panel — Minimal CSS with custom properties */
+/* PerGo Admin Panel — Paper-Calm Design System CSS */
 :root {
-  --color-primary: #000000;
-  --color-primary-hover: #1e1e1e;
-  --color-bg: #fcfcfc;
+  --color-primary: #0369a1;
+  --color-primary-hover: #0284c7;
+  --color-bg: #fbfbfa;
   --color-surface: #ffffff;
-  --color-sidebar: #f4f4f5;
-  --color-sidebar-text: #18181b;
-  --color-sidebar-active: #e4e4e7;
-  --color-text: #18181b;
-  --color-text-muted: #71717a;
-  --color-border: #e4e4e7;
+  --color-sidebar: #fbfbfa;
+  --color-sidebar-text: #37352f;
+  --color-sidebar-active: #e9e9e7;
+  --color-text: #37352f;
+  --color-text-muted: #787774;
+  --color-border: #e9e9e7;
   --color-error: #ef4444;
   --color-success: #10b981;
   --sidebar-width: 240px;
@@ -18,8 +18,13 @@
   --spacing-md: 1rem;
   --spacing-lg: 1.5rem;
   --spacing-xl: 2rem;
-  --radius: 0.375rem;
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --radius: 0.5rem;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: 'Outfit', sans-serif;
+}
+
+h1, h2, h3, .font-heading {
+  font-family: var(--font-display);
 }
 
 /* Reset */
@@ -57,8 +62,13 @@ body { font-family: var(--font-sans); color: var(--color-text); background: var(
 .sidebar.collapsed #sidebar-workspace-selector,
 .sidebar.collapsed .nav-item span,
 .sidebar.collapsed .nav-section-title,
-.sidebar.collapsed .sidebar-footer button span {
+.sidebar.collapsed .sidebar-footer button span,
+.sidebar.collapsed .language-switcher .lang-label {
   display: none !important;
+}
+
+.sidebar.collapsed .language-switcher {
+  justify-content: center;
 }
 
 .sidebar.collapsed .nav-item {

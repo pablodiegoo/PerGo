@@ -3,6 +3,7 @@ package pages
 import (
 	"fmt"
 
+	"github.com/pablojhp.pergo/internal/i18n"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/components"
 	"github.com/pablojhp.pergo/templates/layout"
@@ -18,21 +19,21 @@ type InboxMessage struct {
 
 // InboxPage renders the full split-pane inbox page with sidebar, conversation list, and chat panel.
 templ InboxPage(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection) {
-	@layout.Base("Inbox", InboxContent(conversations, unreadMap, activeChannel, unreadCount, chatPanel, connections))
+	@layout.Base(i18n.T(ctx, "inbox.title"), InboxContent(conversations, unreadMap, activeChannel, unreadCount, chatPanel, connections))
 }
 
 // InboxContent renders the split-pane layout (conversation list + chat panel).
 // Used both for full-page render and HTMX partial swap.
 templ InboxContent(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection) {
-	<div class="inbox-shell flex h-full w-full overflow-hidden">
+	<div class="inbox-shell flex h-full w-full overflow-hidden text-[#37352f] dark:text-[#e3e3e3]">
 		<!-- Left panel: conversation list -->
-		<div class="inbox-sidebar w-80 lg:w-80 md:w-72 flex-shrink-0 border-r border-zinc-200 flex flex-col bg-white h-full overflow-hidden">
+		<div class="inbox-sidebar w-80 lg:w-80 md:w-72 flex-shrink-0 border-r border-[#e9e9e7] dark:border-[#2f2f2f] flex flex-col bg-white dark:bg-[#202020] h-full overflow-hidden">
 			<!-- Header -->
-			<div class="inbox-sidebar-header flex items-center justify-between px-4 py-3 border-b border-zinc-200">
+			<div class="inbox-sidebar-header flex items-center justify-between px-4 py-3 border-b border-[#e9e9e7] dark:border-[#2f2f2f]">
 				<div class="flex items-center gap-2">
-					<h1 class="text-base font-bold text-zinc-900">Inbox</h1>
+					<h1 class="text-base font-bold text-[#37352f] dark:text-[#e3e3e3] font-['Outfit',sans-serif]">{ i18n.T(ctx, "inbox.title") }</h1>
 					if unreadCount > 0 {
-						<span class="badge-unread text-xs font-bold bg-blue-500 text-white px-2 py-0.5 rounded-full">{ fmt.Sprintf("%d", unreadCount) }</span>
+						<span class="badge-unread text-xs font-bold bg-[#0284c7] text-white px-2 py-0.5 rounded-full">{ fmt.Sprintf("%d", unreadCount) }</span>
 					}
 				</div>
 				<div class="flex items-center gap-1.5">
@@ -40,9 +41,9 @@ templ InboxContent(conversations []repository.ConversationSummary, unreadMap map
 					<div class="relative inline-block text-left" id="inbox-filter-dropdown-container">
 						<button
 							id="inbox-filter-btn"
-							class={ "p-1.5 rounded-lg border hover:bg-zinc-50 transition-colors shadow-sm flex items-center justify-center", templ.KV("border-indigo-400 bg-indigo-50 text-indigo-600 hover:text-indigo-900", activeChannel != ""), templ.KV("border-zinc-200 bg-white text-zinc-600 hover:text-zinc-900", activeChannel == "") }
+							class={ "p-1.5 rounded-lg border hover:bg-[#e9e9e7]/50 dark:hover:bg-[#2f2f2f]/50 transition-colors shadow-none flex items-center justify-center cursor-pointer", templ.KV("border-sky-400 bg-sky-50 dark:bg-sky-950/40 text-[#0284c7] dark:text-sky-400", activeChannel != ""), templ.KV("border-[#e9e9e7] dark:border-[#2f2f2f] bg-white dark:bg-[#202020] text-[#787774] hover:text-[#37352f] dark:hover:text-[#e3e3e3]", activeChannel == "") }
 							onclick="toggleFilterDropdown()"
-							title="Filtrar por Canal"
+							title={ i18n.T(ctx, "common.actions.filter") }
 						>
 							<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
@@ -50,22 +51,22 @@ templ InboxContent(conversations []repository.ConversationSummary, unreadMap map
 						</button>
 						<div
 							id="inbox-filter-dropdown"
-							class="hidden absolute right-0 mt-1.5 w-56 rounded-lg shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50 py-1"
+							class="hidden absolute right-0 mt-1.5 w-56 rounded-lg shadow-lg bg-white dark:bg-[#202020] border border-[#e9e9e7] dark:border-[#2f2f2f] ring-1 ring-black/5 z-50 py-1"
 							style="top: 100%; right: 0;"
 						>
 							<a
 								href="/admin/inbox"
-								class={ "block px-4 py-2 text-xs font-medium hover:bg-zinc-50 transition-colors border-b border-zinc-100", templ.KV("text-indigo-600 font-bold bg-indigo-50/50", activeChannel == ""), templ.KV("text-zinc-700", activeChannel != "") }
+								class={ "block px-4 py-2 text-xs font-medium hover:bg-[#e9e9e7]/50 dark:hover:bg-[#2f2f2f]/50 transition-colors border-b border-[#e9e9e7] dark:border-[#2f2f2f]", templ.KV("text-[#0284c7] font-bold bg-sky-50 dark:bg-sky-950/40", activeChannel == ""), templ.KV("text-[#37352f] dark:text-[#e3e3e3]", activeChannel != "") }
 							>
-								Todos os Canais
+								{ i18n.T(ctx, "inbox.all_channels") }
 							</a>
 							for _, conn := range connections {
 								<a
 									href={ templ.URL(fmt.Sprintf("/admin/inbox?connection=%s", conn.SenderIdentity)) }
-									class={ "block px-4 py-2 text-xs hover:bg-zinc-50 transition-colors", templ.KV("text-indigo-600 font-bold bg-indigo-50/50", activeChannel == conn.SenderIdentity), templ.KV("text-zinc-600", activeChannel != conn.SenderIdentity) }
+									class={ "block px-4 py-2 text-xs hover:bg-[#e9e9e7]/50 dark:hover:bg-[#2f2f2f]/50 transition-colors", templ.KV("text-[#0284c7] font-bold bg-sky-50 dark:bg-sky-950/40", activeChannel == conn.SenderIdentity), templ.KV("text-[#787774] dark:text-[#9b9b9b]", activeChannel != conn.SenderIdentity) }
 								>
 									<span class="font-semibold block truncate">{ conn.Name }</span>
-									<span class="block text-[10px] text-zinc-400 font-normal truncate">{ conn.Channel } • { conn.SenderIdentity }</span>
+									<span class="block text-[10px] text-[#787774] dark:text-[#9b9b9b] font-normal truncate">{ conn.Channel } • { conn.SenderIdentity }</span>
 								</a>
 							}
 						</div>
@@ -73,43 +74,43 @@ templ InboxContent(conversations []repository.ConversationSummary, unreadMap map
 
 					<!-- Novo Chat -->
 					<button
-						class="p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-50 text-zinc-600 hover:text-zinc-900 transition-colors shadow-sm flex items-center justify-center"
+						class="p-1.5 rounded-lg border border-[#e9e9e7] dark:border-[#2f2f2f] hover:bg-[#e9e9e7]/50 dark:hover:bg-[#2f2f2f]/50 text-[#787774] hover:text-[#0284c7] transition-colors shadow-none flex items-center justify-center cursor-pointer"
 						hx-get="/admin/inbox/new-message-modal"
 						hx-target="#modal-container"
 						hx-swap="innerHTML"
-						title="Novo Chat"
+						title={ i18n.T(ctx, "inbox.new_chat") }
 					>
-						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
 						</svg>
 					</button>
 				</div>
 			</div>
 			<!-- Search bar (static UI, future enhancement) -->
-			<div class="inbox-search px-3 py-2 border-b border-zinc-100">
+			<div class="inbox-search px-3 py-2 border-b border-[#e9e9e7] dark:border-[#2f2f2f]">
 				<div class="relative">
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-2.5 top-2 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-2.5 top-2 text-[#787774] dark:text-[#9b9b9b]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
 					</svg>
-					<input type="search" placeholder="Buscar conversa…" class="w-full pl-8 pr-3 py-1.5 text-sm border border-zinc-200 rounded-md bg-zinc-50 text-zinc-700 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 focus:border-transparent" disabled/>
+					<input type="search" placeholder={ i18n.T(ctx, "inbox.search_placeholder") } class="w-full pl-8 pr-3 py-1.5 text-sm border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] placeholder-[#787774] dark:placeholder-[#9b9b9b] focus:outline-none focus:ring-1 focus:ring-[#0284c7] focus:border-transparent" disabled/>
 				</div>
 			</div>
 			<!-- Conversation list with polling -->
 			@components.ConvList(conversations, unreadMap, activeChannel, unreadCount)
 		</div>
 		<!-- Right panel: chat view -->
-		<div id="chat-panel" class="chat-panel flex-1 flex flex-col bg-zinc-50 h-full overflow-hidden">
+		<div id="chat-panel" class="chat-panel flex-1 flex flex-col bg-[#fbfbfa] dark:bg-[#191919] h-full overflow-hidden">
 			if chatPanel != nil {
 				@chatPanel
 			} else {
 				<!-- Placeholder when no chat is selected -->
-				<div class="chat-placeholder flex flex-col items-center justify-center gap-4 text-zinc-400 select-none h-full w-full">
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-zinc-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+				<div class="chat-placeholder flex flex-col items-center justify-center gap-4 text-[#787774] dark:text-[#9b9b9b] select-none h-full w-full">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 text-[#e9e9e7] dark:text-[#2f2f2f]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
 					</svg>
 					<div class="text-center">
-						<p class="font-semibold text-zinc-500">Selecione uma conversa</p>
-						<p class="text-sm mt-1">Escolha uma conversa à esquerda para visualizar o histórico.</p>
+						<p class="font-semibold text-[#37352f] dark:text-[#e3e3e3] font-['Outfit',sans-serif]">{ i18n.T(ctx, "inbox.select_conversation") }</p>
+						<p class="text-sm mt-1 text-[#787774] dark:text-[#9b9b9b]">{ i18n.T(ctx, "inbox.select_conversation_desc") }</p>
 					</div>
 				</div>
 			}

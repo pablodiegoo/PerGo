@@ -14,22 +14,24 @@ templ DeviceListPage(connections []*repository.Connection) {
 
 // DeviceListContent renders the connection list content (HTMX fragment or full page body).
 templ DeviceListContent(connections []*repository.Connection) {
-	<div class="border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end">
-		<div>
-			<h1 class="text-2xl font-bold tracking-tight text-zinc-900">Conexões</h1>
-			<p class="text-zinc-500 text-sm mt-1">Conecte e autentique seus canais de comunicação unificados.</p>
+	<div class="w-full space-y-6">
+		<div class="border-b border-zinc-200 pb-5 mb-8 flex justify-between items-end">
+			<div>
+				<h1 class="text-2xl font-bold tracking-tight text-zinc-900 font-['Outfit',sans-serif]">Conexões</h1>
+				<p class="text-zinc-500 text-sm mt-1">Conecte e autentique seus canais de comunicação unificados.</p>
+			</div>
+			<button
+				class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition cursor-pointer"
+				hx-get="/admin/devices/pair-form"
+				hx-target="#modal-container"
+				hx-swap="innerHTML"
+			>
+				Nova Conexão
+			</button>
 		</div>
-		<button
-			class="btn btn-black bg-zinc-950 text-white hover:bg-zinc-900 border-none btn-sm font-semibold px-4 py-2 rounded-md transition"
-			hx-get="/admin/devices/pair-form"
-			hx-target="#modal-container"
-			hx-swap="innerHTML"
-		>
-			Nova Conexão
-		</button>
-	</div>
-	<div id="connections-table-container" class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6">
-		@ConnectionTable(connections)
+		<div id="connections-table-container" class="bg-white border border-zinc-200 rounded-lg p-6 shadow-sm mb-6">
+			@ConnectionTable(connections)
+		</div>
 	</div>
 }
 
@@ -374,15 +376,15 @@ templ QRFragment(code string, qrPNG string, phone string, status string, message
 				></div>
 			case "paired":
 				<div class="qr-success text-center py-6 bg-emerald-50/50 border border-emerald-100 rounded-xl p-5 max-w-sm mx-auto" role="status" aria-live="polite">
-					<div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl font-bold" aria-hidden="true">
-						✓
+					<div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-3" aria-hidden="true">
+						<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
 					</div>
 					<h3 class="text-base font-bold text-zinc-900 mb-1">Dispositivo Pareado com Sucesso!</h3>
 					if phone != "" {
 						<p class="text-xs text-zinc-500 mb-4 font-mono">{ phone }</p>
 					}
 					<button
-						class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white px-5 py-2 rounded-md font-semibold text-xs border-none shadow-sm transition"
+						class="btn btn-black bg-zinc-950 hover:bg-zinc-900 text-white px-5 py-2 rounded-md font-semibold text-xs border-none shadow-sm transition cursor-pointer"
 						onclick="
 							const table = document.getElementById('connections-table-container');
 							const form = document.getElementById('campaign-create-form');
@@ -399,8 +401,8 @@ templ QRFragment(code string, qrPNG string, phone string, status string, message
 				</div>
 			case "error":
 				<div class="qr-error text-center py-6 bg-rose-50/50 border border-rose-100 rounded-xl p-5 max-w-sm mx-auto" role="alert" aria-live="assertive">
-					<div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3 text-xl font-bold" aria-hidden="true">
-						✕
+					<div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-3" aria-hidden="true">
+						<svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
 					</div>
 					<h3 class="text-base font-bold text-zinc-900 mb-1">Falha no Pareamento</h3>
 					<p class="text-xs text-rose-600 mb-4 font-medium">{ message }</p>
@@ -559,7 +561,7 @@ templ TestConnectionModal(conn *repository.Connection, templates []repository.WA
 			var componentsRaw = selectedOption.getAttribute('data-components');
 			if (!componentsRaw) {
 				if (contentContainer) {
-					contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200">ℹ️ Este template é estático e não requer variáveis.</p>';
+					contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200 flex items-center gap-1.5"><svg class="w-3.5 h-3.5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>Este template é estático e não requer variáveis.</span></p>';
 				}
 				return;
 			}
@@ -584,7 +586,7 @@ templ TestConnectionModal(conn *repository.Connection, templates []repository.WA
 
 				if (matches.length === 0) {
 					if (contentContainer) {
-						contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200">ℹ️ Este template é estático e não requer variáveis.</p>';
+						contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200 flex items-center gap-1.5"><svg class="w-3.5 h-3.5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>Este template é estático e não requer variáveis.</span></p>';
 					}
 					return;
 				}
@@ -614,7 +616,7 @@ templ TestConnectionModal(conn *repository.Connection, templates []repository.WA
 			} catch (e) {
 				console.error("Failed to parse template components:", e);
 				if (contentContainer) {
-					contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200">ℹ️ Este template é estático e não requer variáveis.</p>';
+					contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200 flex items-center gap-1.5"><svg class="w-3.5 h-3.5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>Este template é estático e não requer variáveis.</span></p>';
 				}
 			}
 		}
@@ -667,7 +669,7 @@ templ FlowKeyModal(conn *repository.Connection, publicKeyPEM string) {
 								const textarea = document.getElementById('flow-pub-key-textarea');
 								if (textarea) {
 									navigator.clipboard.writeText(textarea.value);
-									this.innerText = '✓ Copiado!';
+									this.innerText = 'Copiado!';
 									setTimeout(() => this.innerText = 'Copiar Chave', 2000);
 								}
 							"
@@ -698,7 +700,7 @@ templ FlowKeyModal(conn *repository.Connection, publicKeyPEM string) {
 						const textarea = document.getElementById('flow-pub-key-textarea');
 						if (textarea) {
 							navigator.clipboard.writeText(textarea.value);
-							this.innerText = '✓ Copiado com Sucesso!';
+							this.innerText = 'Copiado com Sucesso!';
 							setTimeout(() => this.innerText = 'Copiar e Fechar', 2000);
 						}
 					"

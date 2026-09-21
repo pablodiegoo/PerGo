@@ -1,10 +1,12 @@
 package pages
 
+import "github.com/pablojhp.pergo/internal/i18n"
+
 templ Login(errorMsg string) {
 	<div class="login-container">
 		<div class="login-card">
-			<h1>PerGo Admin</h1>
-			<p>Sign in to the operator console</p>
+			<h1>{ i18n.T(ctx, "login.title") }</h1>
+			<p>{ i18n.T(ctx, "login.subtitle") }</p>
 			if errorMsg != "" {
 				<div class="alert alert-error">
 					{ errorMsg }
@@ -12,10 +14,10 @@ templ Login(errorMsg string) {
 			}
 			<form method="POST" action="/admin/login">
 				<div class="form-group">
-					<label for="password">Password</label>
+					<label for="password">{ i18n.T(ctx, "login.password") }</label>
 					<input type="password" id="password" name="password" required autocomplete="current-password"/>
 				</div>
-				<button type="submit" class="btn btn-primary">Sign In</button>
+				<button type="submit" class="btn btn-primary">{ i18n.T(ctx, "login.sign_in") }</button>
 			</form>
 		</div>
 	</div>

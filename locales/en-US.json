@@ -130,5 +130,70 @@
     "en_US": "English",
     "pt_BR": "Português (BR)",
     "switch_success": "Language switched to {lang}"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "simulate_webhook": "Simulate Webhook",
+    "link_account": "Link Account",
+    "generate_key": "Generate Key",
+    "active_channel_connections": "Active Channel Connections",
+    "recent_activity": "Recent Activity Logs",
+    "api_keys": "API Keys",
+    "system_status": "System Status",
+    "view_all_logs": "View All Logs",
+    "event_type": "Event Type",
+    "trace_id": "Trace ID",
+    "timestamp": "Timestamp",
+    "no_activity_logs": "No recent activity logs.",
+    "link_whatsapp": "Link WhatsApp Account",
+    "generating_qr": "Generating QR code...",
+    "get_started": "Get Started with PerGo",
+    "get_started_subtitle": "Complete these steps to activate omnichannel messaging for {name}.",
+    "step_workspace": "Create Workspace",
+    "step_workspace_desc": "A workspace organizes your API keys and channel connections.",
+    "step_connection": "Link Messaging Connection",
+    "step_connection_desc": "Connect a WhatsApp Web session (whatsmeow), WABA, or Telegram channel.",
+    "step_api_key": "Generate API Key",
+    "step_api_key_desc": "Create an API key to securely ingest messages from your CRM/ERP.",
+    "step_first_message": "Send your first message",
+    "step_first_message_desc": "Use our unified API endpoint to dispatch messages across channels."
+  },
+  "inbox": {
+    "title": "Inbox",
+    "all_channels": "All Channels",
+    "new_chat": "New Chat",
+    "search_placeholder": "Search conversations…",
+    "select_conversation": "Select a conversation",
+    "select_conversation_desc": "Choose a conversation on the left to view history.",
+    "no_conversations": "No conversations yet",
+    "no_conversations_desc": "Incoming messages will appear here.",
+    "no_messages": "No messages found.",
+    "reply_via": "Reply via:",
+    "replying_via": "Replying via {channel} ({recipient})",
+    "no_active_channel": "No active channel available for reply.",
+    "type_message_placeholder": "Type a message… (Enter to send)",
+    "templates": "Templates",
+    "merge_contact": "Merge Contact",
+    "merge_with_other": "Merge with another contact:",
+    "search_name_or_phone": "Search by name or phone...",
+    "no_contacts_found": "No contacts found.",
+    "bot_active": "Bot Active",
+    "bot_paused": "Bot Paused",
+    "send_failure": "Send failure",
+    "waba_24h_window_closed": "Customer service window (24h) closed for this contact. Only Meta Templates are allowed."
+  },
+  "ban_warning": {
+    "title": "WhatsApp Web is unofficial",
+    "description": "pairing business numbers risks account suspension. Use test numbers only."
+  },
+  "developers": {
+    "valid_payload": "Valid Payload",
+    "invalid_payload": "Invalid Payload"
+  },
+  "login": {
+    "title": "PerGo Admin",
+    "subtitle": "Sign in to the operator console",
+    "password": "Password",
+    "sign_in": "Sign In"
   }
 }

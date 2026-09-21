@@ -47,7 +47,7 @@ func truncate(s string, maxLen int) string {
 // Clicking it triggers an HTMX GET to /admin/inbox/chat targeting #chat-panel.
 templ ConvItem(conv repository.ConversationSummary, unread bool) {
 	<div
-		class={ "conv-item flex items-start gap-3 px-4 py-3 cursor-pointer border-b border-zinc-100 hover:bg-zinc-50 transition-colors relative", templ.KV("bg-white", !unread), templ.KV("bg-blue-50/60", unread) }
+		class={ "conv-item flex items-start gap-3 px-4 py-3 cursor-pointer border-b border-[#e9e9e7] dark:border-[#2f2f2f] hover:bg-[#fbfbfa] dark:hover:bg-[#191919] transition-colors relative", templ.KV("bg-white dark:bg-[#202020]", !unread), templ.KV("bg-sky-50 dark:bg-sky-950/30", unread) }
 		hx-get={ fmt.Sprintf("/admin/inbox/chat?contact_id=%s", conv.ContactID.String()) }
 		hx-target="#chat-panel"
 		hx-swap="innerHTML"
@@ -65,11 +65,11 @@ templ ConvItem(conv repository.ConversationSummary, unread bool) {
 		<!-- Body -->
 		<div class="conv-body flex-1 min-w-0">
 			<div class="flex items-center justify-between gap-1 mb-0.5">
-				<span class="conv-from font-semibold text-sm text-zinc-900 truncate">{ conv.ContactName }</span>
-				<span class="conv-time text-xs text-zinc-400 flex-shrink-0">{ conv.LastMessageTime.Format("15:04") }</span>
+				<span class="conv-from font-semibold text-sm text-[#37352f] dark:text-[#e3e3e3] truncate">{ conv.ContactName }</span>
+				<span class="conv-time text-xs text-[#787774] dark:text-[#9b9b9b] flex-shrink-0">{ conv.LastMessageTime.Format("15:04") }</span>
 			</div>
 			<div class="flex items-center justify-between gap-1">
-				<span class="conv-preview text-xs text-zinc-500 truncate">{ truncate(conv.LastMessageBody, 48) }</span>
+				<span class="conv-preview text-xs text-[#787774] dark:text-[#9b9b9b] truncate">{ truncate(conv.LastMessageBody, 48) }</span>
 				<div class="flex items-center gap-1 flex-shrink-0">
 					<!-- Channel badge -->
 					<span class={ "channel-badge inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium", templ.KV("bg-green-100 text-green-700", conv.Channel == "whatsapp" || conv.Channel == "whatsapp_cloud"), templ.KV("bg-blue-100 text-blue-700", conv.Channel == "telegram") }>
@@ -77,12 +77,12 @@ templ ConvItem(conv repository.ConversationSummary, unread bool) {
 					</span>
 					<!-- Unread indicator -->
 					if unread {
-						<span class="unread-dot h-2 w-2 rounded-full bg-blue-500 flex-shrink-0"></span>
+						<span class="unread-dot h-2 w-2 rounded-full bg-[#0284c7] flex-shrink-0"></span>
 					}
 				</div>
 			</div>
 			<!-- Via (recipient identity) -->
-			<div class="conv-via text-xs text-zinc-400 truncate mt-0.5">via { conv.RecipientIdentity }</div>
+			<div class="conv-via text-xs text-[#787774] dark:text-[#9b9b9b] truncate mt-0.5">via { conv.RecipientIdentity }</div>
 		</div>
 	</div>
 }

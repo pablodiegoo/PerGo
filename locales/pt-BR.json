@@ -130,5 +130,70 @@
     "en_US": "English",
     "pt_BR": "Português (BR)",
     "switch_success": "Idioma alterado para {lang}"
+  },
+  "dashboard": {
+    "title": "Painel",
+    "simulate_webhook": "Simular Webhook",
+    "link_account": "Conectar Conta",
+    "generate_key": "Gerar Chave",
+    "active_channel_connections": "Conexões de Canal Ativas",
+    "recent_activity": "Logs de Atividades Recentes",
+    "api_keys": "Chaves de API",
+    "system_status": "Status do Sistema",
+    "view_all_logs": "Ver Todos os Logs",
+    "event_type": "Tipo de Evento",
+    "trace_id": "ID de Rastreamento",
+    "timestamp": "Data/Hora",
+    "no_activity_logs": "Nenhum log de atividade recente.",
+    "link_whatsapp": "Conectar Conta WhatsApp",
+    "generating_qr": "Gerando código QR...",
+    "get_started": "Comece a usar o PerGo",
+    "get_started_subtitle": "Complete estas etapas para ativar o envio multicanal para {name}.",
+    "step_workspace": "Criar Workspace",
+    "step_workspace_desc": "Um workspace organiza suas chaves de API e conexões de canais.",
+    "step_connection": "Conectar Canal de Mensagens",
+    "step_connection_desc": "Conecte uma sessão WhatsApp Web (whatsmeow), WABA ou Telegram.",
+    "step_api_key": "Gerar Chave de API",
+    "step_api_key_desc": "Crie uma chave de API para ingerir mensagens do seu CRM/ERP com segurança.",
+    "step_first_message": "Envie sua primeira mensagem",
+    "step_first_message_desc": "Use nosso endpoint unificado para despachar mensagens entre canais."
+  },
+  "inbox": {
+    "title": "Inbox",
+    "all_channels": "Todos os Canais",
+    "new_chat": "Nova Conversa",
+    "search_placeholder": "Buscar conversas…",
+    "select_conversation": "Selecione uma conversa",
+    "select_conversation_desc": "Escolha uma conversa à esquerda para visualizar o histórico.",
+    "no_conversations": "Nenhuma conversa ainda",
+    "no_conversations_desc": "As mensagens recebidas aparecerão aqui.",
+    "no_messages": "Nenhuma mensagem encontrada.",
+    "reply_via": "Responder via:",
+    "replying_via": "Respondendo via {channel} ({recipient})",
+    "no_active_channel": "Nenhum canal ativo disponível para resposta.",
+    "type_message_placeholder": "Digite uma mensagem… (Enter para enviar)",
+    "templates": "Templates",
+    "merge_contact": "Mesclar Contato",
+    "merge_with_other": "Mesclar com outro contato:",
+    "search_name_or_phone": "Buscar por nome ou telefone...",
+    "no_contacts_found": "Nenhum contato encontrado.",
+    "bot_active": "Bot Ativo",
+    "bot_paused": "Bot Pausado",
+    "send_failure": "Falha no envio",
+    "waba_24h_window_closed": "Janela de atendimento (24h) fechada para este contato. Somente envios de Templates Meta são autorizados."
+  },
+  "ban_warning": {
+    "title": "WhatsApp Web não é oficial",
+    "description": "conectar números comerciais tem risco de suspensão da conta. Use apenas números de teste."
+  },
+  "developers": {
+    "valid_payload": "Payload Válido",
+    "invalid_payload": "Payload Inválido"
+  },
+  "login": {
+    "title": "PerGo Admin",
+    "subtitle": "Faça login no console do operador",
+    "password": "Senha",
+    "sign_in": "Entrar"
   }
 }

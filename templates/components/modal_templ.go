@@ -8,6 +8,8 @@ package components
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
+import "github.com/pablojhp.pergo/internal/i18n"
+
 // ConfirmModal renders a reusable HTMX modal confirmation dialog.
 // The confirm button uses hx-delete to execute the action.
 func ConfirmModal(title string, message string, hxDeleteURL string) templ.Component {
@@ -31,46 +33,72 @@ func ConfirmModal(title string, message string, hxDeleteURL string) templ.Compon
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"modal-backdrop\" role=\"presentation\" onclick=\"this.closest('.modal-backdrop').remove()\" onkeydown=\"if(event.key === 'Escape') this.closest('.modal-backdrop').remove()\" tabindex=\"0\"><div class=\"modal\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"confirm-modal-title\" onclick=\"event.stopPropagation()\"><div class=\"modal-header\"><h3 id=\"confirm-modal-title\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"modal-backdrop\" role=\"presentation\" onclick=\"this.closest('.modal-backdrop').remove()\" onkeydown=\"if(event.key === 'Escape') this.closest('.modal-backdrop').remove()\" tabindex=\"0\"><div class=\"modal bg-white dark:bg-[#202020] border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-xl shadow-xl text-[#37352f] dark:text-[#e3e3e3]\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"confirm-modal-title\" onclick=\"event.stopPropagation()\"><div class=\"modal-header border-b border-[#e9e9e7] dark:border-[#2f2f2f] pb-3 mb-3\"><h3 id=\"confirm-modal-title\" class=\"font-bold text-lg font-['Outfit',sans-serif]\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/modal.templ`, Line: 9, Col: 40}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/modal.templ`, Line: 11, Col: 93}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</h3></div><div class=\"modal-body\"><p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</h3></div><div class=\"modal-body mb-4\"><p class=\"text-sm text-[#787774] dark:text-[#9b9b9b]\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(message)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/modal.templ`, Line: 12, Col: 16}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/modal.templ`, Line: 14, Col: 67}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</p></div><div class=\"modal-footer\"><button class=\"btn btn-secondary\" onclick=\"this.closest('.modal-backdrop').remove()\">Cancel</button> <button class=\"btn btn-danger\" hx-delete=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</p></div><div class=\"modal-footer flex justify-end gap-2 pt-3 border-t border-[#e9e9e7] dark:border-[#2f2f2f]\"><button class=\"btn btn-secondary btn-sm px-4 py-2 border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg text-[#37352f] dark:text-[#e3e3e3] hover:bg-[#e9e9e7]/50 dark:hover:bg-[#2f2f2f]/50 cursor-pointer\" onclick=\"this.closest('.modal-backdrop').remove()\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var4 string
-		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(hxDeleteURL)
+		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "common.actions.cancel"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/modal.templ`, Line: 18, Col: 28}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/modal.templ`, Line: 17, Col: 300}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" hx-target=\"closest tr\" hx-swap=\"outerHTML swap:1s\" onclick=\"this.closest('.modal-backdrop').remove()\">Confirm</button></div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</button> <button class=\"btn btn-danger btn-sm px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg cursor-pointer\" hx-delete=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var5 string
+		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(hxDeleteURL)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/modal.templ`, Line: 20, Col: 28}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\" hx-target=\"closest tr\" hx-swap=\"outerHTML swap:1s\" onclick=\"this.closest('.modal-backdrop').remove()\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var6 string
+		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "common.actions.confirm"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/modal.templ`, Line: 25, Col: 44}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</button></div></div></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/i18n"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/layout"
 )
@@ -192,14 +193,14 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 			templ_7745c5c3_Var9 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"border-b border-zinc-200 pb-5 mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4\"><div><h1 class=\"text-2xl font-bold tracking-tight text-zinc-900\">Desenvolvedores: ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"w-full space-y-6\"><div class=\"border-b border-zinc-200 pb-5 mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4\"><div><h1 class=\"text-2xl font-bold tracking-tight text-zinc-900 font-['Outfit',sans-serif]\">Desenvolvedores: ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(data.Workspace.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 81, Col: 101}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 83, Col: 129}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -221,7 +222,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(data.ErrorMessage)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 112, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 114, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -240,7 +241,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(data.SuccessMessage)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 118, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 120, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 			if templ_7745c5c3_Err != nil {
@@ -258,7 +259,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(data.Workspace.ID.String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 144, Col: 131}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 146, Col: 131}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -271,7 +272,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		var templ_7745c5c3_Var14 string
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(data.BaseURL)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 157, Col: 113}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 159, Col: 113}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -292,7 +293,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		var templ_7745c5c3_Var15 string
 		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d ativa(s)", len(data.APIKeys)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 189, Col: 102}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 191, Col: 102}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 		if templ_7745c5c3_Err != nil {
@@ -313,7 +314,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 		var templ_7745c5c3_Var16 string
 		templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("curl -s -H \"Accept: text/markdown\" %s/", data.BaseURL))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 303, Col: 198}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 305, Col: 198}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 		if templ_7745c5c3_Err != nil {
@@ -337,7 +338,7 @@ func DeveloperContent(data DeveloperPortalData) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</div></div><!-- Preset Loader Script --><script>\n\t\tconst SANDBOX_PRESETS = {\n\t\t\tbuttons: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"interactive\",\n\t\t\t\t\"fallback_behavior\": \"degrade\",\n\t\t\t\t\"interactive\": {\n\t\t\t\t\t\"type\": \"button\",\n\t\t\t\t\t\"header\": { \"text\": \"Confirmação de Agendamento\" },\n\t\t\t\t\t\"body\": { \"text\": \"Olá Carlos! Você confirma sua consulta para amanhã às 14:00?\" },\n\t\t\t\t\t\"footer\": { \"text\": \"Clínica PerGo Saúde\" },\n\t\t\t\t\t\"action\": {\n\t\t\t\t\t\t\"buttons\": [\n\t\t\t\t\t\t\t{ \"type\": \"reply\", \"reply\": { \"id\": \"btn_sim\", \"title\": \"Confirmar Sim\" } },\n\t\t\t\t\t\t\t{ \"type\": \"reply\", \"reply\": { \"id\": \"btn_nao\", \"title\": \"Reagendar\" } }\n\t\t\t\t\t\t]\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tlist: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"interactive\",\n\t\t\t\t\"fallback_behavior\": \"degrade\",\n\t\t\t\t\"interactive\": {\n\t\t\t\t\t\"type\": \"list\",\n\t\t\t\t\t\"header\": { \"text\": \"Central de Atendimento\" },\n\t\t\t\t\t\"body\": { \"text\": \"Escolha o departamento desejado no menu abaixo:\" },\n\t\t\t\t\t\"footer\": { \"text\": \"Horário: 08h às 18h\" },\n\t\t\t\t\t\"action\": {\n\t\t\t\t\t\t\"button\": \"Ver Opções\",\n\t\t\t\t\t\t\"sections\": [\n\t\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\t\"title\": \"Suporte\",\n\t\t\t\t\t\t\t\t\"rows\": [\n\t\t\t\t\t\t\t\t\t{ \"id\": \"row_tec\", \"title\": \"Suporte Técnico\", \"description\": \"Problemas de conexão e bugs\" },\n\t\t\t\t\t\t\t\t\t{ \"id\": \"row_fin\", \"title\": \"Financeiro\", \"description\": \"2ª via de faturas e pagamentos\" }\n\t\t\t\t\t\t\t\t]\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\t\"title\": \"Comercial\",\n\t\t\t\t\t\t\t\t\"rows\": [\n\t\t\t\t\t\t\t\t\t{ \"id\": \"row_upg\", \"title\": \"Upgrade de Plano\", \"description\": \"Conheça nossos planos corporativos\" }\n\t\t\t\t\t\t\t\t]\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t]\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tflow: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"interactive\",\n\t\t\t\t\"interactive\": {\n\t\t\t\t\t\"type\": \"flow\",\n\t\t\t\t\t\"header\": { \"text\": \"Cadastro de Paciente\" },\n\t\t\t\t\t\"body\": { \"text\": \"Preencha seus dados cadastrais diretamente pelo WhatsApp:\" },\n\t\t\t\t\t\"footer\": { \"text\": \"Formulário Seguro Criptografado\" },\n\t\t\t\t\t\"action\": {\n\t\t\t\t\t\t\"flow_id\": \"123456789012345\",\n\t\t\t\t\t\t\"flow_cta\": \"Iniciar Formulário\",\n\t\t\t\t\t\t\"flow_action\": \"navigate\",\n\t\t\t\t\t\t\"flow_action_payload\": {\n\t\t\t\t\t\t\t\"screen\": \"APPOINTMENT_SCREEN\",\n\t\t\t\t\t\t\t\"data\": { \"patient_name\": \"Carlos Silva\" }\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tproduct: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"product\",\n\t\t\t\t\"product\": {\n\t\t\t\t\t\"catalog_id\": \"cat_987654321\",\n\t\t\t\t\t\"product_retailer_id\": \"sku_camiseta_pergo_01\",\n\t\t\t\t\t\"body\": \"Confira nosso lançamento oficial!\"\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tproduct_list: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"product_list\",\n\t\t\t\t\"product\": {\n\t\t\t\t\t\"catalog_id\": \"cat_987654321\",\n\t\t\t\t\t\"header\": \"Catálogo de Ofertas\",\n\t\t\t\t\t\"body\": \"Selecione produtos para seu carrinho:\",\n\t\t\t\t\t\"footer\": \"Frete grátis para todo o Brasil\",\n\t\t\t\t\t\"sections\": [\n\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\"title\": \"Vestuário\",\n\t\t\t\t\t\t\t\"product_items\": [\n\t\t\t\t\t\t\t\t{ \"product_retailer_id\": \"sku_camiseta_azul\" },\n\t\t\t\t\t\t\t\t{ \"product_retailer_id\": \"sku_moletom_preto\" }\n\t\t\t\t\t\t\t]\n\t\t\t\t\t\t}\n\t\t\t\t\t]\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\ttext: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp\",\n\t\t\t\t\"body\": \"Olá! Sua mensagem foi recebida com sucesso.\",\n\t\t\t\t\"fallback_channels\": [\"telegram\", \"email\"],\n\t\t\t\t\"ttl_seconds\": 3600\n\t\t\t}, null, 2)\n\t\t};\n\n\t\tfunction loadSandboxPreset(preset) {\n\t\t\tconst textarea = document.getElementById('sandbox-payload');\n\t\t\tif (textarea && SANDBOX_PRESETS[preset]) {\n\t\t\t\ttextarea.value = SANDBOX_PRESETS[preset];\n\t\t\t}\n\t\t}\n\n\t\t// Initial load of default preset\n\t\tdocument.addEventListener('DOMContentLoaded', () => {\n\t\t\tloadSandboxPreset('buttons');\n\t\t});\n\t\tif (document.readyState !== 'loading') {\n\t\t\tloadSandboxPreset('buttons');\n\t\t}\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</div></div><!-- Preset Loader Script --><script>\n\t\tconst SANDBOX_PRESETS = {\n\t\t\tbuttons: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"interactive\",\n\t\t\t\t\"fallback_behavior\": \"degrade\",\n\t\t\t\t\"interactive\": {\n\t\t\t\t\t\"type\": \"button\",\n\t\t\t\t\t\"header\": { \"text\": \"Confirmação de Agendamento\" },\n\t\t\t\t\t\"body\": { \"text\": \"Olá Carlos! Você confirma sua consulta para amanhã às 14:00?\" },\n\t\t\t\t\t\"footer\": { \"text\": \"Clínica PerGo Saúde\" },\n\t\t\t\t\t\"action\": {\n\t\t\t\t\t\t\"buttons\": [\n\t\t\t\t\t\t\t{ \"type\": \"reply\", \"reply\": { \"id\": \"btn_sim\", \"title\": \"Confirmar Sim\" } },\n\t\t\t\t\t\t\t{ \"type\": \"reply\", \"reply\": { \"id\": \"btn_nao\", \"title\": \"Reagendar\" } }\n\t\t\t\t\t\t]\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tlist: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"interactive\",\n\t\t\t\t\"fallback_behavior\": \"degrade\",\n\t\t\t\t\"interactive\": {\n\t\t\t\t\t\"type\": \"list\",\n\t\t\t\t\t\"header\": { \"text\": \"Central de Atendimento\" },\n\t\t\t\t\t\"body\": { \"text\": \"Escolha o departamento desejado no menu abaixo:\" },\n\t\t\t\t\t\"footer\": { \"text\": \"Horário: 08h às 18h\" },\n\t\t\t\t\t\"action\": {\n\t\t\t\t\t\t\"button\": \"Ver Opções\",\n\t\t\t\t\t\t\"sections\": [\n\t\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\t\"title\": \"Suporte\",\n\t\t\t\t\t\t\t\t\"rows\": [\n\t\t\t\t\t\t\t\t\t{ \"id\": \"row_tec\", \"title\": \"Suporte Técnico\", \"description\": \"Problemas de conexão e bugs\" },\n\t\t\t\t\t\t\t\t\t{ \"id\": \"row_fin\", \"title\": \"Financeiro\", \"description\": \"2ª via de faturas e pagamentos\" }\n\t\t\t\t\t\t\t\t]\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\t\"title\": \"Comercial\",\n\t\t\t\t\t\t\t\t\"rows\": [\n\t\t\t\t\t\t\t\t\t{ \"id\": \"row_upg\", \"title\": \"Upgrade de Plano\", \"description\": \"Conheça nossos planos corporativos\" }\n\t\t\t\t\t\t\t\t]\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t]\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tflow: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"interactive\",\n\t\t\t\t\"interactive\": {\n\t\t\t\t\t\"type\": \"flow\",\n\t\t\t\t\t\"header\": { \"text\": \"Cadastro de Paciente\" },\n\t\t\t\t\t\"body\": { \"text\": \"Preencha seus dados cadastrais diretamente pelo WhatsApp:\" },\n\t\t\t\t\t\"footer\": { \"text\": \"Formulário Seguro Criptografado\" },\n\t\t\t\t\t\"action\": {\n\t\t\t\t\t\t\"flow_id\": \"123456789012345\",\n\t\t\t\t\t\t\"flow_cta\": \"Iniciar Formulário\",\n\t\t\t\t\t\t\"flow_action\": \"navigate\",\n\t\t\t\t\t\t\"flow_action_payload\": {\n\t\t\t\t\t\t\t\"screen\": \"APPOINTMENT_SCREEN\",\n\t\t\t\t\t\t\t\"data\": { \"patient_name\": \"Carlos Silva\" }\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tproduct: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"product\",\n\t\t\t\t\"product\": {\n\t\t\t\t\t\"catalog_id\": \"cat_987654321\",\n\t\t\t\t\t\"product_retailer_id\": \"sku_camiseta_pergo_01\",\n\t\t\t\t\t\"body\": \"Confira nosso lançamento oficial!\"\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\tproduct_list: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp_cloud\",\n\t\t\t\t\"type\": \"product_list\",\n\t\t\t\t\"product\": {\n\t\t\t\t\t\"catalog_id\": \"cat_987654321\",\n\t\t\t\t\t\"header\": \"Catálogo de Ofertas\",\n\t\t\t\t\t\"body\": \"Selecione produtos para seu carrinho:\",\n\t\t\t\t\t\"footer\": \"Frete grátis para todo o Brasil\",\n\t\t\t\t\t\"sections\": [\n\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\"title\": \"Vestuário\",\n\t\t\t\t\t\t\t\"product_items\": [\n\t\t\t\t\t\t\t\t{ \"product_retailer_id\": \"sku_camiseta_azul\" },\n\t\t\t\t\t\t\t\t{ \"product_retailer_id\": \"sku_moletom_preto\" }\n\t\t\t\t\t\t\t]\n\t\t\t\t\t\t}\n\t\t\t\t\t]\n\t\t\t\t}\n\t\t\t}, null, 2),\n\t\t\ttext: JSON.stringify({\n\t\t\t\t\"to\": \"+5511999998888\",\n\t\t\t\t\"channel\": \"whatsapp\",\n\t\t\t\t\"body\": \"Olá! Sua mensagem foi recebida com sucesso.\",\n\t\t\t\t\"fallback_channels\": [\"telegram\", \"email\"],\n\t\t\t\t\"ttl_seconds\": 3600\n\t\t\t}, null, 2)\n\t\t};\n\n\t\tfunction loadSandboxPreset(preset) {\n\t\t\tconst textarea = document.getElementById('sandbox-payload');\n\t\t\tif (textarea && SANDBOX_PRESETS[preset]) {\n\t\t\t\ttextarea.value = SANDBOX_PRESETS[preset];\n\t\t\t}\n\t\t}\n\n\t\t// Initial load of default preset\n\t\tdocument.addEventListener('DOMContentLoaded', () => {\n\t\t\tloadSandboxPreset('buttons');\n\t\t});\n\t\tif (document.readyState !== 'loading') {\n\t\t\tloadSandboxPreset('buttons');\n\t\t}\n\t</script></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -379,7 +380,7 @@ func WebhookSecretRow(secret *string) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(*secret)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 626, Col: 107}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 629, Col: 107}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
@@ -433,7 +434,7 @@ func APIKeysList(keys []repository.APIKey) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(key.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 654, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 657, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
@@ -446,7 +447,7 @@ func APIKeysList(keys []repository.APIKey) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(key.KeyPrefix)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 655, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 658, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
@@ -469,7 +470,7 @@ func APIKeysList(keys []repository.APIKey) templ.Component {
 				var templ_7745c5c3_Var22 string
 				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/developers/keys/%s", key.ID.String()))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 664, Col: 75}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 667, Col: 75}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var22)
 				if templ_7745c5c3_Err != nil {
@@ -482,7 +483,7 @@ func APIKeysList(keys []repository.APIKey) templ.Component {
 				var templ_7745c5c3_Var23 string
 				templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("Deseja realmente revogar a chave '%s'?", key.Name))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 667, Col: 82}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 670, Col: 82}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var23)
 				if templ_7745c5c3_Err != nil {
@@ -538,7 +539,7 @@ func APIKeyCreatedResult(keys []repository.APIKey, newRawKey string, keyName str
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(keyName)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 687, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 690, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -551,7 +552,7 @@ func APIKeyCreatedResult(keys []repository.APIKey, newRawKey string, keyName str
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(newRawKey)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 690, Col: 118}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 693, Col: 118}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
@@ -593,146 +594,172 @@ func SandboxValidationResult(res SandboxResultData) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if res.Status == "valid" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<div class=\"border border-emerald-200 bg-emerald-50/60 rounded-lg p-4 space-y-3 animate-fadeIn\"><div class=\"flex items-center justify-between border-b border-emerald-200/80 pb-2.5\"><div class=\"flex items-center gap-2\"><span class=\"badge badge-sm bg-emerald-600 text-white font-bold px-2 py-0.5 rounded\">✓ Payload Válido</span> <span class=\"text-xs font-semibold text-emerald-900\">Em conformidade com a especificação OpenAPI 3.1</span></div><span class=\"text-xs font-mono text-emerald-700\">Canal: <strong>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<div class=\"border border-emerald-200 bg-emerald-50/60 rounded-lg p-4 space-y-3 animate-fadeIn\"><div class=\"flex items-center justify-between border-b border-emerald-200/80 pb-2.5\"><div class=\"flex items-center gap-2\"><span class=\"badge badge-sm bg-emerald-600 text-white font-bold px-2 py-0.5 rounded inline-flex items-center gap-1\"><svg class=\"w-3 h-3\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" stroke-width=\"2.5\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M5 13l4 4L19 7\"></path></svg> <span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var28 string
-			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(res.Channel)
+			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "developers.valid_payload"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 713, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 715, Col: 53}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</strong></span></div><div class=\"grid grid-cols-1 md:grid-cols-3 gap-3 text-xs\"><div class=\"bg-white p-2.5 rounded border border-emerald-100\"><span class=\"text-zinc-500 block text-[11px] uppercase font-semibold\">Destinatário</span> <span class=\"font-mono text-zinc-800 font-bold\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</span></span> <span class=\"text-xs font-semibold text-emerald-900\">Em conformidade com a especificação OpenAPI 3.1</span></div><span class=\"text-xs font-mono text-emerald-700\">Canal: <strong>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var29 string
-			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(res.Recipient)
+			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(res.Channel)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 718, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 719, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</span></div><div class=\"bg-white p-2.5 rounded border border-emerald-100\"><span class=\"text-zinc-500 block text-[11px] uppercase font-semibold\">Tipo de Mensagem</span> <span class=\"font-semibold text-zinc-800\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</strong></span></div><div class=\"grid grid-cols-1 md:grid-cols-3 gap-3 text-xs\"><div class=\"bg-white p-2.5 rounded border border-emerald-100\"><span class=\"text-zinc-500 block text-[11px] uppercase font-semibold\">Destinatário</span> <span class=\"font-mono text-zinc-800 font-bold\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var30 string
-			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(res.MessageType)
+			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(res.Recipient)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 722, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 724, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</span></div><div class=\"bg-white p-2.5 rounded border border-emerald-100\"><span class=\"text-zinc-500 block text-[11px] uppercase font-semibold\">Política de Fallback</span> <span class=\"font-semibold text-zinc-800\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</span></div><div class=\"bg-white p-2.5 rounded border border-emerald-100\"><span class=\"text-zinc-500 block text-[11px] uppercase font-semibold\">Tipo de Mensagem</span> <span class=\"font-semibold text-zinc-800\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var31 string
-			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(res.FallbackPolicy)
+			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(res.MessageType)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 726, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 728, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</span></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</span></div><div class=\"bg-white p-2.5 rounded border border-emerald-100\"><span class=\"text-zinc-500 block text-[11px] uppercase font-semibold\">Política de Fallback</span> <span class=\"font-semibold text-zinc-800\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var32 string
+			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(res.FallbackPolicy)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 732, Col: 67}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</span></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if res.DegradedText != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<div class=\"pt-2\"><div class=\"text-xs font-bold text-zinc-800 mb-1 flex items-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5 text-zinc-500\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 6h16M4 12h16m-7 6h7\"></path></svg> <span>Simulação de Degradação Automática em Canais de Texto (ex: WhatsApp Web / whatsmeow):</span></div><pre class=\"bg-zinc-900 text-zinc-100 p-3 rounded text-xs font-mono whitespace-pre-wrap leading-relaxed\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<div class=\"pt-2\"><div class=\"text-xs font-bold text-zinc-800 mb-1 flex items-center gap-1.5\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-3.5 w-3.5 text-zinc-500\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M4 6h16M4 12h16m-7 6h7\"></path></svg> <span>Simulação de Degradação Automática em Canais de Texto (ex: WhatsApp Web / whatsmeow):</span></div><pre class=\"bg-zinc-900 text-zinc-100 p-3 rounded text-xs font-mono whitespace-pre-wrap leading-relaxed\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var32 string
-				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(res.DegradedText)
+				var templ_7745c5c3_Var33 string
+				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(res.DegradedText)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 737, Col: 128}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 743, Col: 128}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</pre></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</pre></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<div class=\"border border-rose-200 bg-rose-50/70 rounded-lg p-4 space-y-3 animate-fadeIn\"><div class=\"flex items-center justify-between border-b border-rose-200 pb-2.5\"><div class=\"flex items-center gap-2\"><span class=\"badge badge-sm bg-rose-600 text-white font-bold px-2 py-0.5 rounded\">✕ Payload Inválido</span> <span class=\"text-xs font-bold text-rose-900\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<div class=\"border border-rose-200 bg-rose-50/70 rounded-lg p-4 space-y-3 animate-fadeIn\"><div class=\"flex items-center justify-between border-b border-rose-200 pb-2.5\"><div class=\"flex items-center gap-2\"><span class=\"badge badge-sm bg-rose-600 text-white font-bold px-2 py-0.5 rounded inline-flex items-center gap-1\"><svg class=\"w-3 h-3\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\" stroke-width=\"2.5\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M6 18L18 6M6 6l12 12\"></path></svg> <span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var33 string
-			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(res.ErrorMessage)
+			var templ_7745c5c3_Var34 string
+			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "developers.invalid_payload"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 746, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 753, Col: 55}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</span></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</span></span> <span class=\"text-xs font-bold text-rose-900\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var35 string
+			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(res.ErrorMessage)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 755, Col: 69}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</span></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if len(res.FieldErrors) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<div class=\"space-y-1.5\"><div class=\"text-xs font-bold text-rose-800\">Erros de validação por campo:</div><ul class=\"list-disc list-inside space-y-1 text-xs text-rose-700 bg-white p-3 rounded border border-rose-100\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<div class=\"space-y-1.5\"><div class=\"text-xs font-bold text-rose-800\">Erros de validação por campo:</div><ul class=\"list-disc list-inside space-y-1 text-xs text-rose-700 bg-white p-3 rounded border border-rose-100\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for _, fe := range res.FieldErrors {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<li><code class=\"font-mono font-bold text-rose-900 bg-rose-100/60 px-1 py-0.5 rounded\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<li><code class=\"font-mono font-bold text-rose-900 bg-rose-100/60 px-1 py-0.5 rounded\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var34 string
-					templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(fe.Field)
+					var templ_7745c5c3_Var36 string
+					templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(fe.Field)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 755, Col: 101}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 764, Col: 101}
 					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "</code>: ")
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var35 string
-					templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(fe.Message)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 755, Col: 124}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</code>: ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "</li>")
+					var templ_7745c5c3_Var37 string
+					templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(fe.Message)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/developers.templ`, Line: 764, Col: 124}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</li>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</ul></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</ul></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

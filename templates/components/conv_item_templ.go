@@ -74,7 +74,7 @@ func ConvItem(conv repository.ConversationSummary, unread bool) templ.Component 
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		var templ_7745c5c3_Var2 = []any{"conv-item flex items-start gap-3 px-4 py-3 cursor-pointer border-b border-zinc-100 hover:bg-zinc-50 transition-colors relative", templ.KV("bg-white", !unread), templ.KV("bg-blue-50/60", unread)}
+		var templ_7745c5c3_Var2 = []any{"conv-item flex items-start gap-3 px-4 py-3 cursor-pointer border-b border-[#e9e9e7] dark:border-[#2f2f2f] hover:bg-[#fbfbfa] dark:hover:bg-[#191919] transition-colors relative", templ.KV("bg-white dark:bg-[#202020]", !unread), templ.KV("bg-sky-50 dark:bg-sky-950/30", unread)}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var2...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -143,40 +143,40 @@ func ConvItem(conv repository.ConversationSummary, unread bool) templ.Component 
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div><!-- Body --><div class=\"conv-body flex-1 min-w-0\"><div class=\"flex items-center justify-between gap-1 mb-0.5\"><span class=\"conv-from font-semibold text-sm text-zinc-900 truncate\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div><!-- Body --><div class=\"conv-body flex-1 min-w-0\"><div class=\"flex items-center justify-between gap-1 mb-0.5\"><span class=\"conv-from font-semibold text-sm text-[#37352f] dark:text-[#e3e3e3] truncate\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(conv.ContactName)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/conv_item.templ`, Line: 68, Col: 91}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/conv_item.templ`, Line: 68, Col: 112}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</span> <span class=\"conv-time text-xs text-zinc-400 flex-shrink-0\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</span> <span class=\"conv-time text-xs text-[#787774] dark:text-[#9b9b9b] flex-shrink-0\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var9 string
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(conv.LastMessageTime.Format("15:04"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/conv_item.templ`, Line: 69, Col: 102}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/conv_item.templ`, Line: 69, Col: 123}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</span></div><div class=\"flex items-center justify-between gap-1\"><span class=\"conv-preview text-xs text-zinc-500 truncate\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</span></div><div class=\"flex items-center justify-between gap-1\"><span class=\"conv-preview text-xs text-[#787774] dark:text-[#9b9b9b] truncate\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(truncate(conv.LastMessageBody, 48))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/conv_item.templ`, Line: 72, Col: 98}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/conv_item.templ`, Line: 72, Col: 119}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -217,19 +217,19 @@ func ConvItem(conv repository.ConversationSummary, unread bool) templ.Component 
 			return templ_7745c5c3_Err
 		}
 		if unread {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<span class=\"unread-dot h-2 w-2 rounded-full bg-blue-500 flex-shrink-0\"></span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<span class=\"unread-dot h-2 w-2 rounded-full bg-[#0284c7] flex-shrink-0\"></span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</div></div><!-- Via (recipient identity) --><div class=\"conv-via text-xs text-zinc-400 truncate mt-0.5\">via ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</div></div><!-- Via (recipient identity) --><div class=\"conv-via text-xs text-[#787774] dark:text-[#9b9b9b] truncate mt-0.5\">via ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(conv.RecipientIdentity)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/conv_item.templ`, Line: 85, Col: 91}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/conv_item.templ`, Line: 85, Col: 112}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {

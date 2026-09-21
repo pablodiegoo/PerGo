@@ -150,7 +150,7 @@ templ NewChatModal(templates []repository.WABATemplate, fromContact string, isTe
 			const componentsRaw = selectedOption.getAttribute('data-components');
 			if (!componentsRaw) {
 				if (contentContainer) {
-					contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200">ℹ️ Este template é estático e não requer variáveis.</p>';
+					contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200 flex items-center gap-1.5"><svg class="w-3.5 h-3.5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>Este template é estático e não requer variáveis.</span></p>';
 				}
 				return;
 			}
@@ -170,7 +170,7 @@ templ NewChatModal(templates []repository.WABATemplate, fromContact string, isTe
 
 				if (matches.length === 0) {
 					if (contentContainer) {
-						contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200">ℹ️ Este template é estático e não requer variáveis.</p>';
+						contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200 flex items-center gap-1.5"><svg class="w-3.5 h-3.5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>Este template é estático e não requer variáveis.</span></p>';
 					}
 					return;
 				}
@@ -196,7 +196,7 @@ templ NewChatModal(templates []repository.WABATemplate, fromContact string, isTe
 			} catch (e) {
 				console.error("Failed to parse template components:", e);
 				if (contentContainer) {
-					contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200">ℹ️ Este template é estático e não requer variáveis.</p>';
+					contentContainer.innerHTML = '<p class="text-xs text-zinc-500 bg-zinc-100 p-2 rounded border border-zinc-200 flex items-center gap-1.5"><svg class="w-3.5 h-3.5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span>Este template é estático e não requer variáveis.</span></p>';
 				}
 			}
 		}
