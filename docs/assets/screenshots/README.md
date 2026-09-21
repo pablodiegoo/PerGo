@@ -17,6 +17,9 @@ This directory stores official platform imagery used in `README.md` and reposito
 | [`api-docs.png`](api-docs.png) | PNG (247 KB) | `1440 × 900` | Embedded interactive Scalar OpenAPI 3.1 portal (`/docs`) |
 | [`scalar-docs.webp`](scalar-docs.webp) | WebP (117 KB) | `1440 × 900` | WebP optimized version of `api-docs.png` |
 | [`../pergo-banner.svg`](../pergo-banner.svg) | SVG (14 KB) | `1200 × 360` | Modern high-contrast repository header banner |
+| [`../pergo-social-preview.png`](../pergo-social-preview.png) | PNG (433 KB) | `1280 × 640` | Official GitHub repository social media preview (OpenGraph 2:1) |
+| [`../pergo-social-preview.svg`](../pergo-social-preview.svg) | SVG (21 KB) | `1280 × 640` | Vector master for social media preview card |
+| [`../pergo-social-preview.webp`](../pergo-social-preview.webp) | WebP (80 KB) | `1280 × 640` | WebP optimized social media preview |
 
 ## Asset Standards & Governance
 

@@ -60,7 +60,7 @@
     <!-- Drop Shadows -->
     <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#000000" flood-opacity="0.5" />
-    </feDropShadow>
+    </filter>
   </defs>
 
   <!-- Container Box with Rounded Edges and Crisp Border -->

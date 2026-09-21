@@ -1,0 +1,323 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" fill="none">
+  <defs>
+    <!-- Background Gradients -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1280" y2="640" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#09090b" />
+      <stop offset="50%" stop-color="#0d0e12" />
+      <stop offset="100%" stop-color="#12131a" />
+    </linearGradient>
+
+    <!-- Radial Ambient Glows -->
+    <radialGradient id="emeraldGlow" cx="200" cy="120" r="380" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#10b981" stop-opacity="0" />
+    </radialGradient>
+
+    <radialGradient id="indigoGlow" cx="1080" cy="140" r="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0" />
+    </radialGradient>
+
+    <radialGradient id="cyanGlow" cx="640" cy="500" r="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#06b6d4" stop-opacity="0.14" />
+      <stop offset="100%" stop-color="#06b6d4" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Logo & Accent Gradients -->
+    <linearGradient id="brandLogoGrad" x1="0" y1="0" x2="68" y2="68" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="50%" stop-color="#06b6d4" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+
+    <linearGradient id="textGrad" x1="0" y1="0" x2="320" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#e2e8f0" />
+    </linearGradient>
+
+    <linearGradient id="accentLineGrad" x1="0" y1="0" x2="1280" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="50%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#06b6d4" />
+    </linearGradient>
+
+    <linearGradient id="cardGrad" x1="0" y1="0" x2="530" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#18181b" stop-opacity="0.94" />
+      <stop offset="100%" stop-color="#0e0e11" stop-opacity="0.98" />
+    </linearGradient>
+
+    <linearGradient id="cardBorderGrad" x1="0" y1="0" x2="530" y2="480" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3f3f46" />
+      <stop offset="50%" stop-color="#27272a" />
+      <stop offset="100%" stop-color="#52525b" />
+    </linearGradient>
+
+    <linearGradient id="statCardGrad" x1="0" y1="0" x2="160" y2="70" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#18181b" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#121215" stop-opacity="0.9" />
+    </linearGradient>
+
+    <!-- Grid Pattern -->
+    <pattern id="gridPattern" width="32" height="32" patternUnits="userSpaceOnUse">
+      <circle cx="16" cy="16" r="1.2" fill="#27272a" fill-opacity="0.5" />
+    </pattern>
+
+    <!-- Drop Shadows -->
+    <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="24" flood-color="#000000" flood-opacity="0.6" />
+    </filter>
+  </defs>
+
+  <!-- Container Background -->
+  <rect width="1280" height="640" fill="url(#bgGrad)" />
+
+  <!-- Grid Lattice Overlay -->
+  <rect width="1280" height="640" fill="url(#gridPattern)" />
+
+  <!-- Ambient Glow Spheres -->
+  <rect width="1280" height="640" fill="url(#emeraldGlow)" />
+  <rect width="1280" height="640" fill="url(#indigoGlow)" />
+  <rect width="1280" height="640" fill="url(#cyanGlow)" />
+
+  <!-- Top Accent Highlight Bar -->
+  <rect x="0" y="0" width="1280" height="3" fill="url(#accentLineGrad)" />
+
+  <!-- LEFT COLUMN: Branding, Value Prop, Features, Stats -->
+  <g transform="translate(68, 52)">
+    <!-- Logo Badge & Brand Group -->
+    <g>
+      <!-- Logo Box -->
+      <rect x="0" y="0" width="64" height="64" rx="16" fill="#18181b" stroke="#3f3f46" stroke-width="1.5" filter="url(#cardShadow)" />
+      <!-- Stylized Lightning / Connected Signal -->
+      <path d="M 32 12 L 21 34 L 31 34 L 28 52 L 43 27 L 33 27 Z" fill="url(#brandLogoGrad)" />
+      <circle cx="19" cy="19" r="4" fill="#10b981" />
+      <circle cx="45" cy="45" r="4" fill="#6366f1" />
+      <circle cx="45" cy="19" r="3" fill="#06b6d4" />
+
+      <!-- Brand Name -->
+      <text x="80" y="44" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="48" font-weight="900" letter-spacing="-0.04em" fill="url(#textGrad)">PerGo</text>
+
+      <!-- Badge: CPaaS v1.0 • Go -->
+      <g transform="translate(242, 17)">
+        <rect x="0" y="0" width="142" height="28" rx="14" fill="#10b981" fill-opacity="0.12" stroke="#10b981" stroke-opacity="0.4" stroke-width="1" />
+        <circle cx="14" cy="14" r="4.5" fill="#10b981" />
+        <text x="28" y="18" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="700" fill="#34d399" letter-spacing="0.04em">CPaaS v1.0 • Go</text>
+      </g>
+    </g>
+
+    <!-- Main Headline -->
+    <text x="0" y="116" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="28" font-weight="800" letter-spacing="-0.03em" fill="#f4f4f5">
+      Autonomous Omnichannel
+    </text>
+    <text x="0" y="152" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="28" font-weight="800" letter-spacing="-0.03em" fill="#f4f4f5">
+      Messaging Infrastructure
+    </text>
+
+    <!-- Sub-description -->
+    <text x="0" y="194" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="400" fill="#a1a1aa" letter-spacing="-0.01em">
+      High-throughput unified messaging broker for WhatsApp Cloud (WABA),
+    </text>
+    <text x="0" y="218" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="15" font-weight="400" fill="#a1a1aa" letter-spacing="-0.01em">
+      WhatsApp Web, Telegram &amp; Webhooks with zero per-message markup.
+    </text>
+
+    <!-- Channel & Tech Badges (Pills) -->
+    <g transform="translate(0, 252)">
+      <!-- Row 1 -->
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="144" height="30" rx="7" fill="#18181b" stroke="#27272a" stroke-width="1" />
+        <circle cx="15" cy="15" r="4" fill="#22c55e" />
+        <text x="28" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">WhatsApp Cloud</text>
+      </g>
+      <g transform="translate(154, 0)">
+        <rect x="0" y="0" width="138" height="30" rx="7" fill="#18181b" stroke="#27272a" stroke-width="1" />
+        <circle cx="15" cy="15" r="4" fill="#10b981" />
+        <text x="28" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">WhatsApp Web</text>
+      </g>
+      <g transform="translate(302, 0)">
+        <rect x="0" y="0" width="102" height="30" rx="7" fill="#18181b" stroke="#27272a" stroke-width="1" />
+        <circle cx="15" cy="15" r="4" fill="#0ea5e9" />
+        <text x="28" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">Telegram</text>
+      </g>
+      <g transform="translate(414, 0)">
+        <rect x="0" y="0" width="124" height="30" rx="7" fill="#18181b" stroke="#27272a" stroke-width="1" />
+        <circle cx="15" cy="15" r="4" fill="#818cf8" />
+        <text x="28" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">NATS PubSub</text>
+      </g>
+
+      <!-- Row 2 -->
+      <g transform="translate(0, 38)">
+        <rect x="0" y="0" width="144" height="30" rx="7" fill="#18181b" stroke="#27272a" stroke-width="1" />
+        <circle cx="15" cy="15" r="4" fill="#a855f7" />
+        <text x="28" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">Scalar OpenAPI 3.1</text>
+      </g>
+      <g transform="translate(154, 38)">
+        <rect x="0" y="0" width="118" height="30" rx="7" fill="#18181b" stroke="#27272a" stroke-width="1" />
+        <circle cx="15" cy="15" r="4" fill="#f59e0b" />
+        <text x="28" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">MCP Protocol</text>
+      </g>
+      <g transform="translate(282, 38)">
+        <rect x="0" y="0" width="142" height="30" rx="7" fill="#18181b" stroke="#27272a" stroke-width="1" />
+        <circle cx="15" cy="15" r="4" fill="#06b6d4" />
+        <text x="28" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">PostgreSQL + RLS</text>
+      </g>
+      <g transform="translate(434, 38)">
+        <rect x="0" y="0" width="104" height="30" rx="7" fill="#18181b" stroke="#27272a" stroke-width="1" />
+        <circle cx="15" cy="15" r="4" fill="#3b82f6" />
+        <text x="28" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">Docker</text>
+      </g>
+    </g>
+
+    <!-- High-Impact Stat Boxes -->
+    <g transform="translate(0, 350)">
+      <!-- Stat 1: Memory -->
+      <g transform="translate(0, 0)">
+        <rect x="0" y="0" width="168" height="74" rx="10" fill="url(#statCardGrad)" stroke="#27272a" stroke-width="1" />
+        <text x="16" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="24" font-weight="800" fill="#10b981">&lt; 50MB</text>
+        <text x="16" y="54" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="500" fill="#71717a">RAM Footprint</text>
+      </g>
+      <!-- Stat 2: Latency -->
+      <g transform="translate(182, 0)">
+        <rect x="0" y="0" width="168" height="74" rx="10" fill="url(#statCardGrad)" stroke="#27272a" stroke-width="1" />
+        <text x="16" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="24" font-weight="800" fill="#38bdf8">&lt; 8ms</text>
+        <text x="16" y="54" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="500" fill="#71717a">E2E Dispatch Latency</text>
+      </g>
+      <!-- Stat 3: Pricing -->
+      <g transform="translate(364, 0)">
+        <rect x="0" y="0" width="174" height="74" rx="10" fill="url(#statCardGrad)" stroke="#27272a" stroke-width="1" />
+        <text x="16" y="32" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="24" font-weight="800" fill="#a78bfa">$0.00</text>
+        <text x="16" y="54" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="500" fill="#71717a">Per-Message Markup</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- RIGHT COLUMN: Sleek Glassmorphic Dispatch & Architecture Card -->
+  <g transform="translate(680, 52)">
+    <!-- Main Card Body -->
+    <rect x="0" y="0" width="532" height="494" rx="16" fill="url(#cardGrad)" stroke="url(#cardBorderGrad)" stroke-width="1.5" filter="url(#cardShadow)" />
+
+    <!-- Terminal Window Title Bar -->
+    <path d="M 0 16 C 0 7.16 7.16 0 16 0 L 516 0 C 524.84 0 532 7.16 532 16 L 532 44 L 0 44 Z" fill="#141417" />
+    <line x1="0" y1="44.5" x2="532" y2="44.5" stroke="#27272a" stroke-width="1" />
+
+    <!-- Window Buttons -->
+    <circle cx="20" cy="22" r="5.5" fill="#ef4444" fill-opacity="0.85" />
+    <circle cx="38" cy="22" r="5.5" fill="#eab308" fill-opacity="0.85" />
+    <circle cx="56" cy="22" r="5.5" fill="#22c55e" fill-opacity="0.85" />
+
+    <!-- Window Title -->
+    <text x="88" y="27" font-family="'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace" font-size="12.5" font-weight="500" fill="#71717a">pergo-router — omnichannel-dispatch</text>
+
+    <!-- LIVE Badge -->
+    <g transform="translate(442, 13)">
+      <rect x="0" y="0" width="74" height="18" rx="9" fill="#10b981" fill-opacity="0.15" />
+      <text x="37" y="13" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="700" fill="#34d399" text-anchor="middle">LIVE 1.0</text>
+    </g>
+
+    <!-- Terminal Inner Content -->
+    <g transform="translate(24, 66)">
+      <!-- Line 1: Ingest -->
+      <text x="0" y="16" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="700" fill="#38bdf8">POST</text>
+      <text x="44" y="16" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="500" fill="#f4f4f5">/api/v1/messages</text>
+      <text x="382" y="16" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="700" fill="#10b981">202 ACCEPTED</text>
+
+      <!-- Line 2: Dispatch Tree Node 1 (WABA) -->
+      <text x="0" y="48" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="400" fill="#52525b">├──</text>
+      <text x="30" y="48" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="600" fill="#a1a1aa">channel:</text>
+      <text x="102" y="48" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="600" fill="#22c55e">whatsapp_cloud</text>
+      <text x="228" y="48" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="400" fill="#71717a">(Meta Graph v21.0)</text>
+      <text x="442" y="48" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="700" fill="#10b981">4ms</text>
+
+      <!-- Line 3: Dispatch Tree Node 2 (WhatsApp Web) -->
+      <text x="0" y="78" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="400" fill="#52525b">├──</text>
+      <text x="30" y="78" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="600" fill="#a1a1aa">channel:</text>
+      <text x="102" y="78" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="600" fill="#10b981">whatsapp_web</text>
+      <text x="228" y="78" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="400" fill="#71717a">(whatsmeow-go)</text>
+      <text x="442" y="78" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="700" fill="#10b981">7ms</text>
+
+      <!-- Line 4: Dispatch Tree Node 3 (Telegram) -->
+      <text x="0" y="108" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="400" fill="#52525b">├──</text>
+      <text x="30" y="108" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="600" fill="#a1a1aa">channel:</text>
+      <text x="102" y="108" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="600" fill="#0ea5e9">telegram_bot</text>
+      <text x="228" y="108" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="400" fill="#71717a">(@PerGoDemoBot)</text>
+      <text x="442" y="108" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="700" fill="#10b981">5ms</text>
+
+      <!-- Line 5: Dispatch Tree Node 4 (PubSub) -->
+      <text x="0" y="138" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="400" fill="#52525b">└──</text>
+      <text x="30" y="138" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="600" fill="#a1a1aa">pubsub:</text>
+      <text x="102" y="138" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="600" fill="#818cf8">nats.jetstream</text>
+      <text x="228" y="138" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="400" fill="#71717a">(events.outbound)</text>
+      <text x="442" y="138" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="700" fill="#10b981">1ms</text>
+
+      <!-- Separator line -->
+      <line x1="0" y1="162" x2="484" y2="162" stroke="#27272a" stroke-width="1" />
+
+      <!-- Section Title: Architecture & Telemetry -->
+      <text x="0" y="188" font-family="'JetBrains Mono', monospace" font-size="11" font-weight="700" fill="#71717a" letter-spacing="0.08em">ENGINE SPECIFICATIONS &amp; POLICIES</text>
+
+      <!-- Telemetry Spec Cards / Grid -->
+      <g transform="translate(0, 204)">
+        <!-- Row 1 -->
+        <g transform="translate(0, 0)">
+          <rect x="0" y="0" width="234" height="42" rx="8" fill="#141417" stroke="#27272a" stroke-width="1" />
+          <text x="12" y="18" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="500" fill="#71717a">Concurrency</text>
+          <text x="12" y="33" font-family="'JetBrains Mono', monospace" font-size="11.5" font-weight="600" fill="#f4f4f5">Lock-Free Goroutines</text>
+        </g>
+        <g transform="translate(250, 0)">
+          <rect x="0" y="0" width="234" height="42" rx="8" fill="#141417" stroke="#27272a" stroke-width="1" />
+          <text x="12" y="18" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="500" fill="#71717a">Message Queuing</text>
+          <text x="12" y="33" font-family="'JetBrains Mono', monospace" font-size="11.5" font-weight="600" fill="#818cf8">NATS JetStream Stream</text>
+        </g>
+
+        <!-- Row 2 -->
+        <g transform="translate(0, 50)">
+          <rect x="0" y="0" width="234" height="42" rx="8" fill="#141417" stroke="#27272a" stroke-width="1" />
+          <text x="12" y="18" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="500" fill="#71717a">Anti-Ban Dispatch</text>
+          <text x="12" y="33" font-family="'JetBrains Mono', monospace" font-size="11.5" font-weight="600" fill="#34d399">Human Jitter + TokenBucket</text>
+        </g>
+        <g transform="translate(250, 50)">
+          <rect x="0" y="0" width="234" height="42" rx="8" fill="#141417" stroke="#27272a" stroke-width="1" />
+          <text x="12" y="18" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="500" fill="#71717a">Data Isolation</text>
+          <text x="12" y="33" font-family="'JetBrains Mono', monospace" font-size="11.5" font-weight="600" fill="#06b6d4">Strict PostgreSQL RLS</text>
+        </g>
+
+        <!-- Row 3 -->
+        <g transform="translate(0, 100)">
+          <rect x="0" y="0" width="234" height="42" rx="8" fill="#141417" stroke="#27272a" stroke-width="1" />
+          <text x="12" y="18" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="500" fill="#71717a">Failover Pipeline</text>
+          <text x="12" y="33" font-family="'JetBrains Mono', monospace" font-size="11.5" font-weight="600" fill="#f59e0b">Auto Telegram ➔ WABA</text>
+        </g>
+        <g transform="translate(250, 100)">
+          <rect x="0" y="0" width="234" height="42" rx="8" fill="#141417" stroke="#27272a" stroke-width="1" />
+          <text x="12" y="18" font-family="'JetBrains Mono', monospace" font-size="10.5" font-weight="500" fill="#71717a">Developer API</text>
+          <text x="12" y="33" font-family="'JetBrains Mono', monospace" font-size="11.5" font-weight="600" fill="#a855f7">Scalar OpenAPI + MCP</text>
+        </g>
+
+        <!-- Row 4: Status line -->
+        <g transform="translate(0, 150)">
+          <rect x="0" y="0" width="484" height="46" rx="8" fill="#10b981" fill-opacity="0.08" stroke="#10b981" stroke-opacity="0.3" stroke-width="1" />
+          <circle cx="18" cy="23" r="5" fill="#10b981" />
+          <text x="34" y="27" font-family="'JetBrains Mono', monospace" font-size="12" font-weight="600" fill="#34d399">Cluster Health: 100% Operational • 0 Errors • 0 Packet Loss</text>
+        </g>
+      </g>
+    </g>
+  </g>
+
+  <!-- BOTTOM FOOTER STRIP -->
+  <g transform="translate(0, 582)">
+    <line x1="0" y1="0" x2="1280" y2="0" stroke="#27272a" stroke-width="1" />
+    <!-- Repository URL -->
+    <g transform="translate(68, 20)">
+      <!-- GitHub Icon -->
+      <path fill="#71717a" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" transform="translate(0, 0) scale(1.15)" />
+      <text x="26" y="14" font-family="'JetBrains Mono', monospace" font-size="13.5" font-weight="600" fill="#a1a1aa">github.com/pablodiegoo/PerGo</text>
+    </g>
+
+    <!-- Right side tag -->
+    <g transform="translate(760, 20)">
+      <text x="452" y="14" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="500" fill="#71717a" text-anchor="end">
+        100% Free &amp; Self-Hosted CPaaS • MIT License • Production Ready
+      </text>
+    </g>
+  </g>
+</svg>
