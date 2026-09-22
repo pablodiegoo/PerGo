@@ -15,7 +15,9 @@
     "chatwoot": "Chatwoot",
     "typebot": "Typebot",
     "logout": "Logout",
-    "workspace_label": "Workspace"
+    "workspace_label": "Workspace",
+    "workspace_settings": "Workspace Settings",
+    "search_workspace": "Search workspace..."
   },
   "navigation": {
     "home": "Home",

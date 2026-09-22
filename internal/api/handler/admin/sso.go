@@ -188,7 +188,7 @@ func (h *SSOHandler) HandleSSO(c *echo.Context) error {
 	// 3. Set locale cookie and update request context
 	targetLocale := claims.Locale
 	if targetLocale == "" {
-		targetLocale = i18n.DefaultLocale
+		targetLocale = i18n.DefaultLocale()
 	}
 	if normLocale := i18n.NormalizeLocale(targetLocale); normLocale != "" {
 		mw.SetLocaleCookie(c, normLocale)

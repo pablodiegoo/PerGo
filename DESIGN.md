@@ -282,14 +282,27 @@ The geometric language of PerGo communicates engineered precision and soft tacti
 - **Height & Spacing**: Comfortable 38px minimum touch height with `rounded-lg` (12px) corners and 1px hairline border.
 - **Focus Rings**: Electric Cyan glow ring (`focus:ring-2 focus:ring-sky-400 focus:border-sky-500`).
 
-### 3. Navigation Sidebar
+### 3. Navigation Sidebar & Popovers
 - Muted sidebar chassis (`#fbfbfa` / dark `#202020`) with 1px right border (`#e9e9e7` / dark `#2f2f2f`).
 - Navigation links wrapped with `.group` containing vectorized SVG icons that illuminate in Electric Cyan (`#0284c7`) strictly on hover.
 
-### 4. Status Dots & Badge Indicators
+### 4. Popover Surface Specification (Level 1 Elevation)
+Popovers provide a tactile, premium micro-interaction surface powered by Alpine.js:
+- **Visual Token**: `shadow-notion-popover` (`0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04)`), `border border-[#e9e9e7] dark:border-[#2f2f2f]`, `rounded-xl`, `bg-white dark:bg-[#202020]`.
+- **Transitions (100ms)**:
+  - Enter: `transition ease-out duration-100 transform opacity-0 scale-95 -> opacity-100 scale-100`
+  - Leave: `transition ease-in duration-75 transform opacity-100 scale-100 -> opacity-0 scale-95`
+- **Dismissal**: Handled cleanly by `@click.outside="open = false"` and `@keydown.escape.window="open = false"`.
+
+### 5. Canonical Popovers
+- **Workspace Selector Popover**: Replaces standard HTML `<select>` with a rich tactile trigger in the sidebar header displaying the active workspace avatar, name, and chevron, opening an overlay with search, active checkmark, and quick management links.
+- **Context Action Menu (`...`)**: Secondary actions on table rows (campaigns, templates, devices) use fixed-coordinate floating popovers to eliminate clipping from horizontal scroll wrappers (`overflow-x-auto`).
+- **User Profile Popover**: Located in the sidebar footer, combining user avatar, session info, language switcher (`EN` / `PT`), theme toggle, and secure logout.
+
+### 6. Status Dots & Badge Indicators
 - Operational status conveyed via 8px circular status dots (`status-dot-success`, `status-dot-error`) alongside explicit text labels (never relying solely on color).
 
-### 5. Iconography Standard — Strict Zero-Emoji Rule
+### 7. Iconography Standard — Strict Zero-Emoji Rule
 - **Vectorized SVG Only**: Emojis are strictly banned from production UI controls, headers, buttons, tables, and notifications.
 - All icons must be rendered as inline SVG components with `viewBox="0 0 24 24"`, `stroke-width="2"`, and reactive hover classes (`group-hover:text-sky-600 transition-colors`).
 

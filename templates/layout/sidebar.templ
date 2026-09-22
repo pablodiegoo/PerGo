@@ -182,14 +182,8 @@ templ Sidebar() {
 				</ul>
 			</li>
 		</ul>
-		<div class="sidebar-footer p-3 border-t border-[#e9e9e7] dark:border-[#2f2f2f] space-y-2">
-			@LanguageSwitcher()
-			<form method="POST" action="/admin/logout">
-				<button type="submit" class="nav-item group logout-btn flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-[#787774] dark:text-[#9b9b9b] hover:bg-rose-50 dark:hover:bg-rose-950/30 hover:text-rose-600 dark:hover:text-rose-400 transition-all w-full">
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline shrink-0 text-[#787774] group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-					<span>{ i18n.T(ctx, "sidebar.logout") }</span>
-				</button>
-			</form>
+		<div class="sidebar-footer p-3 border-t border-[#e9e9e7] dark:border-[#2f2f2f] relative">
+			@UserProfilePopover()
 		</div>
 		<script>
 			function toggleSettingsSubmenu() {
@@ -211,6 +205,75 @@ templ Sidebar() {
 			}
 		</script>
 	</nav>
+}
+
+templ UserProfilePopover() {
+	<div class="relative" x-data="{ profileOpen: false }" @click.outside="profileOpen = false" @keydown.escape.window="profileOpen = false">
+		<!-- Trigger Button -->
+		<button
+			type="button"
+			@click="profileOpen = !profileOpen"
+			class="w-full flex items-center justify-between p-2 rounded-xl hover:bg-[#e9e9e7]/50 dark:hover:bg-[#2f2f2f]/50 transition-colors text-left group cursor-pointer"
+			aria-haspopup="true"
+			:aria-expanded="profileOpen"
+		>
+			<div class="flex items-center gap-2.5 min-w-0">
+				<div class="w-8 h-8 rounded-full bg-[#e9e9e7] dark:bg-[#2f2f2f] text-[#37352f] dark:text-[#e3e3e3] flex items-center justify-center font-bold text-xs shrink-0 border border-[#e9e9e7] dark:border-[#2f2f2f]">
+					<span>OP</span>
+				</div>
+				<div class="truncate">
+					<p class="text-xs font-semibold text-[#37352f] dark:text-[#e3e3e3] truncate">System Operator</p>
+					<p class="text-[11px] text-[#787774] dark:text-[#9b9b9b] truncate">PerGo CPaaS</p>
+				</div>
+			</div>
+			<svg class="w-4 h-4 text-[#787774] group-hover:text-[#0284c7] transition-transform shrink-0" :class="{ 'rotate-180': profileOpen }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" />
+			</svg>
+		</button>
+
+		<!-- Upward Popover Surface (Level 1 Elevation) -->
+		<div
+			x-show="profileOpen"
+			x-cloak
+			x-transition:enter="transition ease-out duration-100"
+			x-transition:enter-start="transform opacity-0 scale-95"
+			x-transition:enter-end="transform opacity-100 scale-100"
+			x-transition:leave="transition ease-in duration-75"
+			x-transition:leave-start="transform opacity-100 scale-100"
+			x-transition:leave-end="transform opacity-0 scale-95"
+			class="absolute bottom-full left-0 right-0 mb-2 rounded-xl border border-[#e9e9e7] dark:border-[#2f2f2f] bg-white dark:bg-[#202020] shadow-lg z-50 py-2 space-y-1"
+			style="box-shadow: var(--shadow-notion-popover, 0 10px 25px -5px rgba(0,0,0,0.08));"
+		>
+			<div class="px-3 py-1.5 border-b border-[#e9e9e7] dark:border-[#2f2f2f]">
+				<div class="flex items-center justify-between">
+					<span class="text-xs font-semibold text-[#37352f] dark:text-[#e3e3e3]">PerGo CPaaS</span>
+					<span class="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 px-1.5 py-0.5 rounded-full">
+						<span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+						Online
+					</span>
+				</div>
+			</div>
+
+			<!-- Language Switcher Row -->
+			<div class="px-3 py-1.5">
+				@LanguageSwitcher()
+			</div>
+
+			<div class="border-t border-[#e9e9e7] dark:border-[#2f2f2f] pt-1">
+				<form method="POST" action="/admin/logout" class="m-0 p-0">
+					<button
+						type="submit"
+						class="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-[#787774] dark:text-[#9b9b9b] hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+					>
+						<svg class="w-4 h-4 text-[#787774] group-hover:text-rose-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+						</svg>
+						<span>{ i18n.T(ctx, "sidebar.logout") }</span>
+					</button>
+				</form>
+			</div>
+		</div>
+	</div>
 }
 
 templ LanguageSwitcher() {
@@ -251,21 +314,108 @@ templ LanguageSwitcher() {
 
 templ WorkspaceSelector(activeWorkspace *repository.Workspace, workspaces []repository.Workspace) {
 	if len(workspaces) > 0 {
-		<div id="sidebar-workspace-selector" class="px-4 py-2 border-b border-[#e9e9e7] dark:border-[#2f2f2f]">
-			<label class="block text-xs font-semibold text-[#787774] dark:text-[#9b9b9b] uppercase tracking-wider mb-1">{ i18n.T(ctx, "sidebar.workspace_label") }</label>
-			<select name="workspace_id" 
-			        hx-post="/admin/workspaces/active" 
-			        hx-trigger="change" 
-			        hx-swap="none" 
-			        class="select select-bordered select-xs w-full max-w-xs font-medium text-[#37352f] dark:text-[#e3e3e3] bg-white dark:bg-[#202020] border-[#e9e9e7] dark:border-[#2f2f2f] focus:outline-none focus:border-[#0284c7]">
-				for _, ws := range workspaces {
-					if activeWorkspace != nil && ws.ID == activeWorkspace.ID {
-						<option value={ ws.ID.String() } selected>{ ws.Name }</option>
-					} else {
-						<option value={ ws.ID.String() }>{ ws.Name }</option>
-					}
+		<div id="sidebar-workspace-selector" class="p-3 border-b border-[#e9e9e7] dark:border-[#2f2f2f] relative" x-data="{ open: false, search: '' }" @click.outside="open = false" @keydown.escape.window="open = false">
+			<!-- Popover Trigger Button -->
+			<button
+				type="button"
+				@click="open = !open"
+				class="w-full flex items-center justify-between p-2 rounded-xl border border-[#e9e9e7] dark:border-[#2f2f2f] bg-white dark:bg-[#191919] hover:border-[#0284c7] transition-all shadow-xs cursor-pointer group text-left"
+				aria-haspopup="true"
+				:aria-expanded="open"
+			>
+				<div class="flex items-center gap-2.5 min-w-0">
+					<div class="w-7 h-7 rounded-lg bg-sky-500/10 text-[#0284c7] flex items-center justify-center font-bold text-xs shrink-0 border border-sky-500/20">
+						if activeWorkspace != nil && len(activeWorkspace.Name) > 0 {
+							{ strings.ToUpper(string([]rune(activeWorkspace.Name)[0])) }
+						} else {
+							<span>W</span>
+						}
+					</div>
+					<div class="truncate">
+						<div class="text-xs font-semibold text-[#37352f] dark:text-[#e3e3e3] truncate">
+							if activeWorkspace != nil {
+								{ activeWorkspace.Name }
+							} else {
+								<span>Workspace</span>
+							}
+						</div>
+						<span class="text-[10px] text-[#787774] dark:text-[#9b9b9b] font-mono uppercase tracking-wider">CPaaS</span>
+					</div>
+				</div>
+				<svg class="w-4 h-4 text-[#787774] group-hover:text-[#0284c7] transition-transform duration-200 shrink-0" :class="{ 'rotate-180': open }" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+				</svg>
+			</button>
+
+			<!-- Popover Surface (Level 1 Elevation) -->
+			<div
+				x-show="open"
+				x-cloak
+				x-transition:enter="transition ease-out duration-100"
+				x-transition:enter-start="transform opacity-0 scale-95"
+				x-transition:enter-end="transform opacity-100 scale-100"
+				x-transition:leave="transition ease-in duration-75"
+				x-transition:leave-start="transform opacity-100 scale-100"
+				x-transition:leave-end="transform opacity-0 scale-95"
+				class="absolute left-3 right-3 mt-1.5 rounded-xl border border-[#e9e9e7] dark:border-[#2f2f2f] bg-white dark:bg-[#202020] shadow-lg z-50 py-1 overflow-hidden"
+				style="box-shadow: var(--shadow-notion-popover, 0 10px 25px -5px rgba(0,0,0,0.08));"
+			>
+				if len(workspaces) > 3 {
+					<div class="p-2 border-b border-[#e9e9e7] dark:border-[#2f2f2f]">
+						<input
+							type="text"
+							x-model="search"
+							placeholder={ i18n.T(ctx, "sidebar.search_workspace") }
+							class="w-full px-2.5 py-1 text-xs rounded-lg border border-[#e9e9e7] dark:border-[#2f2f2f] bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] focus:outline-none focus:border-[#0284c7]"
+							@click.stop
+						/>
+					</div>
 				}
-			</select>
+				<div class="max-h-56 overflow-y-auto py-1 space-y-0.5">
+					for _, ws := range workspaces {
+						<form method="POST" action="/admin/workspaces/active" class="m-0 p-0"
+						      hx-post="/admin/workspaces/active"
+						      hx-swap="none">
+							<input type="hidden" name="workspace_id" value={ ws.ID.String() } />
+							<button
+								type="submit"
+								@click="open = false"
+								class={ "w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-[#e9e9e7]/50 dark:hover:bg-[#2f2f2f]/60 transition-colors group cursor-pointer",
+									templ.KV("font-semibold text-[#0284c7] bg-sky-50/60 dark:bg-sky-950/30", activeWorkspace != nil && ws.ID == activeWorkspace.ID),
+									templ.KV("text-[#37352f] dark:text-[#e3e3e3]", activeWorkspace == nil || ws.ID != activeWorkspace.ID) }
+							>
+								<div class="flex items-center gap-2 truncate">
+									<div class="w-5 h-5 rounded bg-[#e9e9e7] dark:bg-[#2f2f2f] text-[#37352f] dark:text-[#e3e3e3] flex items-center justify-center text-[10px] font-bold">
+										if len(ws.Name) > 0 {
+											{ strings.ToUpper(string([]rune(ws.Name)[0])) }
+										} else {
+											<span>W</span>
+										}
+									</div>
+									<span class="truncate">{ ws.Name }</span>
+								</div>
+								if activeWorkspace != nil && ws.ID == activeWorkspace.ID {
+									<svg class="w-4 h-4 text-[#0284c7] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+									</svg>
+								}
+							</button>
+						</form>
+					}
+				</div>
+				<div class="pt-1 mt-1 border-t border-[#e9e9e7] dark:border-[#2f2f2f] px-1 pb-1">
+					<a
+						href="/admin/workspace"
+						class="flex items-center gap-2 px-2.5 py-1.5 text-xs text-[#787774] dark:text-[#9b9b9b] hover:text-[#0284c7] dark:hover:text-[#38bdf8] hover:bg-[#e9e9e7]/40 dark:hover:bg-[#2f2f2f]/40 rounded-lg transition-colors"
+					>
+						<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+							<path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+						</svg>
+						<span>{ i18n.T(ctx, "sidebar.workspace_settings") }</span>
+					</a>
+				</div>
+			</div>
 		</div>
 	} else {
 		<div id="sidebar-workspace-selector" hx-get="/admin/workspaces/selector" hx-trigger="load" hx-swap="outerHTML"></div>
