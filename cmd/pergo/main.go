@@ -779,16 +779,22 @@ func main() {
 	adminGroup.DELETE("/templates/:template_id", wabaTemplateHandler.Delete)
 	adminGroup.POST("/templates/preview", wabaTemplateHandler.Preview)
 
-	// Legacy WABA template routes (302 redirects / backward compatibility)
+	// Legacy WABA template routes (303 redirects / backward compatibility)
 	adminGroup.GET("/workspaces/:workspace_id/templates", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/templates")
+		return c.Redirect(http.StatusSeeOther, "/admin/templates")
 	})
 	adminGroup.GET("/workspaces/:workspace_id/templates/new", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/templates/new")
+		return c.Redirect(http.StatusSeeOther, "/admin/templates/new")
 	})
-	adminGroup.POST("/workspaces/:workspace_id/templates", wabaTemplateHandler.Create)
-	adminGroup.POST("/workspaces/:workspace_id/templates/:template_id/sync", wabaTemplateHandler.Sync)
-	adminGroup.DELETE("/workspaces/:workspace_id/templates/:template_id", wabaTemplateHandler.Delete)
+	adminGroup.POST("/workspaces/:workspace_id/templates", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/templates")
+	})
+	adminGroup.POST("/workspaces/:workspace_id/templates/:template_id/sync", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/templates")
+	})
+	adminGroup.DELETE("/workspaces/:workspace_id/templates/:template_id", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/templates")
+	})
 
 	// Developer Console & Sandbox routes (flat admin routes)
 	adminGroup.GET("/developers", developerHandler.GetPortal)
@@ -800,7 +806,7 @@ func main() {
 
 	// Headless CPaaS & Developer Integration routes (flat admin routes / backward compatibility)
 	adminGroup.GET("/integrations", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/developers")
+		return c.Redirect(http.StatusSeeOther, "/admin/integrations/headless")
 	})
 	adminGroup.GET("/integrations/headless", developerHandler.GetPortal)
 	adminGroup.POST("/integrations/headless/sso-generate", developerHandler.GenerateSSO)
@@ -813,22 +819,28 @@ func main() {
 	adminGroup.GET("/integrations/typebot", typebotAdminHandler.GetSettings)
 	adminGroup.POST("/integrations/typebot", typebotAdminHandler.PostSettings)
 
-	// Legacy integration routes (302 redirects / backward compatibility)
+	// Legacy integration routes (303 redirects / backward compatibility)
 	adminGroup.GET("/workspaces/:workspace_id/integrations", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/developers")
+		return c.Redirect(http.StatusSeeOther, "/admin/integrations/headless")
 	})
 	adminGroup.GET("/workspaces/:workspace_id/integrations/headless", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/developers")
+		return c.Redirect(http.StatusSeeOther, "/admin/integrations/headless")
 	})
-	adminGroup.POST("/workspaces/:workspace_id/integrations/headless/sso-generate", developerHandler.GenerateSSO)
+	adminGroup.POST("/workspaces/:workspace_id/integrations/headless/sso-generate", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/integrations/headless")
+	})
 	adminGroup.GET("/workspaces/:workspace_id/integrations/chatwoot", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/integrations/chatwoot")
+		return c.Redirect(http.StatusSeeOther, "/admin/integrations/chatwoot")
 	})
-	adminGroup.POST("/workspaces/:workspace_id/integrations/chatwoot", chatwootAdminHandler.PostSettings)
+	adminGroup.POST("/workspaces/:workspace_id/integrations/chatwoot", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/integrations/chatwoot")
+	})
 	adminGroup.GET("/workspaces/:workspace_id/integrations/typebot", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/integrations/typebot")
+		return c.Redirect(http.StatusSeeOther, "/admin/integrations/typebot")
 	})
-	adminGroup.POST("/workspaces/:workspace_id/integrations/typebot", typebotAdminHandler.PostSettings)
+	adminGroup.POST("/workspaces/:workspace_id/integrations/typebot", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/integrations/typebot")
+	})
 
 	// Webhooks & DLQ routes (flat admin routes)
 	webhookHandler := admin.NewWebhookDLQHandler(webhookDLQRepo, webhookSubRepo, wsRepo, publisher)
@@ -848,31 +860,43 @@ func main() {
 	adminGroup.POST("/webhooks/dlq/:dlq_id/retry", webhookHandler.RetryDLQ)
 	adminGroup.DELETE("/webhooks/dlq/:dlq_id", webhookHandler.DeleteDLQ)
 
-	// Legacy Webhooks routes (302 redirects / backward compatibility)
+	// Legacy Webhooks routes (303 redirects / backward compatibility)
 	adminGroup.GET("/workspaces/:workspace_id/webhooks", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/webhooks")
+		return c.Redirect(http.StatusSeeOther, "/admin/webhooks")
 	})
 	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/new", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/webhooks/subscriptions/new")
+		return c.Redirect(http.StatusSeeOther, "/admin/webhooks/subscriptions/new")
 	})
 	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/edit", func(c *echo.Context) error {
 		id, _ := echo.PathParam[string](c, "subscription_id")
-		return c.Redirect(http.StatusFound, "/admin/webhooks/subscriptions/"+id+"/edit")
+		return c.Redirect(http.StatusSeeOther, "/admin/webhooks/subscriptions/"+id+"/edit")
 	})
 	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/rotate-form", func(c *echo.Context) error {
 		id, _ := echo.PathParam[string](c, "subscription_id")
-		return c.Redirect(http.StatusFound, "/admin/webhooks/subscriptions/"+id+"/rotate-form")
+		return c.Redirect(http.StatusSeeOther, "/admin/webhooks/subscriptions/"+id+"/rotate-form")
 	})
-	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions", webhookHandler.CreateSubscription)
-	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id", webhookHandler.UpdateSubscription)
-	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/rotate", webhookHandler.RotateSubscriptionSecret)
-	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/ping", webhookHandler.PingSubscription)
-	adminGroup.DELETE("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id", webhookHandler.DeleteSubscription)
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/webhooks")
+	})
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/webhooks")
+	})
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/rotate", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/webhooks")
+	})
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/ping", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/webhooks")
+	})
+	adminGroup.DELETE("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/webhooks")
+	})
 	adminGroup.GET("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/test-form", func(c *echo.Context) error {
 		id, _ := echo.PathParam[string](c, "subscription_id")
-		return c.Redirect(http.StatusFound, "/admin/webhooks/subscriptions/"+id+"/test-form")
+		return c.Redirect(http.StatusSeeOther, "/admin/webhooks/subscriptions/"+id+"/test-form")
 	})
-	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/test", webhookHandler.TestSubscription)
+	adminGroup.POST("/workspaces/:workspace_id/webhooks/subscriptions/:subscription_id/test", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/webhooks")
+	})
 
 	// User action logs routes
 	adminGroup.GET("/logs/actions", userLogsHandler.List)
@@ -886,15 +910,21 @@ func main() {
 	adminGroup.POST("/contacts/import", tagAdminHandler.ImportContactsCSV)
 	adminGroup.GET("/contacts/export", tagAdminHandler.ExportContactsCSV)
 
-	// Legacy Tags & Contact routes (302 redirects / backward compatibility)
+	// Legacy Tags & Contact routes (303 redirects / backward compatibility)
 	adminGroup.GET("/workspaces/:workspace_id/tags", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/tags")
+		return c.Redirect(http.StatusSeeOther, "/admin/tags")
 	})
-	adminGroup.POST("/workspaces/:workspace_id/tags", tagAdminHandler.CreateTag)
-	adminGroup.DELETE("/workspaces/:workspace_id/tags/:id", tagAdminHandler.DeleteTag)
-	adminGroup.POST("/workspaces/:workspace_id/contacts/import", tagAdminHandler.ImportContactsCSV)
+	adminGroup.POST("/workspaces/:workspace_id/tags", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/tags")
+	})
+	adminGroup.DELETE("/workspaces/:workspace_id/tags/:id", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/tags")
+	})
+	adminGroup.POST("/workspaces/:workspace_id/contacts/import", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/tags")
+	})
 	adminGroup.GET("/workspaces/:workspace_id/contacts/export", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/contacts/export")
+		return c.Redirect(http.StatusSeeOther, "/admin/contacts/export")
 	})
 
 	// Campaigns routes (flat admin routes)
@@ -911,28 +941,42 @@ func main() {
 	adminGroup.POST("/campaigns/:id/cancel", campaignHandler.Cancel)
 	adminGroup.DELETE("/campaigns/:id", campaignHandler.Delete)
 
-	// Legacy Campaigns routes (302 redirects / backward compatibility)
+	// Legacy Campaigns routes (303 redirects / backward compatibility)
 	adminGroup.GET("/workspaces/:workspace_id/campaigns", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/campaigns")
+		return c.Redirect(http.StatusSeeOther, "/admin/campaigns")
 	})
 	adminGroup.GET("/workspaces/:workspace_id/campaigns/new", func(c *echo.Context) error {
-		return c.Redirect(http.StatusFound, "/admin/campaigns/new")
+		return c.Redirect(http.StatusSeeOther, "/admin/campaigns/new")
 	})
-	adminGroup.POST("/workspaces/:workspace_id/campaigns/upload", campaignHandler.UploadCSV)
-	adminGroup.POST("/workspaces/:workspace_id/campaigns", campaignHandler.Create)
+	adminGroup.POST("/workspaces/:workspace_id/campaigns/upload", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/campaigns")
+	})
+	adminGroup.POST("/workspaces/:workspace_id/campaigns", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/campaigns")
+	})
 	adminGroup.GET("/workspaces/:workspace_id/campaigns/:id/row", func(c *echo.Context) error {
 		id, _ := echo.PathParam[string](c, "id")
-		return c.Redirect(http.StatusFound, "/admin/campaigns/"+id+"/row")
+		return c.Redirect(http.StatusSeeOther, "/admin/campaigns/"+id+"/row")
 	})
 	adminGroup.GET("/workspaces/:workspace_id/campaigns/:id/skipped/download", func(c *echo.Context) error {
 		id, _ := echo.PathParam[string](c, "id")
-		return c.Redirect(http.StatusFound, "/admin/campaigns/"+id+"/skipped/download")
+		return c.Redirect(http.StatusSeeOther, "/admin/campaigns/"+id+"/skipped/download")
 	})
-	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/start", campaignHandler.Start)
-	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/pause", campaignHandler.Pause)
-	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/resume", campaignHandler.Resume)
-	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/cancel", campaignHandler.Cancel)
-	adminGroup.DELETE("/workspaces/:workspace_id/campaigns/:id", campaignHandler.Delete)
+	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/start", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/campaigns")
+	})
+	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/pause", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/campaigns")
+	})
+	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/resume", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/campaigns")
+	})
+	adminGroup.POST("/workspaces/:workspace_id/campaigns/:id/cancel", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/campaigns")
+	})
+	adminGroup.DELETE("/workspaces/:workspace_id/campaigns/:id", func(c *echo.Context) error {
+		return c.Redirect(http.StatusSeeOther, "/admin/campaigns")
+	})
 
 	// Campaign REST API routes (v1)
 	v1Group := e.Group("/api/v1")
