@@ -77,7 +77,7 @@ A channel-specific address (like a phone number or email) belonging to a Contact
 _Avoid_: Contact point, address, phone number
 
 **Broadcaster Engine**:
-The consolidated module that orchestrates the batching, rate-limiting, and queued dispatch of campaign messages.
+The consolidated, deep module that orchestrates the entire campaign lifecycle, enforcing strict state machine transitions (draft, scheduled, sending, paused, completed, cancelled, failed), atomic completion invariants, dynamic recipient resolution, and queued batch dispatch.
 _Avoid_: Bulk sender, campaign runner, batch pusher
 
 **Customer Service Window**:
