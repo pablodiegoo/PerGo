@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/campaign"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
@@ -29,6 +31,7 @@ type CampaignHandler struct {
 	ConnectionRepo *repository.ConnectionRepository
 	TagRepo        *repository.TagRepository
 	Publisher      *queue.JetStreamPublisher
+	Engine         campaign.BroadcasterEngine
 }
 
 func NewCampaignHandler(
@@ -37,26 +40,143 @@ func NewCampaignHandler(
 	connectionRepo *repository.ConnectionRepository,
 	tagRepo *repository.TagRepository,
 	publisher *queue.JetStreamPublisher,
+	engine ...campaign.BroadcasterEngine,
 ) *CampaignHandler {
-	return &CampaignHandler{
+	h := &CampaignHandler{
 		CampaignRepo:   campaignRepo,
 		TemplateRepo:   templateRepo,
 		ConnectionRepo: connectionRepo,
 		TagRepo:        tagRepo,
 		Publisher:      publisher,
 	}
+	if len(engine) > 0 && engine[0] != nil {
+		h.Engine = engine[0]
+	} else {
+		_ = h.ensureEngine()
+	}
+	return h
+}
+
+func (h *CampaignHandler) WithEngine(engine campaign.BroadcasterEngine) *CampaignHandler {
+	h.Engine = engine
+	return h
+}
+
+func (h *CampaignHandler) ensureEngine() campaign.BroadcasterEngine {
+	if h.Engine != nil {
+		return h.Engine
+	}
+	if h.CampaignRepo != nil {
+		var pub campaign.Publisher
+		if h.Publisher != nil {
+			pub = h.Publisher
+		} else {
+			pub = noopPublisher{}
+		}
+		var tagLister domain.TagContactLister
+		if h.TagRepo != nil {
+			tagLister = h.TagRepo
+		}
+		h.Engine = campaign.NewBroadcasterEngine(h.CampaignRepo, h.ConnectionRepo, nil, pub, nil, tagLister)
+	}
+	return h.Engine
+}
+
+func handleHTMXEngineError(c *echo.Context, err error, defaultMsg string) error {
+	var transErr domain.ErrInvalidCampaignTransition
+	if errors.As(err, &transErr) {
+		trigger := fmt.Sprintf(`{"showToast":{"level":"error","message":%q}}`, transErr.Error())
+		c.Response().Header().Set("HX-Trigger", trigger)
+		return c.String(http.StatusConflict, transErr.Error())
+	}
+	if errors.Is(err, repository.ErrCampaignNotFound) {
+		return c.String(http.StatusNotFound, "campaign not found")
+	}
+	if errors.Is(err, repository.ErrConnectionNotFound) || strings.Contains(err.Error(), "connection") {
+		return c.String(http.StatusBadRequest, err.Error())
+	}
+	if strings.Contains(err.Error(), "requires at least one recipient") {
+		return c.String(http.StatusUnprocessableEntity, "A campanha precisa de pelo menos um destinatário. Selecione uma tag ou envie um CSV.")
+	}
+	if strings.Contains(err.Error(), "cannot delete campaign in") {
+		return c.String(http.StatusBadRequest, err.Error())
+	}
+	if defaultMsg != "" {
+		return c.String(http.StatusInternalServerError, defaultMsg)
+	}
+	return c.String(http.StatusInternalServerError, err.Error())
+}
+
+func handleRESTEngineError(c *echo.Context, err error, defaultMsg string) error {
+	var transErr domain.ErrInvalidCampaignTransition
+	if errors.As(err, &transErr) {
+		return c.JSON(http.StatusConflict, map[string]string{
+			"code":    transErr.Code(),
+			"message": transErr.Error(),
+		})
+	}
+	if errors.Is(err, repository.ErrCampaignNotFound) {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+	}
+	if errors.Is(err, repository.ErrConnectionNotFound) || strings.Contains(err.Error(), "connection") {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	if strings.Contains(err.Error(), "requires at least one recipient") {
+		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+	}
+	if strings.Contains(err.Error(), "cannot delete campaign in") {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	if defaultMsg != "" {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": defaultMsg})
+	}
+	return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+}
+
+type noopPublisher struct{}
+
+func (noopPublisher) Publish(ctx context.Context, subject string, data []byte, traceID string) error {
+	return nil
+}
+
+func resolveScope(c *echo.Context) (domain.WorkspaceScope, error) {
+	var scope domain.WorkspaceScope
+	var ok bool
+
+	if s, err := domain.Require(c.Request().Context()); err == nil && (s.WorkspaceID() != uuid.Nil || s.IsOperator()) {
+		scope = s
+		ok = true
+	} else if id, hasTenant := tenant.WorkspaceIDFrom(c.Request().Context()); hasTenant && id != uuid.Nil {
+		scope = domain.NewWorkspaceScope(id, domain.CapabilityWorkspaceScoped)
+		ok = true
+	}
+
+	if !ok {
+		return domain.WorkspaceScope{}, domain.ErrMissingScope
+	}
+
+	if paramWS, pErr := echo.PathParam[string](c, "workspace_id"); pErr == nil && paramWS != "" {
+		if parsedWS, err := uuid.Parse(paramWS); err == nil && parsedWS != uuid.Nil {
+			if !scope.Matches(parsedWS) {
+				return domain.WorkspaceScope{}, repository.ErrCampaignNotFound
+			}
+			if scope.IsOperator() {
+				scope = scope.WithTarget(parsedWS)
+			}
+		} else if err != nil {
+			return domain.WorkspaceScope{}, fmt.Errorf("invalid workspace ID")
+		}
+	}
+
+	return scope, nil
 }
 
 func (h *CampaignHandler) List(c *echo.Context) error {
-	var workspaceID uuid.UUID
-	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
-		workspaceID = scope.WorkspaceID()
-	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
-		workspaceID = id
-	}
-	if workspaceID == uuid.Nil {
+	scope, err := resolveScope(c)
+	if err != nil || scope.WorkspaceID() == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
+	workspaceID := scope.WorkspaceID()
 
 	campaigns, err := h.CampaignRepo.ListByWorkspace(c.Request().Context(), workspaceID)
 	if err != nil {
@@ -80,15 +200,11 @@ func (h *CampaignHandler) List(c *echo.Context) error {
 }
 
 func (h *CampaignHandler) NewForm(c *echo.Context) error {
-	var workspaceID uuid.UUID
-	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
-		workspaceID = scope.WorkspaceID()
-	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
-		workspaceID = id
-	}
-	if workspaceID == uuid.Nil {
+	scope, err := resolveScope(c)
+	if err != nil || scope.WorkspaceID() == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
+	workspaceID := scope.WorkspaceID()
 
 	templates, err := h.TemplateRepo.ListByWorkspace(c.Request().Context(), workspaceID)
 	if err != nil {
@@ -305,13 +421,11 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		scheduledAt = parsed
 	}
 
-	var workspaceID uuid.UUID
-	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
-		workspaceID = scope.WorkspaceID()
-	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
-		workspaceID = id
-	}
-	if workspaceID == uuid.Nil {
+	scope, err := resolveScope(c)
+	if err != nil {
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.String(http.StatusNotFound, "campaign not found")
+		}
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -320,49 +434,21 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 	batchSizeStr := c.FormValue("batch_size")
 	delayStr := c.FormValue("delay_seconds")
 
-	var connectionID uuid.UUID
-	var channel string
-	var conn *repository.Connection
+	var connectionID *uuid.UUID
+	var channel *string
+	var connectionSlug string
 
 	if parsedID, err := uuid.Parse(connectionIDStr); err == nil {
-		connectionID = parsedID
-		conn, err = h.ConnectionRepo.GetByID(c.Request().Context(), connectionID)
-		if err != nil {
-			return c.String(http.StatusBadRequest, "connection not found")
-		}
-		channel = conn.Channel
-	} else {
-		// Fallback: treat connectionIDStr as channel name and get default connection
-		conn, err = h.ConnectionRepo.GetDefaultChannelConnection(c.Request().Context(), workspaceID, connectionIDStr)
-		if err != nil {
-			return c.String(http.StatusBadRequest, fmt.Sprintf("no active connection found for channel %s: %v", connectionIDStr, err))
-		}
-		connectionID = conn.ID
-		channel = conn.Channel
-	}
-	batchSize, _ := strconv.Atoi(batchSizeStr)
-	if batchSize <= 0 {
-		batchSize = 100
-	}
-	delaySeconds, _ := strconv.Atoi(delayStr)
-	if delaySeconds < 0 {
-		delaySeconds = 5
+		connectionID = &parsedID
+	} else if connectionIDStr == "whatsapp" || connectionIDStr == "whatsapp_cloud" || connectionIDStr == "telegram" {
+		channel = &connectionIDStr
+	} else if connectionIDStr != "" {
+		connectionSlug = connectionIDStr
+		channel = &connectionIDStr
 	}
 
-	var templateName *string
-	var messageBody *string
-	if channel == "whatsapp_cloud" {
-		tName := c.FormValue("template_select")
-		if tName != "" {
-			templateName = &tName
-		}
-	} else {
-		body := c.FormValue("body_template")
-		if body != "" {
-			templateName = &body
-			messageBody = &body
-		}
-	}
+	batchSize, _ := strconv.Atoi(batchSizeStr)
+	delaySeconds, _ := strconv.Atoi(delayStr)
 
 	var formTagIDs []uuid.UUID
 	if tagIDStr := c.FormValue("tag_id"); tagIDStr != "" {
@@ -401,15 +487,25 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		}
 	}
 
-	// Validation: campaign requires at least one source of recipients (tags or CSV)
 	if len(formTagIDs) == 0 && len(recipients) == 0 {
 		return c.String(http.StatusUnprocessableEntity, "A campanha precisa de pelo menos um destinatário. Selecione uma tag ou envie um CSV.")
 	}
 
-	// Resolve template parameters from form if WABA template selected
-	if channel == "whatsapp_cloud" && templateName != nil {
-		// Iterate through FormParams to find waba_param_* mapping inputs
-		// and map them into the variables map of each recipient
+	var templateName *string
+	var messageBody *string
+	tName := c.FormValue("template_select")
+	bTemplate := c.FormValue("body_template")
+	if tName != "" {
+		templateName = &tName
+	}
+	if bTemplate != "" {
+		messageBody = &bTemplate
+		if templateName == nil {
+			templateName = &bTemplate
+		}
+	}
+
+	if tName != "" {
 		for _, rec := range recipients {
 			for i := 1; ; i++ {
 				inputKey := fmt.Sprintf("waba_param_%d", i)
@@ -417,7 +513,6 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 				if mappedVal == "" {
 					break
 				}
-				// Resolve the input using the recipient's raw CSV columns
 				resolvedVal := domain.ResolveVariables(mappedVal, rec.Variables)
 				rec.Variables[strconv.Itoa(i)] = resolvedVal
 			}
@@ -445,16 +540,6 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 	}
 	formFallbackChannels = domain.DeduplicateStrings(formFallbackChannels)
 
-	var primaryTagID *uuid.UUID
-	if len(formTagIDs) > 0 {
-		primaryTagID = &formTagIDs[0]
-	}
-
-	status := domain.CampaignStatusDraft
-	if scheduledAt != nil && !scheduledAt.IsZero() {
-		status = domain.CampaignStatusScheduled
-	}
-
 	var formFallbackBehavior *string
 	if fb := strings.TrimSpace(c.FormValue("fallback_behavior")); fb != "" {
 		formFallbackBehavior = &fb
@@ -468,37 +553,36 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		}
 	}
 
-	connSlug := conn.Slug
-	camp := &domain.Campaign{
-		WorkspaceID:      workspaceID,
-		ConnectionID:     &connectionID,
-		ConnectionSlug:   &connSlug,
+	eng := h.ensureEngine()
+	if eng == nil {
+		return c.String(http.StatusInternalServerError, "campaign engine unavailable")
+	}
+
+	params := campaign.CreateCampaignParams{
 		Name:             name,
-		Status:           status,
+		ConnectionSlug:   connectionSlug,
+		ConnectionID:     connectionID,
+		Channel:          channel,
 		BatchSize:        batchSize,
 		DelaySeconds:     delaySeconds,
 		RateLimitPerMin:  rateLimitPerMin,
 		ScheduledAt:      scheduledAt,
 		TemplateName:     templateName,
 		MessageBody:      messageBody,
-		Channel:          &channel,
 		FallbackChannels: formFallbackChannels,
 		Interactive:      formInteractive,
 		FallbackBehavior: formFallbackBehavior,
-		TagID:            primaryTagID,
 		TagIDs:           formTagIDs,
-		TotalRecipients:  len(recipients),
 		Recipients:       recipients,
 		SkippedRows:      skipped,
 	}
 
-	_, err := h.CampaignRepo.Create(c.Request().Context(), camp)
+	_, err = eng.Create(c.Request().Context(), scope, params)
 	if err != nil {
-		return c.String(http.StatusInternalServerError, fmt.Sprintf("failed to save campaign: %v", err))
+		return handleHTMXEngineError(c, err, fmt.Sprintf("failed to save campaign: %v", err))
 	}
 
-	// Redirect back to campaigns list page
-	c.Response().Header().Set("HX-Redirect", fmt.Sprintf("/admin/workspaces/%s/campaigns", workspaceID.String()))
+	c.Response().Header().Set("HX-Redirect", fmt.Sprintf("/admin/workspaces/%s/campaigns", scope.WorkspaceID().String()))
 	return c.String(http.StatusOK, "")
 }
 
@@ -527,8 +611,19 @@ func (h *CampaignHandler) DownloadSkipped(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "invalid campaign ID")
 	}
 
+	scope, err := resolveScope(c)
+	if err != nil {
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.String(http.StatusNotFound, "campaign not found")
+		}
+		return c.String(http.StatusUnauthorized, "unauthorized")
+	}
+
 	camp, err := h.CampaignRepo.GetByID(c.Request().Context(), id)
 	if err != nil {
+		return c.String(http.StatusNotFound, "campaign not found")
+	}
+	if !scope.Matches(camp.WorkspaceID) {
 		return c.String(http.StatusNotFound, "campaign not found")
 	}
 
@@ -537,21 +632,6 @@ func (h *CampaignHandler) DownloadSkipped(c *echo.Context) error {
 	c.Response().WriteHeader(http.StatusOK)
 
 	return writeSkippedRowsCSV(c.Response(), camp.SkippedRows)
-}
-
-// publishCampaignStart marshals and publishes a CampaignStartTask to the campaigns.start JetStream subject.
-func (h *CampaignHandler) publishCampaignStart(ctx context.Context, camp *domain.Campaign) error {
-	startTask := domain.CampaignStartTask{
-		CampaignID:  camp.ID,
-		WorkspaceID: camp.WorkspaceID,
-	}
-	payload, err := json.Marshal(startTask)
-	if err != nil {
-		return fmt.Errorf("failed to marshal start task: %w", err)
-	}
-
-	traceID := fmt.Sprintf("campaign_%s_start", camp.ID)
-	return h.Publisher.Publish(ctx, "campaigns.start", payload, traceID)
 }
 
 func (h *CampaignHandler) Start(c *echo.Context) error {
@@ -564,24 +644,22 @@ func (h *CampaignHandler) Start(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "invalid campaign ID")
 	}
 
-	ctx := c.Request().Context()
-	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	scope, err := resolveScope(c)
 	if err != nil {
-		return c.String(http.StatusNotFound, "campaign not found")
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.String(http.StatusNotFound, "campaign not found")
+		}
+		return c.String(http.StatusUnauthorized, "unauthorized")
 	}
 
-	if camp.Status != domain.CampaignStatusDraft {
-		return c.String(http.StatusBadRequest, "only campaigns in draft status can be started")
+	eng := h.ensureEngine()
+	if eng == nil {
+		return c.String(http.StatusInternalServerError, "campaign engine unavailable")
 	}
 
-	err = h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusSending)
+	camp, err := eng.Start(c.Request().Context(), scope, id)
 	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to update campaign status")
-	}
-	camp.Status = domain.CampaignStatusSending
-
-	if err := h.publishCampaignStart(ctx, camp); err != nil {
-		return c.String(http.StatusInternalServerError, err.Error())
+		return handleHTMXEngineError(c, err, "")
 	}
 
 	return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
@@ -597,21 +675,23 @@ func (h *CampaignHandler) Cancel(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "invalid campaign ID")
 	}
 
-	ctx := c.Request().Context()
-	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	scope, err := resolveScope(c)
 	if err != nil {
-		return c.String(http.StatusNotFound, "campaign not found")
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.String(http.StatusNotFound, "campaign not found")
+		}
+		return c.String(http.StatusUnauthorized, "unauthorized")
 	}
 
-	if camp.Status != domain.CampaignStatusSending && camp.Status != domain.CampaignStatusScheduled {
-		return c.String(http.StatusBadRequest, "only active or scheduled campaigns can be cancelled")
+	eng := h.ensureEngine()
+	if eng == nil {
+		return c.String(http.StatusInternalServerError, "campaign engine unavailable")
 	}
 
-	err = h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusCancelled)
+	camp, err := eng.Cancel(c.Request().Context(), scope, id)
 	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to cancel campaign")
+		return handleHTMXEngineError(c, err, "failed to cancel campaign")
 	}
-	camp.Status = domain.CampaignStatusCancelled
 
 	return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
 }
@@ -626,9 +706,22 @@ func (h *CampaignHandler) Delete(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "invalid campaign ID")
 	}
 
-	err = h.CampaignRepo.Delete(c.Request().Context(), id)
+	scope, err := resolveScope(c)
 	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to delete campaign")
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.String(http.StatusNotFound, "campaign not found")
+		}
+		return c.String(http.StatusUnauthorized, "unauthorized")
+	}
+
+	eng := h.ensureEngine()
+	if eng == nil {
+		return c.String(http.StatusInternalServerError, "campaign engine unavailable")
+	}
+
+	err = eng.Delete(c.Request().Context(), scope, id)
+	if err != nil {
+		return handleHTMXEngineError(c, err, "failed to delete campaign")
 	}
 
 	return c.String(http.StatusOK, "")
@@ -644,16 +737,23 @@ func (h *CampaignHandler) Pause(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "invalid campaign ID")
 	}
 
-	ctx := c.Request().Context()
-	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	scope, err := resolveScope(c)
 	if err != nil {
-		return c.String(http.StatusNotFound, "campaign not found")
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.String(http.StatusNotFound, "campaign not found")
+		}
+		return c.String(http.StatusUnauthorized, "unauthorized")
 	}
 
-	if err := h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusPaused); err != nil {
-		return c.String(http.StatusInternalServerError, "failed to pause campaign")
+	eng := h.ensureEngine()
+	if eng == nil {
+		return c.String(http.StatusInternalServerError, "campaign engine unavailable")
 	}
-	camp.Status = domain.CampaignStatusPaused
+
+	camp, err := eng.Pause(c.Request().Context(), scope, id)
+	if err != nil {
+		return handleHTMXEngineError(c, err, "failed to pause campaign")
+	}
 
 	return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
 }
@@ -668,16 +768,23 @@ func (h *CampaignHandler) Resume(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "invalid campaign ID")
 	}
 
-	ctx := c.Request().Context()
-	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	scope, err := resolveScope(c)
 	if err != nil {
-		return c.String(http.StatusNotFound, "campaign not found")
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.String(http.StatusNotFound, "campaign not found")
+		}
+		return c.String(http.StatusUnauthorized, "unauthorized")
 	}
 
-	if err := h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusSending); err != nil {
-		return c.String(http.StatusInternalServerError, "failed to resume campaign")
+	eng := h.ensureEngine()
+	if eng == nil {
+		return c.String(http.StatusInternalServerError, "campaign engine unavailable")
 	}
-	camp.Status = domain.CampaignStatusSending
+
+	camp, err := eng.Resume(c.Request().Context(), scope, id)
+	if err != nil {
+		return handleHTMXEngineError(c, err, "failed to resume campaign")
+	}
 
 	return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
 }
@@ -692,8 +799,19 @@ func (h *CampaignHandler) GetRow(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "invalid campaign ID")
 	}
 
+	scope, err := resolveScope(c)
+	if err != nil {
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.String(http.StatusNotFound, "campaign not found")
+		}
+		return c.String(http.StatusUnauthorized, "unauthorized")
+	}
+
 	camp, err := h.CampaignRepo.GetByID(c.Request().Context(), id)
 	if err != nil {
+		return c.String(http.StatusNotFound, "campaign not found")
+	}
+	if !scope.Matches(camp.WorkspaceID) {
 		return c.String(http.StatusNotFound, "campaign not found")
 	}
 
@@ -705,6 +823,7 @@ func (h *CampaignHandler) GetRow(c *echo.Context) error {
 type CreateCampaignRequest struct {
 	Name             string                     `json:"name"`
 	ConnectionSlug   string                     `json:"connection_slug"`
+	ConnectionID     *uuid.UUID                 `json:"connection_id,omitempty"`
 	TemplateName     *string                    `json:"template_name,omitempty"`
 	MessageBody      *string                    `json:"message_body,omitempty"`
 	TagID            *uuid.UUID                 `json:"tag_id,omitempty"`
@@ -718,21 +837,21 @@ type CreateCampaignRequest struct {
 	FallbackChannels []string                   `json:"fallback_channels,omitempty"`
 	Interactive      *domain.Interactive        `json:"interactive,omitempty"`
 	FallbackBehavior *string                    `json:"fallback_behavior,omitempty"`
+	Channel          *string                    `json:"channel,omitempty"`
 }
 
 // APICreate handles campaign creation via JSON REST API with pre-flight validation.
 func (h *CampaignHandler) APICreate(c *echo.Context) error {
-	workspaceID, err := domain.RequireWorkspaceID(c.Request().Context())
+	scope, err := resolveScope(c)
 	if err != nil {
-		if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
-			workspaceID = id
-		} else {
-			return c.JSON(http.StatusBadRequest, map[string]string{
-				"code":    "INVALID_WORKSPACE_ID",
-				"message": "invalid workspace ID",
-				"error":   "invalid workspace ID",
-			})
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
 		}
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "INVALID_WORKSPACE_ID",
+			"message": "invalid workspace ID",
+			"error":   "invalid workspace ID",
+		})
 	}
 
 	var req CreateCampaignRequest
@@ -743,17 +862,14 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 	if req.Name == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "campaign name is required"})
 	}
-
 	if req.RateLimitPerMin != nil && *req.RateLimitPerMin <= 0 {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "rate_limit_per_min must be greater than 0"})
 	}
-
 	if req.FallbackBehavior != nil && *req.FallbackBehavior != "" {
 		if *req.FallbackBehavior != "degrade" && *req.FallbackBehavior != "fail" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": `fallback_behavior must be either "degrade" or "fail"`})
 		}
 	}
-
 	if req.Interactive != nil {
 		if req.Interactive.Type == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "interactive.type is required"})
@@ -768,87 +884,53 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "interactive.action.sections is required when type is list"})
 		}
 	}
-
-	// 1. Pre-flight Connection Validation
-	if req.ConnectionSlug == "" {
+	if req.ConnectionSlug == "" && req.ConnectionID == nil && req.Channel == nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "connection_slug is required"})
 	}
 
-	conn, err := h.ConnectionRepo.GetBySlug(c.Request().Context(), workspaceID, req.ConnectionSlug)
-	if err != nil || conn == nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("active connection with slug %q not found for workspace", req.ConnectionSlug)})
-	}
-	if conn.Status != "active" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("connection %q is currently %s", req.ConnectionSlug, conn.Status)})
-	}
-
-	// Collect target tag IDs (combining tag_id and tag_ids)
-	var targetTagIDs []uuid.UUID
-	if req.TagID != nil {
+	targetTagIDs := append([]uuid.UUID{}, req.TagIDs...)
+	if req.TagID != nil && *req.TagID != uuid.Nil {
 		targetTagIDs = append(targetTagIDs, *req.TagID)
-	}
-	for _, tid := range req.TagIDs {
-		if tid != uuid.Nil {
-			targetTagIDs = append(targetTagIDs, tid)
-		}
 	}
 	targetTagIDs = domain.DeduplicateUUIDs(targetTagIDs)
 
-	// 2. Pre-flight Recipient Validation
 	if len(req.Recipients) == 0 && len(targetTagIDs) == 0 {
 		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": "campaign requires at least one recipient or a valid tag_id/tag_ids"})
 	}
 
-	batchSize := req.BatchSize
-	if batchSize <= 0 {
-		batchSize = 100
-	}
-	delaySeconds := req.DelaySeconds
-	if delaySeconds <= 0 {
-		delaySeconds = 5
+	eng := h.ensureEngine()
+	if eng == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "campaign engine unavailable"})
 	}
 
-	connID := conn.ID
-	connSlug := conn.Slug
-	channel := conn.Channel
-
-	var primaryTagID *uuid.UUID
-	if req.TagID != nil {
-		primaryTagID = req.TagID
-	} else if len(targetTagIDs) > 0 {
-		primaryTagID = &targetTagIDs[0]
-	}
-
-	status := domain.CampaignStatusDraft
-	if req.ScheduledAt != nil && !req.ScheduledAt.IsZero() {
-		status = domain.CampaignStatusScheduled
-	}
-
-	camp := &domain.Campaign{
-		WorkspaceID:      workspaceID,
-		ConnectionID:     &connID,
-		ConnectionSlug:   &connSlug,
+	params := campaign.CreateCampaignParams{
 		Name:             req.Name,
-		Status:           status,
-		BatchSize:        batchSize,
-		DelaySeconds:     delaySeconds,
+		ConnectionSlug:   req.ConnectionSlug,
+		ConnectionID:     req.ConnectionID,
+		Channel:          req.Channel,
+		BatchSize:        req.BatchSize,
+		DelaySeconds:     req.DelaySeconds,
 		RateLimitPerMin:  req.RateLimitPerMin,
 		ScheduledAt:      req.ScheduledAt,
 		TemplateName:     req.TemplateName,
 		MessageBody:      req.MessageBody,
-		Channel:          &channel,
 		FallbackChannels: req.FallbackChannels,
 		Interactive:      req.Interactive,
 		FallbackBehavior: req.FallbackBehavior,
-		TagID:            primaryTagID,
-		TagIDs:           targetTagIDs,
-		TotalRecipients:  len(req.Recipients),
+		TagID:            req.TagID,
+		TagIDs:           req.TagIDs,
 		Recipients:       req.Recipients,
 	}
 
-	created, err := h.CampaignRepo.Create(c.Request().Context(), camp)
+	created, err := eng.Create(c.Request().Context(), scope, params)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to save campaign: %v", err)})
+		if strings.Contains(err.Error(), "required") ||
+			strings.Contains(err.Error(), "rate_limit_per_min") ||
+			strings.Contains(err.Error(), "fallback_behavior") ||
+			strings.Contains(err.Error(), "interactive") {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+		}
+		return handleRESTEngineError(c, err, "")
 	}
 
 	return c.JSON(http.StatusCreated, created)
@@ -856,17 +938,12 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 
 // APIList returns campaigns for a workspace as JSON.
 func (h *CampaignHandler) APIList(c *echo.Context) error {
-	var workspaceID uuid.UUID
-	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
-		workspaceID = scope.WorkspaceID()
-	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
-		workspaceID = id
-	}
-	if workspaceID == uuid.Nil {
+	scope, err := resolveScope(c)
+	if err != nil || scope.WorkspaceID() == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
 
-	campaigns, err := h.CampaignRepo.ListByWorkspace(c.Request().Context(), workspaceID)
+	campaigns, err := h.CampaignRepo.ListByWorkspace(c.Request().Context(), scope.WorkspaceID())
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list campaigns"})
 	}
@@ -885,8 +962,19 @@ func (h *CampaignHandler) APIGet(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
 	}
 
+	scope, err := resolveScope(c)
+	if err != nil {
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+		}
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+	}
+
 	camp, err := h.CampaignRepo.GetByID(c.Request().Context(), id)
 	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+	}
+	if !scope.Matches(camp.WorkspaceID) {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
 	}
 
@@ -901,7 +989,7 @@ func (h *CampaignHandler) APIGet(c *echo.Context) error {
 	})
 }
 
-// APIStart starts/resumes a campaign via REST API.
+// APIStart starts a campaign via REST API.
 func (h *CampaignHandler) APIStart(c *echo.Context) error {
 	idStr, err := echo.PathParam[string](c, "id")
 	if err != nil {
@@ -912,24 +1000,22 @@ func (h *CampaignHandler) APIStart(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
 	}
 
-	ctx := c.Request().Context()
-	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	scope, err := resolveScope(c)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+		}
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	}
 
-	if camp.Status != domain.CampaignStatusDraft && camp.Status != domain.CampaignStatusPaused {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "only draft or paused campaigns can be started"})
+	eng := h.ensureEngine()
+	if eng == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "campaign engine unavailable"})
 	}
 
-	err = h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusSending)
+	camp, err := eng.Start(c.Request().Context(), scope, id)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update campaign status"})
-	}
-	camp.Status = domain.CampaignStatusSending
-
-	if err := h.publishCampaignStart(ctx, camp); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return handleRESTEngineError(c, err, "")
 	}
 
 	return c.JSON(http.StatusOK, camp)
@@ -946,16 +1032,23 @@ func (h *CampaignHandler) APIPause(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
 	}
 
-	ctx := c.Request().Context()
-	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	scope, err := resolveScope(c)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+		}
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	}
 
-	if err := h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusPaused); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to pause campaign"})
+	eng := h.ensureEngine()
+	if eng == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "campaign engine unavailable"})
 	}
-	camp.Status = domain.CampaignStatusPaused
+
+	camp, err := eng.Pause(c.Request().Context(), scope, id)
+	if err != nil {
+		return handleRESTEngineError(c, err, "failed to pause campaign")
+	}
 
 	return c.JSON(http.StatusOK, camp)
 }
@@ -971,16 +1064,23 @@ func (h *CampaignHandler) APIResume(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
 	}
 
-	ctx := c.Request().Context()
-	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	scope, err := resolveScope(c)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+		}
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	}
 
-	if err := h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusSending); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to resume campaign"})
+	eng := h.ensureEngine()
+	if eng == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "campaign engine unavailable"})
 	}
-	camp.Status = domain.CampaignStatusSending
+
+	camp, err := eng.Resume(c.Request().Context(), scope, id)
+	if err != nil {
+		return handleRESTEngineError(c, err, "failed to resume campaign")
+	}
 
 	return c.JSON(http.StatusOK, camp)
 }
@@ -996,23 +1096,23 @@ func (h *CampaignHandler) APICancel(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid campaign ID"})
 	}
 
-	ctx := c.Request().Context()
-	camp, err := h.CampaignRepo.GetByID(ctx, id)
+	scope, err := resolveScope(c)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+		if errors.Is(err, repository.ErrCampaignNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+		}
+		return c.JSON(http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 	}
 
-	if camp.Status != domain.CampaignStatusSending &&
-		camp.Status != domain.CampaignStatusScheduled &&
-		camp.Status != domain.CampaignStatusRunning &&
-		camp.Status != domain.CampaignStatusPaused {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "only active, paused or scheduled campaigns can be cancelled"})
+	eng := h.ensureEngine()
+	if eng == nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "campaign engine unavailable"})
 	}
 
-	if err := h.CampaignRepo.UpdateStatus(ctx, id, domain.CampaignStatusCancelled); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to cancel campaign"})
+	camp, err := eng.Cancel(c.Request().Context(), scope, id)
+	if err != nil {
+		return handleRESTEngineError(c, err, "failed to cancel campaign")
 	}
-	camp.Status = domain.CampaignStatusCancelled
 
 	return c.JSON(http.StatusOK, camp)
 }

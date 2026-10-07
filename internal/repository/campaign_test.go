@@ -433,3 +433,114 @@ func TestCampaignRepository_ClaimDueScheduledCampaigns_Concurrency(t *testing.T)
 		}
 	}
 }
+
+func TestCampaignRepository_PendingAndCompletionMethods(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := NewWorkspaceRepository(pool)
+	repo := NewCampaignRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "test_ws_completion_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	camp, err := repo.Create(ctx, &domain.Campaign{
+		WorkspaceID: ws.ID,
+		Name:        "Completion Test",
+		Status:      domain.CampaignStatusSending,
+	})
+	if err != nil {
+		t.Fatalf("failed to create campaign: %v", err)
+	}
+
+	records := []domain.CampaignRecipientRecord{
+		{Phone: "5511999990001", Status: domain.RecipientStatusPending, Variables: map[string]string{"name": "Alice"}},
+		{Phone: "5511999990002", Status: domain.RecipientStatusPending, Variables: map[string]string{"name": "Bob"}},
+	}
+	if err := repo.AddRecipients(ctx, camp.ID, records); err != nil {
+		t.Fatalf("failed to add recipients: %v", err)
+	}
+
+	// 1. Count pending
+	count, err := repo.CountPendingOrProcessingRecipients(ctx, camp.ID)
+	if err != nil {
+		t.Fatalf("CountPendingOrProcessingRecipients: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected count 2, got %d", count)
+	}
+
+	// 2. List pending
+	pending, err := repo.ListPendingRecipients(ctx, camp.ID)
+	if err != nil {
+		t.Fatalf("ListPendingRecipients: %v", err)
+	}
+	if len(pending) != 2 {
+		t.Fatalf("expected 2 pending, got %d", len(pending))
+	}
+	if pending[0].To != "5511999990001" || pending[0].Variables["name"] != "Alice" {
+		t.Errorf("unexpected pending[0]: %+v", pending[0])
+	}
+
+	// 3. CompleteIfDone while still pending -> false
+	completed, err := repo.CompleteIfDone(ctx, camp.ID)
+	if err != nil {
+		t.Fatalf("CompleteIfDone: %v", err)
+	}
+	if completed {
+		t.Fatalf("expected completed to be false while recipients pending")
+	}
+
+	// 4. Update one recipient to sent by phone
+	if err := repo.UpdateRecipientStatusByPhone(ctx, camp.ID, "5511999990001", domain.RecipientStatusSent, nil); err != nil {
+		t.Fatalf("UpdateRecipientStatusByPhone: %v", err)
+	}
+
+	count, _ = repo.CountPendingOrProcessingRecipients(ctx, camp.ID)
+	if count != 1 {
+		t.Fatalf("expected count 1, got %d", count)
+	}
+
+	// 5. Update second recipient to failed by phone
+	errMsg := "network error"
+	if err := repo.UpdateRecipientStatusByPhone(ctx, camp.ID, "5511999990002", domain.RecipientStatusFailed, &errMsg); err != nil {
+		t.Fatalf("UpdateRecipientStatusByPhone: %v", err)
+	}
+
+	count, _ = repo.CountPendingOrProcessingRecipients(ctx, camp.ID)
+	if count != 0 {
+		t.Fatalf("expected count 0, got %d", count)
+	}
+
+	// 6. CompleteIfDone when 0 pending -> true
+	completed, err = repo.CompleteIfDone(ctx, camp.ID)
+	if err != nil {
+		t.Fatalf("CompleteIfDone: %v", err)
+	}
+	if !completed {
+		t.Fatalf("expected completed to be true when 0 pending")
+	}
+
+	// Verify status in DB is now completed
+	updated, err := repo.GetByID(ctx, camp.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if updated.Status != domain.CampaignStatusCompleted {
+		t.Fatalf("expected status %s, got %s", domain.CampaignStatusCompleted, updated.Status)
+	}
+
+	// Calling CompleteIfDone again returns false (status is already completed, not sending)
+	completedAgain, err := repo.CompleteIfDone(ctx, camp.ID)
+	if err != nil {
+		t.Fatalf("CompleteIfDone second time: %v", err)
+	}
+	if completedAgain {
+		t.Fatalf("expected completedAgain to be false")
+	}
+}
+

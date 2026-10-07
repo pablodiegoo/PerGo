@@ -405,7 +405,7 @@ func TestCampaignHandler(t *testing.T) {
 			t.Errorf("expected DB status to be 'cancelled', got '%s'", cancelledCamp.Status)
 		}
 
-		// Test Delete
+		// Test Delete: Attempting to delete a cancelled campaign must be rejected
 		reqDelete := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/workspaces/%s/campaigns/%s", ws.ID, campaignID), nil)
 		recDelete := httptest.NewRecorder()
 		cDelete := e.NewContext(reqDelete, recDelete)
@@ -415,15 +415,62 @@ func TestCampaignHandler(t *testing.T) {
 			{Name: "id", Value: campaignID.String()},
 		})
 		if err := h.Delete(cDelete); err != nil {
-			t.Fatalf("Delete failed: %v", err)
+			t.Fatalf("Delete returned error: %v", err)
 		}
-		if recDelete.Code != http.StatusOK {
-			t.Errorf("Delete status expected 200, got %d", recDelete.Code)
+		if recDelete.Code != http.StatusBadRequest {
+			t.Errorf("Delete on cancelled campaign expected status 400 Bad Request, got %d", recDelete.Code)
 		}
 
-		deletedCamp, _ := campaignRepo.GetByID(ctx, campaignID)
+		// Test Delete: Attempting to delete a completed campaign must be rejected
+		compCamp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Completed Camp For Deletion Test",
+			Status:      domain.CampaignStatusCompleted,
+		})
+		if err != nil {
+			t.Fatalf("create completed campaign: %v", err)
+		}
+		reqDeleteComp := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/workspaces/%s/campaigns/%s", ws.ID, compCamp.ID), nil)
+		recDeleteComp := httptest.NewRecorder()
+		cDeleteComp := e.NewContext(reqDeleteComp, recDeleteComp)
+		cDeleteComp.SetPath("/admin/workspaces/:workspace_id/campaigns/:id")
+		cDeleteComp.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: compCamp.ID.String()},
+		})
+		if err := h.Delete(cDeleteComp); err != nil {
+			t.Fatalf("Delete completed returned error: %v", err)
+		}
+		if recDeleteComp.Code != http.StatusBadRequest {
+			t.Errorf("Delete on completed campaign expected status 400 Bad Request, got %d", recDeleteComp.Code)
+		}
+
+		// Test Delete: Deleting a draft campaign succeeds with 200 OK
+		draftCamp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Draft Camp For Deletion Test",
+			Status:      domain.CampaignStatusDraft,
+		})
+		if err != nil {
+			t.Fatalf("create draft campaign: %v", err)
+		}
+		reqDeleteDraft := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/workspaces/%s/campaigns/%s", ws.ID, draftCamp.ID), nil)
+		recDeleteDraft := httptest.NewRecorder()
+		cDeleteDraft := e.NewContext(reqDeleteDraft, recDeleteDraft)
+		cDeleteDraft.SetPath("/admin/workspaces/:workspace_id/campaigns/:id")
+		cDeleteDraft.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: draftCamp.ID.String()},
+		})
+		if err := h.Delete(cDeleteDraft); err != nil {
+			t.Fatalf("Delete draft failed: %v", err)
+		}
+		if recDeleteDraft.Code != http.StatusOK {
+			t.Errorf("Delete draft expected 200, got %d", recDeleteDraft.Code)
+		}
+		deletedCamp, _ := campaignRepo.GetByID(ctx, draftCamp.ID)
 		if deletedCamp != nil {
-			t.Errorf("expected campaign to be deleted, but still exists")
+			t.Errorf("expected draft campaign to be deleted, but still exists")
 		}
 	})
 
@@ -543,7 +590,23 @@ func TestCampaignHandler(t *testing.T) {
 			t.Errorf("expected status 200 for APIGet, got %d", recGet.Code)
 		}
 
-		// 7. APIPause & APIResume
+		// 7. APIStart, APIPause & APIResume
+		reqStart := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/start", ws.ID, createdCamp.ID), nil)
+		recStart := httptest.NewRecorder()
+		cStart := e.NewContext(reqStart, recStart)
+		cStart.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/start")
+		cStart.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: createdCamp.ID.String()},
+		})
+
+		if err := h.APIStart(cStart); err != nil {
+			t.Fatalf("APIStart failed: %v", err)
+		}
+		if recStart.Code != http.StatusOK {
+			t.Errorf("expected status 200 for APIStart, got %d", recStart.Code)
+		}
+
 		reqPause := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/pause", ws.ID, createdCamp.ID), nil)
 		recPause := httptest.NewRecorder()
 		cPause := e.NewContext(reqPause, recPause)
@@ -1185,7 +1248,7 @@ func TestCampaignHandler_ScheduledCampaigns(t *testing.T) {
 		}
 	})
 
-	t.Run("APICancel_Draft_Returns_400", func(t *testing.T) {
+	t.Run("APICancel_Draft_Returns_409_Conflict", func(t *testing.T) {
 		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
 			WorkspaceID: ws.ID,
 			Name:        "Draft Camp",
@@ -1207,8 +1270,15 @@ func TestCampaignHandler_ScheduledCampaigns(t *testing.T) {
 		if err := h.APICancel(c); err != nil {
 			t.Fatalf("APICancel returned error: %v", err)
 		}
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("expected 400 Bad Request when cancelling draft, got %d", rec.Code)
+		if rec.Code != http.StatusConflict {
+			t.Errorf("expected 409 Conflict when cancelling draft, got %d", rec.Code)
+		}
+		var errResp map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
+			t.Fatalf("failed to parse JSON error response: %v", err)
+		}
+		if errResp["code"] != "INVALID_CAMPAIGN_TRANSITION" {
+			t.Errorf("expected code INVALID_CAMPAIGN_TRANSITION, got %q", errResp["code"])
 		}
 	})
 
@@ -1243,6 +1313,47 @@ func TestCampaignHandler_ScheduledCampaigns(t *testing.T) {
 		fetched, _ := campaignRepo.GetByID(ctx, camp.ID)
 		if fetched.Status != domain.CampaignStatusCancelled {
 			t.Errorf("expected DB status 'cancelled', got %s", fetched.Status)
+		}
+	})
+
+	t.Run("APIStart_Scheduled_Campaign", func(t *testing.T) {
+		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "To Start Scheduled",
+			Status:      domain.CampaignStatusScheduled,
+			ScheduledAt: &futureTime,
+		})
+		if err != nil {
+			t.Fatalf("failed to create campaign: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/start", ws.ID, camp.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/start")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: camp.ID.String()},
+		})
+
+		if err := h.APIStart(c); err != nil {
+			t.Fatalf("APIStart returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var started domain.Campaign
+		if err := json.Unmarshal(rec.Body.Bytes(), &started); err != nil {
+			t.Fatalf("failed to unmarshal started campaign: %v", err)
+		}
+		if started.Status != domain.CampaignStatusSending {
+			t.Errorf("expected status 'sending', got %s", started.Status)
+		}
+
+		fetched, _ := campaignRepo.GetByID(ctx, camp.ID)
+		if fetched.Status != domain.CampaignStatusSending {
+			t.Errorf("expected DB status 'sending', got %s", fetched.Status)
 		}
 	})
 }
@@ -1476,3 +1587,485 @@ func TestCampaignHandler_InteractiveCampaigns(t *testing.T) {
 		}
 	})
 }
+
+func TestCampaignHandler_StateTransitions_HTTP409(t *testing.T) {
+	pool := getTestPool(t)
+	nc := connectNATS(t)
+	pub := queue.NewJetStreamPublisher(nc)
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	campaignRepo := repository.NewCampaignRepository(pool)
+	kek := make([]byte, 32)
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	connectionRepo := repository.NewConnectionRepository(pool, enc)
+	tagRepo := repository.NewTagRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "camp_trans_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	err = connectionRepo.Create(ctx, &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "WhatsApp Web Trans",
+		Channel:        "whatsapp",
+		Slug:           "whatsapp-trans",
+		SenderIdentity: "5511999990005",
+		Status:         "active",
+		IsDefault:      true,
+	})
+	if err != nil {
+		t.Fatalf("failed to create connection: %v", err)
+	}
+
+	h := admin.NewCampaignHandler(campaignRepo, nil, connectionRepo, tagRepo, pub)
+	e := newCampaignTestEcho(ws.ID)
+
+	t.Run("APIStart_On_Paused_Returns_409", func(t *testing.T) {
+		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Paused Campaign",
+			Status:      domain.CampaignStatusPaused,
+		})
+		if err != nil {
+			t.Fatalf("create campaign: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/start", ws.ID, camp.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/start")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: camp.ID.String()},
+		})
+
+		if err := h.APIStart(c); err != nil {
+			t.Fatalf("APIStart returned error: %v", err)
+		}
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected 409 Conflict, got %d (body: %s)", rec.Code, rec.Body.String())
+		}
+		var resp map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+		if resp["code"] != "INVALID_CAMPAIGN_TRANSITION" {
+			t.Errorf("expected code INVALID_CAMPAIGN_TRANSITION, got %q", resp["code"])
+		}
+		if !strings.Contains(resp["message"], "paused to sending") {
+			t.Errorf("expected message mentioning paused to sending, got %q", resp["message"])
+		}
+	})
+
+	t.Run("APIStart_On_Completed_Returns_409", func(t *testing.T) {
+		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Completed Campaign",
+			Status:      domain.CampaignStatusCompleted,
+		})
+		if err != nil {
+			t.Fatalf("create campaign: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/start", ws.ID, camp.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/start")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: camp.ID.String()},
+		})
+
+		if err := h.APIStart(c); err != nil {
+			t.Fatalf("APIStart returned error: %v", err)
+		}
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected 409 Conflict, got %d (body: %s)", rec.Code, rec.Body.String())
+		}
+		var resp map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+		if resp["code"] != "INVALID_CAMPAIGN_TRANSITION" {
+			t.Errorf("expected code INVALID_CAMPAIGN_TRANSITION, got %q", resp["code"])
+		}
+	})
+
+	t.Run("APIPause_On_Draft_Returns_409", func(t *testing.T) {
+		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Draft Campaign",
+			Status:      domain.CampaignStatusDraft,
+		})
+		if err != nil {
+			t.Fatalf("create campaign: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/pause", ws.ID, camp.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/pause")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: camp.ID.String()},
+		})
+
+		if err := h.APIPause(c); err != nil {
+			t.Fatalf("APIPause returned error: %v", err)
+		}
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected 409 Conflict, got %d (body: %s)", rec.Code, rec.Body.String())
+		}
+		var resp map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+		if resp["code"] != "INVALID_CAMPAIGN_TRANSITION" {
+			t.Errorf("expected code INVALID_CAMPAIGN_TRANSITION, got %q", resp["code"])
+		}
+	})
+
+	t.Run("APIPause_On_Completed_Returns_409", func(t *testing.T) {
+		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Completed Campaign",
+			Status:      domain.CampaignStatusCompleted,
+		})
+		if err != nil {
+			t.Fatalf("create campaign: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/pause", ws.ID, camp.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/pause")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: camp.ID.String()},
+		})
+
+		if err := h.APIPause(c); err != nil {
+			t.Fatalf("APIPause returned error: %v", err)
+		}
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected 409 Conflict, got %d (body: %s)", rec.Code, rec.Body.String())
+		}
+		var resp map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+		if resp["code"] != "INVALID_CAMPAIGN_TRANSITION" {
+			t.Errorf("expected code INVALID_CAMPAIGN_TRANSITION, got %q", resp["code"])
+		}
+	})
+
+	t.Run("APIResume_On_Draft_Returns_409", func(t *testing.T) {
+		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Draft Campaign",
+			Status:      domain.CampaignStatusDraft,
+		})
+		if err != nil {
+			t.Fatalf("create campaign: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/resume", ws.ID, camp.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/resume")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: camp.ID.String()},
+		})
+
+		if err := h.APIResume(c); err != nil {
+			t.Fatalf("APIResume returned error: %v", err)
+		}
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected 409 Conflict, got %d (body: %s)", rec.Code, rec.Body.String())
+		}
+		var resp map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+		if resp["code"] != "INVALID_CAMPAIGN_TRANSITION" {
+			t.Errorf("expected code INVALID_CAMPAIGN_TRANSITION, got %q", resp["code"])
+		}
+	})
+
+	t.Run("APIResume_On_Completed_Returns_409", func(t *testing.T) {
+		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Completed Campaign",
+			Status:      domain.CampaignStatusCompleted,
+		})
+		if err != nil {
+			t.Fatalf("create campaign: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/resume", ws.ID, camp.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/resume")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: camp.ID.String()},
+		})
+
+		if err := h.APIResume(c); err != nil {
+			t.Fatalf("APIResume returned error: %v", err)
+		}
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected 409 Conflict, got %d (body: %s)", rec.Code, rec.Body.String())
+		}
+		var resp map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+		if resp["code"] != "INVALID_CAMPAIGN_TRANSITION" {
+			t.Errorf("expected code INVALID_CAMPAIGN_TRANSITION, got %q", resp["code"])
+		}
+	})
+
+	t.Run("APICancel_On_Completed_Returns_409", func(t *testing.T) {
+		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Completed Campaign",
+			Status:      domain.CampaignStatusCompleted,
+		})
+		if err != nil {
+			t.Fatalf("create campaign: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/cancel", ws.ID, camp.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/cancel")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: camp.ID.String()},
+		})
+
+		if err := h.APICancel(c); err != nil {
+			t.Fatalf("APICancel returned error: %v", err)
+		}
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected 409 Conflict, got %d (body: %s)", rec.Code, rec.Body.String())
+		}
+		var resp map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to unmarshal JSON: %v", err)
+		}
+		if resp["code"] != "INVALID_CAMPAIGN_TRANSITION" {
+			t.Errorf("expected code INVALID_CAMPAIGN_TRANSITION, got %q", resp["code"])
+		}
+	})
+
+	t.Run("WebConsole_HTMX_Illegal_Transition_Returns_409_With_Toast", func(t *testing.T) {
+		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Completed Campaign HTMX",
+			Status:      domain.CampaignStatusCompleted,
+		})
+		if err != nil {
+			t.Fatalf("create campaign: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/start", ws.ID, camp.ID), nil)
+		req.Header.Set("HX-Request", "true")
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns/:id/start")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: camp.ID.String()},
+		})
+
+		if err := h.Start(c); err != nil {
+			t.Fatalf("Start returned error: %v", err)
+		}
+		if rec.Code != http.StatusConflict {
+			t.Fatalf("expected 409 Conflict, got %d (body: %s)", rec.Code, rec.Body.String())
+		}
+		trigger := rec.Header().Get("HX-Trigger")
+		if !strings.Contains(trigger, "showToast") || !strings.Contains(trigger, "error") {
+			t.Errorf("expected HX-Trigger showToast header, got %q", trigger)
+		}
+	})
+}
+
+func TestCampaignHandler_WorkspaceIsolation(t *testing.T) {
+	pool := getTestPool(t)
+	nc := connectNATS(t)
+	pub := queue.NewJetStreamPublisher(nc)
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	campaignRepo := repository.NewCampaignRepository(pool)
+	kek := make([]byte, 32)
+	enc, err := crypto.NewEncryptor(kek)
+	if err != nil {
+		t.Fatalf("failed to create encryptor: %v", err)
+	}
+	connectionRepo := repository.NewConnectionRepository(pool, enc)
+	tagRepo := repository.NewTagRepository(pool)
+
+	ws1, err := wsRepo.Create(ctx, "camp_iso_ws1_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace 1: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws1.ID) }()
+
+	ws2, err := wsRepo.Create(ctx, "camp_iso_ws2_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace 2: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws2.ID) }()
+
+	camp1, err := campaignRepo.Create(ctx, &domain.Campaign{
+		WorkspaceID: ws1.ID,
+		Name:        "WS1 Draft Campaign",
+		Status:      domain.CampaignStatusDraft,
+	})
+	if err != nil {
+		t.Fatalf("failed to create campaign in ws1: %v", err)
+	}
+
+	h := admin.NewCampaignHandler(campaignRepo, nil, connectionRepo, tagRepo, pub)
+	// Echo client authenticated as ws2
+	e2 := newCampaignTestEcho(ws2.ID)
+
+	t.Run("Cross_Tenant_APIStart_Returns_404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/start", ws2.ID, camp1.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e2.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/start")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws2.ID.String()},
+			{Name: "id", Value: camp1.ID.String()},
+		})
+
+		if err := h.APIStart(c); err != nil {
+			t.Fatalf("APIStart returned error: %v", err)
+		}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected 404 Not Found for cross-tenant APIStart, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Cross_Tenant_APIGet_Returns_404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s", ws2.ID, camp1.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e2.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws2.ID.String()},
+			{Name: "id", Value: camp1.ID.String()},
+		})
+
+		if err := h.APIGet(c); err != nil {
+			t.Fatalf("APIGet returned error: %v", err)
+		}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected 404 Not Found for cross-tenant APIGet, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Cross_Tenant_APIPause_Returns_404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/pause", ws2.ID, camp1.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e2.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/pause")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws2.ID.String()},
+			{Name: "id", Value: camp1.ID.String()},
+		})
+
+		if err := h.APIPause(c); err != nil {
+			t.Fatalf("APIPause returned error: %v", err)
+		}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected 404 Not Found for cross-tenant APIPause, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Cross_Tenant_APIResume_Returns_404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/resume", ws2.ID, camp1.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e2.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/resume")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws2.ID.String()},
+			{Name: "id", Value: camp1.ID.String()},
+		})
+
+		if err := h.APIResume(c); err != nil {
+			t.Fatalf("APIResume returned error: %v", err)
+		}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected 404 Not Found for cross-tenant APIResume, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Cross_Tenant_APICancel_Returns_404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/cancel", ws2.ID, camp1.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e2.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/cancel")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws2.ID.String()},
+			{Name: "id", Value: camp1.ID.String()},
+		})
+
+		if err := h.APICancel(c); err != nil {
+			t.Fatalf("APICancel returned error: %v", err)
+		}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected 404 Not Found for cross-tenant APICancel, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Cross_Tenant_WebConsole_Start_Returns_404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/campaigns/%s/start", ws2.ID, camp1.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e2.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns/:id/start")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws2.ID.String()},
+			{Name: "id", Value: camp1.ID.String()},
+		})
+
+		if err := h.Start(c); err != nil {
+			t.Fatalf("Start returned error: %v", err)
+		}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected 404 Not Found for cross-tenant Start, got %d", rec.Code)
+		}
+	})
+
+	t.Run("Cross_Tenant_WebConsole_Delete_Returns_404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/workspaces/%s/campaigns/%s", ws2.ID, camp1.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e2.NewContext(req, rec)
+		c.SetPath("/admin/workspaces/:workspace_id/campaigns/:id")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws2.ID.String()},
+			{Name: "id", Value: camp1.ID.String()},
+		})
+
+		if err := h.Delete(c); err != nil {
+			t.Fatalf("Delete returned error: %v", err)
+		}
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("expected 404 Not Found for cross-tenant Delete, got %d", rec.Code)
+		}
+	})
+}
+
