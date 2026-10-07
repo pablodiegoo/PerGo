@@ -2,20 +2,25 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // AuthMiddleware returns an Echo middleware that validates API keys from the
-// Authorization header and injects workspace_id into the request context.
-func AuthMiddleware(repo *repository.APIKeyRepository) echo.MiddlewareFunc {
+// Authorization header and injects workspace_id and WorkspaceScope into the request context.
+// Optional masterKeys can be provided to allow System Operators using a Master Key
+// to authenticate against protected API routes.
+func AuthMiddleware(repo *repository.APIKeyRepository, masterKeys ...string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			path := c.Request().URL.Path
@@ -47,9 +52,28 @@ func AuthMiddleware(repo *repository.APIKeyRepository) echo.MiddlewareFunc {
 				}
 			}
 
+			// Check if a Master Key was provided
+			var expectedMasterKey string
+			if len(masterKeys) > 0 && masterKeys[0] != "" {
+				expectedMasterKey = masterKeys[0]
+			} else {
+				expectedMasterKey = os.Getenv("PERGO_MASTER_KEY")
+			}
+
+			masterCandidate := key
+			if xKey := c.Request().Header.Get("X-Master-Key"); xKey != "" {
+				masterCandidate = strings.TrimSpace(xKey)
+			}
+
+			if expectedMasterKey != "" && masterCandidate != "" && subtle.ConstantTimeCompare([]byte(masterCandidate), []byte(expectedMasterKey)) == 1 {
+				ctx := domain.ContextWithScope(c.Request().Context(), domain.NewOperatorScope(uuid.Nil))
+				c.SetRequest(c.Request().WithContext(ctx))
+				return next(c)
+			}
+
 			if key == "" || len(key) < 8 {
 				return c.JSON(http.StatusUnauthorized, map[string]string{
-					"code":    "unauthorized",
+					"code":    "UNAUTHORIZED",
 					"message": "invalid or missing API key",
 				})
 			}
@@ -58,7 +82,7 @@ func AuthMiddleware(repo *repository.APIKeyRepository) echo.MiddlewareFunc {
 			apiKey, err := repo.GetByPrefix(c.Request().Context(), prefix)
 			if err != nil {
 				return c.JSON(http.StatusUnauthorized, map[string]string{
-					"code":    "unauthorized",
+					"code":    "UNAUTHORIZED",
 					"message": "invalid or missing API key",
 				})
 			}
@@ -66,13 +90,14 @@ func AuthMiddleware(repo *repository.APIKeyRepository) echo.MiddlewareFunc {
 			// Verify the full key by comparing hashes
 			if !crypto.VerifyAPIKey(key, apiKey.KeyHash) {
 				return c.JSON(http.StatusUnauthorized, map[string]string{
-					"code":    "unauthorized",
+					"code":    "UNAUTHORIZED",
 					"message": "invalid or missing API key",
 				})
 			}
 
-			// Inject workspace_id into request context
+			// Inject workspace_id and WorkspaceScope into request context
 			ctx := tenant.WithWorkspaceID(c.Request().Context(), apiKey.WorkspaceID)
+			ctx = domain.ContextWithScope(ctx, domain.NewWorkspaceScope(apiKey.WorkspaceID, domain.CapabilityWorkspaceScoped))
 			c.SetRequest(c.Request().WithContext(ctx))
 			c.Set("api_key", apiKey)
 

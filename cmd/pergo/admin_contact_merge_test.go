@@ -20,9 +20,11 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -276,6 +278,7 @@ func TestAdminContactMerge(t *testing.T) {
 	// 2. Perform successful merge via handler POST request
 	reqBody := ""
 	mergeReq := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/contacts/merge?primary_id=%s&secondary_id=%s", tgContact.ID, waContact.ID), strings.NewReader(reqBody))
+	mergeReq = mergeReq.WithContext(tenant.WithWorkspaceID(domain.ContextWithWorkspaceID(mergeReq.Context(), ws.ID), ws.ID))
 	mergeReq.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 	mergeRec := httptest.NewRecorder()
 	e.ServeHTTP(mergeRec, mergeReq)
@@ -314,6 +317,7 @@ func TestAdminContactMerge(t *testing.T) {
 
 	// 3. Conversation thread unifies histories correctly under the primary contact ID
 	pollReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/inbox/messages?contact_id=%s", tgContact.ID), nil)
+	pollReq = pollReq.WithContext(tenant.WithWorkspaceID(domain.ContextWithWorkspaceID(pollReq.Context(), ws.ID), ws.ID))
 	pollReq.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 	pollRec := httptest.NewRecorder()
 	e.ServeHTTP(pollRec, pollReq)

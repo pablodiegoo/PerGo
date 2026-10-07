@@ -138,9 +138,9 @@ func (h *ConnectionAPIHandler) SetExternalURL(externalURL string) {
 }
 
 // RegisterRoutes registers the connection endpoints on both /api/v1/connections and /api/v1/devices.
-func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
+func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo, m ...echo.MiddlewareFunc) {
 	// Canonical routes
-	connGroup := e.Group("/api/v1/connections")
+	connGroup := e.Group("/api/v1/connections", m...)
 	connGroup.POST("/pair", h.StartPairing)
 	connGroup.POST("/waba", h.CreateWABA)
 	connGroup.POST("/waba/", h.CreateWABA)
@@ -154,7 +154,7 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	connGroup.DELETE("/:id", h.Disconnect)
 
 	// Workspace-scoped canonical routes
-	wsConnGroup := e.Group("/api/v1/workspaces/:workspace_id/connections")
+	wsConnGroup := e.Group("/api/v1/workspaces/:workspace_id/connections", m...)
 	wsConnGroup.POST("/pair", h.StartPairing)
 	wsConnGroup.POST("/waba", h.CreateWABA)
 	wsConnGroup.POST("/waba/", h.CreateWABA)
@@ -168,7 +168,7 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	wsConnGroup.DELETE("/:id", h.Disconnect)
 
 	// Retrocompatible aliases
-	devGroup := e.Group("/api/v1/devices")
+	devGroup := e.Group("/api/v1/devices", m...)
 	devGroup.POST("/pair", h.StartPairing)
 	devGroup.POST("/waba", h.CreateWABA)
 	devGroup.POST("/waba/", h.CreateWABA)
@@ -182,7 +182,7 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	devGroup.DELETE("/:id", h.Disconnect)
 
 	// Workspace-scoped aliases
-	wsDevGroup := e.Group("/api/v1/workspaces/:workspace_id/devices")
+	wsDevGroup := e.Group("/api/v1/workspaces/:workspace_id/devices", m...)
 	wsDevGroup.POST("/pair", h.StartPairing)
 	wsDevGroup.POST("/waba", h.CreateWABA)
 	wsDevGroup.POST("/waba/", h.CreateWABA)
@@ -196,24 +196,6 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	wsDevGroup.DELETE("/:id", h.Disconnect)
 }
 
-func (h *ConnectionAPIHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
-	ctxID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if !ok || ctxID == uuid.Nil {
-		return uuid.Nil, errors.New("workspace context required")
-	}
-
-	if paramIDStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && paramIDStr != "" {
-		parsed, err := uuid.Parse(paramIDStr)
-		if err != nil || parsed == uuid.Nil {
-			return uuid.Nil, errors.New("invalid workspace_id parameter")
-		}
-		if parsed != ctxID {
-			return uuid.Nil, errors.New("workspace ID mismatch: authenticated workspace does not match URL")
-		}
-	}
-
-	return ctxID, nil
-}
 
 func sanitizePhoneIdentity(phone string) string {
 	phone = strings.TrimSpace(phone)
@@ -279,17 +261,15 @@ type CreateWABAConnectionRequest struct {
 // CreateWABA registers a new WhatsApp Cloud (WABA) connection headless via REST API.
 // POST /api/v1/connections/waba & POST /api/v1/workspaces/:workspace_id/connections/waba
 func (h *ConnectionAPIHandler) CreateWABA(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
-	if err != nil {
-		if strings.Contains(err.Error(), "mismatch") {
-			return c.JSON(http.StatusForbidden, map[string]string{
-				"code":    "forbidden",
-				"message": err.Error(),
-			})
-		}
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
-			"message": err.Error(),
+			"code":    "UNAUTHORIZED",
+			"message": "workspace context required",
 		})
 	}
 
@@ -452,17 +432,15 @@ type CreateTelegramConnectionRequest struct {
 // CreateTelegram registers a new Telegram bot connection headless via REST API.
 // POST /api/v1/connections/telegram & POST /api/v1/workspaces/:workspace_id/connections/telegram
 func (h *ConnectionAPIHandler) CreateTelegram(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
-	if err != nil {
-		if strings.Contains(err.Error(), "mismatch") {
-			return c.JSON(http.StatusForbidden, map[string]string{
-				"code":    "forbidden",
-				"message": err.Error(),
-			})
-		}
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
-			"message": err.Error(),
+			"code":    "UNAUTHORIZED",
+			"message": "workspace context required",
 		})
 	}
 
@@ -601,10 +579,14 @@ type PairConnectionResponse struct {
 // StartPairing initiates QR code pairing for a WhatsApp Web connection.
 // POST /api/v1/connections/pair & POST /api/v1/devices/pair
 func (h *ConnectionAPIHandler) StartPairing(c *echo.Context) error {
-	wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if !ok || wsID == uuid.Nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -658,10 +640,14 @@ func (h *ConnectionAPIHandler) StartPairing(c *echo.Context) error {
 // GetQR returns the current QR code state for a pairing session or connection.
 // GET /api/v1/connections/:id/qr & GET /api/v1/devices/:id/qr
 func (h *ConnectionAPIHandler) GetQR(c *echo.Context) error {
-	wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if !ok || wsID == uuid.Nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -715,10 +701,14 @@ func (h *ConnectionAPIHandler) GetQR(c *echo.Context) error {
 // StreamQR streams real-time QR pairing events via Server-Sent Events (SSE).
 // GET /api/v1/connections/:id/qr/stream & GET /api/v1/devices/:id/qr/stream
 func (h *ConnectionAPIHandler) StreamQR(c *echo.Context) error {
-	wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if !ok || wsID == uuid.Nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -836,10 +826,14 @@ type ListConnectionsResponse struct {
 // List returns all connections for the authenticated workspace.
 // GET /api/v1/connections & GET /api/v1/devices
 func (h *ConnectionAPIHandler) List(c *echo.Context) error {
-	wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if !ok || wsID == uuid.Nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -892,10 +886,14 @@ func (h *ConnectionAPIHandler) List(c *echo.Context) error {
 // Disconnect deletes a connection and disconnects any active session.
 // DELETE /api/v1/connections/:id & DELETE /api/v1/devices/:id
 func (h *ConnectionAPIHandler) Disconnect(c *echo.Context) error {
-	wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if !ok || wsID == uuid.Nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -968,17 +966,15 @@ type FlowPublicKeyResponse struct {
 // GetFlowPublicKey returns the PEM-encoded 2048-bit RSA public key formatted for Meta Flow Builder registration.
 // GET /api/v1/connections/:id/flow-public-key & GET /api/v1/workspaces/:workspace_id/connections/:id/flow-public-key
 func (h *ConnectionAPIHandler) GetFlowPublicKey(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
-	if err != nil {
-		if strings.Contains(err.Error(), "mismatch") {
-			return c.JSON(http.StatusForbidden, map[string]string{
-				"code":    "forbidden",
-				"message": err.Error(),
-			})
-		}
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
-			"message": err.Error(),
+			"code":    "UNAUTHORIZED",
+			"message": "workspace context required",
 		})
 	}
 

@@ -12,6 +12,10 @@ _Avoid_: Account, tenant, pool
 The specific workspace currently selected by a System Operator in the admin console session (persisted via session cookie) or resolved from an API key in API requests, defining the tenant scope for all operations.
 _Avoid_: Current account, selected tenant
 
+**Workspace Scope**:
+The authoritative, tamper-proof security context bound to an HTTP request or asynchronous task that defines and enforces tenant isolation. It validates consistency across authentication credentials, URL path parameters, and session cookies, rejecting cross-tenant parameter tampering with a strict mismatch error before handler execution.
+_Avoid_: Tenant context, request scope, workspace wrapper
+
 **System Operator**:
 A global administrator authenticated to the PerGo admin console who can create, inspect, and switch between any Workspace.
 _Avoid_: Superuser, root user, master admin

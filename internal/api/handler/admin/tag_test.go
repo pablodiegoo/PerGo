@@ -20,6 +20,12 @@ import (
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
+func withTagWorkspaceContext(req *http.Request, wsID uuid.UUID) *http.Request {
+	ctx := tenant.WithWorkspaceID(req.Context(), wsID)
+	ctx = domain.ContextWithWorkspaceID(ctx, wsID)
+	return req.WithContext(ctx)
+}
+
 func TestTagAdminHandler(t *testing.T) {
 	pool := getTestPool(t)
 	defer pool.Close()
@@ -47,6 +53,7 @@ func TestTagAdminHandler(t *testing.T) {
 		body := `{"name": "VIP Customer", "color": "#FF0000"}`
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/tags", ws.ID), strings.NewReader(body))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		req = withTagWorkspaceContext(req, ws.ID)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 		c.SetPath("/api/v1/workspaces/:workspace_id/tags")
@@ -73,6 +80,7 @@ func TestTagAdminHandler(t *testing.T) {
 	t.Run("ListTags_Success", func(t *testing.T) {
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/workspaces/%s/tags", ws.ID), nil)
+		req = withTagWorkspaceContext(req, ws.ID)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 		c.SetPath("/api/v1/workspaces/:workspace_id/tags")
@@ -107,6 +115,7 @@ func TestTagAdminHandler(t *testing.T) {
 
 		// Add tag
 		reqAdd := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/contacts/%s/tags/%s", ws.ID, contact.ID, createdTag.ID), nil)
+		reqAdd = withTagWorkspaceContext(reqAdd, ws.ID)
 		recAdd := httptest.NewRecorder()
 		cAdd := e.NewContext(reqAdd, recAdd)
 		cAdd.SetPath("/api/v1/workspaces/:workspace_id/contacts/:contact_id/tags/:tag_id")
@@ -125,6 +134,7 @@ func TestTagAdminHandler(t *testing.T) {
 
 		// Remove tag
 		reqRemove := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/workspaces/%s/contacts/%s/tags/%s", ws.ID, contact.ID, createdTag.ID), nil)
+		reqRemove = withTagWorkspaceContext(reqRemove, ws.ID)
 		recRemove := httptest.NewRecorder()
 		cRemove := e.NewContext(reqRemove, recRemove)
 		cRemove.SetPath("/api/v1/workspaces/:workspace_id/contacts/:contact_id/tags/:tag_id")
@@ -157,6 +167,7 @@ func TestTagAdminHandler(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/contacts/import", ws.ID), body)
 		req.Header.Set(echo.HeaderContentType, writer.FormDataContentType())
+		req = withTagWorkspaceContext(req, ws.ID)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 		c.SetPath("/api/v1/workspaces/:workspace_id/contacts/import")
@@ -193,6 +204,7 @@ func TestTagAdminHandler(t *testing.T) {
 	t.Run("ExportContactsCSV_Success", func(t *testing.T) {
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/workspaces/%s/contacts/export", ws.ID), nil)
+		req = withTagWorkspaceContext(req, ws.ID)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 		c.SetPath("/api/v1/workspaces/:workspace_id/contacts/export")
@@ -215,6 +227,7 @@ func TestTagAdminHandler(t *testing.T) {
 	t.Run("DeleteTag_Success", func(t *testing.T) {
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/workspaces/%s/tags/%s", ws.ID, createdTag.ID), nil)
+		req = withTagWorkspaceContext(req, ws.ID)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 		c.SetPath("/api/v1/workspaces/:workspace_id/tags/:id")

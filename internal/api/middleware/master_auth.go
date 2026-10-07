@@ -6,8 +6,11 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
+
 	"github.com/pablojhp.pergo/internal/config"
+	"github.com/pablojhp.pergo/internal/domain"
 )
 
 // MasterAuthMiddleware returns an Echo middleware that enforces master authentication.
@@ -31,6 +34,9 @@ func MasterAuthMiddleware(masterKey, fallbackPassword string) echo.MiddlewareFun
 					"message": "invalid or missing master key",
 				})
 			}
+
+			ctx := domain.ContextWithScope(c.Request().Context(), domain.NewOperatorScope(uuid.Nil))
+			c.SetRequest(c.Request().WithContext(ctx))
 
 			return next(c)
 		}

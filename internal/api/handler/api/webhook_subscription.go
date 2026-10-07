@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -55,9 +56,9 @@ func NewWebhookSubscriptionAPIHandler(repo WebhookSubscriptionRepo, opts ...Webh
 }
 
 // RegisterRoutes registers the webhook subscription endpoints on Echo router.
-func (h *WebhookSubscriptionAPIHandler) RegisterRoutes(e *echo.Echo) {
+func (h *WebhookSubscriptionAPIHandler) RegisterRoutes(e *echo.Echo, m ...echo.MiddlewareFunc) {
 	// Canonical REST routes (workspace inferred from Bearer token)
-	subGroup := e.Group("/api/v1/webhooks/subscriptions")
+	subGroup := e.Group("/api/v1/webhooks/subscriptions", m...)
 	subGroup.POST("", h.Create)
 	subGroup.POST("/", h.Create)
 	subGroup.GET("", h.List)
@@ -67,7 +68,7 @@ func (h *WebhookSubscriptionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	subGroup.DELETE("/:id", h.Delete)
 
 	// Workspace-scoped aliases
-	wsSubGroup := e.Group("/api/v1/workspaces/:workspace_id/webhooks/subscriptions")
+	wsSubGroup := e.Group("/api/v1/workspaces/:workspace_id/webhooks/subscriptions", m...)
 	wsSubGroup.POST("", h.Create)
 	wsSubGroup.POST("/", h.Create)
 	wsSubGroup.GET("", h.List)
@@ -119,30 +120,17 @@ type WebhookSubscriptionListResponse struct {
 	Subscriptions []WebhookSubscriptionDTO `json:"subscriptions"`
 }
 
-func (h *WebhookSubscriptionAPIHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
-	wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if ok && wsID != uuid.Nil {
-		return wsID, nil
-	}
-
-	wsIDParam, _ := echo.PathParam[string](c, "workspace_id")
-	if wsIDParam != "" {
-		id, err := uuid.Parse(wsIDParam)
-		if err == nil && id != uuid.Nil {
-			return id, nil
-		}
-	}
-
-	return uuid.Nil, errors.New("workspace context required")
-}
-
 // Create registers a new webhook subscription for the workspace.
 // POST /api/v1/webhooks/subscriptions
 func (h *WebhookSubscriptionAPIHandler) Create(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
-	if err != nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -245,10 +233,14 @@ func (h *WebhookSubscriptionAPIHandler) Create(c *echo.Context) error {
 // List returns all webhook subscriptions for the workspace.
 // GET /api/v1/webhooks/subscriptions
 func (h *WebhookSubscriptionAPIHandler) List(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
-	if err != nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -282,10 +274,14 @@ func (h *WebhookSubscriptionAPIHandler) List(c *echo.Context) error {
 // Get returns a single webhook subscription by ID.
 // GET /api/v1/webhooks/subscriptions/:id
 func (h *WebhookSubscriptionAPIHandler) Get(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
-	if err != nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -337,10 +333,14 @@ func (h *WebhookSubscriptionAPIHandler) Get(c *echo.Context) error {
 // Update modifies an existing webhook subscription.
 // PUT /api/v1/webhooks/subscriptions/:id
 func (h *WebhookSubscriptionAPIHandler) Update(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
-	if err != nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -455,10 +455,14 @@ func (h *WebhookSubscriptionAPIHandler) Update(c *echo.Context) error {
 // Delete removes a webhook subscription.
 // DELETE /api/v1/webhooks/subscriptions/:id
 func (h *WebhookSubscriptionAPIHandler) Delete(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
-	if err != nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}

@@ -42,6 +42,32 @@ func connectNATS(t *testing.T) *nats.Conn {
 	return nc
 }
 
+type campaignTestEcho struct {
+	*echo.Echo
+	defaultWSID uuid.UUID
+}
+
+func newCampaignTestEcho(wsID uuid.UUID) *campaignTestEcho {
+	return &campaignTestEcho{
+		Echo:        echo.New(),
+		defaultWSID: wsID,
+	}
+}
+
+func (te *campaignTestEcho) NewContext(req *http.Request, rec http.ResponseWriter) *echo.Context {
+	ctx := req.Context()
+	if _, err := domain.Require(ctx); err != nil {
+		if _, err := tenant.RequireWorkspaceID(ctx); err != nil {
+			if te.defaultWSID != uuid.Nil {
+				ctx = tenant.WithWorkspaceID(ctx, te.defaultWSID)
+				ctx = domain.ContextWithWorkspaceID(ctx, te.defaultWSID)
+				req = req.WithContext(ctx)
+			}
+		}
+	}
+	return te.Echo.NewContext(req, rec)
+}
+
 func TestCampaignHandler(t *testing.T) {
 	pool := getTestPool(t)
 	defer pool.Close()
@@ -92,7 +118,7 @@ func TestCampaignHandler(t *testing.T) {
 
 	tagRepo := repository.NewTagRepository(pool)
 	h := admin.NewCampaignHandler(campaignRepo, templateRepo, connectionRepo, tagRepo, pub)
-	e := echo.New()
+	e := newCampaignTestEcho(ws.ID)
 
 	t.Run("NewForm", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/admin/workspaces/%s/campaigns/new", ws.ID), nil)
@@ -904,8 +930,8 @@ func TestCampaignHandler(t *testing.T) {
 }
 
 func TestCampaignHandler_RateLimitValidation_Unit(t *testing.T) {
-	e := echo.New()
 	wsID := uuid.New()
+	e := newCampaignTestEcho(wsID)
 	h := admin.NewCampaignHandler(nil, nil, nil, nil, nil)
 
 	t.Run("APICreate_RateLimit_Zero_Returns_400", func(t *testing.T) {
@@ -1032,7 +1058,7 @@ func TestCampaignHandler_ScheduledCampaigns(t *testing.T) {
 
 	tagRepo := repository.NewTagRepository(pool)
 	h := admin.NewCampaignHandler(campaignRepo, templateRepo, connectionRepo, tagRepo, pub)
-	e := echo.New()
+	e := newCampaignTestEcho(ws.ID)
 
 	futureTime := time.Now().UTC().Add(2 * time.Hour).Truncate(time.Second)
 
@@ -1222,7 +1248,6 @@ func TestCampaignHandler_ScheduledCampaigns(t *testing.T) {
 }
 
 func TestCampaignHandler_InteractiveCampaigns(t *testing.T) {
-	e := echo.New()
 	pool := getTestPool(t)
 	nc := connectNATS(t)
 
@@ -1244,6 +1269,8 @@ func TestCampaignHandler_InteractiveCampaigns(t *testing.T) {
 		t.Fatalf("failed to create workspace: %v", err)
 	}
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	e := newCampaignTestEcho(ws.ID)
 
 	connID := uuid.New()
 	connSlug := "wa_inter_" + uuid.New().String()[:8]

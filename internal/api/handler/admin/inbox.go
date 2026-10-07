@@ -14,6 +14,7 @@ import (
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/components"
 	"github.com/pablojhp.pergo/templates/pages"
@@ -68,7 +69,12 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 
 // View handles GET /admin/inbox — renders the full split-pane inbox page.
 func (h *InboxHandler) View(c *echo.Context) error {
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	connectionFilter := c.QueryParam("connection")
 
 	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, connectionFilter)
@@ -92,7 +98,12 @@ func (h *InboxHandler) View(c *echo.Context) error {
 // PollConversations handles GET /admin/inbox/conversations/poll — returns the conversation list fragment for 5s polling.
 // The response includes the conv-list fragment plus an OOB badge update for the sidebar.
 func (h *InboxHandler) PollConversations(c *echo.Context) error {
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	connectionFilter := c.QueryParam("connection")
 
 	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, connectionFilter)
@@ -110,7 +121,12 @@ type ReplyOption = components.ReplyOption
 // Query params: contact_id.
 func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 
 	contactIDStr := c.QueryParam("contact_id")
 	if contactIDStr == "" {
@@ -252,7 +268,12 @@ func channelLabelStr(channel string) string {
 // Uses a UUID cursor (after_id) to return only messages newer than the last rendered one.
 func (h *InboxHandler) PollMessages(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 
 	contactIDStr := c.QueryParam("contact_id")
 	if contactIDStr == "" {
@@ -329,7 +350,12 @@ func (h *InboxHandler) checkBackgroundMessages(c *echo.Context, ctx context.Cont
 // Form params: contact (maps to to), channel, recipient_identity (maps to sender_identity), body.
 func (h *InboxHandler) SendMessage(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 
 	contact := c.FormValue("contact")                      // the recipient phone/chat ID (to field)
 	channel := c.FormValue("channel")                      // whatsapp / whatsapp_cloud / telegram
@@ -398,7 +424,12 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 // NewMessageModal renders the new message/template compose modal.
 func (h *InboxHandler) NewMessageModal(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
@@ -439,7 +470,12 @@ func (h *InboxHandler) NewMessageModal(c *echo.Context) error {
 // NewMessageSend enqueues template messages or initializes a new chat.
 func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
@@ -571,7 +607,12 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 // SearchContacts handles GET /admin/contacts/search
 func (h *InboxHandler) SearchContacts(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
@@ -594,7 +635,12 @@ func (h *InboxHandler) SearchContacts(c *echo.Context) error {
 // MergeContacts handles POST /admin/contacts/merge
 func (h *InboxHandler) MergeContacts(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
@@ -675,7 +721,12 @@ func jsonEscape(s string) string {
 // ToggleBot handles POST /admin/contacts/:id/toggle-bot
 func (h *InboxHandler) ToggleBot(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}

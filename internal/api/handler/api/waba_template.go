@@ -34,8 +34,8 @@ func NewWABATemplateAPIHandler(
 	}
 }
 
-func (h *WABATemplateAPIHandler) RegisterRoutes(e *echo.Echo) {
-	g := e.Group("/api/v1/waba/templates")
+func (h *WABATemplateAPIHandler) RegisterRoutes(e *echo.Echo, m ...echo.MiddlewareFunc) {
+	g := e.Group("/api/v1/waba/templates", m...)
 	g.POST("", h.Create)
 	g.GET("", h.List)
 	g.GET("/:id", h.Get)
