@@ -27,6 +27,7 @@ import (
 	apipkg "github.com/pablojhp.pergo/internal/api/handler/api"
 	"github.com/pablojhp.pergo/internal/api/mcp"
 	"github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/campaign"
 	"github.com/pablojhp.pergo/internal/channel"
 	"github.com/pablojhp.pergo/internal/channel/email"
 	"github.com/pablojhp.pergo/internal/channel/instagram"
@@ -348,7 +349,8 @@ func main() {
 	}
 	campaignRepo := repository.NewCampaignRepository(pool)
 	tagRepo := repository.NewTagRepository(pool)
-	campaignWorker := queue.NewCampaignWorker(ctx, campConsumer, campaignRepo, connectionRepo, dispatchRepo, publisher, auditWriter, tagRepo)
+	campaignEngine := campaign.NewBroadcasterEngine(campaignRepo, connectionRepo, dispatchRepo, publisher, auditWriter, tagRepo)
+	campaignWorker := queue.NewCampaignWorker(ctx, campConsumer, campaignEngine)
 	slog.Info("campaign worker started", "consumer", "campaign-worker-1")
 
 	// --- Campaign Scheduler Daemon ---
