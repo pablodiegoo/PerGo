@@ -492,7 +492,7 @@ func main() {
 	e.Use(middleware.LocaleMiddleware())
 
 	// Auth middleware — protects /api/* routes
-	e.Use(middleware.AuthMiddleware(apiKeyRepo))
+	e.Use(middleware.AuthMiddleware(apiKeyRepo, cfg.MasterKey))
 
 	// Audit middleware — audits API operations
 	e.Use(middleware.AuditMiddleware(userActionLogRepo))
@@ -639,6 +639,7 @@ func main() {
 	adminGroup.Use(middleware.SessionAuthMiddleware())
 	adminGroup.Use(middleware.DashboardAuditMiddleware(userActionLogRepo))
 	adminGroup.Use(middleware.ActiveWorkspaceMiddleware(wsRepo))
+	adminGroup.Use(middleware.EnforceWorkspaceScope())
 
 	// Admin dashboard
 	dashboardHandler := &admin.DashboardHandler{
@@ -935,6 +936,7 @@ func main() {
 
 	// Campaign REST API routes (v1)
 	v1Group := e.Group("/api/v1")
+	v1Group.Use(middleware.EnforceWorkspaceScope())
 	v1Group.POST("/campaigns", campaignHandler.APICreate)
 	v1Group.GET("/campaigns", campaignHandler.APIList)
 	v1Group.GET("/campaigns/:id", campaignHandler.APIGet)
