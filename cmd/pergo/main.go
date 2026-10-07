@@ -931,7 +931,7 @@ func main() {
 	})
 
 	// Campaigns routes (flat admin routes)
-	campaignHandler := admin.NewCampaignHandler(campaignRepo, wabaTemplateRepo, connectionRepo, tagRepo, publisher)
+	campaignHandler := admin.NewCampaignHandler(campaignRepo, wabaTemplateRepo, connectionRepo, tagRepo, publisher, campaignEngine)
 	adminGroup.GET("/campaigns", campaignHandler.List)
 	adminGroup.GET("/campaigns/new", campaignHandler.NewForm)
 	adminGroup.POST("/campaigns/upload", campaignHandler.UploadCSV)
