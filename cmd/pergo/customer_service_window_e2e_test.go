@@ -448,6 +448,7 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 
 		postReq := httptest.NewRequest(http.MethodPost, "/admin/devices/test", strings.NewReader(form.Encode()))
 		postReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		postReq = postReq.WithContext(tenant.WithWorkspaceID(domain.ContextWithWorkspaceID(postReq.Context(), ws.ID), ws.ID))
 		postReq.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		postRec := httptest.NewRecorder()
 

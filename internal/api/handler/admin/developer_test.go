@@ -13,12 +13,21 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/i18n"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func withDevWorkspaceContext(req *http.Request, wsID uuid.UUID) *http.Request {
+	ctx := tenant.WithWorkspaceID(req.Context(), wsID)
+	ctx = domain.ContextWithWorkspaceID(ctx, wsID)
+	ctx = i18n.WithLocale(ctx, "pt-BR")
+	return req.WithContext(ctx)
+}
 
 func setupDeveloperTest(t *testing.T) (context.Context, *repository.WorkspaceRepository, *repository.APIKeyRepository, *repository.Workspace, func()) {
 	t.Helper()
@@ -30,7 +39,7 @@ func setupDeveloperTest(t *testing.T) (context.Context, *repository.WorkspaceRep
 		t.Skip("testcontainers postgres not available")
 	}
 
-	ctx := context.Background()
+	ctx := i18n.WithLocale(context.Background(), "pt-BR")
 	pool, err := postgres.NewPool(ctx, dbURL)
 	require.NoError(t, err)
 
@@ -148,7 +157,7 @@ func TestDeveloperHandler_APIKeyLifecycle(t *testing.T) {
 }
 
 func TestDeveloperHandler_SandboxTest_ValidInteractiveButton(t *testing.T) {
-	ctx, wsRepo, apiKeyRepo, ws, cleanup := setupDeveloperTest(t)
+	_, wsRepo, apiKeyRepo, ws, cleanup := setupDeveloperTest(t)
 	defer cleanup()
 
 	handler := admin.NewDeveloperHandler(wsRepo, apiKeyRepo, []byte("dev-secret-32-bytes-test-key123"), "http://localhost:8080")
@@ -182,7 +191,7 @@ func TestDeveloperHandler_SandboxTest_ValidInteractiveButton(t *testing.T) {
 	form.Set("payload", payloadJSON)
 	req := httptest.NewRequest(http.MethodPost, "/admin/developers/sandbox/test", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req = req.WithContext(tenant.WithWorkspaceID(ctx, ws.ID))
+	req = withDevWorkspaceContext(req, ws.ID)
 	req = req.WithContext(middleware.WithActiveWorkspace(req.Context(), ws))
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -197,7 +206,7 @@ func TestDeveloperHandler_SandboxTest_ValidInteractiveButton(t *testing.T) {
 }
 
 func TestDeveloperHandler_SandboxTest_InvalidPayload(t *testing.T) {
-	ctx, wsRepo, apiKeyRepo, ws, cleanup := setupDeveloperTest(t)
+	_, wsRepo, apiKeyRepo, ws, cleanup := setupDeveloperTest(t)
 	defer cleanup()
 
 	handler := admin.NewDeveloperHandler(wsRepo, apiKeyRepo, []byte("dev-secret-32-bytes-test-key123"), "http://localhost:8080")
@@ -212,7 +221,7 @@ func TestDeveloperHandler_SandboxTest_InvalidPayload(t *testing.T) {
 	form.Set("payload", payloadJSON)
 	req := httptest.NewRequest(http.MethodPost, "/admin/developers/sandbox/test", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req = req.WithContext(tenant.WithWorkspaceID(ctx, ws.ID))
+	req = withDevWorkspaceContext(req, ws.ID)
 	req = req.WithContext(middleware.WithActiveWorkspace(req.Context(), ws))
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)

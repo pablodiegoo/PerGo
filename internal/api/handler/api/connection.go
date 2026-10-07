@@ -197,22 +197,14 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 }
 
 func (h *ConnectionAPIHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
-	ctxID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if !ok || ctxID == uuid.Nil {
-		return uuid.Nil, errors.New("workspace context required")
+	ctx := c.Request().Context()
+	if scope, err := domain.Require(ctx); err == nil && scope.WorkspaceID() != uuid.Nil {
+		return scope.WorkspaceID(), nil
 	}
-
-	if paramIDStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && paramIDStr != "" {
-		parsed, err := uuid.Parse(paramIDStr)
-		if err != nil || parsed == uuid.Nil {
-			return uuid.Nil, errors.New("invalid workspace_id parameter")
-		}
-		if parsed != ctxID {
-			return uuid.Nil, errors.New("workspace ID mismatch: authenticated workspace does not match URL")
-		}
+	if wsID, err := tenant.RequireWorkspaceID(ctx); err == nil && wsID != uuid.Nil {
+		return wsID, nil
 	}
-
-	return ctxID, nil
+	return uuid.Nil, errors.New("workspace context required")
 }
 
 func sanitizePhoneIdentity(phone string) string {
@@ -281,12 +273,6 @@ type CreateWABAConnectionRequest struct {
 func (h *ConnectionAPIHandler) CreateWABA(c *echo.Context) error {
 	wsID, err := h.resolveWorkspaceID(c)
 	if err != nil {
-		if strings.Contains(err.Error(), "mismatch") {
-			return c.JSON(http.StatusForbidden, map[string]string{
-				"code":    "forbidden",
-				"message": err.Error(),
-			})
-		}
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
 			"message": err.Error(),
@@ -454,12 +440,6 @@ type CreateTelegramConnectionRequest struct {
 func (h *ConnectionAPIHandler) CreateTelegram(c *echo.Context) error {
 	wsID, err := h.resolveWorkspaceID(c)
 	if err != nil {
-		if strings.Contains(err.Error(), "mismatch") {
-			return c.JSON(http.StatusForbidden, map[string]string{
-				"code":    "forbidden",
-				"message": err.Error(),
-			})
-		}
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
 			"message": err.Error(),
@@ -601,8 +581,8 @@ type PairConnectionResponse struct {
 // StartPairing initiates QR code pairing for a WhatsApp Web connection.
 // POST /api/v1/connections/pair & POST /api/v1/devices/pair
 func (h *ConnectionAPIHandler) StartPairing(c *echo.Context) error {
-	wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if !ok || wsID == uuid.Nil {
+	wsID, err := h.resolveWorkspaceID(c)
+	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
 			"message": "workspace context required",
@@ -658,8 +638,8 @@ func (h *ConnectionAPIHandler) StartPairing(c *echo.Context) error {
 // GetQR returns the current QR code state for a pairing session or connection.
 // GET /api/v1/connections/:id/qr & GET /api/v1/devices/:id/qr
 func (h *ConnectionAPIHandler) GetQR(c *echo.Context) error {
-	wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if !ok || wsID == uuid.Nil {
+	wsID, err := h.resolveWorkspaceID(c)
+	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
 			"message": "workspace context required",
@@ -715,8 +695,8 @@ func (h *ConnectionAPIHandler) GetQR(c *echo.Context) error {
 // StreamQR streams real-time QR pairing events via Server-Sent Events (SSE).
 // GET /api/v1/connections/:id/qr/stream & GET /api/v1/devices/:id/qr/stream
 func (h *ConnectionAPIHandler) StreamQR(c *echo.Context) error {
-	wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if !ok || wsID == uuid.Nil {
+	wsID, err := h.resolveWorkspaceID(c)
+	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
 			"message": "workspace context required",
@@ -836,8 +816,8 @@ type ListConnectionsResponse struct {
 // List returns all connections for the authenticated workspace.
 // GET /api/v1/connections & GET /api/v1/devices
 func (h *ConnectionAPIHandler) List(c *echo.Context) error {
-	wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if !ok || wsID == uuid.Nil {
+	wsID, err := h.resolveWorkspaceID(c)
+	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
 			"message": "workspace context required",
@@ -892,8 +872,8 @@ func (h *ConnectionAPIHandler) List(c *echo.Context) error {
 // Disconnect deletes a connection and disconnects any active session.
 // DELETE /api/v1/connections/:id & DELETE /api/v1/devices/:id
 func (h *ConnectionAPIHandler) Disconnect(c *echo.Context) error {
-	wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if !ok || wsID == uuid.Nil {
+	wsID, err := h.resolveWorkspaceID(c)
+	if err != nil {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
 			"message": "workspace context required",
@@ -970,12 +950,6 @@ type FlowPublicKeyResponse struct {
 func (h *ConnectionAPIHandler) GetFlowPublicKey(c *echo.Context) error {
 	wsID, err := h.resolveWorkspaceID(c)
 	if err != nil {
-		if strings.Contains(err.Error(), "mismatch") {
-			return c.JSON(http.StatusForbidden, map[string]string{
-				"code":    "forbidden",
-				"message": err.Error(),
-			})
-		}
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
 			"message": err.Error(),

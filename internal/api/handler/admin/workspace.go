@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
@@ -86,6 +87,11 @@ func (h *WorkspaceHandler) Detail(c *echo.Context) error {
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil {
+		if !scope.Matches(id) {
+			return c.String(http.StatusForbidden, "forbidden: cannot access workspace outside your scope")
+		}
+	}
 
 	ws, err := h.Repo.GetByID(c.Request().Context(), id)
 	if err != nil {
@@ -113,6 +119,11 @@ func (h *WorkspaceHandler) ConfirmDelete(c *echo.Context) error {
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil {
+		if !scope.Matches(id) {
+			return c.String(http.StatusForbidden, "forbidden: cannot delete workspace outside your scope")
+		}
+	}
 
 	ws, err := h.Repo.GetByID(c.Request().Context(), id)
 	if err != nil {
@@ -132,6 +143,11 @@ func (h *WorkspaceHandler) Delete(c *echo.Context) error {
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil {
+		if !scope.Matches(id) {
+			return c.String(http.StatusForbidden, "forbidden: cannot delete workspace outside your scope")
+		}
+	}
 
 	if err := h.Repo.Delete(c.Request().Context(), id); err != nil {
 		return c.String(http.StatusInternalServerError, "failed to delete workspace")
@@ -141,15 +157,21 @@ func (h *WorkspaceHandler) Delete(c *echo.Context) error {
 }
 
 func resolveWorkspaceParamOrActive(c *echo.Context) (uuid.UUID, error) {
-	if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
-		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
-			return id, nil
-		}
-	}
 	if idStr, err := echo.PathParam[string](c, "id"); err == nil && idStr != "" {
-		if id, parseErr := uuid.Parse(idStr); parseErr == nil && id != uuid.Nil {
-			return id, nil
+		id, parseErr := uuid.Parse(idStr)
+		if parseErr != nil || id == uuid.Nil {
+			return uuid.Nil, fmt.Errorf("invalid workspace ID parameter")
 		}
+		if scope, sErr := domain.Require(c.Request().Context()); sErr == nil {
+			if !scope.Matches(id) {
+				return uuid.Nil, fmt.Errorf("workspace ID mismatch: forbidden")
+			}
+		} else if wsID, tErr := tenant.RequireWorkspaceID(c.Request().Context()); tErr == nil && wsID != uuid.Nil {
+			if wsID != id {
+				return uuid.Nil, fmt.Errorf("workspace ID mismatch: forbidden")
+			}
+		}
+		return id, nil
 	}
 	return resolveWorkspaceID(c)
 }

@@ -16,9 +16,11 @@ import (
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -75,7 +77,7 @@ func TestDashboardHandler_Index_Onboarding(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/admin/", nil)
 	// Inject active workspace cookie and context
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
-	req = req.WithContext(mw.WithActiveWorkspace(req.Context(), ws))
+	req = req.WithContext(domain.ContextWithWorkspaceID(tenant.WithWorkspaceID(mw.WithActiveWorkspace(req.Context(), ws), ws.ID), ws.ID))
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -169,6 +171,7 @@ func TestDashboardHandler_Index_Onboarded(t *testing.T) {
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/admin/", nil)
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	req = req.WithContext(domain.ContextWithWorkspaceID(tenant.WithWorkspaceID(mw.WithActiveWorkspace(req.Context(), ws), ws.ID), ws.ID))
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 

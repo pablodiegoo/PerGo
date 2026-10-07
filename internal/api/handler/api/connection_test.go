@@ -16,8 +16,10 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/api/handler/api"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 	whatsapp "github.com/pablojhp.pergo/internal/channel/whatsapp"
 	"github.com/pablojhp.pergo/internal/client"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -263,6 +265,7 @@ func setupEchoWithTenant(method, path string, body []byte, wsID uuid.UUID) (*ech
 	req.Header.Set("Content-Type", "application/json")
 	if wsID != uuid.Nil {
 		ctx := tenant.WithWorkspaceID(req.Context(), wsID)
+		ctx = domain.ContextWithWorkspaceID(ctx, wsID)
 		req = req.WithContext(ctx)
 	}
 	rec := httptest.NewRecorder()
@@ -455,7 +458,7 @@ func TestConnectionAPIHandler_StreamQR(t *testing.T) {
 	defer cancel()
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/connections/"+connID+"/qr/stream", nil)
-	req = req.WithContext(tenant.WithWorkspaceID(ctx, wsID))
+	req = req.WithContext(domain.ContextWithWorkspaceID(tenant.WithWorkspaceID(ctx, wsID), wsID))
 	rec := httptest.NewRecorder()
 	e := echo.New()
 	c := e.NewContext(req, rec)
@@ -877,13 +880,14 @@ func TestConnectionAPIHandler_CreateWABA_UnauthorizedAndWorkspaceIsolation(t *te
 		}
 	}
 
-	// 3. Workspace ID in path does not match authenticated context (Workspace Isolation)
+	// 3. Workspace ID in path does not match authenticated context (Workspace Isolation enforced by middleware)
 	{
 		_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/workspaces/"+otherWsID.String()+"/connections/waba", validPayload, wsID)
 		c.SetPath("/api/v1/workspaces/:workspace_id/connections/waba")
 		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: otherWsID.String()}})
 
-		if err := handler.CreateWABA(c); err != nil {
+		h := middleware.EnforceWorkspaceScope()(handler.CreateWABA)
+		if err := h(c); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if rec.Code != http.StatusForbidden && rec.Code != http.StatusUnauthorized {
@@ -1089,13 +1093,14 @@ func TestConnectionAPIHandler_CreateTelegram_WorkspaceIsolation(t *testing.T) {
 		}
 	}
 
-	// 2. Mismatched workspace in path
+	// 2. Mismatched workspace in path (Workspace Isolation enforced by middleware)
 	{
 		_, c, rec := setupEchoWithTenant(http.MethodPost, "/api/v1/workspaces/"+otherWsID.String()+"/connections/telegram", validPayload, wsID)
 		c.SetPath("/api/v1/workspaces/:workspace_id/connections/telegram")
 		c.SetPathValues(echo.PathValues{{Name: "workspace_id", Value: otherWsID.String()}})
 
-		if err := handler.CreateTelegram(c); err != nil {
+		h := middleware.EnforceWorkspaceScope()(handler.CreateTelegram)
+		if err := h(c); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if rec.Code != http.StatusForbidden && rec.Code != http.StatusUnauthorized {
