@@ -17,7 +17,9 @@ import (
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/webhook"
@@ -55,8 +57,13 @@ func generateRandomSecret() (string, error) {
 
 // Page renders the webhooks config page for a workspace.
 func (h *WebhookDLQHandler) Page(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -81,8 +88,13 @@ func (h *WebhookDLQHandler) Page(c *echo.Context) error {
 
 // GetSubscriptionNewForm returns the new subscription modal form.
 func (h *WebhookDLQHandler) GetSubscriptionNewForm(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -91,8 +103,13 @@ func (h *WebhookDLQHandler) GetSubscriptionNewForm(c *echo.Context) error {
 
 // GetSubscriptionEditForm returns the edit subscription modal form.
 func (h *WebhookDLQHandler) GetSubscriptionEditForm(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -115,8 +132,13 @@ func (h *WebhookDLQHandler) GetSubscriptionEditForm(c *echo.Context) error {
 
 // CreateSubscription creates a new webhook subscription and reveals its signing secret.
 func (h *WebhookDLQHandler) CreateSubscription(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -221,8 +243,13 @@ func (h *WebhookDLQHandler) DeleteSubscription(c *echo.Context) error {
 
 // GetRotateSecretForm renders the modal to rotate a webhook subscription secret.
 func (h *WebhookDLQHandler) GetRotateSecretForm(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -245,8 +272,13 @@ func (h *WebhookDLQHandler) GetRotateSecretForm(c *echo.Context) error {
 
 // RotateSubscriptionSecret generates or sets a new signing secret for a webhook subscription.
 func (h *WebhookDLQHandler) RotateSubscriptionSecret(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -352,8 +384,13 @@ func (h *WebhookDLQHandler) PingSubscription(c *echo.Context) error {
 
 // GetSubscriptionTestForm returns the simulation modal form.
 func (h *WebhookDLQHandler) GetSubscriptionTestForm(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 

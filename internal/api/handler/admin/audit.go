@@ -14,6 +14,7 @@ import (
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -40,7 +41,7 @@ func parseAuditFilters(c *echo.Context) repository.AuditFilters {
 		if id, err := uuid.Parse(wsStr); err == nil && id != uuid.Nil {
 			filters.WorkspaceID = &id
 		}
-	} else if wsID := resolveWorkspaceIDOrNil(c); wsID != uuid.Nil {
+	} else if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
 		filters.WorkspaceID = &wsID
 	}
 	if traceID := c.QueryParam("trace_id"); traceID != "" {

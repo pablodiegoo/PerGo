@@ -13,6 +13,7 @@ import (
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -44,8 +45,13 @@ type CreateTagRequest struct {
 // ListTags handles GET /api/v1/workspaces/:workspace_id/tags or GET /admin/tags
 // Page handles GET /admin/tags or legacy GET /admin/workspaces/:workspace_id/tags
 func (h *TagAdminHandler) Page(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -61,8 +67,13 @@ func (h *TagAdminHandler) Page(c *echo.Context) error {
 }
 
 func (h *TagAdminHandler) ListTags(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
 
@@ -76,8 +87,13 @@ func (h *TagAdminHandler) ListTags(c *echo.Context) error {
 
 // CreateTag handles POST /api/v1/workspaces/:workspace_id/tags or POST /admin/tags
 func (h *TagAdminHandler) CreateTag(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
 
@@ -103,8 +119,13 @@ func (h *TagAdminHandler) CreateTag(c *echo.Context) error {
 
 // DeleteTag handles DELETE /api/v1/workspaces/:workspace_id/tags/:id or DELETE /admin/tags/:id
 func (h *TagAdminHandler) DeleteTag(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
 
@@ -129,8 +150,13 @@ func (h *TagAdminHandler) DeleteTag(c *echo.Context) error {
 
 // AddContactTag handles POST /api/v1/workspaces/:workspace_id/contacts/:contact_id/tags/:tag_id
 func (h *TagAdminHandler) AddContactTag(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
 
@@ -161,8 +187,13 @@ func (h *TagAdminHandler) AddContactTag(c *echo.Context) error {
 
 // RemoveContactTag handles DELETE /api/v1/workspaces/:workspace_id/contacts/:contact_id/tags/:tag_id
 func (h *TagAdminHandler) RemoveContactTag(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
 
@@ -199,8 +230,13 @@ type ImportResult struct {
 
 // ImportContactsCSV handles POST /api/v1/workspaces/:workspace_id/contacts/import or POST /admin/contacts/import
 func (h *TagAdminHandler) ImportContactsCSV(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
 
@@ -346,8 +382,13 @@ func (h *TagAdminHandler) ImportContactsCSV(c *echo.Context) error {
 
 // ExportContactsCSV handles GET /api/v1/workspaces/:workspace_id/contacts/export or GET /admin/contacts/export
 func (h *TagAdminHandler) ExportContactsCSV(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
 

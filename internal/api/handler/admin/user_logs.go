@@ -9,6 +9,8 @@ import (
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -27,7 +29,12 @@ func NewUserLogsHandler(repo *repository.UserActionLogRepository) *UserLogsHandl
 // GET /admin/user-logs
 func (h *UserLogsHandler) List(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	if workspaceID == uuid.Nil {
 		return c.Redirect(http.StatusFound, "/admin/")
 	}

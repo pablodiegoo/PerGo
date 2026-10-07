@@ -17,6 +17,7 @@ import (
 	"github.com/labstack/echo/v5"
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
@@ -47,8 +48,13 @@ func NewCampaignHandler(
 }
 
 func (h *CampaignHandler) List(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -74,8 +80,13 @@ func (h *CampaignHandler) List(c *echo.Context) error {
 }
 
 func (h *CampaignHandler) NewForm(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -294,8 +305,13 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		scheduledAt = parsed
 	}
 
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -476,7 +492,7 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 		SkippedRows:      skipped,
 	}
 
-	_, err = h.CampaignRepo.Create(c.Request().Context(), camp)
+	_, err := h.CampaignRepo.Create(c.Request().Context(), camp)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, fmt.Sprintf("failed to save campaign: %v", err))
 	}
@@ -706,8 +722,13 @@ type CreateCampaignRequest struct {
 
 // APICreate handles campaign creation via JSON REST API with pre-flight validation.
 func (h *CampaignHandler) APICreate(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
 
@@ -832,8 +853,13 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 
 // APIList returns campaigns for a workspace as JSON.
 func (h *CampaignHandler) APIList(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
 	}
 

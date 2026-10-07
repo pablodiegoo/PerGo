@@ -461,14 +461,14 @@ func TestInboxHandler_View_NoWorkspace(t *testing.T) {
 	h := &admin.InboxHandler{}
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/admin/inbox", nil)
-	// No workspace cookie → resolveWorkspaceID returns uuid.Nil
+	// No workspace context → context extraction returns uuid.Nil
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 	_ = rec
 
 	// With nil Repo, View panics. This test is intentionally limited to
-	// cookie resolution — full flow requires integration test with DB.
-	// Verify resolveWorkspaceID returns uuid.Nil (no panic from that part).
+	// context resolution — full flow requires integration test with DB.
+	// Verify context resolution returns uuid.Nil (no panic from that part).
 	_ = h
 	_ = c
 	// No assertion needed here — confirms no compilation errors in test file.
