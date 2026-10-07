@@ -223,6 +223,7 @@ func (e *defaultEngine) Create(ctx context.Context, scope domain.WorkspaceScope,
 		FallbackBehavior: params.FallbackBehavior,
 		TagID:            primaryTagID,
 		TagIDs:           targetTagIDs,
+		TotalRecipients:  len(params.Recipients),
 		Recipients:       params.Recipients,
 		SkippedRows:      params.SkippedRows,
 	}
@@ -315,6 +316,10 @@ func (e *defaultEngine) Resume(ctx context.Context, scope domain.WorkspaceScope,
 	pending, err := e.campaignRepo.ListPendingRecipients(ctx, campaignID)
 	if err != nil {
 		return nil, fmt.Errorf("list pending recipients: %w", err)
+	}
+
+	if len(pending) == 0 && len(camp.Recipients) > 0 && camp.SentRecipients < len(camp.Recipients) {
+		pending = camp.Recipients[camp.SentRecipients:]
 	}
 
 	if len(pending) == 0 {
