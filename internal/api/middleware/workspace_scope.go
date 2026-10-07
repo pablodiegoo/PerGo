@@ -118,11 +118,7 @@ func isExcludedPath(path string) bool {
 		path == "/llms.txt" ||
 		path == "/llms-full.txt" ||
 		strings.HasPrefix(path, "/webhooks") ||
-		strings.HasPrefix(path, "/v1/webhooks") ||
-		strings.HasPrefix(path, "/admin/login") ||
-		strings.HasPrefix(path, "/admin/logout") ||
-		strings.HasPrefix(path, "/admin/sso") ||
-		strings.HasPrefix(path, "/admin/locale") {
+		strings.HasPrefix(path, "/v1/webhooks") {
 		return true
 	}
 	return false

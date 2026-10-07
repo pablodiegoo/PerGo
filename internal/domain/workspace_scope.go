@@ -108,11 +108,6 @@ func FromContext(ctx context.Context) (WorkspaceScope, bool) {
 	return WorkspaceScope{}, false
 }
 
-// From is an alias to FromContext.
-func From(ctx context.Context) (WorkspaceScope, bool) {
-	return FromContext(ctx)
-}
-
 // Require extracts the WorkspaceScope from context or returns ErrMissingScope.
 func Require(ctx context.Context) (WorkspaceScope, error) {
 	scope, ok := FromContext(ctx)
@@ -120,6 +115,19 @@ func Require(ctx context.Context) (WorkspaceScope, error) {
 		return WorkspaceScope{}, ErrMissingScope
 	}
 	return scope, nil
+}
+
+// RequireWorkspaceID extracts the verified workspace ID from the context's WorkspaceScope.
+// Returns ErrMissingScope if the scope is absent or if the workspace ID is uuid.Nil.
+func RequireWorkspaceID(ctx context.Context) (uuid.UUID, error) {
+	scope, err := Require(ctx)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if scope.WorkspaceID() == uuid.Nil {
+		return uuid.Nil, ErrMissingScope
+	}
+	return scope.WorkspaceID(), nil
 }
 
 // ContextWithWorkspaceID is a test helper that constructs a context with a CapabilityWorkspaceScoped scope.

@@ -722,14 +722,17 @@ type CreateCampaignRequest struct {
 
 // APICreate handles campaign creation via JSON REST API with pre-flight validation.
 func (h *CampaignHandler) APICreate(c *echo.Context) error {
-	var workspaceID uuid.UUID
-	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
-		workspaceID = scope.WorkspaceID()
-	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
-		workspaceID = id
-	}
-	if workspaceID == uuid.Nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	workspaceID, err := domain.RequireWorkspaceID(c.Request().Context())
+	if err != nil {
+		if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+			workspaceID = id
+		} else {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"code":    "INVALID_WORKSPACE_ID",
+				"message": "invalid workspace ID",
+				"error":   "invalid workspace ID",
+			})
+		}
 	}
 
 	var req CreateCampaignRequest

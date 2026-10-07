@@ -111,10 +111,6 @@ func TestWorkspaceScope_Context(t *testing.T) {
 	if ok {
 		t.Fatal("expected FromContext to return false on empty context")
 	}
-	_, ok = From(ctx)
-	if ok {
-		t.Fatal("expected From to return false on empty context")
-	}
 	_, err := Require(ctx)
 	if !errors.Is(err, ErrMissingScope) {
 		t.Fatalf("expected ErrMissingScope, got %v", err)
@@ -130,14 +126,25 @@ func TestWorkspaceScope_Context(t *testing.T) {
 		t.Fatalf("failed to extract scope via FromContext: ok=%v, extracted=%v", ok, extracted)
 	}
 
-	extractedFrom, ok := From(ctx)
-	if !ok || extractedFrom.WorkspaceID() != wsID {
-		t.Fatalf("failed to extract scope via From: ok=%v, extracted=%v", ok, extractedFrom)
-	}
-
 	reqScope, err := Require(ctx)
 	if err != nil || reqScope.WorkspaceID() != wsID {
 		t.Fatalf("failed to extract scope via Require: err=%v, reqScope=%v", err, reqScope)
+	}
+
+	reqWSID, err := RequireWorkspaceID(ctx)
+	if err != nil || reqWSID != wsID {
+		t.Fatalf("failed to extract workspace ID via RequireWorkspaceID: err=%v, reqWSID=%v", err, reqWSID)
+	}
+
+	// Missing scope returns ErrMissingScope for RequireWorkspaceID
+	if _, err := RequireWorkspaceID(context.Background()); !errors.Is(err, ErrMissingScope) {
+		t.Fatalf("expected ErrMissingScope for empty context, got %v", err)
+	}
+
+	// Scope with uuid.Nil returns ErrMissingScope
+	nilCtx := ContextWithScope(context.Background(), NewWorkspaceScope(uuid.Nil, CapabilityWorkspaceScoped))
+	if _, err := RequireWorkspaceID(nilCtx); !errors.Is(err, ErrMissingScope) {
+		t.Fatalf("expected ErrMissingScope for nil workspace ID, got %v", err)
 	}
 
 	// Test helper constructors

@@ -18,7 +18,7 @@ import (
 
 // AuthMiddleware returns an Echo middleware that validates API keys from the
 // Authorization header and injects workspace_id and WorkspaceScope into the request context.
-// Optional masterKeys can be provided to allow Platform Operators using a Master Key
+// Optional masterKeys can be provided to allow System Operators using a Master Key
 // to authenticate against protected API routes.
 func AuthMiddleware(repo *repository.APIKeyRepository, masterKeys ...string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -63,8 +63,6 @@ func AuthMiddleware(repo *repository.APIKeyRepository, masterKeys ...string) ech
 			masterCandidate := key
 			if xKey := c.Request().Header.Get("X-Master-Key"); xKey != "" {
 				masterCandidate = strings.TrimSpace(xKey)
-			} else if qKey := c.QueryParam("master_key"); qKey != "" {
-				masterCandidate = strings.TrimSpace(qKey)
 			}
 
 			if expectedMasterKey != "" && masterCandidate != "" && subtle.ConstantTimeCompare([]byte(masterCandidate), []byte(expectedMasterKey)) == 1 {
@@ -75,7 +73,7 @@ func AuthMiddleware(repo *repository.APIKeyRepository, masterKeys ...string) ech
 
 			if key == "" || len(key) < 8 {
 				return c.JSON(http.StatusUnauthorized, map[string]string{
-					"code":    "unauthorized",
+					"code":    "UNAUTHORIZED",
 					"message": "invalid or missing API key",
 				})
 			}
@@ -84,7 +82,7 @@ func AuthMiddleware(repo *repository.APIKeyRepository, masterKeys ...string) ech
 			apiKey, err := repo.GetByPrefix(c.Request().Context(), prefix)
 			if err != nil {
 				return c.JSON(http.StatusUnauthorized, map[string]string{
-					"code":    "unauthorized",
+					"code":    "UNAUTHORIZED",
 					"message": "invalid or missing API key",
 				})
 			}
@@ -92,7 +90,7 @@ func AuthMiddleware(repo *repository.APIKeyRepository, masterKeys ...string) ech
 			// Verify the full key by comparing hashes
 			if !crypto.VerifyAPIKey(key, apiKey.KeyHash) {
 				return c.JSON(http.StatusUnauthorized, map[string]string{
-					"code":    "unauthorized",
+					"code":    "UNAUTHORIZED",
 					"message": "invalid or missing API key",
 				})
 			}

@@ -493,7 +493,6 @@ func main() {
 
 	// Auth middleware — protects /api/* routes
 	e.Use(middleware.AuthMiddleware(apiKeyRepo, cfg.MasterKey))
-	e.Use(middleware.EnforceWorkspaceScope())
 
 	// Audit middleware — audits API operations
 	e.Use(middleware.AuditMiddleware(userActionLogRepo))
@@ -517,7 +516,7 @@ func main() {
 	messageHandler := &handler.MessageHandler{
 		Ingestor: outboundProcessor,
 	}
-	messageHandler.RegisterRoutes(e, middleware.RateLimiterMiddleware(rateLimiter))
+	messageHandler.RegisterRoutes(e, middleware.RateLimiterMiddleware(rateLimiter), middleware.EnforceWorkspaceScope())
 
 	// --- MCP Server (Model Context Protocol) ---
 	mcpServer := mcp.NewServer(
@@ -569,15 +568,15 @@ func main() {
 		apipkg.WithTelegramClient(telegramBotClient),
 		apipkg.WithExternalURL(cfg.ExternalURL),
 	)
-	connectionAPIHandler.RegisterRoutes(e)
+	connectionAPIHandler.RegisterRoutes(e, middleware.EnforceWorkspaceScope())
 
 	// --- WABA Template REST API handler ---
 	wabaTemplateAPIHandler := apipkg.NewWABATemplateAPIHandler(wabaTemplateRepo, connectionRepo, wabaMetaClient)
-	wabaTemplateAPIHandler.RegisterRoutes(e)
+	wabaTemplateAPIHandler.RegisterRoutes(e, middleware.EnforceWorkspaceScope())
 
 	// --- Webhook Subscription REST API handler ---
 	webhookSubscriptionAPIHandler := apipkg.NewWebhookSubscriptionAPIHandler(webhookSubRepo, apipkg.WithSubscriptionAllowlist(webhookAllowlist...))
-	webhookSubscriptionAPIHandler.RegisterRoutes(e)
+	webhookSubscriptionAPIHandler.RegisterRoutes(e, middleware.EnforceWorkspaceScope())
 
 	// --- WABA Meta Flows Data Exchange endpoint ---
 	flowDataExchangeHandler := handler.NewFlowDataExchangeHandler(connectionRepo, wsRepo)
@@ -1023,7 +1022,7 @@ func main() {
 	e.Static("/static", "static")
 
 	// Test route: GET /api/v1/me (returns workspace_id from auth context)
-	e.GET("/api/v1/me", func(c *echo.Context) error {
+	meHandler := func(c *echo.Context) error {
 		wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
 		if !ok {
 			return c.String(http.StatusUnauthorized, "missing workspace context")
@@ -1031,7 +1030,9 @@ func main() {
 		return c.JSON(http.StatusOK, map[string]string{
 			"workspace_id": wsID.String(),
 		})
-	})
+	}
+	v1Group.GET("/me", meHandler)
+	e.GET("/api/v1/me", meHandler)
 
 	// Start HTTP server
 	srv := &http.Server{

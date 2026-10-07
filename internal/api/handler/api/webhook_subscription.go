@@ -56,9 +56,9 @@ func NewWebhookSubscriptionAPIHandler(repo WebhookSubscriptionRepo, opts ...Webh
 }
 
 // RegisterRoutes registers the webhook subscription endpoints on Echo router.
-func (h *WebhookSubscriptionAPIHandler) RegisterRoutes(e *echo.Echo) {
+func (h *WebhookSubscriptionAPIHandler) RegisterRoutes(e *echo.Echo, m ...echo.MiddlewareFunc) {
 	// Canonical REST routes (workspace inferred from Bearer token)
-	subGroup := e.Group("/api/v1/webhooks/subscriptions")
+	subGroup := e.Group("/api/v1/webhooks/subscriptions", m...)
 	subGroup.POST("", h.Create)
 	subGroup.POST("/", h.Create)
 	subGroup.GET("", h.List)
@@ -68,7 +68,7 @@ func (h *WebhookSubscriptionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	subGroup.DELETE("/:id", h.Delete)
 
 	// Workspace-scoped aliases
-	wsSubGroup := e.Group("/api/v1/workspaces/:workspace_id/webhooks/subscriptions")
+	wsSubGroup := e.Group("/api/v1/workspaces/:workspace_id/webhooks/subscriptions", m...)
 	wsSubGroup.POST("", h.Create)
 	wsSubGroup.POST("/", h.Create)
 	wsSubGroup.GET("", h.List)
@@ -130,7 +130,7 @@ func (h *WebhookSubscriptionAPIHandler) Create(c *echo.Context) error {
 		wsID = id
 	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -240,7 +240,7 @@ func (h *WebhookSubscriptionAPIHandler) List(c *echo.Context) error {
 		wsID = id
 	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -281,7 +281,7 @@ func (h *WebhookSubscriptionAPIHandler) Get(c *echo.Context) error {
 		wsID = id
 	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -340,7 +340,7 @@ func (h *WebhookSubscriptionAPIHandler) Update(c *echo.Context) error {
 		wsID = id
 	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -462,7 +462,7 @@ func (h *WebhookSubscriptionAPIHandler) Delete(c *echo.Context) error {
 		wsID = id
 	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}

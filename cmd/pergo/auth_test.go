@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -168,7 +169,7 @@ func TestAuthMiddlewareMissing(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	if resp["code"] != "unauthorized" {
+	if !strings.EqualFold(resp["code"], "unauthorized") {
 		t.Errorf("expected error code 'unauthorized', got %q", resp["code"])
 	}
 }

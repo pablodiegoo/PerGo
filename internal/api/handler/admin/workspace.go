@@ -157,18 +157,18 @@ func (h *WorkspaceHandler) Delete(c *echo.Context) error {
 }
 
 // GetWebhookSecret returns the workspace's webhook secret key.
-func (h *WorkspaceHandler) GetWebhookSecret(c *echo.Context) error {
+func (h *WorkspaceHandler) resolveTargetWorkspaceID(c *echo.Context) (uuid.UUID, error) {
 	var id uuid.UUID
 	if idStr, err := echo.PathParam[string](c, "id"); err == nil && idStr != "" {
 		parsed, parseErr := uuid.Parse(idStr)
 		if parseErr != nil || parsed == uuid.Nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+			return uuid.Nil, echo.NewHTTPError(http.StatusBadRequest, "invalid workspace ID")
 		}
 		id = parsed
 	} else if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
 		parsed, parseErr := uuid.Parse(idStr)
 		if parseErr != nil || parsed == uuid.Nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+			return uuid.Nil, echo.NewHTTPError(http.StatusBadRequest, "invalid workspace ID")
 		}
 		id = parsed
 	}
@@ -181,12 +181,23 @@ func (h *WorkspaceHandler) GetWebhookSecret(c *echo.Context) error {
 	} else {
 		if scope, sErr := domain.Require(c.Request().Context()); sErr == nil {
 			if !scope.Matches(id) {
-				return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden: workspace outside scope"})
+				return uuid.Nil, echo.NewHTTPError(http.StatusForbidden, "forbidden: workspace outside scope")
 			}
 		}
 	}
 	if id == uuid.Nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+		return uuid.Nil, echo.NewHTTPError(http.StatusBadRequest, "invalid workspace ID")
+	}
+	return id, nil
+}
+
+func (h *WorkspaceHandler) GetWebhookSecret(c *echo.Context) error {
+	id, err := h.resolveTargetWorkspaceID(c)
+	if err != nil {
+		if he, ok := err.(*echo.HTTPError); ok {
+			return c.JSON(he.Code, map[string]string{"error": fmt.Sprintf("%v", he.Message)})
+		}
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
 	ws, err := h.Repo.GetByID(c.Request().Context(), id)
@@ -207,35 +218,12 @@ func (h *WorkspaceHandler) GetWebhookSecret(c *echo.Context) error {
 
 // GenerateWebhookSecret generates or regenerates a workspace's webhook secret key.
 func (h *WorkspaceHandler) GenerateWebhookSecret(c *echo.Context) error {
-	var id uuid.UUID
-	if idStr, err := echo.PathParam[string](c, "id"); err == nil && idStr != "" {
-		parsed, parseErr := uuid.Parse(idStr)
-		if parseErr != nil || parsed == uuid.Nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	id, err := h.resolveTargetWorkspaceID(c)
+	if err != nil {
+		if he, ok := err.(*echo.HTTPError); ok {
+			return c.JSON(he.Code, map[string]string{"error": fmt.Sprintf("%v", he.Message)})
 		}
-		id = parsed
-	} else if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
-		parsed, parseErr := uuid.Parse(idStr)
-		if parseErr != nil || parsed == uuid.Nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
-		}
-		id = parsed
-	}
-	if id == uuid.Nil {
-		if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
-			id = scope.WorkspaceID()
-		} else if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
-			id = wsID
-		}
-	} else {
-		if scope, sErr := domain.Require(c.Request().Context()); sErr == nil {
-			if !scope.Matches(id) {
-				return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden: workspace outside scope"})
-			}
-		}
-	}
-	if id == uuid.Nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
 	var req struct {
@@ -275,35 +263,12 @@ func (h *WorkspaceHandler) GenerateWebhookSecret(c *echo.Context) error {
 
 // SetFlowWebhookURL sets or updates a workspace's Meta Flow webhook URL.
 func (h *WorkspaceHandler) SetFlowWebhookURL(c *echo.Context) error {
-	var id uuid.UUID
-	if idStr, err := echo.PathParam[string](c, "id"); err == nil && idStr != "" {
-		parsed, parseErr := uuid.Parse(idStr)
-		if parseErr != nil || parsed == uuid.Nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+	id, err := h.resolveTargetWorkspaceID(c)
+	if err != nil {
+		if he, ok := err.(*echo.HTTPError); ok {
+			return c.JSON(he.Code, map[string]string{"error": fmt.Sprintf("%v", he.Message)})
 		}
-		id = parsed
-	} else if idStr, err := echo.PathParam[string](c, "workspace_id"); err == nil && idStr != "" {
-		parsed, parseErr := uuid.Parse(idStr)
-		if parseErr != nil || parsed == uuid.Nil {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
-		}
-		id = parsed
-	}
-	if id == uuid.Nil {
-		if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
-			id = scope.WorkspaceID()
-		} else if wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wsID != uuid.Nil {
-			id = wsID
-		}
-	} else {
-		if scope, sErr := domain.Require(c.Request().Context()); sErr == nil {
-			if !scope.Matches(id) {
-				return c.JSON(http.StatusForbidden, map[string]string{"error": "forbidden: workspace outside scope"})
-			}
-		}
-	}
-	if id == uuid.Nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid workspace ID"})
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 
 	var flowURL *string

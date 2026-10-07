@@ -350,3 +350,66 @@ func TestWorkspaceSecurity_MasterKeyOperatorScope(t *testing.T) {
 		}
 	})
 }
+
+// TestWorkspaceSecurity_ValidAPIKeyFlatRoutes verifies that standard Workspace API keys
+// accessing flat routes (POST /api/v1/tags, GET /api/v1/tags, GET /api/v1/campaigns)
+// succeed with HTTP 200/201 and automatically scope operations to the authenticated workspace.
+func TestWorkspaceSecurity_ValidAPIKeyFlatRoutes(t *testing.T) {
+	srv := setupWorkspaceSecurityTestServer(t)
+	ctx := context.Background()
+
+	wsA, err := srv.wsRepo.Create(ctx, "sec_ws_flat_a_"+uuid.New().String()[:8])
+	if err != nil {
+		t.Fatalf("failed to create Workspace A: %v", err)
+	}
+	defer func() { _ = srv.wsRepo.Delete(ctx, wsA.ID) }()
+
+	_, apiKeyA, err := srv.apiKeyRepo.Create(ctx, wsA.ID, "key-flat-a")
+	if err != nil {
+		t.Fatalf("failed to create API key for Workspace A: %v", err)
+	}
+
+	// 1. POST /api/v1/tags (flat route) creates a tag in Workspace A
+	t.Run("POST /api/v1/tags succeeds with valid API key", func(t *testing.T) {
+		body := `{"name":"flat-created-tag","color":"#00FF00"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/tags", strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+apiKeyA)
+		req.Header.Set("Content-Type", "application/json")
+
+		rec := httptest.NewRecorder()
+		srv.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+			t.Fatalf("expected 200/201 on flat route, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	// 2. GET /api/v1/tags (flat route) returns tags scoped to Workspace A
+	t.Run("GET /api/v1/tags succeeds with valid API key", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/tags", nil)
+		req.Header.Set("Authorization", "Bearer "+apiKeyA)
+
+		rec := httptest.NewRecorder()
+		srv.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK on flat route, got %d: %s", rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), "flat-created-tag") {
+			t.Errorf("expected tag in list response, got: %s", rec.Body.String())
+		}
+	})
+
+	// 3. GET /api/v1/campaigns (flat route) succeeds with valid API key
+	t.Run("GET /api/v1/campaigns succeeds with valid API key", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/campaigns", nil)
+		req.Header.Set("Authorization", "Bearer "+apiKeyA)
+
+		rec := httptest.NewRecorder()
+		srv.e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK on flat route, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+}

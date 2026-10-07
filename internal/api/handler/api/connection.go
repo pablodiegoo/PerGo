@@ -138,9 +138,9 @@ func (h *ConnectionAPIHandler) SetExternalURL(externalURL string) {
 }
 
 // RegisterRoutes registers the connection endpoints on both /api/v1/connections and /api/v1/devices.
-func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
+func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo, m ...echo.MiddlewareFunc) {
 	// Canonical routes
-	connGroup := e.Group("/api/v1/connections")
+	connGroup := e.Group("/api/v1/connections", m...)
 	connGroup.POST("/pair", h.StartPairing)
 	connGroup.POST("/waba", h.CreateWABA)
 	connGroup.POST("/waba/", h.CreateWABA)
@@ -154,7 +154,7 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	connGroup.DELETE("/:id", h.Disconnect)
 
 	// Workspace-scoped canonical routes
-	wsConnGroup := e.Group("/api/v1/workspaces/:workspace_id/connections")
+	wsConnGroup := e.Group("/api/v1/workspaces/:workspace_id/connections", m...)
 	wsConnGroup.POST("/pair", h.StartPairing)
 	wsConnGroup.POST("/waba", h.CreateWABA)
 	wsConnGroup.POST("/waba/", h.CreateWABA)
@@ -168,7 +168,7 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	wsConnGroup.DELETE("/:id", h.Disconnect)
 
 	// Retrocompatible aliases
-	devGroup := e.Group("/api/v1/devices")
+	devGroup := e.Group("/api/v1/devices", m...)
 	devGroup.POST("/pair", h.StartPairing)
 	devGroup.POST("/waba", h.CreateWABA)
 	devGroup.POST("/waba/", h.CreateWABA)
@@ -182,7 +182,7 @@ func (h *ConnectionAPIHandler) RegisterRoutes(e *echo.Echo) {
 	devGroup.DELETE("/:id", h.Disconnect)
 
 	// Workspace-scoped aliases
-	wsDevGroup := e.Group("/api/v1/workspaces/:workspace_id/devices")
+	wsDevGroup := e.Group("/api/v1/workspaces/:workspace_id/devices", m...)
 	wsDevGroup.POST("/pair", h.StartPairing)
 	wsDevGroup.POST("/waba", h.CreateWABA)
 	wsDevGroup.POST("/waba/", h.CreateWABA)
@@ -268,7 +268,7 @@ func (h *ConnectionAPIHandler) CreateWABA(c *echo.Context) error {
 		wsID = id
 	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -439,7 +439,7 @@ func (h *ConnectionAPIHandler) CreateTelegram(c *echo.Context) error {
 		wsID = id
 	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -586,7 +586,7 @@ func (h *ConnectionAPIHandler) StartPairing(c *echo.Context) error {
 		wsID = id
 	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -647,7 +647,7 @@ func (h *ConnectionAPIHandler) GetQR(c *echo.Context) error {
 		wsID = id
 	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -708,7 +708,7 @@ func (h *ConnectionAPIHandler) StreamQR(c *echo.Context) error {
 		wsID = id
 	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -833,7 +833,7 @@ func (h *ConnectionAPIHandler) List(c *echo.Context) error {
 		wsID = id
 	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -893,7 +893,7 @@ func (h *ConnectionAPIHandler) Disconnect(c *echo.Context) error {
 		wsID = id
 	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
@@ -973,7 +973,7 @@ func (h *ConnectionAPIHandler) GetFlowPublicKey(c *echo.Context) error {
 		wsID = id
 	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
-			"code":    "unauthorized",
+			"code":    "UNAUTHORIZED",
 			"message": "workspace context required",
 		})
 	}
