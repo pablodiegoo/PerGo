@@ -493,6 +493,7 @@ func main() {
 
 	// Auth middleware — protects /api/* routes
 	e.Use(middleware.AuthMiddleware(apiKeyRepo, cfg.MasterKey))
+	e.Use(middleware.EnforceWorkspaceScope())
 
 	// Audit middleware — audits API operations
 	e.Use(middleware.AuditMiddleware(userActionLogRepo))

@@ -43,7 +43,7 @@ func EnforceWorkspaceScope() echo.MiddlewareFunc {
 					scope = domain.NewWorkspaceScope(wsID, domain.CapabilityWorkspaceScoped)
 				} else {
 					return c.JSON(http.StatusUnauthorized, map[string]string{
-						"code":    "unauthorized",
+						"code":    "UNAUTHORIZED",
 						"message": "authentication and workspace scope required",
 					})
 				}

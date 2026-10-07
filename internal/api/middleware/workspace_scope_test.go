@@ -183,7 +183,7 @@ func TestEnforceWorkspaceScope_TableDriven(t *testing.T) {
 				return ctx
 			},
 			expectedStatus:    http.StatusUnauthorized,
-			expectedErrorCode: "unauthorized",
+			expectedErrorCode: "UNAUTHORIZED",
 		},
 		{
 			name:         "operator with invalid :workspace_id param returns 400",
