@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -128,6 +129,7 @@ func ActiveWorkspaceMiddleware(wsRepo *repository.WorkspaceRepository) echo.Midd
 
 			// 4. Inject workspace into context
 			ctx = tenant.WithWorkspaceID(ctx, ws.ID)
+			ctx = domain.ContextWithScope(ctx, domain.NewOperatorScope(ws.ID))
 			ctx = WithActiveWorkspace(ctx, ws)
 			ctx = WithActivePath(ctx, path)
 
