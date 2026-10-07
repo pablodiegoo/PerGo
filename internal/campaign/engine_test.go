@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"strings"
 	"testing"
 	"time"
 
@@ -1094,11 +1095,13 @@ func TestEngine_CalculateJitteredDelay_Bounds(t *testing.T) {
 	}
 
 	// 3. deterministic RNG checks
-	// When r = 0.0 -> jitter = -0.5s -> 4.5s
-	// When r = 1.0 -> jitter = +0.5s -> 5.5s
-	// When r = 0.5 -> jitter = 0.0s -> 5.0s
-	rngLow := rand.New(rand.NewPCG(0, 0)) // initial seed
-	_ = rngLow
+	rng := rand.New(rand.NewPCG(42, 42))
+	for i := 0; i < 100; i++ {
+		d := CalculateJitteredDelay(delaySec, rng)
+		if d < minAllowed || d > maxAllowed {
+			t.Fatalf("deterministic iteration %d: delay %v out of bounds [%v, %v]", i, d, minAllowed, maxAllowed)
+		}
+	}
 }
 
 func TestEngine_TriggerDue_ClaimAndRollback(t *testing.T) {
@@ -1201,3 +1204,159 @@ func TestEngine_TriggerDue_ClaimAndRollback(t *testing.T) {
 		t.Errorf("expected status rolled back to scheduled, got %s", checkRollback.Status)
 	}
 }
+
+func TestEngine_Start_RollbackOnPublishFailure(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	campRepo := repository.NewCampaignRepository(pool)
+
+	ws, _ := wsRepo.Create(ctx, "ws_start_rollback_"+uuid.New().String())
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	scope := domain.NewWorkspaceScope(ws.ID, domain.CapabilityWorkspaceScoped)
+	fakePub := NewFakePublisher()
+	engine := NewBroadcasterEngine(campRepo, nil, nil, fakePub, nil, nil)
+
+	camp, err := campRepo.Create(ctx, &domain.Campaign{
+		WorkspaceID: ws.ID,
+		Name:        "Start Rollback Draft",
+		Status:      domain.CampaignStatusDraft,
+	})
+	if err != nil {
+		t.Fatalf("create draft campaign: %v", err)
+	}
+
+	// Configure publisher failure
+	fakePub.SetError(errors.New("nats publisher error"))
+
+	_, err = engine.Start(ctx, scope, camp.ID)
+	if err == nil {
+		t.Fatalf("expected error from Start when publisher fails")
+	}
+
+	// Verify status rolled back to draft
+	campAfter, err := campRepo.GetByID(ctx, camp.ID)
+	if err != nil {
+		t.Fatalf("get campaign after failed start: %v", err)
+	}
+	if campAfter.Status != domain.CampaignStatusDraft {
+		t.Errorf("expected status rolled back to draft, got %s", campAfter.Status)
+	}
+}
+
+func TestEngine_Resume_UniqueTraceIDPerCycle(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	campRepo := repository.NewCampaignRepository(pool)
+
+	ws, _ := wsRepo.Create(ctx, "ws_resume_trace_"+uuid.New().String())
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	scope := domain.NewWorkspaceScope(ws.ID, domain.CapabilityWorkspaceScoped)
+	fakePub := NewFakePublisher()
+	engine := NewBroadcasterEngine(campRepo, nil, nil, fakePub, nil, nil)
+
+	camp, err := campRepo.Create(ctx, &domain.Campaign{
+		WorkspaceID: ws.ID,
+		Name:        "Resume Trace ID Test",
+		Status:      domain.CampaignStatusPaused,
+		BatchSize:   1,
+	})
+	if err != nil {
+		t.Fatalf("create paused campaign: %v", err)
+	}
+
+	_ = campRepo.AddRecipients(ctx, camp.ID, []domain.CampaignRecipientRecord{
+		{Phone: "5511999990001", Status: domain.RecipientStatusPending},
+	})
+
+	resumed, err := engine.Resume(ctx, scope, camp.ID)
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	if resumed.Status != domain.CampaignStatusSending {
+		t.Errorf("expected sending status, got %s", resumed.Status)
+	}
+
+	batchMsgs := fakePub.MessagesBySubject("campaigns.batches")
+	if len(batchMsgs) != 1 {
+		t.Fatalf("expected 1 batch message published on resume, got %d", len(batchMsgs))
+	}
+
+	// Verify traceID contains "resumed_" and does NOT match the initial "campaign_<id>_batch_1" format
+	expectedPrefix := fmt.Sprintf("campaign_%s_resumed_", camp.ID.String())
+	if !strings.HasPrefix(batchMsgs[0].TraceID, expectedPrefix) {
+		t.Errorf("expected traceID to start with %q to avoid JetStream dedup collision, got %q", expectedPrefix, batchMsgs[0].TraceID)
+	}
+}
+
+func TestEngine_ProcessBatchTask_MidBatchPause(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	campRepo := repository.NewCampaignRepository(pool)
+
+	ws, _ := wsRepo.Create(ctx, "ws_midbatch_pause_"+uuid.New().String())
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	fakePub := NewFakePublisher()
+	engine := NewBroadcasterEngine(campRepo, nil, nil, fakePub, nil, nil)
+
+	channel := "whatsapp"
+	body := "Hello {{name}}"
+	camp, err := campRepo.Create(ctx, &domain.Campaign{
+		WorkspaceID:  ws.ID,
+		Name:         "Mid Batch Pause Test",
+		Status:       domain.CampaignStatusSending,
+		Channel:      &channel,
+		MessageBody:  &body,
+		DelaySeconds: 0,
+	})
+	if err != nil {
+		t.Fatalf("create campaign: %v", err)
+	}
+
+	// Insert 2 recipients
+	recipients := []domain.CampaignRecipientRecord{
+		{Phone: "5511999990001", Status: domain.RecipientStatusPending},
+		{Phone: "5511999990002", Status: domain.RecipientStatusPending},
+	}
+	if err := campRepo.AddRecipients(ctx, camp.ID, recipients); err != nil {
+		t.Fatalf("add recipients: %v", err)
+	}
+
+	// Simulate pausing campaign before second recipient
+	// We can update the status directly in DB right now
+	_ = campRepo.UpdateStatus(ctx, camp.ID, domain.CampaignStatusPaused)
+
+	task := domain.CampaignBatchTask{
+		CampaignID:   camp.ID,
+		WorkspaceID:  ws.ID,
+		BatchIndex:   1,
+		TotalBatches: 1,
+		Recipients: []domain.CampaignRecipient{
+			{To: "5511999990001"},
+			{To: "5511999990002"},
+		},
+		DelaySeconds: 0,
+	}
+
+	if err := engine.ProcessBatchTask(ctx, task); err != nil {
+		t.Fatalf("ProcessBatchTask: %v", err)
+	}
+
+	// Since camp was paused, 0 messages should be published and batch exits cleanly
+	outboundMsgs := fakePub.MessagesBySubject("messages.outbound")
+	if len(outboundMsgs) != 0 {
+		t.Errorf("expected 0 messages published when campaign is paused, got %d", len(outboundMsgs))
+	}
+}
+

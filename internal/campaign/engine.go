@@ -248,6 +248,7 @@ func (e *defaultEngine) Start(ctx context.Context, scope domain.WorkspaceScope, 
 		}
 	}
 
+	initialStatus := camp.Status
 	if err := e.campaignRepo.UpdateStatus(ctx, campaignID, domain.CampaignStatusSending); err != nil {
 		return nil, fmt.Errorf("update status to sending: %w", err)
 	}
@@ -259,11 +260,13 @@ func (e *defaultEngine) Start(ctx context.Context, scope domain.WorkspaceScope, 
 	}
 	payload, err := json.Marshal(startTask)
 	if err != nil {
+		_ = e.campaignRepo.UpdateStatus(ctx, campaignID, initialStatus)
 		return nil, fmt.Errorf("marshal start task: %w", err)
 	}
 
 	traceID := fmt.Sprintf("campaign_%s_start", campaignID.String())
 	if err := e.publisher.Publish(ctx, "campaigns.start", payload, traceID); err != nil {
+		_ = e.campaignRepo.UpdateStatus(ctx, campaignID, initialStatus)
 		return nil, fmt.Errorf("publish start task: %w", err)
 	}
 
@@ -350,6 +353,7 @@ func (e *defaultEngine) Resume(ctx context.Context, scope domain.WorkspaceScope,
 	}
 
 	totalBatches := len(batches)
+	resumeCycle := time.Now().UnixNano()
 	for idx, batch := range batches {
 		batchTask := domain.CampaignBatchTask{
 			CampaignID:       campaignID,
@@ -365,7 +369,7 @@ func (e *defaultEngine) Resume(ctx context.Context, scope domain.WorkspaceScope,
 		if err != nil {
 			return nil, fmt.Errorf("marshal batch task: %w", err)
 		}
-		traceID := fmt.Sprintf("campaign_%s_batch_%d", campaignID.String(), idx+1)
+		traceID := fmt.Sprintf("campaign_%s_resumed_%d_batch_%d", campaignID.String(), resumeCycle, idx+1)
 		if err := e.publisher.Publish(ctx, "campaigns.batches", payload, traceID); err != nil {
 			return nil, fmt.Errorf("publish batch task: %w", err)
 		}
@@ -642,9 +646,18 @@ func (e *defaultEngine) ProcessBatchTask(ctx context.Context, task domain.Campai
 	}
 	limiter := createRateLimiter(rateLimit, task.DelaySeconds)
 
-	for _, recipient := range task.Recipients {
+	for idx, recipient := range task.Recipients {
 		if err := limiter.Wait(ctx); err != nil {
 			return nil
+		}
+
+		if idx > 0 {
+			if currentCamp, err := e.campaignRepo.GetByID(ctx, task.CampaignID); err == nil && currentCamp != nil {
+				if currentCamp.Status == domain.CampaignStatusPaused || currentCamp.Status == domain.CampaignStatusCancelled {
+					slog.Info("campaign became inactive mid-batch, exiting cleanly", "campaign_id", task.CampaignID, "status", currentCamp.Status)
+					return nil
+				}
+			}
 		}
 
 		traceID := fmt.Sprintf("campaign_%s_%s", task.CampaignID.String(), recipient.To)
