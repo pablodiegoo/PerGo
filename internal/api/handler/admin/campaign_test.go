@@ -405,7 +405,7 @@ func TestCampaignHandler(t *testing.T) {
 			t.Errorf("expected DB status to be 'cancelled', got '%s'", cancelledCamp.Status)
 		}
 
-		// Test Delete
+		// Test Delete: Attempting to delete a cancelled campaign must be rejected
 		reqDelete := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/workspaces/%s/campaigns/%s", ws.ID, campaignID), nil)
 		recDelete := httptest.NewRecorder()
 		cDelete := e.NewContext(reqDelete, recDelete)
@@ -415,15 +415,62 @@ func TestCampaignHandler(t *testing.T) {
 			{Name: "id", Value: campaignID.String()},
 		})
 		if err := h.Delete(cDelete); err != nil {
-			t.Fatalf("Delete failed: %v", err)
+			t.Fatalf("Delete returned error: %v", err)
 		}
-		if recDelete.Code != http.StatusOK {
-			t.Errorf("Delete status expected 200, got %d", recDelete.Code)
+		if recDelete.Code != http.StatusBadRequest {
+			t.Errorf("Delete on cancelled campaign expected status 400 Bad Request, got %d", recDelete.Code)
 		}
 
-		deletedCamp, _ := campaignRepo.GetByID(ctx, campaignID)
+		// Test Delete: Attempting to delete a completed campaign must be rejected
+		compCamp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Completed Camp For Deletion Test",
+			Status:      domain.CampaignStatusCompleted,
+		})
+		if err != nil {
+			t.Fatalf("create completed campaign: %v", err)
+		}
+		reqDeleteComp := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/workspaces/%s/campaigns/%s", ws.ID, compCamp.ID), nil)
+		recDeleteComp := httptest.NewRecorder()
+		cDeleteComp := e.NewContext(reqDeleteComp, recDeleteComp)
+		cDeleteComp.SetPath("/admin/workspaces/:workspace_id/campaigns/:id")
+		cDeleteComp.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: compCamp.ID.String()},
+		})
+		if err := h.Delete(cDeleteComp); err != nil {
+			t.Fatalf("Delete completed returned error: %v", err)
+		}
+		if recDeleteComp.Code != http.StatusBadRequest {
+			t.Errorf("Delete on completed campaign expected status 400 Bad Request, got %d", recDeleteComp.Code)
+		}
+
+		// Test Delete: Deleting a draft campaign succeeds with 200 OK
+		draftCamp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Draft Camp For Deletion Test",
+			Status:      domain.CampaignStatusDraft,
+		})
+		if err != nil {
+			t.Fatalf("create draft campaign: %v", err)
+		}
+		reqDeleteDraft := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/admin/workspaces/%s/campaigns/%s", ws.ID, draftCamp.ID), nil)
+		recDeleteDraft := httptest.NewRecorder()
+		cDeleteDraft := e.NewContext(reqDeleteDraft, recDeleteDraft)
+		cDeleteDraft.SetPath("/admin/workspaces/:workspace_id/campaigns/:id")
+		cDeleteDraft.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: draftCamp.ID.String()},
+		})
+		if err := h.Delete(cDeleteDraft); err != nil {
+			t.Fatalf("Delete draft failed: %v", err)
+		}
+		if recDeleteDraft.Code != http.StatusOK {
+			t.Errorf("Delete draft expected 200, got %d", recDeleteDraft.Code)
+		}
+		deletedCamp, _ := campaignRepo.GetByID(ctx, draftCamp.ID)
 		if deletedCamp != nil {
-			t.Errorf("expected campaign to be deleted, but still exists")
+			t.Errorf("expected draft campaign to be deleted, but still exists")
 		}
 	})
 
@@ -1266,6 +1313,47 @@ func TestCampaignHandler_ScheduledCampaigns(t *testing.T) {
 		fetched, _ := campaignRepo.GetByID(ctx, camp.ID)
 		if fetched.Status != domain.CampaignStatusCancelled {
 			t.Errorf("expected DB status 'cancelled', got %s", fetched.Status)
+		}
+	})
+
+	t.Run("APIStart_Scheduled_Campaign", func(t *testing.T) {
+		camp, err := campaignRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "To Start Scheduled",
+			Status:      domain.CampaignStatusScheduled,
+			ScheduledAt: &futureTime,
+		})
+		if err != nil {
+			t.Fatalf("failed to create campaign: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/v1/workspaces/%s/campaigns/%s/start", ws.ID, camp.ID), nil)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/api/v1/workspaces/:workspace_id/campaigns/:id/start")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: ws.ID.String()},
+			{Name: "id", Value: camp.ID.String()},
+		})
+
+		if err := h.APIStart(c); err != nil {
+			t.Fatalf("APIStart returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		var started domain.Campaign
+		if err := json.Unmarshal(rec.Body.Bytes(), &started); err != nil {
+			t.Fatalf("failed to unmarshal started campaign: %v", err)
+		}
+		if started.Status != domain.CampaignStatusSending {
+			t.Errorf("expected status 'sending', got %s", started.Status)
+		}
+
+		fetched, _ := campaignRepo.GetByID(ctx, camp.ID)
+		if fetched.Status != domain.CampaignStatusSending {
+			t.Errorf("expected DB status 'sending', got %s", fetched.Status)
 		}
 	})
 }

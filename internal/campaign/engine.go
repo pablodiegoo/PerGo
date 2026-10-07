@@ -241,7 +241,7 @@ func (e *defaultEngine) Start(ctx context.Context, scope domain.WorkspaceScope, 
 		return nil, repository.ErrCampaignNotFound
 	}
 
-	if camp.Status != domain.CampaignStatusDraft {
+	if camp.Status != domain.CampaignStatusDraft && camp.Status != domain.CampaignStatusScheduled {
 		return nil, domain.ErrInvalidCampaignTransition{
 			From: camp.Status,
 			To:   domain.CampaignStatusSending,
@@ -313,6 +313,11 @@ func (e *defaultEngine) Resume(ctx context.Context, scope domain.WorkspaceScope,
 		}
 	}
 
+	if err := e.campaignRepo.UpdateStatus(ctx, campaignID, domain.CampaignStatusSending); err != nil {
+		return nil, fmt.Errorf("update status to sending: %w", err)
+	}
+	camp.Status = domain.CampaignStatusSending
+
 	pending, err := e.campaignRepo.ListPendingRecipients(ctx, campaignID)
 	if err != nil {
 		return nil, fmt.Errorf("list pending recipients: %w", err)
@@ -329,11 +334,6 @@ func (e *defaultEngine) Resume(ctx context.Context, scope domain.WorkspaceScope,
 		camp.Status = domain.CampaignStatusCompleted
 		return camp, nil
 	}
-
-	if err := e.campaignRepo.UpdateStatus(ctx, campaignID, domain.CampaignStatusSending); err != nil {
-		return nil, fmt.Errorf("update status to sending: %w", err)
-	}
-	camp.Status = domain.CampaignStatusSending
 
 	batchSize := camp.BatchSize
 	if batchSize <= 0 {
@@ -401,7 +401,7 @@ func (e *defaultEngine) Cancel(ctx context.Context, scope domain.WorkspaceScope,
 	return camp, nil
 }
 
-// Delete removes a draft, cancelled, or completed campaign.
+// Delete removes a draft campaign.
 func (e *defaultEngine) Delete(ctx context.Context, scope domain.WorkspaceScope, campaignID uuid.UUID) error {
 	camp, err := e.campaignRepo.GetByID(ctx, campaignID)
 	if err != nil {
@@ -411,9 +411,7 @@ func (e *defaultEngine) Delete(ctx context.Context, scope domain.WorkspaceScope,
 		return repository.ErrCampaignNotFound
 	}
 
-	if camp.Status != domain.CampaignStatusDraft &&
-		camp.Status != domain.CampaignStatusCancelled &&
-		camp.Status != domain.CampaignStatusCompleted {
+	if camp.Status != domain.CampaignStatusDraft {
 		return fmt.Errorf("cannot delete campaign in %s status", camp.Status)
 	}
 
@@ -546,6 +544,16 @@ func (e *defaultEngine) ProcessStartTask(ctx context.Context, task domain.Campai
 
 	// 6. Handle case where all contacts were skipped
 	if len(mergedRecipients) == 0 {
+		traceID := fmt.Sprintf("campaign_%s_start", task.CampaignID.String())
+		_ = e.emitAuditLog(auditDispatchEvent{
+			WorkspaceID: camp.WorkspaceID,
+			TraceID:     traceID,
+			EventType:   "campaign.dispatch.completed_empty",
+			Status:      "completed_empty",
+			Recipient:   "system",
+			CampaignID:  task.CampaignID,
+			Channel:     channel,
+		})
 		_ = e.campaignRepo.UpdateStatus(ctx, task.CampaignID, domain.CampaignStatusCompleted)
 		return nil
 	}
@@ -639,18 +647,6 @@ func (e *defaultEngine) ProcessBatchTask(ctx context.Context, task domain.Campai
 			return nil
 		}
 
-		// Fail-safe check: detect pause or cancel mid-batch without busy-waiting
-		if currentCamp, err := e.campaignRepo.GetByID(ctx, task.CampaignID); err == nil {
-			if currentCamp.Status == domain.CampaignStatusCancelled || currentCamp.Status == domain.CampaignStatusFailed {
-				slog.Info("campaign halted mid-batch", "campaign_id", task.CampaignID, "status", currentCamp.Status)
-				return nil
-			}
-			if currentCamp.Status == domain.CampaignStatusPaused {
-				slog.Info("campaign paused mid-batch, exiting cleanly", "campaign_id", task.CampaignID)
-				return nil
-			}
-		}
-
 		traceID := fmt.Sprintf("campaign_%s_%s", task.CampaignID.String(), recipient.To)
 
 		var templateName *string
@@ -741,41 +737,17 @@ func (e *defaultEngine) ProcessBatchTask(ctx context.Context, task domain.Campai
 				variablesJSON,
 			)
 			if err != nil {
-				errStr := err.Error()
-				_ = e.campaignRepo.UpdateCounters(ctx, task.CampaignID, 0, 1)
-				_ = e.campaignRepo.UpdateRecipientStatusByPhone(ctx, task.CampaignID, recipient.To, domain.RecipientStatusFailed, &errStr)
-				_ = e.emitAuditLog(auditDispatchEvent{
-					WorkspaceID: task.WorkspaceID,
-					TraceID:     traceID,
-					EventType:   "campaign.dispatch.failed",
-					Status:      "failed",
-					Recipient:   recipient.To,
-					CampaignID:  task.CampaignID,
-					Channel:     channel,
-					ErrStr:      errStr,
-				})
+				e.recordRecipientFailure(ctx, task.WorkspaceID, task.CampaignID, recipient.To, channel, traceID, err)
 				continue
 			}
 
-			if dispatch != nil && dispatch.Status == "delivered" {
+			if dispatch != nil && (dispatch.Status == "delivered" || dispatch.Status == "sent") {
+				_ = e.campaignRepo.UpdateRecipientStatusByPhone(ctx, task.CampaignID, recipient.To, domain.RecipientStatusSent, nil)
 				_ = e.emitAuditLog(auditDispatchEvent{
 					WorkspaceID: task.WorkspaceID,
 					TraceID:     traceID,
-					EventType:   "campaign.dispatch.delivered",
-					Status:      "delivered",
-					Recipient:   recipient.To,
-					CampaignID:  task.CampaignID,
-					Channel:     channel,
-				})
-				continue
-			}
-
-			if dispatch != nil && dispatch.Status == "sent" {
-				_ = e.emitAuditLog(auditDispatchEvent{
-					WorkspaceID: task.WorkspaceID,
-					TraceID:     traceID,
-					EventType:   "campaign.dispatch.sent",
-					Status:      "sent",
+					EventType:   "campaign.dispatch." + dispatch.Status,
+					Status:      dispatch.Status,
 					Recipient:   recipient.To,
 					CampaignID:  task.CampaignID,
 					Channel:     channel,
@@ -786,36 +758,12 @@ func (e *defaultEngine) ProcessBatchTask(ctx context.Context, task domain.Campai
 
 		payload, err := json.Marshal(qMsg)
 		if err != nil {
-			errStr := err.Error()
-			_ = e.campaignRepo.UpdateCounters(ctx, task.CampaignID, 0, 1)
-			_ = e.campaignRepo.UpdateRecipientStatusByPhone(ctx, task.CampaignID, recipient.To, domain.RecipientStatusFailed, &errStr)
-			_ = e.emitAuditLog(auditDispatchEvent{
-				WorkspaceID: task.WorkspaceID,
-				TraceID:     traceID,
-				EventType:   "campaign.dispatch.failed",
-				Status:      "failed",
-				Recipient:   recipient.To,
-				CampaignID:  task.CampaignID,
-				Channel:     channel,
-				ErrStr:      errStr,
-			})
+			e.recordRecipientFailure(ctx, task.WorkspaceID, task.CampaignID, recipient.To, channel, traceID, err)
 			continue
 		}
 
 		if err := e.publisher.Publish(ctx, "messages.outbound", payload, traceID); err != nil {
-			errStr := err.Error()
-			_ = e.campaignRepo.UpdateCounters(ctx, task.CampaignID, 0, 1)
-			_ = e.campaignRepo.UpdateRecipientStatusByPhone(ctx, task.CampaignID, recipient.To, domain.RecipientStatusFailed, &errStr)
-			_ = e.emitAuditLog(auditDispatchEvent{
-				WorkspaceID: task.WorkspaceID,
-				TraceID:     traceID,
-				EventType:   "campaign.dispatch.failed",
-				Status:      "failed",
-				Recipient:   recipient.To,
-				CampaignID:  task.CampaignID,
-				Channel:     channel,
-				ErrStr:      errStr,
-			})
+			e.recordRecipientFailure(ctx, task.WorkspaceID, task.CampaignID, recipient.To, channel, traceID, err)
 			continue
 		}
 
@@ -889,6 +837,27 @@ type auditDispatchEvent struct {
 	CampaignID  uuid.UUID
 	Channel     string
 	ErrStr      string
+}
+
+func (e *defaultEngine) recordRecipientFailure(
+	ctx context.Context,
+	workspaceID, campaignID uuid.UUID,
+	recipientTo, channel, traceID string,
+	failureErr error,
+) {
+	errStr := failureErr.Error()
+	_ = e.campaignRepo.UpdateCounters(ctx, campaignID, 0, 1)
+	_ = e.campaignRepo.UpdateRecipientStatusByPhone(ctx, campaignID, recipientTo, domain.RecipientStatusFailed, &errStr)
+	_ = e.emitAuditLog(auditDispatchEvent{
+		WorkspaceID: workspaceID,
+		TraceID:     traceID,
+		EventType:   "campaign.dispatch.failed",
+		Status:      "failed",
+		Recipient:   recipientTo,
+		CampaignID:  campaignID,
+		Channel:     channel,
+		ErrStr:      errStr,
+	})
 }
 
 func (e *defaultEngine) emitAuditLog(event auditDispatchEvent) error {
