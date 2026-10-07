@@ -349,11 +349,11 @@ func main() {
 	}
 	campaignRepo := repository.NewCampaignRepository(pool)
 	tagRepo := repository.NewTagRepository(pool)
-	campaignWorker := queue.NewCampaignWorker(ctx, campConsumer, campaignRepo, connectionRepo, dispatchRepo, publisher, auditWriter, tagRepo)
+	campaignEngine := campaign.NewBroadcasterEngine(campaignRepo, connectionRepo, dispatchRepo, publisher, auditWriter, tagRepo)
+	campaignWorker := queue.NewCampaignWorker(ctx, campConsumer, campaignEngine)
 	slog.Info("campaign worker started", "consumer", "campaign-worker-1")
 
 	// --- Campaign Scheduler Daemon ---
-	campaignEngine := campaign.NewBroadcasterEngine(campaignRepo, connectionRepo, dispatchRepo, publisher, auditWriter, tagRepo)
 	campaignScheduler := queue.NewCampaignScheduler(campaignEngine)
 	go campaignScheduler.Run(ctx)
 	slog.Info("campaign scheduler started", "interval", "5s")
