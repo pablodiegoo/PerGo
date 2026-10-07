@@ -65,12 +65,14 @@ func setupWebhookRoutes(t *testing.T) (*echo.Echo, *repository.WebhookDLQReposit
 		return admin.LoginPost(c, nil, "testpass123")
 	})
 
+	// Workspace repository
+	wsRepo := repository.NewWorkspaceRepository(pool)
+
 	// Protected admin routes
 	adminGroup := e.Group("/admin")
 	adminGroup.Use(mw.SessionAuthMiddleware())
-
-	// Workspace repository
-	wsRepo := repository.NewWorkspaceRepository(pool)
+	adminGroup.Use(mw.ActiveWorkspaceMiddleware(wsRepo))
+	adminGroup.Use(mw.EnforceWorkspaceScope())
 
 	// Webhook / DLQ / Subscription repos
 	kek := make([]byte, 32)

@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -120,19 +121,13 @@ type WebhookSubscriptionListResponse struct {
 }
 
 func (h *WebhookSubscriptionAPIHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
-	wsID, ok := tenant.WorkspaceIDFrom(c.Request().Context())
-	if ok && wsID != uuid.Nil {
+	ctx := c.Request().Context()
+	if scope, err := domain.Require(ctx); err == nil && scope.WorkspaceID() != uuid.Nil {
+		return scope.WorkspaceID(), nil
+	}
+	if wsID, err := tenant.RequireWorkspaceID(ctx); err == nil && wsID != uuid.Nil {
 		return wsID, nil
 	}
-
-	wsIDParam, _ := echo.PathParam[string](c, "workspace_id")
-	if wsIDParam != "" {
-		id, err := uuid.Parse(wsIDParam)
-		if err == nil && id != uuid.Nil {
-			return id, nil
-		}
-	}
-
 	return uuid.Nil, errors.New("workspace context required")
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
+	"github.com/pablojhp.pergo/internal/domain"
 	typebot "github.com/pablojhp.pergo/internal/integration/typebot"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
@@ -80,6 +81,8 @@ func TestTypebotSettingsHandler(t *testing.T) {
 
 		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
 		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		reqCtx = tenant.WithWorkspaceID(reqCtx, ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
 		c.SetRequest(req.WithContext(reqCtx))
 
 		err := h.GetSettings(c)
@@ -119,6 +122,8 @@ func TestTypebotSettingsHandler(t *testing.T) {
 
 		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
 		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		reqCtx = tenant.WithWorkspaceID(reqCtx, ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
 		c.SetRequest(req.WithContext(reqCtx))
 
 		err := h.PostSettings(c)
@@ -155,6 +160,8 @@ func TestTypebotSettingsHandler(t *testing.T) {
 
 		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
 		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		reqCtx = tenant.WithWorkspaceID(reqCtx, ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
 		c.SetRequest(req.WithContext(reqCtx))
 
 		err := h.PostSettings(c)
@@ -194,6 +201,8 @@ func TestTypebotSettingsHandler(t *testing.T) {
 
 		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
 		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		reqCtx = tenant.WithWorkspaceID(reqCtx, ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
 		c.SetRequest(req.WithContext(reqCtx))
 
 		err := h.PostSettings(c)
@@ -258,6 +267,8 @@ func TestTypebotSettingsHandler(t *testing.T) {
 
 		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
 		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		reqCtx = tenant.WithWorkspaceID(reqCtx, ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
 		c.SetRequest(req.WithContext(reqCtx))
 
 		err := h.GetSettings(c)

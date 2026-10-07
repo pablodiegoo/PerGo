@@ -19,8 +19,10 @@ import (
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/i18n"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -36,6 +38,13 @@ import (
 // using the helper functions below with nil values where DB operations are not needed.
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+func withWorkspaceContext(req *http.Request, wsID uuid.UUID) *http.Request {
+	ctx := tenant.WithWorkspaceID(req.Context(), wsID)
+	ctx = domain.ContextWithWorkspaceID(ctx, wsID)
+	ctx = i18n.WithLocale(ctx, "pt-BR")
+	return req.WithContext(ctx)
+}
 
 func newEchoContext(method, path string, body string, contentType string) (*echo.Echo, *echo.Context, *httptest.ResponseRecorder) {
 	e := echo.New()
@@ -113,6 +122,7 @@ func TestInboxHandler_SendMessage_NoPublisher(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/admin/inbox/send", strings.NewReader(fv.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: wsID.String()})
+	req = withWorkspaceContext(req, wsID)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -223,6 +233,7 @@ func TestInboxHandler_PollMessages_NoContent(t *testing.T) {
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/admin/inbox/messages?contact_id="+contact.ID.String()+"&after_id="+msgID1.String(), nil)
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	req = withWorkspaceContext(req, ws.ID)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -321,6 +332,7 @@ func TestInboxHandler_PollMessages_NewMessages(t *testing.T) {
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/admin/inbox/messages?contact_id="+contact.ID.String()+"&after_id="+msgID1.String(), nil)
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	req = withWorkspaceContext(req, ws.ID)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -377,6 +389,7 @@ func TestInboxHandler_SendMessage_QueueMessagePayload(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/admin/inbox/send", strings.NewReader(fv.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: wsID.String()})
+	req = withWorkspaceContext(req, wsID)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 	_ = connID
@@ -674,6 +687,7 @@ func TestInboxHandler_NewMessageSend_HTTP(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/admin/inbox/new-message-send", strings.NewReader(fv.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	req = withWorkspaceContext(req, ws.ID)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -788,6 +802,7 @@ func TestInboxHandler_SendMessage_SuccessAndPauseBot(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/admin/inbox/send", strings.NewReader(fv.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	req = withWorkspaceContext(req, ws.ID)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -853,6 +868,7 @@ func TestInboxHandler_ToggleBot_HTTP(t *testing.T) {
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodPost, "/admin/contacts/"+contact.ID.String()+"/toggle-bot", nil)
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	req = withWorkspaceContext(req, ws.ID)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 	c.SetPathValues(echo.PathValues{
@@ -888,6 +904,7 @@ func TestInboxHandler_ToggleBot_HTTP(t *testing.T) {
 	// 2. Toggle again (Paused -> Active)
 	req2 := httptest.NewRequest(http.MethodPost, "/admin/contacts/"+contact.ID.String()+"/toggle-bot", nil)
 	req2.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	req2 = withWorkspaceContext(req2, ws.ID)
 	rec2 := httptest.NewRecorder()
 	c2 := e.NewContext(req2, rec2)
 	c2.SetPathValues(echo.PathValues{
@@ -1006,7 +1023,9 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/admin/inbox/chat?contact_id="+contact.ID.String(), nil)
 		req.Header.Set("HX-Request", "true")
+		req.Header.Set("Accept-Language", "pt-BR")
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		req = withWorkspaceContext(req, ws.ID)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
@@ -1034,7 +1053,9 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/admin/inbox/chat?contact_id="+contact.ID.String(), nil)
 		req.Header.Set("HX-Request", "true")
+		req.Header.Set("Accept-Language", "pt-BR")
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		req = withWorkspaceContext(req, ws.ID)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
@@ -1062,7 +1083,9 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodGet, "/admin/inbox/chat?contact_id="+contact.ID.String(), nil)
 		req.Header.Set("HX-Request", "true")
+		req.Header.Set("Accept-Language", "pt-BR")
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+		req = withWorkspaceContext(req, ws.ID)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
@@ -1119,6 +1142,7 @@ func TestInboxHandler_NewMessageSend_TransmitsLanguageAndParams(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/admin/inbox/new-message-send", strings.NewReader(fv.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: wsID.String()})
+	req = withWorkspaceContext(req, wsID)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -1173,6 +1197,7 @@ func TestInboxHandler_NewMessageSend_StaticTemplate(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/admin/inbox/new-message-send", strings.NewReader(fv.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: wsID.String()})
+	req = withWorkspaceContext(req, wsID)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
@@ -1207,6 +1232,7 @@ func TestInboxHandler_NewMessageModal_Renders(t *testing.T) {
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/admin/inbox/new-message-modal?type=template_only&from=+5511999990001&channel=whatsapp_cloud&to=+5511999990000", nil)
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: wsID.String()})
+	req = withWorkspaceContext(req, wsID)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 

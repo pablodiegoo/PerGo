@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -30,7 +31,12 @@ func parseAuditFilters(c *echo.Context) repository.AuditFilters {
 		PageSize: 50,
 	}
 
-	if wsStr := c.QueryParam("workspace_id"); wsStr != "" {
+	if scope, err := domain.Require(c.Request().Context()); err == nil && !scope.IsOperator() {
+		wsID := scope.WorkspaceID()
+		if wsID != uuid.Nil {
+			filters.WorkspaceID = &wsID
+		}
+	} else if wsStr := c.QueryParam("workspace_id"); wsStr != "" {
 		if id, err := uuid.Parse(wsStr); err == nil && id != uuid.Nil {
 			filters.WorkspaceID = &id
 		}

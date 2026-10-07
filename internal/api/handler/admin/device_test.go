@@ -17,13 +17,21 @@ import (
 	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
 	"github.com/pablojhp.pergo/templates/pages"
 )
+
+func withDeviceWorkspaceContext(req *http.Request, wsID uuid.UUID) *http.Request {
+	ctx := tenant.WithWorkspaceID(req.Context(), wsID)
+	ctx = domain.ContextWithWorkspaceID(ctx, wsID)
+	return req.WithContext(ctx)
+}
 
 func TestDeviceHandler_Construction(t *testing.T) {
 	h := &admin.DeviceHandler{
@@ -103,7 +111,8 @@ func TestDeviceHandler_DatabaseFlows(t *testing.T) {
 
 	t.Run("List Connections", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/admin/devices", nil)
-		// Set workspace cookie
+		// Set workspace context & cookie
+		req = withDeviceWorkspaceContext(req, ws.ID)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -125,6 +134,7 @@ func TestDeviceHandler_DatabaseFlows(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/admin/devices/create", strings.NewReader(fValues.Encode()))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationForm)
+		req = withDeviceWorkspaceContext(req, ws.ID)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -155,6 +165,7 @@ func TestDeviceHandler_DatabaseFlows(t *testing.T) {
 		}
 
 		req := httptest.NewRequest(http.MethodDelete, "/admin/devices/"+conn.ID.String(), nil)
+		req = withDeviceWorkspaceContext(req, ws.ID)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -198,6 +209,7 @@ func TestDeviceHandler_DatabaseFlows(t *testing.T) {
 
 		// Operator on ws tries to delete foreignConn on otherWS
 		req := httptest.NewRequest(http.MethodDelete, "/admin/devices/"+foreignConn.ID.String(), nil)
+		req = withDeviceWorkspaceContext(req, ws.ID)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -240,6 +252,7 @@ func TestDeviceHandler_DatabaseFlows(t *testing.T) {
 
 		// 1. TestForm cross-tenant check
 		req := httptest.NewRequest(http.MethodGet, "/admin/devices/test?id="+foreignConn.ID.String(), nil)
+		req = withDeviceWorkspaceContext(req, ws.ID)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -255,6 +268,7 @@ func TestDeviceHandler_DatabaseFlows(t *testing.T) {
 		fv.Set("body", "Hello")
 		reqRun := httptest.NewRequest(http.MethodPost, "/admin/devices/test", strings.NewReader(fv.Encode()))
 		reqRun.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		reqRun = withDeviceWorkspaceContext(reqRun, ws.ID)
 		reqRun.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		recRun := httptest.NewRecorder()
 		cRun := e.NewContext(reqRun, recRun)
@@ -324,6 +338,7 @@ func TestDeviceHandler_StartPairing_LimitExceeded(t *testing.T) {
 	fValues.Set("phone", "5511999990001")
 	req := httptest.NewRequest(http.MethodPost, "/admin/devices/pair", strings.NewReader(fValues.Encode()))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationForm)
+	req = withDeviceWorkspaceContext(req, ws.ID)
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
@@ -478,6 +493,7 @@ func TestDeviceHandler_RunTest_TemplateDynamicParamsAndLanguage(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/admin/devices/test", strings.NewReader(fv.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = withDeviceWorkspaceContext(req, ws.ID)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -522,6 +538,7 @@ func TestDeviceHandler_RunTest_TemplateDynamicParamsAndLanguage(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/admin/devices/test", strings.NewReader(fv.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = withDeviceWorkspaceContext(req, ws.ID)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -563,6 +580,7 @@ func TestDeviceHandler_RunTest_TemplateDynamicParamsAndLanguage(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/admin/devices/test", strings.NewReader(fv.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = withDeviceWorkspaceContext(req, ws.ID)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -608,6 +626,7 @@ func TestDeviceHandler_RunTest_TemplateDynamicParamsAndLanguage(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/admin/devices/test", strings.NewReader(fv.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req = withDeviceWorkspaceContext(req, ws.ID)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -806,6 +825,7 @@ func TestDeviceHandler_WABA_FlowKey_Integration(t *testing.T) {
 
 	t.Run("FlowKey - Success returns 200 with public key modal", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/admin/devices/flow-key?id="+conn.ID.String(), nil)
+		req = withDeviceWorkspaceContext(req, ws.ID)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -827,6 +847,7 @@ func TestDeviceHandler_WABA_FlowKey_Integration(t *testing.T) {
 
 	t.Run("FlowKey - Cross-tenant returns 404", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/admin/devices/flow-key?id="+conn.ID.String(), nil)
+		req = withDeviceWorkspaceContext(req, otherWS.ID)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: otherWS.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -852,6 +873,7 @@ func TestDeviceHandler_WABA_FlowKey_Integration(t *testing.T) {
 		}
 
 		req := httptest.NewRequest(http.MethodGet, "/admin/devices/flow-key?id="+tgConn.ID.String(), nil)
+		req = withDeviceWorkspaceContext(req, ws.ID)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
@@ -875,6 +897,7 @@ func TestDeviceHandler_WABA_FlowKey_Integration(t *testing.T) {
 
 		req := httptest.NewRequest(http.MethodPost, "/admin/devices/create", strings.NewReader(fValues.Encode()))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationForm)
+		req = withDeviceWorkspaceContext(req, ws.ID)
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)

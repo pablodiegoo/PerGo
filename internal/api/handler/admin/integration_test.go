@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -61,6 +62,8 @@ func TestChatwootAdminHandler(t *testing.T) {
 		// Inject mock active workspace into request context to support sidebar template references
 		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
 		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		reqCtx = tenant.WithWorkspaceID(reqCtx, ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
 		c.SetRequest(req.WithContext(reqCtx))
 
 		err := h.GetSettings(c)
@@ -101,6 +104,8 @@ func TestChatwootAdminHandler(t *testing.T) {
 
 		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
 		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		reqCtx = tenant.WithWorkspaceID(reqCtx, ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
 		c.SetRequest(req.WithContext(reqCtx))
 
 		err := h.PostSettings(c)
@@ -154,6 +159,8 @@ func TestChatwootAdminHandler(t *testing.T) {
 
 		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
 		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		reqCtx = tenant.WithWorkspaceID(reqCtx, ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
 		c.SetRequest(req.WithContext(reqCtx))
 
 		err := h.GetSettings(c)
@@ -194,6 +201,8 @@ func TestChatwootAdminHandler(t *testing.T) {
 
 		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
 		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		reqCtx = tenant.WithWorkspaceID(reqCtx, ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
 		c.SetRequest(req.WithContext(reqCtx))
 
 		err := h.PostSettings(c)
@@ -267,6 +276,8 @@ func TestHeadlessAdminHandler(t *testing.T) {
 
 		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
 		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		reqCtx = tenant.WithWorkspaceID(reqCtx, ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
 		c.SetRequest(req.WithContext(reqCtx))
 
 		err := h.GetPortal(c)
@@ -316,6 +327,8 @@ func TestHeadlessAdminHandler(t *testing.T) {
 
 		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
 		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		reqCtx = tenant.WithWorkspaceID(reqCtx, ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
 		c.SetRequest(req.WithContext(reqCtx))
 
 		err := h.GetPortal(c)
@@ -347,6 +360,12 @@ func TestHeadlessAdminHandler(t *testing.T) {
 			{Name: "workspace_id", Value: nonExistentID.String()},
 		})
 
+		reqCtx := context.WithValue(req.Context(), "active_workspace", ws)
+		reqCtx = context.WithValue(reqCtx, "active_path", req.URL.Path)
+		reqCtx = tenant.WithWorkspaceID(reqCtx, nonExistentID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, nonExistentID)
+		c.SetRequest(req.WithContext(reqCtx))
+
 		err := h.GetPortal(c)
 		if err != nil {
 			t.Fatalf("GetPortal returned error: %v", err)
@@ -372,6 +391,10 @@ func TestHeadlessAdminHandler(t *testing.T) {
 		c.SetPathValues(echo.PathValues{
 			{Name: "workspace_id", Value: ws.ID.String()},
 		})
+
+		reqCtx := tenant.WithWorkspaceID(req.Context(), ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
+		c.SetRequest(req.WithContext(reqCtx))
 
 		err := h.GenerateSSO(c)
 		if err != nil {
@@ -409,6 +432,10 @@ func TestHeadlessAdminHandler(t *testing.T) {
 		c.SetPathValues(echo.PathValues{
 			{Name: "workspace_id", Value: ws.ID.String()},
 		})
+
+		reqCtx := tenant.WithWorkspaceID(req.Context(), ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
+		c.SetRequest(req.WithContext(reqCtx))
 
 		err := h.GenerateSSO(c)
 		if err != nil {

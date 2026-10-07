@@ -13,6 +13,8 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -74,10 +76,12 @@ func TestUserLogsHandler(t *testing.T) {
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 
-		// Set context values to avoid layout crash
+		// Set context values to avoid layout crash and provide authoritative workspace context
 		reqCtx := context.WithValue(req.Context(), "active_path", "/admin/logs/actions")
 		reqCtx = context.WithValue(reqCtx, "active_workspace", ws)
 		reqCtx = context.WithValue(reqCtx, "workspaces_list", []repository.Workspace{*ws})
+		reqCtx = tenant.WithWorkspaceID(reqCtx, ws.ID)
+		reqCtx = domain.ContextWithWorkspaceID(reqCtx, ws.ID)
 		c.SetRequest(req.WithContext(reqCtx))
 
 		if err := h.List(c); err != nil {

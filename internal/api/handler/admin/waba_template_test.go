@@ -16,11 +16,18 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
+
+func withWABAWorkspaceContext(req *http.Request, wsID uuid.UUID) *http.Request {
+	ctx := tenant.WithWorkspaceID(req.Context(), wsID)
+	ctx = domain.ContextWithWorkspaceID(ctx, wsID)
+	return req.WithContext(ctx)
+}
 
 func getTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
@@ -125,6 +132,7 @@ func TestWABATemplateHandler(t *testing.T) {
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/templates", ws.ID), strings.NewReader(`{"name":"welcome_template","language":"en_US","category":"UTILITY","components":[]}`))
 		req.Header.Set("Content-Type", "application/json")
+		req = withWABAWorkspaceContext(req, ws.ID)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 		c.SetPath("/admin/workspaces/:workspace_id/templates")
@@ -185,6 +193,7 @@ func TestWABATemplateHandler(t *testing.T) {
 
 		e := echo.New()
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/admin/workspaces/%s/templates/%s/sync", ws.ID, local.ID), nil)
+		req = withWABAWorkspaceContext(req, ws.ID)
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 		c.SetPath("/admin/workspaces/:workspace_id/templates/:template_id/sync")
