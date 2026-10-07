@@ -434,6 +434,85 @@ func (r *CampaignRepository) RollbackClaim(ctx context.Context, id uuid.UUID) er
 	return nil
 }
 
+// CountPendingOrProcessingRecipients counts recipients remaining in pending or processing states for a campaign.
+func (r *CampaignRepository) CountPendingOrProcessingRecipients(ctx context.Context, campaignID uuid.UUID) (int, error) {
+	var count int
+	err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM campaign_recipients 
+		 WHERE campaign_id = $1 AND status IN ($2, $3)`,
+		campaignID, domain.RecipientStatusPending, domain.RecipientStatusProcessing,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count pending or processing recipients: %w", err)
+	}
+	return count, nil
+}
+
+// CompleteIfDone atomically transitions a sending campaign to completed if no pending/processing recipients remain.
+func (r *CampaignRepository) CompleteIfDone(ctx context.Context, campaignID uuid.UUID) (bool, error) {
+	cmd, err := r.pool.Exec(ctx,
+		`UPDATE campaigns SET status = $1, updated_at = now()
+		 WHERE id = $2 AND status = $3
+		   AND (SELECT COUNT(*) FROM campaign_recipients WHERE campaign_id = $2 AND status IN ($4, $5)) = 0`,
+		domain.CampaignStatusCompleted, campaignID, domain.CampaignStatusSending,
+		domain.RecipientStatusPending, domain.RecipientStatusProcessing,
+	)
+	if err != nil {
+		return false, fmt.Errorf("complete if done: %w", err)
+	}
+	return cmd.RowsAffected() > 0, nil
+}
+
+// UpdateRecipientStatusByPhone updates status, error_message and sent_at by composite key (campaign_id, phone).
+func (r *CampaignRepository) UpdateRecipientStatusByPhone(ctx context.Context, campaignID uuid.UUID, phone string, status domain.RecipientStatus, errorMsg *string) error {
+	var sentAt *time.Time
+	if status == domain.RecipientStatusSent {
+		now := time.Now()
+		sentAt = &now
+	}
+
+	_, err := r.pool.Exec(ctx,
+		`UPDATE campaign_recipients 
+		 SET status = $1, error_message = $2, sent_at = $3 
+		 WHERE campaign_id = $4 AND phone = $5`,
+		status, errorMsg, sentAt, campaignID, phone,
+	)
+	if err != nil {
+		return fmt.Errorf("update recipient status by phone: %w", err)
+	}
+	return nil
+}
+
+// ListPendingRecipients returns all pending recipients for a campaign ordered by created_at ASC.
+func (r *CampaignRepository) ListPendingRecipients(ctx context.Context, campaignID uuid.UUID) ([]domain.CampaignRecipient, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT phone, variables FROM campaign_recipients 
+		 WHERE campaign_id = $1 AND status = $2 
+		 ORDER BY created_at ASC`,
+		campaignID, domain.RecipientStatusPending,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query pending recipients: %w", err)
+	}
+	defer rows.Close()
+
+	var recipients []domain.CampaignRecipient
+	for rows.Next() {
+		var phone string
+		var varsJSON []byte
+		if err := rows.Scan(&phone, &varsJSON); err != nil {
+			return nil, fmt.Errorf("scan pending recipient: %w", err)
+		}
+		var vars map[string]string
+		if err := json.Unmarshal(varsJSON, &vars); err != nil {
+			vars = make(map[string]string)
+		}
+		recipients = append(recipients, domain.CampaignRecipient{To: phone, Variables: vars})
+	}
+	return recipients, rows.Err()
+}
+
+
 func unmarshalInteractive(raw []byte) (*domain.Interactive, error) {
 	if len(raw) == 0 {
 		return nil, nil

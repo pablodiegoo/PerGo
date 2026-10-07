@@ -17,17 +17,8 @@ import (
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
-// CampaignBatchTask represents the payload for a campaign batch message.
-type CampaignBatchTask struct {
-	CampaignID       uuid.UUID                  `json:"campaign_id"`
-	WorkspaceID      uuid.UUID                  `json:"workspace_id"`
-	BatchIndex       int                        `json:"batch_index"`
-	TotalBatches     int                        `json:"total_batches"`
-	Recipients       []domain.CampaignRecipient `json:"recipients"`
-	DelaySeconds     int                        `json:"delay_seconds"`
-	RateLimitPerMin  *int                       `json:"rate_limit_per_min,omitempty"`
-	FallbackChannels []string                   `json:"fallback_channels,omitempty"`
-}
+// CampaignBatchTask is an alias for domain.CampaignBatchTask for backwards compatibility.
+type CampaignBatchTask = domain.CampaignBatchTask
 
 // CampaignWorker consumes campaign start and batch messages sequentially.
 // It handles two subjects:

@@ -99,6 +99,34 @@ type CampaignStartTask struct {
 	WorkspaceID uuid.UUID `json:"workspace_id"`
 }
 
+// CampaignBatchTask represents the payload for a campaign batch message.
+// Published to the campaigns.batches JetStream subject.
+type CampaignBatchTask struct {
+	CampaignID       uuid.UUID           `json:"campaign_id"`
+	WorkspaceID      uuid.UUID           `json:"workspace_id"`
+	BatchIndex       int                 `json:"batch_index"`
+	TotalBatches     int                 `json:"total_batches"`
+	Recipients       []CampaignRecipient `json:"recipients"`
+	DelaySeconds     int                 `json:"delay_seconds"`
+	RateLimitPerMin  *int                `json:"rate_limit_per_min,omitempty"`
+	FallbackChannels []string            `json:"fallback_channels,omitempty"`
+}
+
+// ErrInvalidCampaignTransition is returned when an operation attempts an illegal campaign status transition.
+type ErrInvalidCampaignTransition struct {
+	From CampaignStatus `json:"from"`
+	To   CampaignStatus `json:"to"`
+}
+
+func (e ErrInvalidCampaignTransition) Error() string {
+	return fmt.Sprintf("campaign cannot transition from %s to %s", e.From, e.To)
+}
+
+func (e ErrInvalidCampaignTransition) Code() string {
+	return "INVALID_CAMPAIGN_TRANSITION"
+}
+
+
 // SniffDelimiter checks the frequencies of commas, semicolons, and tabs to auto-detect a CSV delimiter.
 func SniffDelimiter(firstLine string) rune {
 	candidates := []rune{',', ';', '\t'}
