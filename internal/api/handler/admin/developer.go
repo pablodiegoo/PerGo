@@ -14,6 +14,7 @@ import (
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -56,8 +57,13 @@ func (h *DeveloperHandler) getBaseURL(c *echo.Context) string {
 
 // GetPortal renders the Developer Console & Sandbox page.
 func (h *DeveloperHandler) GetPortal(c *echo.Context) error {
-	wsID, err := resolveWorkspaceID(c)
-	if err != nil || wsID == uuid.Nil {
+	var wsID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		wsID = id
+	}
+	if wsID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -100,8 +106,13 @@ func (h *DeveloperHandler) GetPortal(c *echo.Context) error {
 
 // CreateAPIKey generates a new API key for the active workspace.
 func (h *DeveloperHandler) CreateAPIKey(c *echo.Context) error {
-	wsID, err := resolveWorkspaceID(c)
-	if err != nil || wsID == uuid.Nil {
+	var wsID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		wsID = id
+	}
+	if wsID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -126,8 +137,13 @@ func (h *DeveloperHandler) CreateAPIKey(c *echo.Context) error {
 
 // RevokeAPIKey revokes an API key for the active workspace.
 func (h *DeveloperHandler) RevokeAPIKey(c *echo.Context) error {
-	wsID, err := resolveWorkspaceID(c)
-	if err != nil || wsID == uuid.Nil {
+	var wsID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		wsID = id
+	}
+	if wsID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -152,8 +168,13 @@ func (h *DeveloperHandler) RevokeAPIKey(c *echo.Context) error {
 
 // RotateWebhookSecret rotates the workspace HMAC-SHA256 signing secret.
 func (h *DeveloperHandler) RotateWebhookSecret(c *echo.Context) error {
-	wsID, err := resolveWorkspaceID(c)
-	if err != nil || wsID == uuid.Nil {
+	var wsID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		wsID = id
+	}
+	if wsID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -236,8 +257,13 @@ func (h *DeveloperHandler) SandboxTest(c *echo.Context) error {
 
 // GenerateSSO handles HTMX requests to generate signed SSO token and URL.
 func (h *DeveloperHandler) GenerateSSO(c *echo.Context) error {
-	wsID, err := resolveWorkspaceID(c)
-	if err != nil || wsID == uuid.Nil {
+	var wsID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		wsID = id
+	}
+	if wsID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 

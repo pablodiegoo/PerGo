@@ -120,22 +120,15 @@ type WebhookSubscriptionListResponse struct {
 	Subscriptions []WebhookSubscriptionDTO `json:"subscriptions"`
 }
 
-func (h *WebhookSubscriptionAPIHandler) resolveWorkspaceID(c *echo.Context) (uuid.UUID, error) {
-	ctx := c.Request().Context()
-	if scope, err := domain.Require(ctx); err == nil && scope.WorkspaceID() != uuid.Nil {
-		return scope.WorkspaceID(), nil
-	}
-	if wsID, err := tenant.RequireWorkspaceID(ctx); err == nil && wsID != uuid.Nil {
-		return wsID, nil
-	}
-	return uuid.Nil, errors.New("workspace context required")
-}
-
 // Create registers a new webhook subscription for the workspace.
 // POST /api/v1/webhooks/subscriptions
 func (h *WebhookSubscriptionAPIHandler) Create(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
-	if err != nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
 			"message": "workspace context required",
@@ -240,8 +233,12 @@ func (h *WebhookSubscriptionAPIHandler) Create(c *echo.Context) error {
 // List returns all webhook subscriptions for the workspace.
 // GET /api/v1/webhooks/subscriptions
 func (h *WebhookSubscriptionAPIHandler) List(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
-	if err != nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
 			"message": "workspace context required",
@@ -277,8 +274,12 @@ func (h *WebhookSubscriptionAPIHandler) List(c *echo.Context) error {
 // Get returns a single webhook subscription by ID.
 // GET /api/v1/webhooks/subscriptions/:id
 func (h *WebhookSubscriptionAPIHandler) Get(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
-	if err != nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
 			"message": "workspace context required",
@@ -332,8 +333,12 @@ func (h *WebhookSubscriptionAPIHandler) Get(c *echo.Context) error {
 // Update modifies an existing webhook subscription.
 // PUT /api/v1/webhooks/subscriptions/:id
 func (h *WebhookSubscriptionAPIHandler) Update(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
-	if err != nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
 			"message": "workspace context required",
@@ -450,8 +455,12 @@ func (h *WebhookSubscriptionAPIHandler) Update(c *echo.Context) error {
 // Delete removes a webhook subscription.
 // DELETE /api/v1/webhooks/subscriptions/:id
 func (h *WebhookSubscriptionAPIHandler) Delete(c *echo.Context) error {
-	wsID, err := h.resolveWorkspaceID(c)
-	if err != nil {
+	var wsID uuid.UUID
+	if scope, err := domain.Require(c.Request().Context()); err == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, err := tenant.RequireWorkspaceID(c.Request().Context()); err == nil && id != uuid.Nil {
+		wsID = id
+	} else {
 		return c.JSON(http.StatusUnauthorized, map[string]string{
 			"code":    "unauthorized",
 			"message": "workspace context required",

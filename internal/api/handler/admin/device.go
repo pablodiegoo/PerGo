@@ -21,6 +21,7 @@ import (
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/pkg/slug"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
 	"github.com/pablojhp.pergo/templates/pages"
@@ -40,7 +41,12 @@ type DeviceHandler struct {
 
 // List renders the unified connection management page or HTMX fragment.
 func (h *DeviceHandler) List(c *echo.Context) error {
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	connections, err := h.Connections.ListByWorkspace(c.Request().Context(), workspaceID)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to load connections: "+err.Error())
@@ -76,7 +82,12 @@ func (h *DeviceHandler) StartPairing(c *echo.Context) error {
 		}
 	}
 
-	wsID := resolveWorkspaceIDOrNil(c)
+	var wsID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		wsID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		wsID = id
+	}
 
 	ps, err := h.Manager.StartPairingSession(c.Request().Context(), wsID, phone, existingConnID, proxyURL)
 	if err != nil {
@@ -109,7 +120,12 @@ func (h *DeviceHandler) GetQR(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "id or phone is required")
 	}
 
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if wID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wID != uuid.Nil {
+		workspaceID = wID
+	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
@@ -135,7 +151,12 @@ func (h *DeviceHandler) Disconnect(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "invalid connection ID format")
 	}
 
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if wID, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && wID != uuid.Nil {
+		workspaceID = wID
+	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
@@ -175,7 +196,12 @@ func (h *DeviceHandler) Disconnect(c *echo.Context) error {
 // POST /admin/devices/create
 func (h *DeviceHandler) Create(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
@@ -352,7 +378,12 @@ func (h *DeviceHandler) Create(c *echo.Context) error {
 // POST /admin/devices/:id/slug
 func (h *DeviceHandler) UpdateSlug(c *echo.Context) error {
 	ctx := c.Request().Context()
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
@@ -396,7 +427,12 @@ func (h *DeviceHandler) UpdateSlug(c *echo.Context) error {
 // TestForm renders the connectivity test modal.
 // GET /admin/devices/test?id={id}
 func (h *DeviceHandler) TestForm(c *echo.Context) error {
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
@@ -427,7 +463,12 @@ func (h *DeviceHandler) TestForm(c *echo.Context) error {
 // FlowKey renders the modal with the Meta Flows RSA public key.
 // GET /admin/devices/flow-key?id={id}
 func (h *DeviceHandler) FlowKey(c *echo.Context) error {
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
@@ -463,7 +504,12 @@ func (h *DeviceHandler) FlowKey(c *echo.Context) error {
 // RunTest publishes a test outbound message to the messages.outbound JetStream subject.
 // POST /admin/devices/test
 func (h *DeviceHandler) RunTest(c *echo.Context) error {
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	if workspaceID == uuid.Nil {
 		return c.HTML(http.StatusOK, `<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Workspace não selecionado</div>`)
 	}
@@ -553,7 +599,12 @@ func (h *DeviceHandler) RunTest(c *echo.Context) error {
 // WS upgrades the connection to WebSocket and streams NATS events live to the client.
 // GET /admin/devices/test/ws
 func (h *DeviceHandler) WS(c *echo.Context) error {
-	workspaceID := resolveWorkspaceIDOrNil(c)
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}

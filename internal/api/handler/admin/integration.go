@@ -10,6 +10,8 @@ import (
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -28,8 +30,13 @@ func NewChatwootAdminHandler(integrationRepo *repository.IntegrationRepository) 
 
 // GetSettings renders the Chatwoot settings page with current configuration.
 func (h *ChatwootAdminHandler) GetSettings(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -56,8 +63,13 @@ func (h *ChatwootAdminHandler) GetSettings(c *echo.Context) error {
 
 // PostSettings handles saving Chatwoot integration credentials.
 func (h *ChatwootAdminHandler) PostSettings(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 

@@ -10,7 +10,9 @@ import (
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/domain"
 	typebot "github.com/pablojhp.pergo/internal/integration/typebot"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -31,8 +33,13 @@ func NewTypebotSettingsHandler(
 }
 
 func (h *TypebotSettingsHandler) GetSettings(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 
@@ -82,8 +89,13 @@ func (h *TypebotSettingsHandler) GetSettings(c *echo.Context) error {
 }
 
 func (h *TypebotSettingsHandler) PostSettings(c *echo.Context) error {
-	workspaceID, err := resolveWorkspaceID(c)
-	if err != nil {
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "invalid workspace ID")
 	}
 

@@ -52,6 +52,7 @@ func TestWorkspaceHandler_WebhookSecret(t *testing.T) {
 
 	t.Run("Get initial empty secret", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/workspaces/%s/webhook-secret", ws.ID), nil)
+		req = req.WithContext(domain.ContextWithWorkspaceID(tenant.WithWorkspaceID(req.Context(), ws.ID), ws.ID))
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 		c.SetPath("/workspaces/:id/webhook-secret")
@@ -133,6 +134,7 @@ func TestWorkspaceHandler_WebhookSecret(t *testing.T) {
 		body := fmt.Sprintf(`{"webhook_secret":%q}`, custom)
 		req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/workspaces/%s/webhook-secret", ws.ID), strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(domain.ContextWithWorkspaceID(tenant.WithWorkspaceID(req.Context(), ws.ID), ws.ID))
 		rec := httptest.NewRecorder()
 		c := e.NewContext(req, rec)
 		c.SetPath("/workspaces/:id/webhook-secret")
@@ -153,6 +155,7 @@ func TestWorkspaceHandler_WebhookSecret(t *testing.T) {
 
 		// Verify Get returns updated custom secret
 		getReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/workspaces/%s/webhook-secret", ws.ID), nil)
+		getReq = getReq.WithContext(domain.ContextWithWorkspaceID(tenant.WithWorkspaceID(getReq.Context(), ws.ID), ws.ID))
 		getRec := httptest.NewRecorder()
 		getC := e.NewContext(getReq, getRec)
 		getC.SetPath("/workspaces/:id/webhook-secret")
