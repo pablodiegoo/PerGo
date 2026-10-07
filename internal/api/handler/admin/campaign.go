@@ -42,31 +42,19 @@ func NewCampaignHandler(
 	publisher *queue.JetStreamPublisher,
 	engine ...campaign.BroadcasterEngine,
 ) *CampaignHandler {
-	var eng campaign.BroadcasterEngine
-	if len(engine) > 0 && engine[0] != nil {
-		eng = engine[0]
-	} else if campaignRepo != nil {
-		var pub campaign.Publisher
-		if publisher != nil {
-			pub = publisher
-		} else {
-			pub = noopPublisher{}
-		}
-		var tagLister domain.TagContactLister
-		if tagRepo != nil {
-			tagLister = tagRepo
-		}
-		eng = campaign.NewBroadcasterEngine(campaignRepo, connectionRepo, nil, pub, nil, tagLister)
-	}
-
-	return &CampaignHandler{
+	h := &CampaignHandler{
 		CampaignRepo:   campaignRepo,
 		TemplateRepo:   templateRepo,
 		ConnectionRepo: connectionRepo,
 		TagRepo:        tagRepo,
 		Publisher:      publisher,
-		Engine:         eng,
 	}
+	if len(engine) > 0 && engine[0] != nil {
+		h.Engine = engine[0]
+	} else {
+		_ = h.ensureEngine()
+	}
+	return h
 }
 
 func (h *CampaignHandler) WithEngine(engine campaign.BroadcasterEngine) *CampaignHandler {
@@ -92,6 +80,57 @@ func (h *CampaignHandler) ensureEngine() campaign.BroadcasterEngine {
 		h.Engine = campaign.NewBroadcasterEngine(h.CampaignRepo, h.ConnectionRepo, nil, pub, nil, tagLister)
 	}
 	return h.Engine
+}
+
+func handleHTMXEngineError(c *echo.Context, err error, defaultMsg string) error {
+	var transErr domain.ErrInvalidCampaignTransition
+	if errors.As(err, &transErr) {
+		trigger := fmt.Sprintf(`{"showToast":{"level":"error","message":%q}}`, transErr.Error())
+		c.Response().Header().Set("HX-Trigger", trigger)
+		return c.String(http.StatusConflict, transErr.Error())
+	}
+	if errors.Is(err, repository.ErrCampaignNotFound) {
+		return c.String(http.StatusNotFound, "campaign not found")
+	}
+	if errors.Is(err, repository.ErrConnectionNotFound) || strings.Contains(err.Error(), "connection") {
+		return c.String(http.StatusBadRequest, err.Error())
+	}
+	if strings.Contains(err.Error(), "requires at least one recipient") {
+		return c.String(http.StatusUnprocessableEntity, "A campanha precisa de pelo menos um destinatário. Selecione uma tag ou envie um CSV.")
+	}
+	if strings.Contains(err.Error(), "cannot delete campaign in") {
+		return c.String(http.StatusBadRequest, err.Error())
+	}
+	if defaultMsg != "" {
+		return c.String(http.StatusInternalServerError, defaultMsg)
+	}
+	return c.String(http.StatusInternalServerError, err.Error())
+}
+
+func handleRESTEngineError(c *echo.Context, err error, defaultMsg string) error {
+	var transErr domain.ErrInvalidCampaignTransition
+	if errors.As(err, &transErr) {
+		return c.JSON(http.StatusConflict, map[string]string{
+			"code":    transErr.Code(),
+			"message": transErr.Error(),
+		})
+	}
+	if errors.Is(err, repository.ErrCampaignNotFound) {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
+	}
+	if errors.Is(err, repository.ErrConnectionNotFound) || strings.Contains(err.Error(), "connection") {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	if strings.Contains(err.Error(), "requires at least one recipient") {
+		return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+	}
+	if strings.Contains(err.Error(), "cannot delete campaign in") {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	if defaultMsg != "" {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": defaultMsg})
+	}
+	return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 }
 
 type noopPublisher struct{}
@@ -540,19 +579,7 @@ func (h *CampaignHandler) Create(c *echo.Context) error {
 
 	_, err = eng.Create(c.Request().Context(), scope, params)
 	if err != nil {
-		var transErr domain.ErrInvalidCampaignTransition
-		if errors.As(err, &transErr) {
-			trigger := fmt.Sprintf(`{"showToast":{"level":"error","message":%q}}`, transErr.Error())
-			c.Response().Header().Set("HX-Trigger", trigger)
-			return c.String(http.StatusConflict, transErr.Error())
-		}
-		if strings.Contains(err.Error(), "connection") {
-			return c.String(http.StatusBadRequest, err.Error())
-		}
-		if strings.Contains(err.Error(), "requires at least one recipient") {
-			return c.String(http.StatusUnprocessableEntity, "A campanha precisa de pelo menos um destinatário. Selecione uma tag ou envie um CSV.")
-		}
-		return c.String(http.StatusInternalServerError, fmt.Sprintf("failed to save campaign: %v", err))
+		return handleHTMXEngineError(c, err, fmt.Sprintf("failed to save campaign: %v", err))
 	}
 
 	c.Response().Header().Set("HX-Redirect", fmt.Sprintf("/admin/workspaces/%s/campaigns", scope.WorkspaceID().String()))
@@ -632,16 +659,7 @@ func (h *CampaignHandler) Start(c *echo.Context) error {
 
 	camp, err := eng.Start(c.Request().Context(), scope, id)
 	if err != nil {
-		var transErr domain.ErrInvalidCampaignTransition
-		if errors.As(err, &transErr) {
-			trigger := fmt.Sprintf(`{"showToast":{"level":"error","message":%q}}`, transErr.Error())
-			c.Response().Header().Set("HX-Trigger", trigger)
-			return c.String(http.StatusConflict, transErr.Error())
-		}
-		if errors.Is(err, repository.ErrCampaignNotFound) {
-			return c.String(http.StatusNotFound, "campaign not found")
-		}
-		return c.String(http.StatusInternalServerError, err.Error())
+		return handleHTMXEngineError(c, err, "")
 	}
 
 	return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
@@ -672,16 +690,7 @@ func (h *CampaignHandler) Cancel(c *echo.Context) error {
 
 	camp, err := eng.Cancel(c.Request().Context(), scope, id)
 	if err != nil {
-		var transErr domain.ErrInvalidCampaignTransition
-		if errors.As(err, &transErr) {
-			trigger := fmt.Sprintf(`{"showToast":{"level":"error","message":%q}}`, transErr.Error())
-			c.Response().Header().Set("HX-Trigger", trigger)
-			return c.String(http.StatusConflict, transErr.Error())
-		}
-		if errors.Is(err, repository.ErrCampaignNotFound) {
-			return c.String(http.StatusNotFound, "campaign not found")
-		}
-		return c.String(http.StatusInternalServerError, "failed to cancel campaign")
+		return handleHTMXEngineError(c, err, "failed to cancel campaign")
 	}
 
 	return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
@@ -712,13 +721,7 @@ func (h *CampaignHandler) Delete(c *echo.Context) error {
 
 	err = eng.Delete(c.Request().Context(), scope, id)
 	if err != nil {
-		if errors.Is(err, repository.ErrCampaignNotFound) {
-			return c.String(http.StatusNotFound, "campaign not found")
-		}
-		if strings.Contains(err.Error(), "cannot delete campaign in") {
-			return c.String(http.StatusBadRequest, err.Error())
-		}
-		return c.String(http.StatusInternalServerError, "failed to delete campaign")
+		return handleHTMXEngineError(c, err, "failed to delete campaign")
 	}
 
 	return c.String(http.StatusOK, "")
@@ -749,16 +752,7 @@ func (h *CampaignHandler) Pause(c *echo.Context) error {
 
 	camp, err := eng.Pause(c.Request().Context(), scope, id)
 	if err != nil {
-		var transErr domain.ErrInvalidCampaignTransition
-		if errors.As(err, &transErr) {
-			trigger := fmt.Sprintf(`{"showToast":{"level":"error","message":%q}}`, transErr.Error())
-			c.Response().Header().Set("HX-Trigger", trigger)
-			return c.String(http.StatusConflict, transErr.Error())
-		}
-		if errors.Is(err, repository.ErrCampaignNotFound) {
-			return c.String(http.StatusNotFound, "campaign not found")
-		}
-		return c.String(http.StatusInternalServerError, "failed to pause campaign")
+		return handleHTMXEngineError(c, err, "failed to pause campaign")
 	}
 
 	return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
@@ -789,16 +783,7 @@ func (h *CampaignHandler) Resume(c *echo.Context) error {
 
 	camp, err := eng.Resume(c.Request().Context(), scope, id)
 	if err != nil {
-		var transErr domain.ErrInvalidCampaignTransition
-		if errors.As(err, &transErr) {
-			trigger := fmt.Sprintf(`{"showToast":{"level":"error","message":%q}}`, transErr.Error())
-			c.Response().Header().Set("HX-Trigger", trigger)
-			return c.String(http.StatusConflict, transErr.Error())
-		}
-		if errors.Is(err, repository.ErrCampaignNotFound) {
-			return c.String(http.StatusNotFound, "campaign not found")
-		}
-		return c.String(http.StatusInternalServerError, "failed to resume campaign")
+		return handleHTMXEngineError(c, err, "failed to resume campaign")
 	}
 
 	return mw.Render(c, http.StatusOK, pages.CampaignRow(camp.WorkspaceID, *camp))
@@ -935,29 +920,13 @@ func (h *CampaignHandler) APICreate(c *echo.Context) error {
 
 	created, err := eng.Create(c.Request().Context(), scope, params)
 	if err != nil {
-		var transErr domain.ErrInvalidCampaignTransition
-		if errors.As(err, &transErr) {
-			return c.JSON(http.StatusConflict, map[string]string{
-				"code":    transErr.Code(),
-				"message": transErr.Error(),
-			})
-		}
-		if errors.Is(err, repository.ErrCampaignNotFound) {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": err.Error()})
-		}
-		if errors.Is(err, repository.ErrConnectionNotFound) || strings.Contains(err.Error(), "connection") {
-			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
-		}
-		if strings.Contains(err.Error(), "requires at least one recipient") {
-			return c.JSON(http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
-		}
 		if strings.Contains(err.Error(), "required") ||
 			strings.Contains(err.Error(), "rate_limit_per_min") ||
 			strings.Contains(err.Error(), "fallback_behavior") ||
 			strings.Contains(err.Error(), "interactive") {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return handleRESTEngineError(c, err, "")
 	}
 
 	return c.JSON(http.StatusCreated, created)
@@ -1042,17 +1011,7 @@ func (h *CampaignHandler) APIStart(c *echo.Context) error {
 
 	camp, err := eng.Start(c.Request().Context(), scope, id)
 	if err != nil {
-		var transErr domain.ErrInvalidCampaignTransition
-		if errors.As(err, &transErr) {
-			return c.JSON(http.StatusConflict, map[string]string{
-				"code":    transErr.Code(),
-				"message": transErr.Error(),
-			})
-		}
-		if errors.Is(err, repository.ErrCampaignNotFound) {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
-		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return handleRESTEngineError(c, err, "")
 	}
 
 	return c.JSON(http.StatusOK, camp)
@@ -1084,17 +1043,7 @@ func (h *CampaignHandler) APIPause(c *echo.Context) error {
 
 	camp, err := eng.Pause(c.Request().Context(), scope, id)
 	if err != nil {
-		var transErr domain.ErrInvalidCampaignTransition
-		if errors.As(err, &transErr) {
-			return c.JSON(http.StatusConflict, map[string]string{
-				"code":    transErr.Code(),
-				"message": transErr.Error(),
-			})
-		}
-		if errors.Is(err, repository.ErrCampaignNotFound) {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
-		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to pause campaign"})
+		return handleRESTEngineError(c, err, "failed to pause campaign")
 	}
 
 	return c.JSON(http.StatusOK, camp)
@@ -1126,17 +1075,7 @@ func (h *CampaignHandler) APIResume(c *echo.Context) error {
 
 	camp, err := eng.Resume(c.Request().Context(), scope, id)
 	if err != nil {
-		var transErr domain.ErrInvalidCampaignTransition
-		if errors.As(err, &transErr) {
-			return c.JSON(http.StatusConflict, map[string]string{
-				"code":    transErr.Code(),
-				"message": transErr.Error(),
-			})
-		}
-		if errors.Is(err, repository.ErrCampaignNotFound) {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
-		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to resume campaign"})
+		return handleRESTEngineError(c, err, "failed to resume campaign")
 	}
 
 	return c.JSON(http.StatusOK, camp)
@@ -1168,17 +1107,7 @@ func (h *CampaignHandler) APICancel(c *echo.Context) error {
 
 	camp, err := eng.Cancel(c.Request().Context(), scope, id)
 	if err != nil {
-		var transErr domain.ErrInvalidCampaignTransition
-		if errors.As(err, &transErr) {
-			return c.JSON(http.StatusConflict, map[string]string{
-				"code":    transErr.Code(),
-				"message": transErr.Error(),
-			})
-		}
-		if errors.Is(err, repository.ErrCampaignNotFound) {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "campaign not found"})
-		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to cancel campaign"})
+		return handleRESTEngineError(c, err, "failed to cancel campaign")
 	}
 
 	return c.JSON(http.StatusOK, camp)

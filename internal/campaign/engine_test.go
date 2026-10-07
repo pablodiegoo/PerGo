@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/rand/v2"
 	"testing"
 	"time"
@@ -123,6 +124,23 @@ func TestEngine_StateTransitions_Valid(t *testing.T) {
 	if cancelledPaused.Status != domain.CampaignStatusCancelled {
 		t.Errorf("expected status %s, got %s", domain.CampaignStatusCancelled, cancelledPaused.Status)
 	}
+
+	// 7. scheduled -> sending via Start
+	c4, err := campRepo.Create(ctx, &domain.Campaign{
+		WorkspaceID: ws.ID,
+		Name:        "Scheduled to Sending",
+		Status:      domain.CampaignStatusScheduled,
+	})
+	if err != nil {
+		t.Fatalf("create scheduled campaign: %v", err)
+	}
+	startedSched, err := engine.Start(ctx, scope, c4.ID)
+	if err != nil {
+		t.Fatalf("Start from scheduled: %v", err)
+	}
+	if startedSched.Status != domain.CampaignStatusSending {
+		t.Errorf("expected status %s, got %s", domain.CampaignStatusSending, startedSched.Status)
+	}
 }
 
 func TestEngine_StateTransitions_Invalid_TableDriven(t *testing.T) {
@@ -154,8 +172,7 @@ func TestEngine_StateTransitions_Invalid_TableDriven(t *testing.T) {
 		{name: "draft cannot resume", initialStatus: domain.CampaignStatusDraft, action: "resume", expectedTo: domain.CampaignStatusSending},
 		{name: "draft cannot cancel", initialStatus: domain.CampaignStatusDraft, action: "cancel", expectedTo: domain.CampaignStatusCancelled},
 
-		// Illegal actions from scheduled
-		{name: "scheduled cannot start directly", initialStatus: domain.CampaignStatusScheduled, action: "start", expectedTo: domain.CampaignStatusSending},
+		// Illegal actions from scheduled (start is allowed; pause and resume are illegal)
 		{name: "scheduled cannot pause", initialStatus: domain.CampaignStatusScheduled, action: "pause", expectedTo: domain.CampaignStatusPaused},
 		{name: "scheduled cannot resume", initialStatus: domain.CampaignStatusScheduled, action: "resume", expectedTo: domain.CampaignStatusSending},
 
@@ -259,16 +276,16 @@ func TestEngine_Delete_Rules(t *testing.T) {
 		t.Errorf("expected draft to be deletable, got %v", err)
 	}
 
-	// Can delete cancelled
+	// Cannot delete cancelled
 	cCancelled, _ := campRepo.Create(ctx, &domain.Campaign{WorkspaceID: ws.ID, Name: "Cancelled", Status: domain.CampaignStatusCancelled})
-	if err := engine.Delete(ctx, scope, cCancelled.ID); err != nil {
-		t.Errorf("expected cancelled to be deletable, got %v", err)
+	if err := engine.Delete(ctx, scope, cCancelled.ID); err == nil {
+		t.Errorf("expected cancelled campaign deletion to be rejected")
 	}
 
-	// Can delete completed
+	// Cannot delete completed
 	cCompleted, _ := campRepo.Create(ctx, &domain.Campaign{WorkspaceID: ws.ID, Name: "Completed", Status: domain.CampaignStatusCompleted})
-	if err := engine.Delete(ctx, scope, cCompleted.ID); err != nil {
-		t.Errorf("expected completed to be deletable, got %v", err)
+	if err := engine.Delete(ctx, scope, cCompleted.ID); err == nil {
+		t.Errorf("expected completed campaign deletion to be rejected")
 	}
 
 	// Cannot delete sending
@@ -682,6 +699,91 @@ func TestEngine_ProcessStartTask_EmptyAudience(t *testing.T) {
 	}
 }
 
+func TestEngine_ProcessStartTask_AllSkippedAudience(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	campRepo := repository.NewCampaignRepository(pool)
+
+	ws, _ := wsRepo.Create(ctx, "ws_all_skipped_"+uuid.New().String())
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	fakePub := NewFakePublisher()
+	fakeAudit := newFakeAuditWriter()
+	mockLister := newMockTagLister()
+	engine := NewBroadcasterEngine(campRepo, nil, nil, fakePub, fakeAudit, mockLister)
+
+	tagID := uuid.New()
+	cID := uuid.New()
+	_, err := pool.Exec(ctx, `INSERT INTO contacts (id, workspace_id, name) VALUES ($1, $2, $3)`,
+		cID, ws.ID, "Alice Telegram Only")
+	if err != nil {
+		t.Fatalf("insert test contact: %v", err)
+	}
+
+	// Set a contact with a different channel ("telegram") so that channel filter ("whatsapp") skips it
+	mockLister.SetContacts(tagID, []domain.Contact{
+		{
+			ID:   cID,
+			Name: "Alice Telegram Only",
+			Identities: []domain.ContactIdentity{
+				{Channel: "telegram", SenderIdentity: "12345678"},
+			},
+			Attributes: map[string]string{"name": "Alice"},
+		},
+	})
+
+	channel := "whatsapp"
+	camp, err := campRepo.Create(ctx, &domain.Campaign{
+		WorkspaceID: ws.ID,
+		Name:        "All Skipped Campaign",
+		Status:      domain.CampaignStatusDraft,
+		Channel:     &channel,
+		TagIDs:      []uuid.UUID{tagID},
+		BatchSize:   50,
+	})
+	if err != nil {
+		t.Fatalf("create campaign: %v", err)
+	}
+
+	startTask := domain.CampaignStartTask{
+		CampaignID:  camp.ID,
+		WorkspaceID: ws.ID,
+	}
+
+	if err := engine.ProcessStartTask(ctx, startTask); err != nil {
+		t.Fatalf("ProcessStartTask: %v", err)
+	}
+
+	// Status must transition to completed
+	updated, err := campRepo.GetByID(ctx, camp.ID)
+	if err != nil {
+		t.Fatalf("get campaign: %v", err)
+	}
+	if updated.Status != domain.CampaignStatusCompleted {
+		t.Errorf("expected status completed when all contacts skipped, got %s", updated.Status)
+	}
+
+	// Must emit campaign.dispatch.skipped for the skipped contact
+	skippedAudits := fakeAudit.EventsByType("campaign.dispatch.skipped")
+	if len(skippedAudits) != 1 {
+		t.Fatalf("expected 1 skipped audit event, got %d", len(skippedAudits))
+	}
+
+	// Must emit campaign.dispatch.completed_empty audit log
+	emptyAudits := fakeAudit.EventsByType("campaign.dispatch.completed_empty")
+	if len(emptyAudits) != 1 {
+		t.Fatalf("expected 1 completed_empty audit event, got %d", len(emptyAudits))
+	}
+
+	// 0 batches published
+	if len(fakePub.Messages()) != 0 {
+		t.Errorf("expected 0 published messages for all-skipped audience, got %d", len(fakePub.Messages()))
+	}
+}
+
 func TestEngine_ProcessBatchTask_FailSafePause(t *testing.T) {
 	pool := getTestPool(t)
 	defer pool.Close()
@@ -870,6 +972,103 @@ func TestEngine_ProcessBatchTask_AtomicCompletion(t *testing.T) {
 	}
 	if check2.Status != domain.CampaignStatusCompleted {
 		t.Fatalf("expected campaign to be completed after all batches finished, got %s", check2.Status)
+	}
+}
+
+func TestEngine_ProcessBatchTask_DuplicateDispatch(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	campRepo := repository.NewCampaignRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+
+	ws, _ := wsRepo.Create(ctx, "ws_dup_disp_"+uuid.New().String())
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	fakePub := NewFakePublisher()
+	engine := NewBroadcasterEngine(campRepo, nil, dispatchRepo, fakePub, nil, nil)
+
+	channel := "whatsapp"
+	body := "Hello {{name}}"
+	camp, err := campRepo.Create(ctx, &domain.Campaign{
+		WorkspaceID:  ws.ID,
+		Name:         "Duplicate Dispatch Camp",
+		Status:       domain.CampaignStatusSending,
+		Channel:      &channel,
+		MessageBody:  &body,
+		DelaySeconds: 0,
+	})
+	if err != nil {
+		t.Fatalf("create campaign: %v", err)
+	}
+
+	phone1 := "5511999990001"
+	phone2 := "5511999990002"
+
+	// 2 recipients, initially pending
+	recipients := []domain.CampaignRecipientRecord{
+		{Phone: phone1, Status: domain.RecipientStatusPending, Variables: map[string]string{"name": "Alice"}},
+		{Phone: phone2, Status: domain.RecipientStatusPending, Variables: map[string]string{"name": "Bob"}},
+	}
+	if err := campRepo.AddRecipients(ctx, camp.ID, recipients); err != nil {
+		t.Fatalf("add recipients: %v", err)
+	}
+
+	// Pre-create an existing dispatch for phone1 with status "delivered"
+	traceID1 := fmt.Sprintf("campaign_%s_%s", camp.ID.String(), phone1)
+	disp1, err := dispatchRepo.GetOrCreateDispatch(ctx, ws.ID, traceID1, channel, &camp.ID, nil, nil)
+	if err != nil {
+		t.Fatalf("create pre-existing dispatch: %v", err)
+	}
+	if err := dispatchRepo.UpdateDispatchStatus(ctx, disp1.ID, "delivered", channel, 0, nil); err != nil {
+		t.Fatalf("update pre-existing dispatch status: %v", err)
+	}
+
+	batchTask := domain.CampaignBatchTask{
+		CampaignID:   camp.ID,
+		WorkspaceID:  ws.ID,
+		BatchIndex:   1,
+		TotalBatches: 1,
+		Recipients: []domain.CampaignRecipient{
+			{To: phone1, Variables: map[string]string{"name": "Alice"}},
+			{To: phone2, Variables: map[string]string{"name": "Bob"}},
+		},
+		DelaySeconds: 0,
+	}
+
+	if err := engine.ProcessBatchTask(ctx, batchTask); err != nil {
+		t.Fatalf("ProcessBatchTask: %v", err)
+	}
+
+	// Phone 1 must have been marked as sent in DB even though dispatch already existed
+	persisted, err := campRepo.ListRecipients(ctx, camp.ID, nil, 10)
+	if err != nil {
+		t.Fatalf("list persisted recipients: %v", err)
+	}
+	for _, r := range persisted {
+		if r.Phone == phone1 && r.Status != domain.RecipientStatusSent {
+			t.Errorf("expected duplicate dispatch recipient %s to be marked 'sent', got %s", phone1, r.Status)
+		}
+		if r.Phone == phone2 && r.Status != domain.RecipientStatusSent {
+			t.Errorf("expected fresh recipient %s to be marked 'sent', got %s", phone2, r.Status)
+		}
+	}
+
+	// Since all recipients are sent, campaign must be marked completed
+	updatedCamp, err := campRepo.GetByID(ctx, camp.ID)
+	if err != nil {
+		t.Fatalf("get campaign: %v", err)
+	}
+	if updatedCamp.Status != domain.CampaignStatusCompleted {
+		t.Errorf("expected campaign status completed, got %s", updatedCamp.Status)
+	}
+
+	// Only 1 message was published to messages.outbound (for phone2, since phone1 was duplicate)
+	outboundMsgs := fakePub.MessagesBySubject("messages.outbound")
+	if len(outboundMsgs) != 1 {
+		t.Errorf("expected 1 outbound message published, got %d", len(outboundMsgs))
 	}
 }
 
