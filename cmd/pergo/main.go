@@ -1034,7 +1034,6 @@ func main() {
 		})
 	}
 	v1Group.GET("/me", meHandler)
-	e.GET("/api/v1/me", meHandler)
 
 	// Start HTTP server
 	srv := &http.Server{
