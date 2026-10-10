@@ -735,6 +735,60 @@ func (r *ChatRepository) GetChatMessageByUID(ctx context.Context, workspaceID uu
 	return &m, nil
 }
 
+// FindMessageByUID retrieves a single message by UID across workspaces.
+func (r *ChatRepository) FindMessageByUID(ctx context.Context, uid string) (*domain.ChatMessage, error) {
+	if uid == "" {
+		return nil, errors.New("uid is required")
+	}
+	var m domain.ChatMessage
+	var rxBytes, metaBytes []byte
+
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, chat_id, workspace_id, uid, direction, sender_type, sender_name, sender_id,
+		       body, media_url, media_type, is_private, reactions, reply_to_uid, metadata, created_at
+		FROM chat_messages
+		WHERE uid = $1
+	`, uid).Scan(
+		&m.ID, &m.ChatID, &m.WorkspaceID, &m.UID, &m.Direction, &m.SenderType,
+		&m.SenderName, &m.SenderID, &m.Body, &m.MediaURL, &m.MediaType, &m.IsPrivate,
+		&rxBytes, &m.ReplyToUID, &metaBytes, &m.CreatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrChatMessageNotFound
+		}
+		return nil, fmt.Errorf("find chat message: %w", err)
+	}
+
+	if len(rxBytes) > 0 {
+		_ = json.Unmarshal(rxBytes, &m.Reactions)
+	}
+	if m.Reactions == nil {
+		m.Reactions = []domain.Reaction{}
+	}
+	if len(metaBytes) > 0 {
+		_ = json.Unmarshal(metaBytes, &m.Metadata)
+	}
+	if m.Metadata == nil {
+		m.Metadata = make(map[string]interface{})
+	}
+
+	return &m, nil
+}
+
+// GetReactions returns the current list of reactions for a message.
+func (r *ChatRepository) GetReactions(ctx context.Context, workspaceID uuid.UUID, uid string) ([]domain.Reaction, error) {
+	msg, err := r.GetChatMessageByUID(ctx, workspaceID, uid)
+	if err != nil {
+		return nil, err
+	}
+	if msg.Reactions == nil {
+		return []domain.Reaction{}, nil
+	}
+	return msg.Reactions, nil
+}
+
 // UpdateMessageReactions updates the JSONB reactions array on a message.
 func (r *ChatRepository) UpdateMessageReactions(ctx context.Context, workspaceID uuid.UUID, uid string, reactions []domain.Reaction) error {
 	if reactions == nil {
@@ -756,4 +810,151 @@ func (r *ChatRepository) UpdateMessageReactions(ctx context.Context, workspaceID
 		return ErrChatMessageNotFound
 	}
 	return nil
+}
+
+// AddReaction appends a reaction to the message idempotently and returns the updated reactions.
+func (r *ChatRepository) AddReaction(ctx context.Context, workspaceID uuid.UUID, uid string, reaction domain.Reaction) ([]domain.Reaction, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
+	if uid == "" {
+		return nil, errors.New("message uid is required")
+	}
+	if reaction.CreatedAt.IsZero() {
+		reaction.CreatedAt = time.Now().UTC()
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var rxBytes []byte
+	err = tx.QueryRow(ctx, `
+		SELECT reactions
+		FROM chat_messages
+		WHERE workspace_id = $1 AND uid = $2
+		FOR UPDATE
+	`, workspaceID, uid).Scan(&rxBytes)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrChatMessageNotFound
+		}
+		return nil, fmt.Errorf("get message reactions: %w", err)
+	}
+
+	var reactions []domain.Reaction
+	if len(rxBytes) > 0 {
+		_ = json.Unmarshal(rxBytes, &reactions)
+	}
+	if reactions == nil {
+		reactions = []domain.Reaction{}
+	}
+
+	// Idempotency: if already exists with same emoji and sender, return without duplicating
+	found := false
+	for _, ex := range reactions {
+		if ex.Emoji == reaction.Emoji && ex.Sender == reaction.Sender {
+			found = true
+			break
+		}
+	}
+	if !found {
+		reactions = append(reactions, reaction)
+		newRxJSON, err := json.Marshal(reactions)
+		if err != nil {
+			return nil, fmt.Errorf("marshal reactions: %w", err)
+		}
+		_, err = tx.Exec(ctx, `
+			UPDATE chat_messages
+			SET reactions = $3
+			WHERE workspace_id = $1 AND uid = $2
+		`, workspaceID, uid, newRxJSON)
+		if err != nil {
+			return nil, fmt.Errorf("update reactions: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+
+	return reactions, nil
+}
+
+// RemoveReaction removes a reaction from the message and returns the updated reactions.
+func (r *ChatRepository) RemoveReaction(ctx context.Context, workspaceID uuid.UUID, uid string, emoji string, sender string) ([]domain.Reaction, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
+	if uid == "" {
+		return nil, errors.New("message uid is required")
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var rxBytes []byte
+	err = tx.QueryRow(ctx, `
+		SELECT reactions
+		FROM chat_messages
+		WHERE workspace_id = $1 AND uid = $2
+		FOR UPDATE
+	`, workspaceID, uid).Scan(&rxBytes)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrChatMessageNotFound
+		}
+		return nil, fmt.Errorf("get message reactions: %w", err)
+	}
+
+	var reactions []domain.Reaction
+	if len(rxBytes) > 0 {
+		_ = json.Unmarshal(rxBytes, &reactions)
+	}
+	if reactions == nil {
+		reactions = []domain.Reaction{}
+	}
+
+	updated := make([]domain.Reaction, 0, len(reactions))
+	removed := false
+	for _, ex := range reactions {
+		match := true
+		if emoji != "" && ex.Emoji != emoji {
+			match = false
+		}
+		if sender != "" && ex.Sender != sender {
+			match = false
+		}
+		if match {
+			removed = true
+		} else {
+			updated = append(updated, ex)
+		}
+	}
+
+	if removed {
+		newRxJSON, err := json.Marshal(updated)
+		if err != nil {
+			return nil, fmt.Errorf("marshal reactions: %w", err)
+		}
+		_, err = tx.Exec(ctx, `
+			UPDATE chat_messages
+			SET reactions = $3
+			WHERE workspace_id = $1 AND uid = $2
+		`, workspaceID, uid, newRxJSON)
+		if err != nil {
+			return nil, fmt.Errorf("update reactions: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+
+	return updated, nil
 }

@@ -124,6 +124,13 @@ type InboundStoryEvent struct {
 	MediaURL string `json:"media_url,omitempty"`
 }
 
+// InboundReaction represents an inbound message reaction (add or remove).
+type InboundReaction struct {
+	MessageUID string `json:"message_uid"`
+	Emoji      string `json:"emoji"`
+	Action     string `json:"action"` // "add" | "remove"
+}
+
 // InboundEvent is the channel-agnostic inbound payload.
 type InboundEvent struct {
 	WorkspaceID  uuid.UUID
@@ -139,6 +146,7 @@ type InboundEvent struct {
 	Contacts     []InboundContact
 	Interactive  *InboundInteractive
 	Story        *InboundStoryEvent
+	Reaction     *InboundReaction
 	SenderName   string
 	OccurredAt   time.Time
 	Metadata     map[string]string
@@ -235,10 +243,16 @@ type InboundProcessor struct {
 	auditWriter          audit.Writer
 	recipientSessionRepo *repository.RecipientSessionRepository
 	contactRepo          *repository.ContactRepository
-	dispatchRepo         *repository.MessageDispatchRepository
-	router               InboundRouter
-	chatRepo             *repository.ChatRepository
-	debouncer            *Debouncer
+	dispatchRepo              *repository.MessageDispatchRepository
+	router                    InboundRouter
+	chatRepo                  *repository.ChatRepository
+	debouncer                 *Debouncer
+	reactionWebhookDispatcher ReactionWebhookDispatcher
+}
+
+// ReactionWebhookDispatcher defines the interface for dispatching signed reaction webhooks.
+type ReactionWebhookDispatcher interface {
+	DispatchReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, payload []byte, traceID string) error
 }
 
 // NewInboundProcessor creates a new InboundProcessor.
@@ -278,6 +292,12 @@ func (p *InboundProcessor) SetDebouncer(d *Debouncer) *InboundProcessor {
 	return p
 }
 
+// SetReactionWebhookDispatcher configures webhook dispatching for reaction events.
+func (p *InboundProcessor) SetReactionWebhookDispatcher(d ReactionWebhookDispatcher) *InboundProcessor {
+	p.reactionWebhookDispatcher = d
+	return p
+}
+
 // Process executes the ingestion pipeline for an inbound event.
 func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error {
 	if ev.WorkspaceID == uuid.Nil {
@@ -287,6 +307,73 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 	traceID := ev.TraceID
 	if traceID == "" {
 		traceID = uuid.New().String()
+	}
+
+	if ev.Reaction != nil {
+		occurredAt := ev.OccurredAt
+		if occurredAt.IsZero() {
+			occurredAt = time.Now().UTC()
+		}
+
+		var updatedReactions []domain.Reaction
+		var chatID *uuid.UUID
+		if p.chatRepo != nil {
+			if msg, mErr := p.chatRepo.GetChatMessageByUID(ctx, ev.WorkspaceID, ev.Reaction.MessageUID); mErr == nil && msg != nil {
+				chatID = &msg.ChatID
+			}
+			var err error
+			if ev.Reaction.Action == "remove" || ev.Reaction.Emoji == "" {
+				updatedReactions, err = p.chatRepo.RemoveReaction(ctx, ev.WorkspaceID, ev.Reaction.MessageUID, ev.Reaction.Emoji, ev.From)
+			} else {
+				updatedReactions, err = p.chatRepo.AddReaction(ctx, ev.WorkspaceID, ev.Reaction.MessageUID, domain.Reaction{
+					Emoji:     ev.Reaction.Emoji,
+					Sender:    ev.From,
+					CreatedAt: occurredAt,
+				})
+			}
+			if err != nil {
+				slog.Error("inbound processor: failed to record reaction", "error", err, "message_uid", ev.Reaction.MessageUID, "trace_id", traceID)
+			}
+		}
+
+		action := ev.Reaction.Action
+		if action == "" {
+			if ev.Reaction.Emoji == "" {
+				action = "remove"
+			} else {
+				action = "add"
+			}
+		}
+
+		var chatIDStr string
+		if chatID != nil {
+			chatIDStr = chatID.String()
+		}
+
+		rxEvent := domain.ReactionUpdatedPayload{
+			Event:       "message.reaction.updated",
+			WorkspaceID: ev.WorkspaceID.String(),
+			ChatID:      chatIDStr,
+			MessageUID:  ev.Reaction.MessageUID,
+			Emoji:       ev.Reaction.Emoji,
+			Sender:      ev.From,
+			Action:      action,
+			Reactions:   updatedReactions,
+			Timestamp:   occurredAt.Format(time.RFC3339),
+		}
+		payloadBytes, err := json.Marshal(rxEvent)
+		if err == nil {
+			if p.publisher != nil {
+				_ = p.publisher.Publish(ctx, "messages.events.reaction_updated", payloadBytes, traceID)
+			}
+			if p.reactionWebhookDispatcher != nil {
+				_ = p.reactionWebhookDispatcher.DispatchReaction(ctx, ev.WorkspaceID, ev.Reaction.MessageUID, payloadBytes, traceID)
+			}
+			if p.auditWriter != nil {
+				_ = p.auditWriter.Write(audit.NewEvent(ev.WorkspaceID, traceID, "reaction_updated", payloadBytes))
+			}
+		}
+		return nil
 	}
 
 	if ev.Metadata != nil && ev.Metadata["type"] == "status_update" {

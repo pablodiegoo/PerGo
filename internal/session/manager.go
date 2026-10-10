@@ -601,6 +601,28 @@ func (m *Manager) HandleWhatsAppMessage(ctx context.Context, wc WhatsAppClientIn
 			})
 		}
 
+		var inboundReaction *inbound.InboundReaction
+		if reactMsg := v.Message.GetReactionMessage(); reactMsg != nil {
+			targetUID := ""
+			if reactMsg.Key != nil && reactMsg.Key.ID != nil {
+				targetUID = *reactMsg.Key.ID
+			}
+			emoji := reactMsg.GetText()
+			act := "add"
+			if emoji == "" {
+				act = "remove"
+			}
+			inboundReaction = &inbound.InboundReaction{
+				MessageUID: targetUID,
+				Emoji:      emoji,
+				Action:     act,
+			}
+			if metadata == nil {
+				metadata = make(map[string]string)
+			}
+			metadata["type"] = "reaction"
+		}
+
 		event := &inbound.InboundEvent{
 			WorkspaceID:  wsID,
 			ConnectionID: connID,
@@ -612,6 +634,7 @@ func (m *Manager) HandleWhatsAppMessage(ctx context.Context, wc WhatsAppClientIn
 			Media:        inboundMedia,
 			Location:     inboundLocation,
 			Contacts:     inboundContacts,
+			Reaction:     inboundReaction,
 			SenderName:   v.Info.PushName,
 			OccurredAt:   v.Info.Timestamp,
 			Metadata:     metadata,

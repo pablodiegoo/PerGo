@@ -725,16 +725,18 @@ func main() {
 	// Inbox routes
 	presenceTracker := presence.NewTracker(15 * time.Second)
 	inboxHandler := &admin.InboxHandler{
-		Repo:           auditRepo,
-		ChatRepo:       chatRepo,
-		Sessions:       recipientSessionRepo,
-		Workspaces:     wsRepo,
-		Connections:    connectionRepo,
-		Publisher:      publisher,
-		Templates:      wabaTemplateRepo,
-		ContactRepo:    contactRepo,
-		UserActionLogs: userActionLogRepo,
-		Presence:       presenceTracker,
+		Repo:              auditRepo,
+		ChatRepo:          chatRepo,
+		Sessions:          recipientSessionRepo,
+		Workspaces:        wsRepo,
+		Connections:       connectionRepo,
+		Publisher:         publisher,
+		Templates:         wabaTemplateRepo,
+		ContactRepo:       contactRepo,
+		UserActionLogs:    userActionLogRepo,
+		Presence:          presenceTracker,
+		WebhookSubRepo:    webhookSubRepo,
+		WebhookDispatcher: webhookDispatcher,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
 	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)
@@ -748,6 +750,7 @@ func main() {
 	adminGroup.GET("/inbox/messages", inboxHandler.PollMessages)
 	adminGroup.POST("/inbox/send", inboxHandler.SendMessage)
 	adminGroup.POST("/inbox/notes", inboxHandler.CreateNote)
+	adminGroup.POST("/inbox/reactions", inboxHandler.ToggleReaction)
 	adminGroup.GET("/inbox/new-message-modal", inboxHandler.NewMessageModal)
 	adminGroup.POST("/inbox/new-message-send", inboxHandler.NewMessageSend)
 	adminGroup.GET("/contacts/search", inboxHandler.SearchContacts)
