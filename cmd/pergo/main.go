@@ -20,7 +20,6 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 
-	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/pablojhp.pergo/api"
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
@@ -136,6 +135,8 @@ func main() {
 		webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, encryptor)
 		webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
 		userActionLogRepo := repository.NewUserActionLogRepository(pool)
+		chatRepo := repository.NewChatRepository(pool)
+		wabaTemplateRepo := repository.NewWABATemplateRepository(pool)
 
 		verbsEngine := webhook.NewVerbsEngine(publisher, contactRepo, userActionLogRepo, connectionRepo)
 		webhookDispatcher := webhook.NewDefaultDispatcher(webhookSubRepo, webhookDLQRepo, wsRepo, nil, verbsEngine)
@@ -159,14 +160,15 @@ func main() {
 			[]byte(cfg.SessionSecret),
 			cfg.ExternalURL,
 			mcp.WithWebhookDLQRepo(webhookDLQRepo),
+			mcp.WithChatRepo(chatRepo),
+			mcp.WithWABATemplateRepo(wabaTemplateRepo),
 			mcp.WithJetStreamPublisher(publisher),
 			mcp.WithJetStream(js),
 			mcp.WithNATSConn(nc),
 		)
 
-		stdServer := mcpserver.NewStdioServer(mcpServer.MCPServer)
 		slog.Info("starting MCP server in stdio mode")
-		if err := stdServer.Listen(ctx, os.Stdin, os.Stdout); err != nil {
+		if err := mcp.RunStdio(ctx, mcpServer, apiKeyRepo, os.Args[2:], os.Stdin, os.Stdout, os.Stderr); err != nil {
 			slog.Error("MCP stdio server execution failed", "error", err)
 			os.Exit(1)
 		}
@@ -540,11 +542,26 @@ func main() {
 		cfg.ExternalURL,
 		mcp.WithWebhookDLQRepo(webhookDLQRepo),
 		mcp.WithChatRepo(chatRepo),
+		mcp.WithWABATemplateRepo(wabaTemplateRepo),
 		mcp.WithJetStreamPublisher(publisher),
 		mcp.WithJetStream(js),
 		mcp.WithNATSConn(nc),
 	)
 	e.Any("/api/mcp/*", echo.WrapHandler(mcpServer.SSEServer))
+
+	// --- Universal Agnostic MCP Gateway & Auto-Discovery Endpoints ---
+	universalGateway := mcp.NewUniversalGateway(mcpServer, cfg.ExternalURL)
+	e.Any("/mcp", echo.WrapHandler(universalGateway))
+	e.Any("/mcp/*", echo.WrapHandler(universalGateway))
+	e.POST("/oauth/register", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthRegister)))
+	e.GET("/oauth/authorize", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthAuthorize)))
+	e.POST("/oauth/token", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthToken)))
+	e.GET("/.well-known/mcp", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownMCP)))
+	e.GET("/.well-known/mcp.json", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownMCP)))
+	e.GET("/.well-known/opencode", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOpenCode)))
+	e.GET("/.well-known/opencode.json", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOpenCode)))
+	e.GET("/.well-known/oauth-protected-resource", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOAuthProtectedResource)))
+	e.GET("/.well-known/oauth-authorization-server", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOAuthAuthorizationServer)))
 
 	// --- Media proxy handler (GET /media/:workspace_id/:hash) ---
 	mediaHandler := handler.NewMediaHandler(s3Client)
