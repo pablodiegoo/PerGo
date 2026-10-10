@@ -19,7 +19,7 @@ templ ConvList(conversations []repository.ConversationSummary, unreadMap map[str
 	<div
 		id="conv-list"
 		hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=%s", activeChannel, activeStatus) }
-		hx-trigger="every 5s, refreshConversations from:body"
+		hx-trigger="every 5s, refreshChats from:body"
 		hx-swap="outerHTML"
 		class="conv-list flex flex-col h-full"
 	>

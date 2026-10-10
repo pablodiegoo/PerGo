@@ -461,8 +461,8 @@ func TestTeamTriageIntegration(t *testing.T) {
 		if assignRec.Code != http.StatusOK {
 			t.Fatalf("expected 200 from AssignChat, got %d", assignRec.Code)
 		}
-		if assignRec.Header().Get("HX-Trigger") != "refreshConversations" {
-			t.Errorf("expected HX-Trigger header to be refreshConversations, got %s", assignRec.Header().Get("HX-Trigger"))
+		if assignRec.Header().Get("HX-Trigger") != "refreshChats" {
+			t.Errorf("expected HX-Trigger header to be refreshChats, got %s", assignRec.Header().Get("HX-Trigger"))
 		}
 		if !strings.Contains(assignRec.Body.String(), "alice@example.com") {
 			t.Errorf("expected response HTML to contain assigned teammate alice@example.com")
@@ -501,8 +501,8 @@ func TestTeamTriageIntegration(t *testing.T) {
 		if closeRec.Code != http.StatusOK {
 			t.Fatalf("expected 200 from UpdateChatStatus, got %d", closeRec.Code)
 		}
-		if closeRec.Header().Get("HX-Trigger") != "refreshConversations" {
-			t.Errorf("expected HX-Trigger to be refreshConversations")
+		if closeRec.Header().Get("HX-Trigger") != "refreshChats" {
+			t.Errorf("expected HX-Trigger to be refreshChats")
 		}
 		// When closed, UI renders the "Reabrir" button
 		if !strings.Contains(closeRec.Body.String(), "Reabrir") {

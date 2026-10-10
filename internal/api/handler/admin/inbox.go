@@ -230,7 +230,7 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 	// Load the thread messages (full history — no cursor)
 	messages, err := h.Repo.ListThreadByContact(ctx, workspaceID, contactID, nil)
 	if err != nil {
-		return c.HTML(http.StatusInternalServerError, `<div class="p-4 text-red-500">Erro ao carregar conversa.</div>`)
+		return c.HTML(http.StatusInternalServerError, `<div class="p-4 text-red-500">Erro ao carregar chat.</div>`)
 	}
 
 	// Resolve connections in workspace to find default/active senders
@@ -335,11 +335,7 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 	var windowExpiresAt *time.Time
 	if currentChat != nil && currentChat.ServiceWindowExpiresAt != nil {
 		windowExpiresAt = currentChat.ServiceWindowExpiresAt
-		if time.Now().UTC().Before(*currentChat.ServiceWindowExpiresAt) {
-			isWabaBlocked = false
-		} else {
-			isWabaBlocked = true
-		}
+		isWabaBlocked = !currentChat.IsServiceWindowOpen()
 	}
 
 	if mw.IsHTMX(c) {
@@ -1077,7 +1073,7 @@ func (h *InboxHandler) AssignChat(c *echo.Context) error {
 		}
 	}
 
-	c.Response().Header().Set("HX-Trigger", "refreshConversations")
+	c.Response().Header().Set("HX-Trigger", "refreshChats")
 	return h.ChatPanel(c)
 }
 
@@ -1149,7 +1145,7 @@ func (h *InboxHandler) AddChatTag(c *echo.Context) error {
 		}
 	}
 
-	c.Response().Header().Set("HX-Trigger", "refreshConversations")
+	c.Response().Header().Set("HX-Trigger", "refreshChats")
 	return h.ChatPanel(c)
 }
 
@@ -1225,7 +1221,7 @@ func (h *InboxHandler) RemoveChatTag(c *echo.Context) error {
 		}
 	}
 
-	c.Response().Header().Set("HX-Trigger", "refreshConversations")
+	c.Response().Header().Set("HX-Trigger", "refreshChats")
 	return h.ChatPanel(c)
 }
 
@@ -1295,7 +1291,7 @@ func (h *InboxHandler) UpdateChatStatus(c *echo.Context) error {
 		}
 	}
 
-	c.Response().Header().Set("HX-Trigger", "refreshConversations")
+	c.Response().Header().Set("HX-Trigger", "refreshChats")
 	return h.ChatPanel(c)
 }
 
@@ -1478,19 +1474,16 @@ func (h *InboxHandler) ToggleReaction(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "chat repository not configured")
 	}
 
-	var chatIDStr string
 	if workspaceID == uuid.Nil {
-		msg, err := h.ChatRepo.FindMessageByUID(ctx, messageUID)
-		if err != nil {
-			return c.String(http.StatusNotFound, "message not found: "+err.Error())
-		}
-		workspaceID = msg.WorkspaceID
-		chatIDStr = msg.ChatID.String()
-	} else {
-		if msg, err := h.ChatRepo.GetChatMessageByUID(ctx, workspaceID, messageUID); err == nil && msg != nil {
-			chatIDStr = msg.ChatID.String()
-		}
+		return c.String(http.StatusUnauthorized, "workspace context required")
 	}
+
+	var chatIDStr string
+	msg, err := h.ChatRepo.GetChatMessageByUID(ctx, workspaceID, messageUID)
+	if err != nil || msg == nil {
+		return c.String(http.StatusNotFound, "message not found")
+	}
+	chatIDStr = msg.ChatID.String()
 
 	sender := "operator"
 	if email, ok := c.Get("user_email").(string); ok && email != "" {

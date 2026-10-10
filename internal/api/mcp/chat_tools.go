@@ -340,7 +340,7 @@ func (s *Server) registerChatTools() {
 				},
 				"workspace_id": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional workspace UUID if known. If omitted, resolved automatically from the message record.",
+					"description": "Optional workspace UUID (defaults to authenticated workspace context).",
 				},
 				"sender": map[string]interface{}{
 					"type":        "string",
@@ -396,10 +396,125 @@ func (s *Server) registerChatTools() {
 					"type":        "string",
 					"description": "Optional sender display name.",
 				},
+				"reply_to_uid": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UID of a previous message to reply to in a threaded conversation.",
+				},
 			},
 			Required: []string{"chat_id"},
 		},
 	}, s.handleChatSendMessage)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "workspace_whatsapp_accounts",
+		Description: "List all connected WhatsApp accounts/sessions for the workspace, showing connection ID, phone number/jid, channel type, and operational status (connected, healthy, disconnected).",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UUID of the workspace (defaults to authenticated workspace).",
+				},
+			},
+		},
+	}, s.handleWorkspaceWhatsAppAccounts)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "message_details",
+		Description: "Retrieve complete details, payload, direction, delivery status, reactions, and failure reason for a specific message.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"message_uid": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique message UID or trace ID.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UUID of the chat thread.",
+				},
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UUID of the workspace.",
+				},
+			},
+			Required: []string{"message_uid"},
+		},
+	}, s.handleMessageDetails)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "whatsapp_account_send_message",
+		Description: "Initiate an outbound message from a specific WhatsApp account to a destination phone number.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UUID of the workspace.",
+				},
+				"connection_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the WhatsApp connection to send from.",
+				},
+				"sender_identity": map[string]interface{}{
+					"type":        "string",
+					"description": "The sender identity / phone number of the account (alternative to connection_id).",
+				},
+				"to": map[string]interface{}{
+					"type":        "string",
+					"description": "Destination phone number in international E.164 format.",
+				},
+				"message": map[string]interface{}{
+					"type":        "string",
+					"description": "The message text body to send.",
+				},
+				"body": map[string]interface{}{
+					"type":        "string",
+					"description": "Alias for message.",
+				},
+				"sender_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional sender display name (default: 'AI Assistant').",
+				},
+			},
+			Required: []string{"to"},
+		},
+	}, s.handleWhatsAppAccountSendMessage)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "message_reply",
+		Description: "Send a threaded reply referencing a specific message (reply_to_uid) in the chat.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"reply_to_uid": map[string]interface{}{
+					"type":        "string",
+					"description": "The UID of the message being replied to.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the chat thread (optional if resolvable from reply_to_uid).",
+				},
+				"message": map[string]interface{}{
+					"type":        "string",
+					"description": "The message body text to send.",
+				},
+				"body": map[string]interface{}{
+					"type":        "string",
+					"description": "Alias for message.",
+				},
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UUID of the workspace.",
+				},
+				"sender_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional sender display name.",
+				},
+			},
+			Required: []string{"reply_to_uid"},
+		},
+	}, s.handleMessageReply)
 }
 
 
@@ -1407,17 +1522,30 @@ func (s *Server) handleMessageReact(ctx context.Context, request mcp.CallToolReq
 			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
 		}
 		wsID = parsedWSID
-		if msg, mErr := s.chatRepo.GetChatMessageByUID(ctx, wsID, messageUID); mErr == nil && msg != nil {
-			chatIDStr = msg.ChatID.String()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		wsID = id
+	}
+
+	var msg *domain.ChatMessage
+	if wsID != uuid.Nil {
+		var mErr error
+		msg, mErr = s.chatRepo.GetChatMessageByUID(ctx, wsID, messageUID)
+		if mErr != nil || msg == nil {
+			return mcp.NewToolResultError(fmt.Sprintf("message not found: %s", messageUID)), nil
 		}
 	} else {
-		msg, mErr := s.chatRepo.FindMessageByUID(ctx, messageUID)
-		if mErr != nil {
+		var mErr error
+		msg, mErr = s.chatRepo.FindMessageByUID(ctx, messageUID)
+		if mErr != nil || msg == nil {
 			return mcp.NewToolResultError(fmt.Sprintf("message not found: %s", messageUID)), nil
 		}
 		wsID = msg.WorkspaceID
-		chatIDStr = msg.ChatID.String()
 	}
+
+	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && wsID != authWS {
+		return mcp.NewToolResultError("workspace_id does not match authenticated context"), nil
+	}
+	chatIDStr = msg.ChatID.String()
 
 	var updatedReactions []domain.Reaction
 	if action == "add" {
@@ -1577,6 +1705,11 @@ func (s *Server) handleChatSendMessage(ctx context.Context, request mcp.CallTool
 
 	senderName := strings.TrimSpace(request.GetString("sender_name", "AI Assistant"))
 
+	var replyToUID *string
+	if rUID := strings.TrimSpace(request.GetString("reply_to_uid", "")); rUID != "" {
+		replyToUID = &rUID
+	}
+
 	var wsID uuid.UUID
 	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
 	if wsIDStr != "" {
@@ -1632,6 +1765,541 @@ func (s *Server) handleChatSendMessage(ctx context.Context, request mcp.CallTool
 		SenderName:  senderName,
 		SenderID:    senderIdentity,
 		Body:        messageText,
+		ReplyToUID:  replyToUID,
+		CreatedAt:   now,
+	}
+	_ = s.chatRepo.AddChatMessage(ctx, chatMsg)
+	_ = s.chatRepo.TouchLastMessageAt(ctx, wsID, chat.ID, now)
+
+	if s.ingestor != nil && recipientPhone != "" {
+		reqMeta := map[string]string{
+			"source":      "mcp_gateway",
+			"sender_type": string(domain.SenderTypeAIAgent),
+			"sender_name": senderName,
+		}
+		if replyToUID != nil {
+			reqMeta["reply_to_uid"] = *replyToUID
+		}
+		req := &domain.CreateMessageRequest{
+			To:       recipientPhone,
+			Channel:  channel,
+			From:     senderIdentity,
+			Body:     messageText,
+			Type:     "text",
+			Metadata: reqMeta,
+		}
+		_, _ = s.ingestor.Ingest(ctx, wsID, traceID, req)
+	}
+
+	if s.auditRepo != nil {
+		auditMap := map[string]interface{}{
+			"chat_id":         chat.ID.String(),
+			"contact_id":      chat.ContactID.String(),
+			"to":              recipientPhone,
+			"channel":         channel,
+			"sender_identity": senderIdentity,
+			"body":            messageText,
+			"sender_name":     senderName,
+			"sender_type":     string(domain.SenderTypeAIAgent),
+		}
+		if replyToUID != nil {
+			auditMap["reply_to_uid"] = *replyToUID
+		}
+		auditPayload, _ := json.Marshal(auditMap)
+		_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+			ID:          uuid.New(),
+			WorkspaceID: wsID,
+			TraceID:     traceID,
+			EventType:   "chat.message.sent",
+			Payload:     auditPayload,
+			CreatedAt:   now,
+		})
+	}
+
+	respMap := map[string]interface{}{
+		"success":   true,
+		"chat_id":   chat.ID,
+		"trace_id":  traceID,
+		"to":        recipientPhone,
+		"body":      messageText,
+		"queued_at": now,
+	}
+	if replyToUID != nil {
+		respMap["reply_to_uid"] = *replyToUID
+	}
+
+	data, err := json.MarshalIndent(respMap, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleWorkspaceWhatsAppAccounts(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.connectionRepo == nil {
+		return mcp.NewToolResultError("connection repository is not configured on this server"), nil
+	}
+
+	var wsID uuid.UUID
+	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
+	if wsIDStr != "" {
+		parsedWs, err := uuid.Parse(wsIDStr)
+		if err != nil {
+			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+		}
+		wsID = parsedWs
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		wsID = id
+	} else {
+		return mcp.NewToolResultError("missing workspace_id parameter"), nil
+	}
+
+	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && wsID != authWS {
+		return mcp.NewToolResultError("workspace_id does not match authenticated context"), nil
+	}
+
+	conns, err := s.connectionRepo.ListByWorkspace(ctx, wsID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to list connections: %v", err)), nil
+	}
+
+	type WhatsAppAccountDTO struct {
+		ConnectionID   string     `json:"connection_id"`
+		Name           string     `json:"name"`
+		Slug           string     `json:"slug"`
+		Channel        string     `json:"channel"`
+		SenderIdentity string     `json:"sender_identity"`
+		JID            string     `json:"jid,omitempty"`
+		Status         string     `json:"status"`
+		IsDefault      bool       `json:"is_default"`
+		ConnectedSince *time.Time `json:"connected_since,omitempty"`
+	}
+
+	accounts := make([]WhatsAppAccountDTO, 0)
+	for _, c := range conns {
+		if c.Channel == "whatsapp" || c.Channel == "whatsapp_cloud" {
+			st := c.Status
+			if st == "active" || st == "connected" {
+				st = "connected"
+			} else if st == "" || st == "disconnected" {
+				st = "disconnected"
+			}
+			jid := ""
+			if c.JID != nil {
+				jid = *c.JID
+			}
+			accounts = append(accounts, WhatsAppAccountDTO{
+				ConnectionID:   c.ID.String(),
+				Name:           c.Name,
+				Slug:           c.Slug,
+				Channel:        c.Channel,
+				SenderIdentity: c.SenderIdentity,
+				JID:            jid,
+				Status:         st,
+				IsDefault:      c.IsDefault,
+				ConnectedSince: c.ConnectedSince,
+			})
+		}
+	}
+
+	data, err := json.MarshalIndent(map[string]interface{}{
+		"accounts": accounts,
+		"count":    len(accounts),
+	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleMessageDetails(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+
+	messageUID, err := request.RequireString("message_uid")
+	if err != nil || strings.TrimSpace(messageUID) == "" {
+		return mcp.NewToolResultError("missing or empty message_uid parameter"), nil
+	}
+	messageUID = strings.TrimSpace(messageUID)
+
+	var wsID uuid.UUID
+	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
+	if wsIDStr != "" {
+		parsedWs, err := uuid.Parse(wsIDStr)
+		if err != nil {
+			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+		}
+		wsID = parsedWs
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		wsID = id
+	}
+
+	chatIDStr := strings.TrimSpace(request.GetString("chat_id", ""))
+	var chatID uuid.UUID
+	if chatIDStr != "" {
+		parsedChat, err := uuid.Parse(chatIDStr)
+		if err != nil {
+			return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
+		}
+		chatID = parsedChat
+	}
+
+	if wsID == uuid.Nil && chatID != uuid.Nil {
+		if chat, cErr := s.chatRepo.GetChatByID(ctx, chatID); cErr == nil && chat != nil {
+			wsID = chat.WorkspaceID
+		}
+	}
+
+	if wsID == uuid.Nil {
+		return mcp.NewToolResultError("missing workspace_id parameter"), nil
+	}
+
+	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && wsID != authWS {
+		return mcp.NewToolResultError("workspace_id does not match authenticated context"), nil
+	}
+
+	msg, err := s.chatRepo.GetChatMessageByUID(ctx, wsID, messageUID)
+	if err != nil || msg == nil {
+		return mcp.NewToolResultError(fmt.Sprintf("message not found: %s", messageUID)), nil
+	}
+
+	if chatID != uuid.Nil && msg.ChatID != chatID {
+		return mcp.NewToolResultError(fmt.Sprintf("message %s does not belong to chat %s", messageUID, chatID)), nil
+	}
+
+	status := "sent"
+	deliveryStatus := "delivered"
+	var failureReason *string
+
+	if msg.Direction == string(domain.DirectionInbound) {
+		status = "received"
+		deliveryStatus = "received"
+	} else if msg.IsPrivate || msg.Direction == "internal_note" {
+		status = "internal"
+		deliveryStatus = "internal"
+	} else {
+		if sVal, ok := msg.Metadata["status"].(string); ok && sVal != "" {
+			status = sVal
+		}
+		if dVal, ok := msg.Metadata["delivery_status"].(string); ok && dVal != "" {
+			deliveryStatus = dVal
+		} else {
+			deliveryStatus = status
+		}
+	}
+
+	if errVal, ok := msg.Metadata["error"].(string); ok && errVal != "" {
+		failureReason = &errVal
+	} else if fVal, ok := msg.Metadata["failure_reason"].(string); ok && fVal != "" {
+		failureReason = &fVal
+	}
+
+	dto := map[string]interface{}{
+		"id":              msg.ID,
+		"chat_id":         msg.ChatID,
+		"workspace_id":    msg.WorkspaceID,
+		"uid":             msg.UID,
+		"direction":       msg.Direction,
+		"sender_type":     msg.SenderType,
+		"sender_name":     msg.SenderName,
+		"sender_id":       msg.SenderID,
+		"body":            msg.Body,
+		"media_url":       msg.MediaURL,
+		"media_type":      msg.MediaType,
+		"is_private":      msg.IsPrivate,
+		"status":          status,
+		"delivery_status": deliveryStatus,
+		"failure_reason":  failureReason,
+		"reactions":       msg.Reactions,
+		"reply_to_uid":    msg.ReplyToUID,
+		"metadata":        msg.Metadata,
+		"created_at":      msg.CreatedAt,
+	}
+
+	data, err := json.MarshalIndent(dto, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleWhatsAppAccountSendMessage(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.connectionRepo == nil {
+		return mcp.NewToolResultError("connection repository is not configured on this server"), nil
+	}
+
+	to := strings.TrimSpace(request.GetString("to", ""))
+	if to == "" {
+		return mcp.NewToolResultError("missing or empty 'to' destination phone number"), nil
+	}
+
+	messageText := strings.TrimSpace(request.GetString("message", ""))
+	if messageText == "" {
+		messageText = strings.TrimSpace(request.GetString("body", ""))
+	}
+	if messageText == "" {
+		return mcp.NewToolResultError("missing or empty message body"), nil
+	}
+
+	var wsID uuid.UUID
+	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
+	if wsIDStr != "" {
+		parsedWs, err := uuid.Parse(wsIDStr)
+		if err != nil {
+			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+		}
+		wsID = parsedWs
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		wsID = id
+	}
+
+	var conn *repository.Connection
+	connIDStr := strings.TrimSpace(request.GetString("connection_id", ""))
+	if connIDStr != "" {
+		connID, err := uuid.Parse(connIDStr)
+		if err != nil {
+			return mcp.NewToolResultError("invalid connection_id: must be a valid UUID"), nil
+		}
+		c, err := s.connectionRepo.GetByID(ctx, connID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("connection not found: %v", err)), nil
+		}
+		conn = c
+		if wsID == uuid.Nil {
+			wsID = conn.WorkspaceID
+		} else if conn.WorkspaceID != wsID {
+			return mcp.NewToolResultError("connection does not belong to specified workspace"), nil
+		}
+	} else if senderIdent := strings.TrimSpace(request.GetString("sender_identity", "")); senderIdent != "" {
+		if wsID == uuid.Nil {
+			return mcp.NewToolResultError("workspace_id is required when locating connection by sender_identity"), nil
+		}
+		c, err := s.connectionRepo.GetBySenderIdentity(ctx, wsID, senderIdent)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("connection with sender_identity '%s' not found: %v", senderIdent, err)), nil
+		}
+		conn = c
+	} else if wsID != uuid.Nil {
+		c, err := s.connectionRepo.GetDefaultChannelConnection(ctx, wsID, "whatsapp")
+		if err != nil {
+			c, err = s.connectionRepo.GetDefaultChannelConnection(ctx, wsID, "whatsapp_cloud")
+		}
+		if err == nil {
+			conn = c
+		}
+	}
+
+	if conn == nil {
+		return mcp.NewToolResultError("could not resolve a valid WhatsApp connection; provide connection_id or sender_identity"), nil
+	}
+
+	if conn.Channel != "whatsapp" && conn.Channel != "whatsapp_cloud" {
+		return mcp.NewToolResultError(fmt.Sprintf("connection %s is channel '%s', expected a WhatsApp channel", conn.ID, conn.Channel)), nil
+	}
+
+	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && wsID != authWS {
+		return mcp.NewToolResultError("workspace_id does not match authenticated context"), nil
+	}
+
+	senderName := strings.TrimSpace(request.GetString("sender_name", "AI Assistant"))
+	if senderName == "" {
+		senderName = "AI Assistant"
+	}
+
+	var chatID *uuid.UUID
+	if s.contactRepo != nil && s.chatRepo != nil {
+		contact, cErr := s.contactRepo.ResolveContact(ctx, wsID, conn.Channel, to, to, "", "")
+		if cErr == nil && contact != nil {
+			if chat, chErr := s.chatRepo.FindOrCreateChat(ctx, wsID, &conn.ID, contact.ID); chErr == nil && chat != nil {
+				chatID = &chat.ID
+			}
+		}
+	}
+
+	traceID := fmt.Sprintf("mcp-wa-%s", uuid.New().String())
+	now := time.Now().UTC()
+
+	if chatID != nil && s.chatRepo != nil {
+		chatMsg := &domain.ChatMessage{
+			ID:          uuid.New(),
+			ChatID:      *chatID,
+			WorkspaceID: wsID,
+			UID:         traceID,
+			Direction:   string(domain.DirectionOutbound),
+			SenderType:  string(domain.SenderTypeAIAgent),
+			SenderName:  senderName,
+			SenderID:    conn.SenderIdentity,
+			Body:        messageText,
+			CreatedAt:   now,
+		}
+		_ = s.chatRepo.AddChatMessage(ctx, chatMsg)
+		_ = s.chatRepo.TouchLastMessageAt(ctx, wsID, *chatID, now)
+	}
+
+	if s.ingestor != nil {
+		req := &domain.CreateMessageRequest{
+			To:       to,
+			Channel:  conn.Channel,
+			From:     conn.SenderIdentity,
+			Body:     messageText,
+			Type:     "text",
+			Metadata: map[string]string{
+				"source":        "mcp_gateway",
+				"connection_id": conn.ID.String(),
+				"sender_type":   string(domain.SenderTypeAIAgent),
+				"sender_name":   senderName,
+			},
+		}
+		_, _ = s.ingestor.Ingest(ctx, wsID, traceID, req)
+	}
+
+	if s.auditRepo != nil {
+		auditPayload, _ := json.Marshal(map[string]interface{}{
+			"connection_id":   conn.ID.String(),
+			"to":              to,
+			"channel":         conn.Channel,
+			"sender_identity": conn.SenderIdentity,
+			"body":            messageText,
+			"sender_name":     senderName,
+			"sender_type":     string(domain.SenderTypeAIAgent),
+		})
+		_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+			ID:          uuid.New(),
+			WorkspaceID: wsID,
+			TraceID:     traceID,
+			EventType:   "chat.message.sent",
+			Payload:     auditPayload,
+			CreatedAt:   now,
+		})
+	}
+
+	resp := map[string]interface{}{
+		"success":       true,
+		"connection_id": conn.ID,
+		"channel":       conn.Channel,
+		"from":          conn.SenderIdentity,
+		"to":            to,
+		"trace_id":      traceID,
+		"body":          messageText,
+		"queued_at":     now,
+	}
+	if chatID != nil {
+		resp["chat_id"] = *chatID
+	}
+
+	data, err := json.MarshalIndent(resp, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleMessageReply(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+
+	replyToUID, err := request.RequireString("reply_to_uid")
+	if err != nil || strings.TrimSpace(replyToUID) == "" {
+		return mcp.NewToolResultError("missing or empty reply_to_uid parameter"), nil
+	}
+	replyToUID = strings.TrimSpace(replyToUID)
+
+	messageText := strings.TrimSpace(request.GetString("message", ""))
+	if messageText == "" {
+		messageText = strings.TrimSpace(request.GetString("body", ""))
+	}
+	if messageText == "" {
+		return mcp.NewToolResultError("missing or empty message parameter"), nil
+	}
+
+	senderName := strings.TrimSpace(request.GetString("sender_name", "AI Assistant"))
+
+	var wsID uuid.UUID
+	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
+	if wsIDStr != "" {
+		parsedWs, err := uuid.Parse(wsIDStr)
+		if err != nil {
+			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+		}
+		wsID = parsedWs
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		wsID = id
+	}
+
+	chatIDStr := strings.TrimSpace(request.GetString("chat_id", ""))
+	var chatID uuid.UUID
+	if chatIDStr != "" {
+		parsedChat, err := uuid.Parse(chatIDStr)
+		if err != nil {
+			return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
+		}
+		chatID = parsedChat
+	}
+
+	if chatID == uuid.Nil {
+		if wsID == uuid.Nil {
+			return mcp.NewToolResultError("missing chat_id or workspace_id parameter to locate message"), nil
+		}
+		parentMsg, pErr := s.chatRepo.GetChatMessageByUID(ctx, wsID, replyToUID)
+		if pErr != nil || parentMsg == nil {
+			return mcp.NewToolResultError(fmt.Sprintf("parent message to reply to not found: %s", replyToUID)), nil
+		}
+		chatID = parentMsg.ChatID
+	}
+
+	if wsID == uuid.Nil {
+		chat, cErr := s.chatRepo.GetChatByID(ctx, chatID)
+		if cErr != nil || chat == nil {
+			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
+		}
+		wsID = chat.WorkspaceID
+	}
+
+	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && wsID != authWS {
+		return mcp.NewToolResultError("workspace_id does not match authenticated context"), nil
+	}
+
+	chat, err := s.chatRepo.GetChat(ctx, wsID, chatID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("chat not found: %v", err)), nil
+	}
+
+	var recipientPhone string
+	if s.contactRepo != nil {
+		if contact, cErr := s.contactRepo.GetByID(ctx, wsID, chat.ContactID); cErr == nil && contact != nil {
+			recipientPhone = resolveContactPhone(contact)
+		}
+	}
+
+	channel := "whatsapp"
+	var senderIdentity string
+	if s.connectionRepo != nil && chat.ConnectionID != nil {
+		if conn, cErr := s.connectionRepo.GetByID(ctx, *chat.ConnectionID); cErr == nil && conn != nil {
+			channel = conn.Channel
+			senderIdentity = conn.SenderIdentity
+		}
+	}
+
+	traceID := fmt.Sprintf("mcp-reply-%s", uuid.New().String())
+	now := time.Now().UTC()
+
+	chatMsg := &domain.ChatMessage{
+		ID:          uuid.New(),
+		ChatID:      chat.ID,
+		WorkspaceID: wsID,
+		UID:         traceID,
+		Direction:   string(domain.DirectionOutbound),
+		SenderType:  string(domain.SenderTypeAIAgent),
+		SenderName:  senderName,
+		SenderID:    senderIdentity,
+		Body:        messageText,
+		ReplyToUID:  &replyToUID,
 		CreatedAt:   now,
 	}
 	_ = s.chatRepo.AddChatMessage(ctx, chatMsg)
@@ -1645,9 +2313,10 @@ func (s *Server) handleChatSendMessage(ctx context.Context, request mcp.CallTool
 			Body:     messageText,
 			Type:     "text",
 			Metadata: map[string]string{
-				"source":      "mcp_gateway",
-				"sender_type": string(domain.SenderTypeAIAgent),
-				"sender_name": senderName,
+				"source":       "mcp_gateway",
+				"sender_type":  string(domain.SenderTypeAIAgent),
+				"sender_name":  senderName,
+				"reply_to_uid": replyToUID,
 			},
 		}
 		_, _ = s.ingestor.Ingest(ctx, wsID, traceID, req)
@@ -1663,24 +2332,26 @@ func (s *Server) handleChatSendMessage(ctx context.Context, request mcp.CallTool
 			"body":            messageText,
 			"sender_name":     senderName,
 			"sender_type":     string(domain.SenderTypeAIAgent),
+			"reply_to_uid":    replyToUID,
 		})
 		_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
 			ID:          uuid.New(),
 			WorkspaceID: wsID,
 			TraceID:     traceID,
-			EventType:   "chat.message.sent",
+			EventType:   "chat.message.replied",
 			Payload:     auditPayload,
 			CreatedAt:   now,
 		})
 	}
 
 	data, err := json.MarshalIndent(map[string]interface{}{
-		"success":   true,
-		"chat_id":   chat.ID,
-		"trace_id":  traceID,
-		"to":        recipientPhone,
-		"body":      messageText,
-		"queued_at": now,
+		"success":      true,
+		"chat_id":      chat.ID,
+		"trace_id":     traceID,
+		"to":           recipientPhone,
+		"body":         messageText,
+		"reply_to_uid": replyToUID,
+		"queued_at":    now,
 	}, "", "  ")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil

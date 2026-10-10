@@ -55,7 +55,7 @@ func ConvList(conversations []repository.ConversationSummary, unreadMap map[stri
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" hx-trigger=\"every 5s, refreshConversations from:body\" hx-swap=\"outerHTML\" class=\"conv-list flex flex-col h-full\"><!-- Quick Filter Tabs (Open, Unassigned, Closed) --><div class=\"conv-tabs flex items-center border-b border-[#e9e9e7] dark:border-[#2f2f2f] px-2 py-1.5 bg-[#fbfbfa] dark:bg-[#191919] gap-1 flex-shrink-0 text-xs\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" hx-trigger=\"every 5s, refreshChats from:body\" hx-swap=\"outerHTML\" class=\"conv-list flex flex-col h-full\"><!-- Quick Filter Tabs (Open, Unassigned, Closed) --><div class=\"conv-tabs flex items-center border-b border-[#e9e9e7] dark:border-[#2f2f2f] px-2 py-1.5 bg-[#fbfbfa] dark:bg-[#191919] gap-1 flex-shrink-0 text-xs\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

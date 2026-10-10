@@ -64,7 +64,7 @@ func TestMessageBubble_InboundOrderSummary(t *testing.T) {
 	html := buf.String()
 
 	expectedSubstrings := []string{
-		"🛒 Pedido do Catálogo",
+		"Pedido do Catálogo",
 		"cat_9999",
 		"Nota do Cliente",
 		"Por favor entregar no portão lateral.",
@@ -118,7 +118,7 @@ func TestMessageBubble_OutboundProductCard_Single(t *testing.T) {
 	html := buf.String()
 
 	expectedSubstrings := []string{
-		"📦 Catálogo de Produtos",
+		"Catálogo de Produtos",
 		"cat_1234",
 		"Oferta Especial",
 		"Confira este produto incrível!",
@@ -184,7 +184,7 @@ func TestMessageBubble_OutboundProductCard_Multi(t *testing.T) {
 	html := buf.String()
 
 	expectedSubstrings := []string{
-		"📦 Catálogo de Produtos",
+		"Catálogo de Produtos",
 		"cat_5678",
 		"Nosso Cardápio",
 		"2 Seção(ões) de Produtos",

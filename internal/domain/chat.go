@@ -154,14 +154,14 @@ func SummarizeMessages(messages []ChatMessage, chat *Chat) ChatSynopsis {
 	}
 
 	// 1. Customer Issues
-	customerIssues := "Nenhuma demanda recente identificada na conversa."
+	customerIssues := "No recent customer inquiry or pending issues detected."
 	if len(inboundBodies) > 0 {
 		if len(inboundBodies) == 1 {
 			b := inboundBodies[0]
 			if len(b) > 160 {
 				b = b[:157] + "..."
 			}
-			customerIssues = fmt.Sprintf("Cliente solicitou: %q", b)
+			customerIssues = fmt.Sprintf("Customer requested: %q", b)
 		} else {
 			lastInbound := inboundBodies[len(inboundBodies)-1]
 			firstInbound := inboundBodies[0]
@@ -172,47 +172,47 @@ func SummarizeMessages(messages []ChatMessage, chat *Chat) ChatSynopsis {
 				lastInbound = lastInbound[:77] + "..."
 			}
 			if firstInbound == lastInbound {
-				customerIssues = fmt.Sprintf("Demanda do cliente: %q", lastInbound)
+				customerIssues = fmt.Sprintf("Customer inquiry: %q", lastInbound)
 			} else {
-				customerIssues = fmt.Sprintf("Demanda inicial: %q | Dúvida mais recente: %q", firstInbound, lastInbound)
+				customerIssues = fmt.Sprintf("Initial inquiry: %q | Latest inquiry: %q", firstInbound, lastInbound)
 			}
 		}
 	}
 
 	// 2. Promises Made
-	promisesMade := "Nenhum compromisso ou prazo pendente acordado pela equipe."
+	promisesMade := "No pending commitments or deadlines recorded by the team."
 	if len(agentCommitments) > 0 {
 		lastCommitment := agentCommitments[len(agentCommitments)-1]
 		if len(lastCommitment) > 160 {
 			lastCommitment = lastCommitment[:157] + "..."
 		}
-		promisesMade = fmt.Sprintf("Compromisso registrado pela equipe: %q", lastCommitment)
+		promisesMade = fmt.Sprintf("Team commitment: %q", lastCommitment)
 	} else if len(allAgentBodies) > 0 {
 		lastAgentMsg := allAgentBodies[len(allAgentBodies)-1]
 		if len(lastAgentMsg) > 160 {
 			lastAgentMsg = lastAgentMsg[:157] + "..."
 		}
-		promisesMade = fmt.Sprintf("Atendimento em andamento; última resposta do operador: %q", lastAgentMsg)
+		promisesMade = fmt.Sprintf("In progress; latest agent reply: %q", lastAgentMsg)
 	}
 
 	// 3. Current Status
-	currentStatus := "Conversa em aberto sem mensagens recentes."
+	currentStatus := "Open chat with no recent messages."
 	if chat != nil && chat.Status == "closed" {
-		currentStatus = "Atendimento resolvido e fechado."
+		currentStatus = "Chat resolved and closed."
 	} else if len(messages) > 0 {
 		lastMsg := messages[len(messages)-1]
 		if lastMsg.Direction == string(DirectionInbound) || lastMsg.SenderType == string(SenderTypeContact) {
-			currentStatus = "Aguardando resposta da equipe (última mensagem recebida do cliente)."
+			currentStatus = "Awaiting team response (latest message received from customer)."
 		} else {
-			currentStatus = "Aguardando retorno do cliente (equipe respondeu recentemente)."
+			currentStatus = "Awaiting customer response (team replied recently)."
 		}
 	}
 
 	if chat != nil {
 		if chat.IsServiceWindowOpen() {
-			currentStatus += " [Janela 24h WABA ativa]"
+			currentStatus += " [24h WABA window active]"
 		} else if chat.ServiceWindowExpiresAt != nil {
-			currentStatus += " [Janela 24h WABA expirada]"
+			currentStatus += " [24h WABA window expired]"
 		}
 	}
 

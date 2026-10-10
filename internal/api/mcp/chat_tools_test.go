@@ -761,5 +761,180 @@ func TestMCPChatTools(t *testing.T) {
 			t.Fatalf("expected audit log entry with event_type 'chat.message.sent', got 0")
 		}
 	})
+
+	t.Run("workspace_whatsapp_accounts", func(t *testing.T) {
+		res, err := srv.CallTool(ctx, "workspace_whatsapp_accounts", map[string]any{
+			"workspace_id": ws.ID.String(),
+		})
+		if err != nil {
+			t.Fatalf("CallTool workspace_whatsapp_accounts error: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("CallTool workspace_whatsapp_accounts returned tool error: %+v", res.Content)
+		}
+		var parsed struct {
+			Accounts []struct {
+				ConnectionID   string `json:"connection_id"`
+				Name           string `json:"name"`
+				Channel        string `json:"channel"`
+				SenderIdentity string `json:"sender_identity"`
+				Status         string `json:"status"`
+			} `json:"accounts"`
+			Count int `json:"count"`
+		}
+		if err := json.Unmarshal([]byte(res.Content[0].(mcp.TextContent).Text), &parsed); err != nil {
+			t.Fatalf("failed to unmarshal accounts: %v", err)
+		}
+		if parsed.Count == 0 || len(parsed.Accounts) == 0 {
+			t.Fatalf("expected at least 1 whatsapp account, got 0")
+		}
+		found := false
+		for _, acc := range parsed.Accounts {
+			if acc.ConnectionID == connID.String() {
+				found = true
+				if acc.Channel != "whatsapp_cloud" {
+					t.Errorf("expected channel whatsapp_cloud, got %s", acc.Channel)
+				}
+				if acc.Status != "connected" {
+					t.Errorf("expected status connected, got %s", acc.Status)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("expected to find connection %s in accounts", connID)
+		}
+	})
+
+	t.Run("message_details", func(t *testing.T) {
+		res, err := srv.CallTool(ctx, "message_details", map[string]any{
+			"workspace_id": ws.ID.String(),
+			"message_uid":  "mcp-msg-1",
+			"chat_id":      chat.ID.String(),
+		})
+		if err != nil {
+			t.Fatalf("CallTool message_details error: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("CallTool message_details returned tool error: %+v", res.Content)
+		}
+		var parsed struct {
+			UID            string `json:"uid"`
+			Direction      string `json:"direction"`
+			Status         string `json:"status"`
+			DeliveryStatus string `json:"delivery_status"`
+			Body           string `json:"body"`
+		}
+		if err := json.Unmarshal([]byte(res.Content[0].(mcp.TextContent).Text), &parsed); err != nil {
+			t.Fatalf("failed to unmarshal message details: %v", err)
+		}
+		if parsed.UID != "mcp-msg-1" {
+			t.Errorf("expected UID mcp-msg-1, got %s", parsed.UID)
+		}
+		if parsed.Direction != "inbound" {
+			t.Errorf("expected inbound, got %s", parsed.Direction)
+		}
+		if parsed.DeliveryStatus == "" {
+			t.Errorf("expected non-empty delivery_status")
+		}
+	})
+
+	t.Run("whatsapp_account_send_message", func(t *testing.T) {
+		res, err := srv.CallTool(ctx, "whatsapp_account_send_message", map[string]any{
+			"workspace_id":  ws.ID.String(),
+			"connection_id": connID.String(),
+			"to":            "+5511999990000",
+			"message":       "Olá! Esta é uma notificação via WhatsApp account.",
+			"sender_name":   "OrderBot",
+		})
+		if err != nil {
+			t.Fatalf("CallTool whatsapp_account_send_message error: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("CallTool whatsapp_account_send_message returned tool error: %+v", res.Content)
+		}
+		var parsed struct {
+			Success      bool      `json:"success"`
+			ConnectionID uuid.UUID `json:"connection_id"`
+			TraceID      string    `json:"trace_id"`
+			To           string    `json:"to"`
+		}
+		if err := json.Unmarshal([]byte(res.Content[0].(mcp.TextContent).Text), &parsed); err != nil {
+			t.Fatalf("failed to unmarshal send result: %v", err)
+		}
+		if !parsed.Success {
+			t.Errorf("expected success true")
+		}
+		if parsed.ConnectionID != connID {
+			t.Errorf("expected connection_id %s, got %s", connID, parsed.ConnectionID)
+		}
+		if parsed.To != "+5511999990000" {
+			t.Errorf("expected to +5511999990000, got %s", parsed.To)
+		}
+	})
+
+	t.Run("message_reply_and_chat_send_message_reply_to_uid", func(t *testing.T) {
+		// 1. Send reply via message_reply
+		replyRes, err := srv.CallTool(ctx, "message_reply", map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"reply_to_uid": "mcp-msg-1",
+			"message":      "Respondendo diretamente à sua dúvida anterior.",
+			"sender_name":  "Support Rep",
+		})
+		if err != nil {
+			t.Fatalf("CallTool message_reply error: %v", err)
+		}
+		if replyRes.IsError {
+			t.Fatalf("CallTool message_reply returned tool error: %+v", replyRes.Content)
+		}
+		var parsedReply struct {
+			Success    bool    `json:"success"`
+			TraceID    string  `json:"trace_id"`
+			ReplyToUID *string `json:"reply_to_uid"`
+		}
+		if err := json.Unmarshal([]byte(replyRes.Content[0].(mcp.TextContent).Text), &parsedReply); err != nil {
+			t.Fatalf("failed to unmarshal reply result: %v", err)
+		}
+		if !parsedReply.Success {
+			t.Errorf("expected success true")
+		}
+		if parsedReply.ReplyToUID == nil || *parsedReply.ReplyToUID != "mcp-msg-1" {
+			t.Errorf("expected reply_to_uid 'mcp-msg-1', got %+v", parsedReply.ReplyToUID)
+		}
+
+		// Verify stored in DB with reply_to_uid
+		storedMsg, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, parsedReply.TraceID)
+		if err != nil {
+			t.Fatalf("failed to query stored reply message: %v", err)
+		}
+		if storedMsg.ReplyToUID == nil || *storedMsg.ReplyToUID != "mcp-msg-1" {
+			t.Errorf("expected stored msg reply_to_uid 'mcp-msg-1', got %+v", storedMsg.ReplyToUID)
+		}
+
+		// 2. Also verify chat_send_message with optional reply_to_uid
+		sendRes, err := srv.CallTool(ctx, "chat_send_message", map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"message":      "Mais uma resposta encadeada.",
+			"reply_to_uid": "mcp-msg-1",
+		})
+		if err != nil {
+			t.Fatalf("CallTool chat_send_message with reply_to_uid error: %v", err)
+		}
+		if sendRes.IsError {
+			t.Fatalf("CallTool chat_send_message returned tool error: %+v", sendRes.Content)
+		}
+		var parsedSend struct {
+			Success    bool    `json:"success"`
+			TraceID    string  `json:"trace_id"`
+			ReplyToUID *string `json:"reply_to_uid"`
+		}
+		if err := json.Unmarshal([]byte(sendRes.Content[0].(mcp.TextContent).Text), &parsedSend); err != nil {
+			t.Fatalf("failed to unmarshal send result: %v", err)
+		}
+		if parsedSend.ReplyToUID == nil || *parsedSend.ReplyToUID != "mcp-msg-1" {
+			t.Errorf("expected chat_send_message reply_to_uid 'mcp-msg-1', got %+v", parsedSend.ReplyToUID)
+		}
+	})
 }
 
