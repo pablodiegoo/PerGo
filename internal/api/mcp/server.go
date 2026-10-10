@@ -94,8 +94,9 @@ func WithHTTPClient(client *http.Client) ServerOption {
 
 // Server encapsulates the MCP Server instance and its service dependencies.
 type Server struct {
-	MCPServer *server.MCPServer
-	SSEServer *server.SSEServer
+	MCPServer        *server.MCPServer
+	SSEServer        *server.SSEServer
+	StreamableServer *server.StreamableHTTPServer
 
 	wsRepo            *repository.WorkspaceRepository
 	connectionRepo    *repository.ConnectionRepository
@@ -197,6 +198,14 @@ func NewServer(
 
 	// Create SSE transport server mounted on base path "/api/mcp"
 	s.SSEServer = server.NewSSEServer(mcpSrv, server.WithStaticBasePath("/api/mcp"))
+
+	// Create RFC 2025-03-26 Streamable HTTP transport server mounted on "/mcp"
+	s.StreamableServer = server.NewStreamableHTTPServer(
+		mcpSrv,
+		server.WithEndpointPath("/mcp"),
+		server.WithDisableLocalhostProtection(true),
+		server.WithSessionIdManager(&server.StatelessSessionIdManager{}),
+	)
 
 	return s
 }

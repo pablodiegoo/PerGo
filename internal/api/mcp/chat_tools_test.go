@@ -657,4 +657,32 @@ func TestMCPChatTools(t *testing.T) {
 			t.Errorf("expected 1 chat with tag 'vip', got %d", parsedTag.Count)
 		}
 	})
+
+	t.Run("workspace_quotas", func(t *testing.T) {
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+		}
+		res, err := srv.handleWorkspaceQuotas(ctx, req)
+		if err != nil {
+			t.Fatalf("handleWorkspaceQuotas error: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("handleWorkspaceQuotas returned tool error: %+v", res.Content)
+		}
+		var quotas WorkspaceQuotasDTO
+		if err := json.Unmarshal([]byte(res.Content[0].(mcp.TextContent).Text), &quotas); err != nil {
+			t.Fatalf("failed to unmarshal quotas: %v", err)
+		}
+		if quotas.WorkspaceID != ws.ID {
+			t.Errorf("expected workspace ID %s, got %s", ws.ID, quotas.WorkspaceID)
+		}
+		if quotas.Plan != "pro" {
+			t.Errorf("expected plan pro, got %s", quotas.Plan)
+		}
+		if quotas.SeatsLimit <= 0 {
+			t.Errorf("expected seats_limit > 0, got %d", quotas.SeatsLimit)
+		}
+	})
 }
+
