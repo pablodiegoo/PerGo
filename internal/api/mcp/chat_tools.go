@@ -16,8 +16,149 @@ import (
 
 func (s *Server) registerChatTools() {
 	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "workspace_team",
+		Description: "List all teammates, their roles, and accessible WhatsApp accounts in the workspace.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+			},
+			Required: []string{"workspace_id"},
+		},
+	}, s.handleWorkspaceTeam)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "chat_assign",
+		Description: "Assign a chat thread to a verified teammate by email. Strictly validates that the teammate belongs to the workspace team.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the chat thread.",
+				},
+				"email": map[string]interface{}{
+					"type":        "string",
+					"description": "The email address of the teammate to assign the chat to.",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id", "email"},
+		},
+	}, s.handleChatAssign)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "chat_unassign",
+		Description: "Remove teammate assignment from a chat thread.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the chat thread.",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id"},
+		},
+	}, s.handleChatUnassign)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "chat_set_label",
+		Description: "Idempotently attach a label/tag to a chat thread.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the chat thread.",
+				},
+				"label": map[string]interface{}{
+					"type":        "string",
+					"description": "The label/tag name to attach (e.g. 'vip', 'follow-up', 'support').",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id", "label"},
+		},
+	}, s.handleChatSetLabel)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "chat_remove_label",
+		Description: "Idempotently remove a label/tag from a chat thread.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the chat thread.",
+				},
+				"label": map[string]interface{}{
+					"type":        "string",
+					"description": "The label/tag name to remove.",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id", "label"},
+		},
+	}, s.handleChatRemoveLabel)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "chat_open",
+		Description: "Reopen a closed or archived chat thread.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the chat thread.",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id"},
+		},
+	}, s.handleChatOpen)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "chat_close",
+		Description: "Close/resolve/archive an active chat thread.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the chat thread.",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id"},
+		},
+	}, s.handleChatClose)
+
+	s.MCPServer.AddTool(mcp.Tool{
 		Name:        "list_chats",
-		Description: "List conversational chats in a workspace with optional filtering by status (open/closed), read/unread status, and contact phone number.",
+		Description: "List conversational chats in a workspace with optional filtering by status (open/closed), read/unread status, contact phone number, assignee, and tags.",
 		InputSchema: mcp.ToolInputSchema{
 			Type: "object",
 			Properties: map[string]interface{}{
@@ -36,6 +177,18 @@ func (s *Server) registerChatTools() {
 				"phone": map[string]interface{}{
 					"type":        "string",
 					"description": "Filter by contact phone number substring.",
+				},
+				"assigned_email": map[string]interface{}{
+					"type":        "string",
+					"description": "Filter by assigned teammate email address.",
+				},
+				"unassigned": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Filter by unassigned chats (true for only unassigned chats).",
+				},
+				"tag": map[string]interface{}{
+					"type":        "string",
+					"description": "Filter by tag/label.",
 				},
 				"limit": map[string]interface{}{
 					"type":        "integer",
@@ -151,6 +304,7 @@ func (s *Server) registerChatTools() {
 	}, s.handleChatCreateDraftNote)
 }
 
+
 // ChatSummaryDTO enriches domain.Chat with resolved contact summary for API/MCP readability.
 type ChatSummaryDTO struct {
 	domain.Chat
@@ -190,10 +344,30 @@ func (s *Server) handleListChats(ctx context.Context, request mcp.CallToolReques
 	limit := request.GetInt("limit", 20)
 	offset := request.GetInt("offset", 0)
 
+	var assignedEmailPtr *string
+	if emailVal := strings.TrimSpace(request.GetString("assigned_email", "")); emailVal != "" {
+		assignedEmailPtr = &emailVal
+	}
+
+	var unassignedPtr *bool
+	if unassignedVal, ok := args["unassigned"]; ok && unassignedVal != nil {
+		if b, ok := unassignedVal.(bool); ok {
+			unassignedPtr = &b
+		}
+	}
+
+	tag := strings.TrimSpace(request.GetString("tag", ""))
+	if tag == "" {
+		tag = strings.TrimSpace(request.GetString("label", ""))
+	}
+
 	filter := domain.ChatFilter{
-		Status: status,
-		Unread: unreadPtr,
-		Phone:  phone,
+		Status:        status,
+		Unread:        unreadPtr,
+		Phone:         phone,
+		AssignedEmail: assignedEmailPtr,
+		Unassigned:    unassignedPtr,
+		Tag:           tag,
 	}
 
 	chats, err := s.chatRepo.ListChats(ctx, wsID, filter, limit, offset)
@@ -453,6 +627,444 @@ func (s *Server) handleChatCreateDraftNote(ctx context.Context, request mcp.Call
 	}
 
 	data, err := json.MarshalIndent(note, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+// TeammateDTO represents a workspace member enriched with accessible connection accounts.
+type TeammateDTO struct {
+	ID                    uuid.UUID                 `json:"id"`
+	WorkspaceID           uuid.UUID                 `json:"workspace_id"`
+	Name                  string                    `json:"name"`
+	Email                 string                    `json:"email"`
+	Role                  string                    `json:"role"`
+	AccessibleAccounts    []AccessibleConnectionDTO `json:"accessible_whatsapp_accounts"`
+	AssignedConnectionIDs []uuid.UUID               `json:"assigned_connection_ids"`
+}
+
+// AccessibleConnectionDTO represents a communication channel accessible to a teammate.
+type AccessibleConnectionDTO struct {
+	ID             uuid.UUID `json:"id"`
+	Name           string    `json:"name"`
+	Channel        string    `json:"channel"`
+	SenderIdentity string    `json:"sender_identity"`
+	Status         string    `json:"status"`
+}
+
+func (s *Server) handleWorkspaceTeam(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.wsRepo == nil {
+		return mcp.NewToolResultError("workspace repository is not configured on this server"), nil
+	}
+
+	wsIDStr, err := request.RequireString("workspace_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing workspace_id parameter"), nil
+	}
+	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	}
+
+	members, err := s.wsRepo.ListMembers(ctx, wsID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to list workspace members: %v", err)), nil
+	}
+
+	// Auto-seed default admin if workspace has zero members yet
+	if len(members) == 0 {
+		defaultMember := &repository.WorkspaceMember{
+			WorkspaceID: wsID,
+			Name:        "Workspace Admin",
+			Email:       "admin@example.com",
+			Role:        "admin",
+		}
+		_ = s.wsRepo.AddMember(ctx, defaultMember)
+		members = []repository.WorkspaceMember{*defaultMember}
+	}
+
+	var allConns []*repository.Connection
+	if s.connectionRepo != nil {
+		allConns, _ = s.connectionRepo.ListByWorkspace(ctx, wsID)
+	}
+
+	connMap := make(map[uuid.UUID]*repository.Connection, len(allConns))
+	for _, c := range allConns {
+		connMap[c.ID] = c
+	}
+
+	teammates := make([]TeammateDTO, 0, len(members))
+	for _, m := range members {
+		dto := TeammateDTO{
+			ID:                    m.ID,
+			WorkspaceID:           m.WorkspaceID,
+			Name:                  m.Name,
+			Email:                 m.Email,
+			Role:                  m.Role,
+			AssignedConnectionIDs: m.AssignedConnectionIDs,
+			AccessibleAccounts:    []AccessibleConnectionDTO{},
+		}
+
+		if len(m.AssignedConnectionIDs) > 0 {
+			for _, cid := range m.AssignedConnectionIDs {
+				if conn, ok := connMap[cid]; ok {
+					dto.AccessibleAccounts = append(dto.AccessibleAccounts, AccessibleConnectionDTO{
+						ID:             conn.ID,
+						Name:           conn.Name,
+						Channel:        conn.Channel,
+						SenderIdentity: conn.SenderIdentity,
+						Status:         conn.Status,
+					})
+				}
+			}
+		} else {
+			for _, conn := range allConns {
+				dto.AccessibleAccounts = append(dto.AccessibleAccounts, AccessibleConnectionDTO{
+					ID:             conn.ID,
+					Name:           conn.Name,
+					Channel:        conn.Channel,
+					SenderIdentity: conn.SenderIdentity,
+					Status:         conn.Status,
+				})
+			}
+		}
+		teammates = append(teammates, dto)
+	}
+
+	data, err := json.MarshalIndent(map[string]interface{}{
+		"workspace_id": wsID,
+		"teammates":    teammates,
+		"count":        len(teammates),
+	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleChatAssign(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+	if s.wsRepo == nil {
+		return mcp.NewToolResultError("workspace repository is not configured on this server"), nil
+	}
+
+	wsIDStr, err := request.RequireString("workspace_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing workspace_id parameter"), nil
+	}
+	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	}
+
+	chatIDStr, err := request.RequireString("chat_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing chat_id parameter"), nil
+	}
+	chatID, err := uuid.Parse(strings.TrimSpace(chatIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
+	}
+
+	emailStr, err := request.RequireString("email")
+	if err != nil {
+		return mcp.NewToolResultError("missing email parameter"), nil
+	}
+	email := strings.TrimSpace(emailStr)
+	if email == "" {
+		return mcp.NewToolResultError("email cannot be empty"), nil
+	}
+
+	// Strictly validate that assigned email exists in workspace team
+	member, err := s.wsRepo.GetMemberByEmail(ctx, wsID, email)
+	if err != nil || member == nil {
+		return mcp.NewToolResultError(fmt.Sprintf("teammate with email %q not found in workspace %s. Call workspace_team to list valid teammates.", email, wsID)), nil
+	}
+
+	if err := s.chatRepo.AssignChat(ctx, wsID, chatID, &member.ID, &member.Email); err != nil {
+		if errors.Is(err, repository.ErrChatNotFound) {
+			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("failed to assign chat: %v", err)), nil
+	}
+
+	chat, _ := s.chatRepo.GetChat(ctx, wsID, chatID)
+
+	data, err := json.MarshalIndent(map[string]interface{}{
+		"success":          true,
+		"message":          "Chat successfully assigned",
+		"chat_id":          chatID,
+		"assigned_user_id": member.ID,
+		"assigned_email":   member.Email,
+		"chat":             chat,
+	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleChatUnassign(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+
+	wsIDStr, err := request.RequireString("workspace_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing workspace_id parameter"), nil
+	}
+	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	}
+
+	chatIDStr, err := request.RequireString("chat_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing chat_id parameter"), nil
+	}
+	chatID, err := uuid.Parse(strings.TrimSpace(chatIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
+	}
+
+	if err := s.chatRepo.AssignChat(ctx, wsID, chatID, nil, nil); err != nil {
+		if errors.Is(err, repository.ErrChatNotFound) {
+			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("failed to unassign chat: %v", err)), nil
+	}
+
+	chat, _ := s.chatRepo.GetChat(ctx, wsID, chatID)
+
+	data, err := json.MarshalIndent(map[string]interface{}{
+		"success": true,
+		"message": "Chat successfully unassigned",
+		"chat_id": chatID,
+		"chat":    chat,
+	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleChatSetLabel(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+
+	wsIDStr, err := request.RequireString("workspace_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing workspace_id parameter"), nil
+	}
+	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	}
+
+	chatIDStr, err := request.RequireString("chat_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing chat_id parameter"), nil
+	}
+	chatID, err := uuid.Parse(strings.TrimSpace(chatIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
+	}
+
+	label := strings.TrimSpace(request.GetString("label", ""))
+	if label == "" {
+		label = strings.TrimSpace(request.GetString("tag", ""))
+	}
+	if label == "" {
+		return mcp.NewToolResultError("missing label parameter"), nil
+	}
+
+	chat, err := s.chatRepo.GetChat(ctx, wsID, chatID)
+	if err != nil {
+		if errors.Is(err, repository.ErrChatNotFound) {
+			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("failed to get chat: %v", err)), nil
+	}
+
+	alreadyExists := false
+	for _, t := range chat.Tags {
+		if strings.EqualFold(t, label) {
+			alreadyExists = true
+			break
+		}
+	}
+
+	newTags := chat.Tags
+	if !alreadyExists {
+		newTags = append(newTags, label)
+		if err := s.chatRepo.SetChatTags(ctx, wsID, chatID, newTags); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to set chat tags: %v", err)), nil
+		}
+	}
+
+	data, err := json.MarshalIndent(map[string]interface{}{
+		"success": true,
+		"chat_id": chatID,
+		"label":   label,
+		"tags":    newTags,
+	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleChatRemoveLabel(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+
+	wsIDStr, err := request.RequireString("workspace_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing workspace_id parameter"), nil
+	}
+	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	}
+
+	chatIDStr, err := request.RequireString("chat_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing chat_id parameter"), nil
+	}
+	chatID, err := uuid.Parse(strings.TrimSpace(chatIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
+	}
+
+	label := strings.TrimSpace(request.GetString("label", ""))
+	if label == "" {
+		label = strings.TrimSpace(request.GetString("tag", ""))
+	}
+	if label == "" {
+		return mcp.NewToolResultError("missing label parameter"), nil
+	}
+
+	chat, err := s.chatRepo.GetChat(ctx, wsID, chatID)
+	if err != nil {
+		if errors.Is(err, repository.ErrChatNotFound) {
+			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("failed to get chat: %v", err)), nil
+	}
+
+	newTags := make([]string, 0, len(chat.Tags))
+	for _, t := range chat.Tags {
+		if !strings.EqualFold(t, label) {
+			newTags = append(newTags, t)
+		}
+	}
+
+	if len(newTags) != len(chat.Tags) {
+		if err := s.chatRepo.SetChatTags(ctx, wsID, chatID, newTags); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to set chat tags: %v", err)), nil
+		}
+	}
+
+	data, err := json.MarshalIndent(map[string]interface{}{
+		"success":       true,
+		"chat_id":       chatID,
+		"removed_label": label,
+		"tags":          newTags,
+	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleChatOpen(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+
+	wsIDStr, err := request.RequireString("workspace_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing workspace_id parameter"), nil
+	}
+	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	}
+
+	chatIDStr, err := request.RequireString("chat_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing chat_id parameter"), nil
+	}
+	chatID, err := uuid.Parse(strings.TrimSpace(chatIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
+	}
+
+	if err := s.chatRepo.UpdateChatStatus(ctx, wsID, chatID, string(domain.ChatStatusOpen)); err != nil {
+		if errors.Is(err, repository.ErrChatNotFound) {
+			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("failed to open chat: %v", err)), nil
+	}
+
+	data, err := json.MarshalIndent(map[string]interface{}{
+		"success": true,
+		"chat_id": chatID,
+		"status":  "open",
+	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleChatClose(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+
+	wsIDStr, err := request.RequireString("workspace_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing workspace_id parameter"), nil
+	}
+	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	}
+
+	chatIDStr, err := request.RequireString("chat_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing chat_id parameter"), nil
+	}
+	chatID, err := uuid.Parse(strings.TrimSpace(chatIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
+	}
+
+	if err := s.chatRepo.UpdateChatStatus(ctx, wsID, chatID, string(domain.ChatStatusClosed)); err != nil {
+		if errors.Is(err, repository.ErrChatNotFound) {
+			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("failed to close chat: %v", err)), nil
+	}
+
+	data, err := json.MarshalIndent(map[string]interface{}{
+		"success": true,
+		"chat_id": chatID,
+		"status":  "closed",
+	}, "", "  ")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
 	}

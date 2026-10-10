@@ -539,6 +539,35 @@ func (r *ContactRepository) CloseThread(ctx context.Context, workspaceID, contac
 	return err
 }
 
+// ReopenThread resets closed_at to NULL.
+func (r *ContactRepository) ReopenThread(ctx context.Context, workspaceID, contactID uuid.UUID) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
+	_, err := r.pool.Exec(ctx, `
+		UPDATE contacts 
+		SET closed_at = NULL, updated_at = NOW() 
+		WHERE workspace_id = $1 AND id = $2
+	`, workspaceID, contactID)
+	return err
+}
+
+// SetTags overwrites the contact's tag list.
+func (r *ContactRepository) SetTags(ctx context.Context, workspaceID, contactID uuid.UUID, tags []string) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	_, err := r.pool.Exec(ctx, `
+		UPDATE contacts 
+		SET tags = $3, updated_at = NOW() 
+		WHERE workspace_id = $1 AND id = $2
+	`, workspaceID, contactID, tags)
+	return err
+}
+
 // UpdateBotState toggles bot activity and sets the paused timestamp for a contact.
 func (r *ContactRepository) UpdateBotState(ctx context.Context, workspaceID, contactID uuid.UUID, botActive bool, pausedAt *time.Time) error {
 	if workspaceID == uuid.Nil {

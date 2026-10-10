@@ -81,8 +81,11 @@ type ChatMessage struct {
 
 // ChatFilter encapsulates querying criteria for listing workspace chats.
 type ChatFilter struct {
-	Status    string     `json:"status,omitempty"`
-	Unread    *bool      `json:"unread,omitempty"`
-	Phone     string     `json:"phone,omitempty"`
-	ContactID *uuid.UUID `json:"contact_id,omitempty"`
+	Status        string     `json:"status,omitempty"`
+	Unread        *bool      `json:"unread,omitempty"`
+	Phone         string     `json:"phone,omitempty"`
+	ContactID     *uuid.UUID `json:"contact_id,omitempty"`
+	AssignedEmail *string    `json:"assigned_email,omitempty"`
+	Unassigned    *bool      `json:"unassigned,omitempty"`
+	Tag           string     `json:"tag,omitempty"`
 }

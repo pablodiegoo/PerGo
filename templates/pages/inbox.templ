@@ -18,13 +18,14 @@ type InboxMessage struct {
 }
 
 // InboxPage renders the full split-pane inbox page with sidebar, conversation list, and chat panel.
-templ InboxPage(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection) {
-	@layout.Base(i18n.T(ctx, "inbox.title"), InboxContent(conversations, unreadMap, activeChannel, unreadCount, chatPanel, connections))
+templ InboxPage(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection, statusFilter ...string) {
+	@layout.Base(i18n.T(ctx, "inbox.title"), InboxContent(conversations, unreadMap, activeChannel, unreadCount, chatPanel, connections, statusFilter...))
 }
 
 // InboxContent renders the split-pane layout (conversation list + chat panel).
 // Used both for full-page render and HTMX partial swap.
-templ InboxContent(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection) {
+templ InboxContent(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection, statusFilter ...string) {
+
 	<div class="inbox-shell flex h-full w-full overflow-hidden text-[#37352f] dark:text-[#e3e3e3]">
 		<!-- Left panel: conversation list -->
 		<div class="inbox-sidebar w-80 lg:w-80 md:w-72 flex-shrink-0 border-r border-[#e9e9e7] dark:border-[#2f2f2f] flex flex-col bg-white dark:bg-[#202020] h-full overflow-hidden">
@@ -96,7 +97,7 @@ templ InboxContent(conversations []repository.ConversationSummary, unreadMap map
 				</div>
 			</div>
 			<!-- Conversation list with polling -->
-			@components.ConvList(conversations, unreadMap, activeChannel, unreadCount)
+			@components.ConvList(conversations, unreadMap, activeChannel, unreadCount, statusFilter...)
 		</div>
 		<!-- Right panel: chat view (middle conversation + right CRM panel) -->
 		<div id="chat-panel" class="chat-panel flex-1 flex bg-[#fbfbfa] dark:bg-[#191919] h-full overflow-hidden">
