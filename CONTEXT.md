@@ -148,6 +148,28 @@ _Avoid_: DLQ retry button, manual redelivery, payload pusher
 A high-value MCP domain tool (`inspect_queue_health`) querying real-time NATS JetStream stream capacity, pending consumer acks, and retention queue pressure across message and webhook streams.
 _Avoid_: NATS monitor, queue stats, stream checker
 
+### Shared Team Inbox & Agent Triage
+
+**Chat**:
+An active conversational thread between a Contact and a Connection within a Workspace, tracking read status, assignment, and tags.
+_Avoid_: Conversation, ticket, thread, session
+
+**Internal Note**:
+A workspace-scoped private commentary attached to a Chat thread, invisible to external contacts, utilized for teammate collaboration and AI agent draft proposals.
+_Avoid_: Private message, secret note, staff comment
+
+**Message Reaction**:
+An ephemeral emoji reaction attached to an inbound or outbound message identified by UID.
+_Avoid_: Like, emoji badge, message feedback
+
+**Inbound Debounce Buffer**:
+A temporal sliding-window delay buffering rapid consecutive inbound messages from the same Contact into a single cohesive conversational event.
+_Avoid_: Message queue, delay timer, spam filter
+
+**Human Handoff Trigger**:
+An event-driven circuit breaker that immediately deactivates automated AI agents for a Chat when an authenticated human teammate sends a message.
+_Avoid_: Bot pause, human override, manual takeover
+
 ### Localization & Presentation
 
 **Supported Locale**:
