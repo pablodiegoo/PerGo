@@ -195,6 +195,22 @@ func (r *ChatRepository) ListChats(
 		argIdx++
 	}
 
+	if filter.AssignedEmail != nil && *filter.AssignedEmail != "" {
+		query += fmt.Sprintf(" AND assigned_email = $%d", argIdx)
+		args = append(args, *filter.AssignedEmail)
+		argIdx++
+	}
+
+	if filter.Unassigned != nil && *filter.Unassigned {
+		query += " AND (assigned_email IS NULL OR assigned_email = '')"
+	}
+
+	if filter.Tag != "" {
+		query += fmt.Sprintf(" AND $%d = ANY(tags)", argIdx)
+		args = append(args, filter.Tag)
+		argIdx++
+	}
+
 	query += fmt.Sprintf(" ORDER BY last_message_at DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
 	args = append(args, limit, offset)
 

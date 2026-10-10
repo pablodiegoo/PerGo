@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -271,3 +272,124 @@ func (r *WorkspaceRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM workspaces WHERE id = $1`, id)
 	return err
 }
+
+var (
+	ErrMemberNotFound = errors.New("workspace member not found")
+)
+
+// WorkspaceMember represents a team member belonging to a workspace.
+type WorkspaceMember struct {
+	ID                    uuid.UUID   `json:"id"`
+	WorkspaceID           uuid.UUID   `json:"workspace_id"`
+	Name                  string      `json:"name"`
+	Email                 string      `json:"email"`
+	Role                  string      `json:"role"` // 'owner', 'admin', 'operator', 'agent'
+	AssignedConnectionIDs []uuid.UUID `json:"assigned_connection_ids"`
+	CreatedAt             time.Time   `json:"created_at"`
+	UpdatedAt             time.Time   `json:"updated_at"`
+}
+
+// AddMember adds or updates a member in a workspace.
+func (r *WorkspaceRepository) AddMember(ctx context.Context, member *WorkspaceMember) error {
+	if member == nil {
+		return errors.New("member cannot be nil")
+	}
+	if member.WorkspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
+	if strings.TrimSpace(member.Email) == "" {
+		return errors.New("email is required")
+	}
+	if member.ID == uuid.Nil {
+		member.ID = uuid.New()
+	}
+	if member.Role == "" {
+		member.Role = "operator"
+	}
+	if member.Name == "" {
+		member.Name = member.Email
+	}
+	if member.AssignedConnectionIDs == nil {
+		member.AssignedConnectionIDs = []uuid.UUID{}
+	}
+
+	return r.pool.QueryRow(ctx, `
+		INSERT INTO workspace_members (id, workspace_id, name, email, role, assigned_connection_ids, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+		ON CONFLICT (workspace_id, email)
+		DO UPDATE SET name = EXCLUDED.name, role = EXCLUDED.role, assigned_connection_ids = EXCLUDED.assigned_connection_ids, updated_at = NOW()
+		RETURNING id, created_at, updated_at
+	`, member.ID, member.WorkspaceID, member.Name, strings.TrimSpace(member.Email), member.Role, member.AssignedConnectionIDs).Scan(&member.ID, &member.CreatedAt, &member.UpdatedAt)
+}
+
+// ListMembers returns all team members for a workspace.
+func (r *WorkspaceRepository) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]WorkspaceMember, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, workspace_id, name, email, role, assigned_connection_ids, created_at, updated_at
+		FROM workspace_members
+		WHERE workspace_id = $1
+		ORDER BY created_at ASC
+	`, workspaceID)
+	if err != nil {
+		return nil, fmt.Errorf("list workspace members: %w", err)
+	}
+	defer rows.Close()
+
+	var members []WorkspaceMember
+	for rows.Next() {
+		var m WorkspaceMember
+		if err := rows.Scan(&m.ID, &m.WorkspaceID, &m.Name, &m.Email, &m.Role, &m.AssignedConnectionIDs, &m.CreatedAt, &m.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan workspace member: %w", err)
+		}
+		members = append(members, m)
+	}
+	return members, rows.Err()
+}
+
+// GetMemberByEmail retrieves a single workspace member by email (case-insensitive).
+func (r *WorkspaceRepository) GetMemberByEmail(ctx context.Context, workspaceID uuid.UUID, email string) (*WorkspaceMember, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
+	trimmedEmail := strings.TrimSpace(email)
+	if trimmedEmail == "" {
+		return nil, errors.New("email cannot be empty")
+	}
+
+	var m WorkspaceMember
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, workspace_id, name, email, role, assigned_connection_ids, created_at, updated_at
+		FROM workspace_members
+		WHERE workspace_id = $1 AND LOWER(email) = LOWER($2)
+	`, workspaceID, trimmedEmail).Scan(&m.ID, &m.WorkspaceID, &m.Name, &m.Email, &m.Role, &m.AssignedConnectionIDs, &m.CreatedAt, &m.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrMemberNotFound
+		}
+		return nil, fmt.Errorf("get member by email: %w", err)
+	}
+	return &m, nil
+}
+
+// RemoveMember removes a team member from a workspace by email.
+func (r *WorkspaceRepository) RemoveMember(ctx context.Context, workspaceID uuid.UUID, email string) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
+	res, err := r.pool.Exec(ctx, `
+		DELETE FROM workspace_members
+		WHERE workspace_id = $1 AND LOWER(email) = LOWER($2)
+	`, workspaceID, strings.TrimSpace(email))
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return ErrMemberNotFound
+	}
+	return nil
+}
+

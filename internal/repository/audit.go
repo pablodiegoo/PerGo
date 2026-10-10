@@ -177,6 +177,9 @@ type ConversationSummary struct {
 	TotalMessageCount int64     `json:"total_message_count"`
 	Channel           string    `json:"channel"`            // channel of last message
 	RecipientIdentity string    `json:"recipient_identity"` // recipient identity of last message
+	Status            string    `json:"status,omitempty"`
+	AssignedEmail     *string   `json:"assigned_email,omitempty"`
+	Tags              []string  `json:"tags,omitempty"`
 }
 
 // ThreadMessage represents a single message in a chronological conversation thread.

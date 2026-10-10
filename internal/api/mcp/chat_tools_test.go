@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -240,4 +241,272 @@ func TestMCPChatTools(t *testing.T) {
 			t.Errorf("expected [mcp-msg-1, mcp-msg-2], got %s, %s", parsedBefore.Messages[0].UID, parsedBefore.Messages[1].UID)
 		}
 	})
+
+	t.Run("workspace_team", func(t *testing.T) {
+		// Add explicit member
+		memberID := uuid.New()
+		err := wsRepo.AddMember(ctx, &repository.WorkspaceMember{
+			ID:                    memberID,
+			WorkspaceID:           ws.ID,
+			Name:                  "Bob Support",
+			Email:                 "bob@example.com",
+			Role:                  "operator",
+			AssignedConnectionIDs: []uuid.UUID{connID},
+		})
+		if err != nil {
+			t.Fatalf("failed to add member: %v", err)
+		}
+
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+		}
+
+		res, err := srv.handleWorkspaceTeam(ctx, req)
+		if err != nil {
+			t.Fatalf("handleWorkspaceTeam error: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("handleWorkspaceTeam returned error: %+v", res.Content)
+		}
+
+		text := res.Content[0].(mcp.TextContent).Text
+		var parsed struct {
+			WorkspaceID uuid.UUID     `json:"workspace_id"`
+			Teammates   []TeammateDTO `json:"teammates"`
+			Count       int           `json:"count"`
+		}
+		if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+			t.Fatalf("failed to unmarshal output: %v", err)
+		}
+
+		foundBob := false
+		for _, tm := range parsed.Teammates {
+			if tm.Email == "bob@example.com" {
+				foundBob = true
+				if tm.Role != "operator" {
+					t.Errorf("expected role operator, got %s", tm.Role)
+				}
+				if len(tm.AccessibleAccounts) != 1 || tm.AccessibleAccounts[0].ID != connID {
+					t.Errorf("expected 1 accessible connection matching connID, got %+v", tm.AccessibleAccounts)
+				}
+			}
+		}
+		if !foundBob {
+			t.Fatalf("expected to find Bob Support in workspace team")
+		}
+	})
+
+	t.Run("chat_assign_valid_and_unknown_validation_error", func(t *testing.T) {
+		// 1. Unknown email must be rejected with explicit actionable validation error
+		reqInvalid := mcp.CallToolRequest{}
+		reqInvalid.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"email":        "ghost@nowhere.invalid",
+		}
+
+		resInvalid, err := srv.handleChatAssign(ctx, reqInvalid)
+		if err != nil {
+			t.Fatalf("handleChatAssign error: %v", err)
+		}
+		if !resInvalid.IsError {
+			t.Fatalf("expected tool error for unknown email, got success: %+v", resInvalid.Content)
+		}
+		errText := resInvalid.Content[0].(mcp.TextContent).Text
+		if !strings.Contains(errText, "ghost@nowhere.invalid") || !strings.Contains(errText, "workspace_team") {
+			t.Errorf("expected actionable error mentioning email and workspace_team, got %q", errText)
+		}
+
+		// 2. Valid email assignment
+		reqValid := mcp.CallToolRequest{}
+		reqValid.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"email":        "bob@example.com",
+		}
+
+		resValid, err := srv.handleChatAssign(ctx, reqValid)
+		if err != nil {
+			t.Fatalf("handleChatAssign valid error: %v", err)
+		}
+		if resValid.IsError {
+			t.Fatalf("expected success for bob@example.com, got error: %+v", resValid.Content)
+		}
+
+		// Verify chat state in DB
+		updatedChat, err := chatRepo.GetChat(ctx, ws.ID, chat.ID)
+		if err != nil {
+			t.Fatalf("failed to fetch updated chat: %v", err)
+		}
+		if updatedChat.AssignedEmail == nil || *updatedChat.AssignedEmail != "bob@example.com" {
+			t.Errorf("expected assigned email bob@example.com, got %v", updatedChat.AssignedEmail)
+		}
+	})
+
+	t.Run("chat_unassign", func(t *testing.T) {
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+		}
+
+		res, err := srv.handleChatUnassign(ctx, req)
+		if err != nil {
+			t.Fatalf("handleChatUnassign error: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("expected success, got error: %+v", res.Content)
+		}
+
+		updatedChat, _ := chatRepo.GetChat(ctx, ws.ID, chat.ID)
+		if updatedChat.AssignedEmail != nil {
+			t.Errorf("expected nil assigned email after unassign, got %v", *updatedChat.AssignedEmail)
+		}
+	})
+
+	t.Run("chat_set_label_idempotent_and_remove_label", func(t *testing.T) {
+		// Set label 'urgent'
+		reqSet := mcp.CallToolRequest{}
+		reqSet.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"label":        "urgent",
+		}
+
+		resSet, err := srv.handleChatSetLabel(ctx, reqSet)
+		if err != nil || resSet.IsError {
+			t.Fatalf("handleChatSetLabel failed: %v, %+v", err, resSet)
+		}
+
+		// Idempotency: set label 'urgent' again
+		resSet2, err := srv.handleChatSetLabel(ctx, reqSet)
+		if err != nil || resSet2.IsError {
+			t.Fatalf("handleChatSetLabel 2 failed: %v, %+v", err, resSet2)
+		}
+
+		chatAfterSet, _ := chatRepo.GetChat(ctx, ws.ID, chat.ID)
+		urgentCount := 0
+		for _, tag := range chatAfterSet.Tags {
+			if tag == "urgent" {
+				urgentCount++
+			}
+		}
+		if urgentCount != 1 {
+			t.Errorf("expected exactly 1 instance of 'urgent' tag, got %d in %+v", urgentCount, chatAfterSet.Tags)
+		}
+
+		// Remove label 'urgent'
+		reqRemove := mcp.CallToolRequest{}
+		reqRemove.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"label":        "urgent",
+		}
+
+		resRemove, err := srv.handleChatRemoveLabel(ctx, reqRemove)
+		if err != nil || resRemove.IsError {
+			t.Fatalf("handleChatRemoveLabel failed: %v, %+v", err, resRemove)
+		}
+
+		chatAfterRemove, _ := chatRepo.GetChat(ctx, ws.ID, chat.ID)
+		for _, tag := range chatAfterRemove.Tags {
+			if tag == "urgent" {
+				t.Errorf("expected 'urgent' tag to be removed, but still present in %+v", chatAfterRemove.Tags)
+			}
+		}
+	})
+
+	t.Run("chat_close_and_chat_open", func(t *testing.T) {
+		// Close
+		reqClose := mcp.CallToolRequest{}
+		reqClose.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+		}
+
+		resClose, err := srv.handleChatClose(ctx, reqClose)
+		if err != nil || resClose.IsError {
+			t.Fatalf("handleChatClose failed: %v, %+v", err, resClose)
+		}
+
+		chatClosed, _ := chatRepo.GetChat(ctx, ws.ID, chat.ID)
+		if chatClosed.Status != "closed" {
+			t.Errorf("expected closed status, got %s", chatClosed.Status)
+		}
+
+		// Reopen
+		reqOpen := mcp.CallToolRequest{}
+		reqOpen.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+		}
+
+		resOpen, err := srv.handleChatOpen(ctx, reqOpen)
+		if err != nil || resOpen.IsError {
+			t.Fatalf("handleChatOpen failed: %v, %+v", err, resOpen)
+		}
+
+		chatOpened, _ := chatRepo.GetChat(ctx, ws.ID, chat.ID)
+		if chatOpened.Status != "open" {
+			t.Errorf("expected open status, got %s", chatOpened.Status)
+		}
+	})
+
+	t.Run("list_chats_with_triage_filters", func(t *testing.T) {
+		// Assign chat to bob@example.com
+		_ = chatRepo.AssignChat(ctx, ws.ID, chat.ID, nil, &[]string{"bob@example.com"}[0])
+
+		// 1. Filter by assigned_email
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"workspace_id":   ws.ID.String(),
+			"assigned_email": "bob@example.com",
+		}
+		res, err := srv.handleListChats(ctx, req)
+		if err != nil || res.IsError {
+			t.Fatalf("handleListChats assigned error: %v, %+v", err, res)
+		}
+		var parsed struct {
+			Chats []ChatSummaryDTO `json:"chats"`
+			Count int              `json:"count"`
+		}
+		_ = json.Unmarshal([]byte(res.Content[0].(mcp.TextContent).Text), &parsed)
+		if parsed.Count != 1 {
+			t.Errorf("expected 1 chat for bob@example.com, got %d", parsed.Count)
+		}
+
+		// 2. Filter by unassigned
+		reqUnassigned := mcp.CallToolRequest{}
+		reqUnassigned.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"unassigned":   true,
+		}
+		resUnassigned, _ := srv.handleListChats(ctx, reqUnassigned)
+		var parsedUnassigned struct {
+			Chats []ChatSummaryDTO `json:"chats"`
+			Count int              `json:"count"`
+		}
+		_ = json.Unmarshal([]byte(resUnassigned.Content[0].(mcp.TextContent).Text), &parsedUnassigned)
+		if parsedUnassigned.Count != 0 {
+			t.Errorf("expected 0 unassigned chats, got %d", parsedUnassigned.Count)
+		}
+
+		// 3. Filter by tag
+		reqTag := mcp.CallToolRequest{}
+		reqTag.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"tag":          "vip",
+		}
+		resTag, _ := srv.handleListChats(ctx, reqTag)
+		var parsedTag struct {
+			Chats []ChatSummaryDTO `json:"chats"`
+			Count int              `json:"count"`
+		}
+		_ = json.Unmarshal([]byte(resTag.Content[0].(mcp.TextContent).Text), &parsedTag)
+		if parsedTag.Count != 1 {
+			t.Errorf("expected 1 chat with tag 'vip', got %d", parsedTag.Count)
+		}
+	})
 }
+

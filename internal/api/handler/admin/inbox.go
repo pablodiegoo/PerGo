@@ -15,6 +15,7 @@ import (
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/presence"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/components"
 	"github.com/pablojhp.pergo/templates/pages"
@@ -36,6 +37,7 @@ type InboxHandler struct {
 	ContactRepo    *repository.ContactRepository
 	UserActionLogs *repository.UserActionLogRepository
 	ChatRepo       *repository.ChatRepository
+	Presence       *presence.Tracker
 }
 
 // loadConversations fetches conversations and computes unread state.
@@ -48,11 +50,66 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 		return nil, nil, 0, err
 	}
 
+	statusFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("status")))
+	assignedFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("assigned")))
+	tagFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("tag")))
+
 	unreadMap := make(map[string]bool, len(conversations))
 	unreadCount := 0
+	filtered := make([]repository.ConversationSummary, 0, len(conversations))
 
 	for i := range conversations {
 		conv := &conversations[i]
+
+		if h.ChatRepo != nil && workspaceID != uuid.Nil {
+			if chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, conv.ContactID); cErr == nil && chat != nil {
+				conv.Status = chat.Status
+				conv.AssignedEmail = chat.AssignedEmail
+				conv.Tags = chat.Tags
+			}
+		}
+		if conv.Status == "" {
+			conv.Status = "open"
+		}
+
+		// Apply status filter
+		switch statusFilter {
+		case "closed":
+			if conv.Status != "closed" {
+				continue
+			}
+		case "unassigned":
+			if conv.Status == "closed" || (conv.AssignedEmail != nil && *conv.AssignedEmail != "") {
+				continue
+			}
+		case "all":
+			// no status filtering
+		default: // "open" or empty
+			if conv.Status == "closed" {
+				continue
+			}
+		}
+
+		// Apply assigned filter
+		if assignedFilter != "" {
+			if conv.AssignedEmail == nil || strings.ToLower(*conv.AssignedEmail) != assignedFilter {
+				continue
+			}
+		}
+
+		// Apply tag filter
+		if tagFilter != "" {
+			hasTag := false
+			for _, t := range conv.Tags {
+				if strings.ToLower(t) == tagFilter {
+					hasTag = true
+					break
+				}
+			}
+			if !hasTag {
+				continue
+			}
+		}
 
 		isUnread := false
 		if h.ContactRepo != nil {
@@ -63,9 +120,10 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 		if isUnread {
 			unreadCount++
 		}
+		filtered = append(filtered, *conv)
 	}
 
-	return conversations, unreadMap, unreadCount, nil
+	return filtered, unreadMap, unreadCount, nil
 }
 
 // View handles GET /admin/inbox — renders the full split-pane inbox page.
@@ -77,6 +135,7 @@ func (h *InboxHandler) View(c *echo.Context) error {
 		workspaceID = id
 	}
 	connectionFilter := c.QueryParam("connection")
+	statusFilter := c.QueryParam("status")
 
 	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, connectionFilter)
 	if err != nil {
@@ -88,10 +147,10 @@ func (h *InboxHandler) View(c *echo.Context) error {
 		connections, _ = h.Connections.ListByWorkspace(c.Request().Context(), workspaceID)
 	}
 
-	inboxPage := pages.InboxPage(conversations, unreadMap, connectionFilter, unreadCount, nil, connections)
+	inboxPage := pages.InboxPage(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter)
 
 	if mw.IsHTMX(c) {
-		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, connectionFilter, unreadCount, nil, connections))
+		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter))
 	}
 	return mw.Render(c, http.StatusOK, inboxPage)
 }
@@ -106,13 +165,14 @@ func (h *InboxHandler) PollConversations(c *echo.Context) error {
 		workspaceID = id
 	}
 	connectionFilter := c.QueryParam("connection")
+	statusFilter := c.QueryParam("status")
 
 	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, connectionFilter)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to load conversations")
 	}
 
-	return mw.Render(c, http.StatusOK, components.ConvList(conversations, unreadMap, connectionFilter, unreadCount))
+	return mw.Render(c, http.StatusOK, components.ConvList(conversations, unreadMap, connectionFilter, unreadCount, statusFilter))
 }
 
 // ReplyOption holds reply connection options for picker
@@ -129,7 +189,10 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		workspaceID = id
 	}
 
-	contactIDStr := c.QueryParam("contact_id")
+	contactIDStr := strings.TrimSpace(c.QueryParam("contact_id"))
+	if contactIDStr == "" {
+		contactIDStr = strings.TrimSpace(c.FormValue("contact_id"))
+	}
 	if contactIDStr == "" {
 		return c.HTML(http.StatusBadRequest, `<div class="p-4 text-red-500">Parâmetro inválido: contact_id é obrigatório.</div>`)
 	}
@@ -247,8 +310,17 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		isWabaBlocked = !hasOpenWindow
 	}
 
+	var chat *domain.Chat
+	if h.ChatRepo != nil && workspaceID != uuid.Nil {
+		chat, _ = h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID)
+	}
+	var members []repository.WorkspaceMember
+	if h.Workspaces != nil && workspaceID != uuid.Nil {
+		members, _ = h.Workspaces.ListMembers(ctx, workspaceID)
+	}
+
 	if mw.IsHTMX(c) {
-		return mw.Render(c, http.StatusOK, components.ChatPanel(contact, replyOptions, messages, isWabaBlocked))
+		return mw.Render(c, http.StatusOK, components.ChatPanel(contact, replyOptions, messages, isWabaBlocked, chat, members))
 	}
 
 	// Direct page reload -> render the full page with this chat panel pre-opened
@@ -257,7 +329,7 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "failed to load conversations: "+err.Error())
 	}
 
-	chatPanelComp := components.ChatPanel(contact, replyOptions, messages, isWabaBlocked)
+	chatPanelComp := components.ChatPanel(contact, replyOptions, messages, isWabaBlocked, chat, members)
 	return mw.Render(c, http.StatusOK, pages.InboxPage(conversations, unreadMap, "", unreadCount, chatPanelComp, connections))
 }
 
@@ -796,3 +868,238 @@ func (h *InboxHandler) ToggleBot(c *echo.Context) error {
 	contact.BotPausedAt = pausedAt
 	return mw.Render(c, http.StatusOK, components.BotStatusBadge(contact))
 }
+
+// AssignChat handles POST /admin/inbox/assign
+func (h *InboxHandler) AssignChat(c *echo.Context) error {
+	ctx := c.Request().Context()
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	contactIDStr := strings.TrimSpace(c.QueryParam("contact_id"))
+	if contactIDStr == "" {
+		contactIDStr = strings.TrimSpace(c.FormValue("contact_id"))
+	}
+	if contactIDStr == "" {
+		return c.String(http.StatusBadRequest, "contact_id is required")
+	}
+	contactID, err := uuid.Parse(contactIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid contact_id")
+	}
+
+	email := strings.TrimSpace(c.FormValue("email"))
+	if email == "" {
+		email = strings.TrimSpace(c.QueryParam("email"))
+	}
+
+	if h.ChatRepo != nil {
+		chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID)
+		if cErr != nil {
+			return c.String(http.StatusInternalServerError, "failed to find or create chat: "+cErr.Error())
+		}
+
+		if email == "" {
+			if err := h.ChatRepo.AssignChat(ctx, workspaceID, chat.ID, nil, nil); err != nil {
+				return c.String(http.StatusInternalServerError, "failed to unassign chat: "+err.Error())
+			}
+		} else {
+			var memberID *uuid.UUID
+			var memberEmail *string
+			if h.Workspaces != nil {
+				member, mErr := h.Workspaces.GetMemberByEmail(ctx, workspaceID, email)
+				if mErr != nil || member == nil {
+					return c.String(http.StatusBadRequest, fmt.Sprintf("teammate with email %q not found in workspace", email))
+				}
+				memberID = &member.ID
+				memberEmail = &member.Email
+			} else {
+				memberEmail = &email
+			}
+			if err := h.ChatRepo.AssignChat(ctx, workspaceID, chat.ID, memberID, memberEmail); err != nil {
+				return c.String(http.StatusInternalServerError, "failed to assign chat: "+err.Error())
+			}
+		}
+	}
+
+	c.Response().Header().Set("HX-Trigger", "refreshConversations")
+	return h.ChatPanel(c)
+}
+
+// AddChatTag handles POST /admin/inbox/tags/add
+func (h *InboxHandler) AddChatTag(c *echo.Context) error {
+	ctx := c.Request().Context()
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	contactIDStr := strings.TrimSpace(c.QueryParam("contact_id"))
+	if contactIDStr == "" {
+		contactIDStr = strings.TrimSpace(c.FormValue("contact_id"))
+	}
+	if contactIDStr == "" {
+		return c.String(http.StatusBadRequest, "contact_id is required")
+	}
+	contactID, err := uuid.Parse(contactIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid contact_id")
+	}
+
+	tag := strings.TrimSpace(c.FormValue("tag"))
+	if tag == "" {
+		tag = strings.TrimSpace(c.QueryParam("tag"))
+	}
+
+	if tag != "" {
+		if h.ChatRepo != nil {
+			chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID)
+			if cErr == nil && chat != nil {
+				alreadyExists := false
+				for _, t := range chat.Tags {
+					if strings.EqualFold(t, tag) {
+						alreadyExists = true
+						break
+					}
+				}
+				if !alreadyExists {
+					newTags := append(chat.Tags, tag)
+					_ = h.ChatRepo.SetChatTags(ctx, workspaceID, chat.ID, newTags)
+				}
+			}
+		}
+		if h.ContactRepo != nil {
+			_ = h.ContactRepo.AddTags(ctx, workspaceID, contactID, []string{tag})
+		}
+	}
+
+	c.Response().Header().Set("HX-Trigger", "refreshConversations")
+	return h.ChatPanel(c)
+}
+
+// RemoveChatTag handles POST /admin/inbox/tags/remove
+func (h *InboxHandler) RemoveChatTag(c *echo.Context) error {
+	ctx := c.Request().Context()
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	contactIDStr := strings.TrimSpace(c.QueryParam("contact_id"))
+	if contactIDStr == "" {
+		contactIDStr = strings.TrimSpace(c.FormValue("contact_id"))
+	}
+	if contactIDStr == "" {
+		return c.String(http.StatusBadRequest, "contact_id is required")
+	}
+	contactID, err := uuid.Parse(contactIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid contact_id")
+	}
+
+	tag := strings.TrimSpace(c.QueryParam("tag"))
+	if tag == "" {
+		tag = strings.TrimSpace(c.FormValue("tag"))
+	}
+
+	if tag != "" {
+		if h.ChatRepo != nil {
+			chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID)
+			if cErr == nil && chat != nil {
+				var newTags []string
+				for _, t := range chat.Tags {
+					if !strings.EqualFold(t, tag) {
+						newTags = append(newTags, t)
+					}
+				}
+				_ = h.ChatRepo.SetChatTags(ctx, workspaceID, chat.ID, newTags)
+			}
+		}
+		if h.ContactRepo != nil {
+			if contact, cErr := h.ContactRepo.GetByID(ctx, workspaceID, contactID); cErr == nil && contact != nil {
+				var newTags []string
+				for _, t := range contact.Tags {
+					if !strings.EqualFold(t, tag) {
+						newTags = append(newTags, t)
+					}
+				}
+				_ = h.ContactRepo.SetTags(ctx, workspaceID, contactID, newTags)
+			}
+		}
+	}
+
+	c.Response().Header().Set("HX-Trigger", "refreshConversations")
+	return h.ChatPanel(c)
+}
+
+// UpdateChatStatus handles POST /admin/inbox/status
+func (h *InboxHandler) UpdateChatStatus(c *echo.Context) error {
+	ctx := c.Request().Context()
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	contactIDStr := strings.TrimSpace(c.QueryParam("contact_id"))
+	if contactIDStr == "" {
+		contactIDStr = strings.TrimSpace(c.FormValue("contact_id"))
+	}
+	if contactIDStr == "" {
+		return c.String(http.StatusBadRequest, "contact_id is required")
+	}
+	contactID, err := uuid.Parse(contactIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid contact_id")
+	}
+
+	status := strings.ToLower(strings.TrimSpace(c.QueryParam("status")))
+	if status == "" {
+		status = strings.ToLower(strings.TrimSpace(c.FormValue("status")))
+	}
+	if status != "closed" {
+		status = "open"
+	}
+
+	if h.ChatRepo != nil {
+		chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID)
+		if cErr != nil {
+			return c.String(http.StatusInternalServerError, "failed to find or create chat: "+cErr.Error())
+		}
+		if err := h.ChatRepo.UpdateChatStatus(ctx, workspaceID, chat.ID, status); err != nil {
+			return c.String(http.StatusInternalServerError, "failed to update chat status: "+err.Error())
+		}
+	}
+
+	if h.ContactRepo != nil {
+		if status == "closed" {
+			_ = h.ContactRepo.CloseThread(ctx, workspaceID, contactID)
+		} else {
+			_ = h.ContactRepo.ReopenThread(ctx, workspaceID, contactID)
+		}
+	}
+
+	c.Response().Header().Set("HX-Trigger", "refreshConversations")
+	return h.ChatPanel(c)
+}
+

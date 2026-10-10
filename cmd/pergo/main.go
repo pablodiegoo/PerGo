@@ -49,6 +49,7 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/platform/shutdown"
 	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/presence"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/retention"
 	"github.com/pablojhp.pergo/internal/security"
@@ -722,6 +723,7 @@ func main() {
 	adminGroup.GET("/logs/outbound/export", auditHandler.ExportOutboundCSV)
 
 	// Inbox routes
+	presenceTracker := presence.NewTracker(15 * time.Second)
 	inboxHandler := &admin.InboxHandler{
 		Repo:           auditRepo,
 		ChatRepo:       chatRepo,
@@ -732,10 +734,17 @@ func main() {
 		Templates:      wabaTemplateRepo,
 		ContactRepo:    contactRepo,
 		UserActionLogs: userActionLogRepo,
+		Presence:       presenceTracker,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
 	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)
 	adminGroup.GET("/inbox/chat", inboxHandler.ChatPanel)
+	adminGroup.GET("/inbox/presence", inboxHandler.PresenceStream)
+	adminGroup.POST("/inbox/presence", inboxHandler.PresenceHeartbeat)
+	adminGroup.POST("/inbox/assign", inboxHandler.AssignChat)
+	adminGroup.POST("/inbox/tags/add", inboxHandler.AddChatTag)
+	adminGroup.POST("/inbox/tags/remove", inboxHandler.RemoveChatTag)
+	adminGroup.POST("/inbox/status", inboxHandler.UpdateChatStatus)
 	adminGroup.GET("/inbox/messages", inboxHandler.PollMessages)
 	adminGroup.POST("/inbox/send", inboxHandler.SendMessage)
 	adminGroup.GET("/inbox/new-message-modal", inboxHandler.NewMessageModal)
