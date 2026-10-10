@@ -31,6 +31,7 @@ func TestMCPChatTools(t *testing.T) {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
+	auditRepo := repository.NewAuditRepository(pool)
 
 	kek := make([]byte, 32)
 	copy(kek, []byte("dev-development-key-32-bytes-kek"))
@@ -109,7 +110,7 @@ func TestMCPChatTools(t *testing.T) {
 		wsRepo,
 		connRepo,
 		contactRepo,
-		nil,
+		auditRepo,
 		nil,
 		nil,
 		nil,
@@ -682,6 +683,82 @@ func TestMCPChatTools(t *testing.T) {
 		}
 		if quotas.SeatsLimit <= 0 {
 			t.Errorf("expected seats_limit > 0, got %d", quotas.SeatsLimit)
+		}
+	})
+
+	t.Run("chat_summarize", func(t *testing.T) {
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+		}
+		res, err := srv.handleChatSummarize(ctx, req)
+		if err != nil {
+			t.Fatalf("handleChatSummarize returned error: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("handleChatSummarize returned tool error: %+v", res.Content)
+		}
+
+		var parsed struct {
+			ChatID         uuid.UUID `json:"chat_id"`
+			CustomerIssues string    `json:"customer_issues"`
+			PromisesMade   string    `json:"promises_made"`
+			CurrentStatus  string    `json:"current_status"`
+		}
+		if err := json.Unmarshal([]byte(res.Content[0].(mcp.TextContent).Text), &parsed); err != nil {
+			t.Fatalf("failed to unmarshal synopsis: %v", err)
+		}
+
+		if parsed.ChatID != chat.ID {
+			t.Errorf("expected chat_id %s, got %s", chat.ID, parsed.ChatID)
+		}
+		if parsed.CustomerIssues == "" {
+			t.Errorf("expected non-empty customer_issues")
+		}
+		if parsed.PromisesMade == "" {
+			t.Errorf("expected non-empty promises_made")
+		}
+		if parsed.CurrentStatus == "" {
+			t.Errorf("expected non-empty current_status")
+		}
+
+		// Also verify via CallTool
+		resCall, err := srv.CallTool(ctx, "chat_summarize", map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+		})
+		if err != nil || resCall.IsError {
+			t.Fatalf("CallTool chat_summarize failed: %v, %+v", err, resCall)
+		}
+	})
+
+	t.Run("chat_send_message_and_audit", func(t *testing.T) {
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"message":      "Enviaremos a proposta comercial por email em breve.",
+			"sender_name":  "Claude Bot",
+		}
+		res, err := srv.handleChatSendMessage(ctx, req)
+		if err != nil {
+			t.Fatalf("handleChatSendMessage returned error: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("handleChatSendMessage returned tool error: %+v", res.Content)
+		}
+
+		// Verify audit log entry
+		entries, total, err := auditRepo.ListFiltered(ctx, repository.AuditFilters{
+			WorkspaceID: &ws.ID,
+			EventType:   "chat.message.sent",
+		})
+		if err != nil {
+			t.Fatalf("ListFiltered audit logs failed: %v", err)
+		}
+		if total == 0 || len(entries) == 0 {
+			t.Fatalf("expected audit log entry with event_type 'chat.message.sent', got 0")
 		}
 	})
 }

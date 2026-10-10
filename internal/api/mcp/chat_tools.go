@@ -350,6 +350,56 @@ func (s *Server) registerChatTools() {
 			Required: []string{"message_uid", "emoji"},
 		},
 	}, s.handleMessageReact)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "chat_summarize",
+		Description: "Generate a concise 3-bullet AI synopsis (Customer Issues, Promises Made, Current Status) of recent conversation messages.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the chat thread.",
+				},
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UUID of the workspace.",
+				},
+			},
+			Required: []string{"chat_id"},
+		},
+	}, s.handleChatSummarize)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "chat_send_message",
+		Description: "Send an outbound message in an existing chat thread via WhatsApp/Telegram with state synchronization and immutable audit logging.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the chat thread.",
+				},
+				"message": map[string]interface{}{
+					"type":        "string",
+					"description": "The message body text to send.",
+				},
+				"body": map[string]interface{}{
+					"type":        "string",
+					"description": "Alias for message.",
+				},
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UUID of the workspace.",
+				},
+				"sender_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional sender display name.",
+				},
+			},
+			Required: []string{"chat_id"},
+		},
+	}, s.handleChatSendMessage)
 }
 
 
@@ -679,6 +729,29 @@ func (s *Server) handleChatCreateDraftNote(ctx context.Context, request mcp.Call
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create draft note: %v", err)), nil
 	}
 
+	if s.auditRepo != nil {
+		targetWs := wsID
+		if targetWs == uuid.Nil {
+			targetWs = note.WorkspaceID
+		}
+		auditPayload, _ := json.Marshal(map[string]interface{}{
+			"chat_id":     chatID.String(),
+			"note_id":     note.ID.String(),
+			"author_name": authorName,
+			"body":        body,
+			"sender_type": "ai_agent",
+			"is_private":  true,
+		})
+		_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+			ID:          uuid.New(),
+			WorkspaceID: targetWs,
+			TraceID:     note.UID,
+			EventType:   "chat.note.created",
+			Payload:     auditPayload,
+			CreatedAt:   note.CreatedAt,
+		})
+	}
+
 	data, err := json.MarshalIndent(note, "", "  ")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
@@ -924,6 +997,23 @@ func (s *Server) handleChatAssign(ctx context.Context, request mcp.CallToolReque
 		return mcp.NewToolResultError(fmt.Sprintf("failed to assign chat: %v", err)), nil
 	}
 
+	if s.auditRepo != nil {
+		auditPayload, _ := json.Marshal(map[string]interface{}{
+			"chat_id":          chatID.String(),
+			"assigned_user_id": member.ID.String(),
+			"assigned_email":   member.Email,
+			"action":           "assign",
+		})
+		_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+			ID:          uuid.New(),
+			WorkspaceID: wsID,
+			TraceID:     fmt.Sprintf("mcp-assign-%s", uuid.New().String()),
+			EventType:   "chat.assigned",
+			Payload:     auditPayload,
+			CreatedAt:   time.Now().UTC(),
+		})
+	}
+
 	chat, _ := s.chatRepo.GetChat(ctx, wsID, chatID)
 
 	data, err := json.MarshalIndent(map[string]interface{}{
@@ -969,6 +1059,21 @@ func (s *Server) handleChatUnassign(ctx context.Context, request mcp.CallToolReq
 			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
 		}
 		return mcp.NewToolResultError(fmt.Sprintf("failed to unassign chat: %v", err)), nil
+	}
+
+	if s.auditRepo != nil {
+		auditPayload, _ := json.Marshal(map[string]interface{}{
+			"chat_id": chatID.String(),
+			"action":  "unassign",
+		})
+		_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+			ID:          uuid.New(),
+			WorkspaceID: wsID,
+			TraceID:     fmt.Sprintf("mcp-unassign-%s", uuid.New().String()),
+			EventType:   "chat.assigned",
+			Payload:     auditPayload,
+			CreatedAt:   time.Now().UTC(),
+		})
 	}
 
 	chat, _ := s.chatRepo.GetChat(ctx, wsID, chatID)
@@ -1039,6 +1144,21 @@ func (s *Server) handleChatSetLabel(ctx context.Context, request mcp.CallToolReq
 		if err := s.chatRepo.SetChatTags(ctx, wsID, chatID, newTags); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to set chat tags: %v", err)), nil
 		}
+		if s.auditRepo != nil {
+			auditPayload, _ := json.Marshal(map[string]interface{}{
+				"chat_id": chatID.String(),
+				"label":   label,
+				"action":  "add",
+			})
+			_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+				ID:          uuid.New(),
+				WorkspaceID: wsID,
+				TraceID:     fmt.Sprintf("mcp-label-%s", uuid.New().String()),
+				EventType:   "chat.tag.updated",
+				Payload:     auditPayload,
+				CreatedAt:   time.Now().UTC(),
+			})
+		}
 	}
 
 	data, err := json.MarshalIndent(map[string]interface{}{
@@ -1104,6 +1224,21 @@ func (s *Server) handleChatRemoveLabel(ctx context.Context, request mcp.CallTool
 		if err := s.chatRepo.SetChatTags(ctx, wsID, chatID, newTags); err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("failed to set chat tags: %v", err)), nil
 		}
+		if s.auditRepo != nil {
+			auditPayload, _ := json.Marshal(map[string]interface{}{
+				"chat_id": chatID.String(),
+				"label":   label,
+				"action":  "remove",
+			})
+			_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+				ID:          uuid.New(),
+				WorkspaceID: wsID,
+				TraceID:     fmt.Sprintf("mcp-unlabel-%s", uuid.New().String()),
+				EventType:   "chat.tag.updated",
+				Payload:     auditPayload,
+				CreatedAt:   time.Now().UTC(),
+			})
+		}
 	}
 
 	data, err := json.MarshalIndent(map[string]interface{}{
@@ -1149,6 +1284,21 @@ func (s *Server) handleChatOpen(ctx context.Context, request mcp.CallToolRequest
 		return mcp.NewToolResultError(fmt.Sprintf("failed to open chat: %v", err)), nil
 	}
 
+	if s.auditRepo != nil {
+		auditPayload, _ := json.Marshal(map[string]interface{}{
+			"chat_id": chatID.String(),
+			"status":  "open",
+		})
+		_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+			ID:          uuid.New(),
+			WorkspaceID: wsID,
+			TraceID:     fmt.Sprintf("mcp-open-%s", uuid.New().String()),
+			EventType:   "chat.status.updated",
+			Payload:     auditPayload,
+			CreatedAt:   time.Now().UTC(),
+		})
+	}
+
 	data, err := json.MarshalIndent(map[string]interface{}{
 		"success": true,
 		"chat_id": chatID,
@@ -1189,6 +1339,21 @@ func (s *Server) handleChatClose(ctx context.Context, request mcp.CallToolReques
 			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
 		}
 		return mcp.NewToolResultError(fmt.Sprintf("failed to close chat: %v", err)), nil
+	}
+
+	if s.auditRepo != nil {
+		auditPayload, _ := json.Marshal(map[string]interface{}{
+			"chat_id": chatID.String(),
+			"status":  "closed",
+		})
+		_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+			ID:          uuid.New(),
+			WorkspaceID: wsID,
+			TraceID:     fmt.Sprintf("mcp-close-%s", uuid.New().String()),
+			EventType:   "chat.status.updated",
+			Payload:     auditPayload,
+			CreatedAt:   time.Now().UTC(),
+		})
 	}
 
 	data, err := json.MarshalIndent(map[string]interface{}{
@@ -1321,6 +1486,202 @@ func (s *Server) handleMessageReact(ctx context.Context, request mcp.CallToolReq
 	}
 
 	data, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleChatSummarize(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+
+	chatIDStr, err := request.RequireString("chat_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing chat_id parameter"), nil
+	}
+	chatID, err := uuid.Parse(strings.TrimSpace(chatIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
+	}
+
+	var wsID uuid.UUID
+	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
+	if wsIDStr != "" {
+		parsedWs, err := uuid.Parse(wsIDStr)
+		if err != nil {
+			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+		}
+		wsID = parsedWs
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		wsID = id
+	}
+
+	var chat *domain.Chat
+	if wsID != uuid.Nil {
+		chat, err = s.chatRepo.GetChat(ctx, wsID, chatID)
+	} else {
+		chat, err = s.chatRepo.GetChatByID(ctx, chatID)
+	}
+	if err != nil {
+		if errors.Is(err, repository.ErrChatNotFound) || strings.Contains(err.Error(), "not found") {
+			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("failed to get chat: %v", err)), nil
+	}
+	wsID = chat.WorkspaceID
+
+	messages, err := s.chatRepo.ListChatMessages(ctx, wsID, chatID, "", "", 50)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to list chat messages: %v", err)), nil
+	}
+
+	synopsis := domain.SummarizeMessages(messages, chat)
+
+	data, err := json.MarshalIndent(map[string]interface{}{
+		"chat_id":         chat.ID,
+		"customer_issues": synopsis.CustomerIssues,
+		"promises_made":   synopsis.PromisesMade,
+		"current_status":  synopsis.CurrentStatus,
+	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleChatSendMessage(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+
+	chatIDStr, err := request.RequireString("chat_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing chat_id parameter"), nil
+	}
+	chatID, err := uuid.Parse(strings.TrimSpace(chatIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
+	}
+
+	messageText := strings.TrimSpace(request.GetString("message", ""))
+	if messageText == "" {
+		messageText = strings.TrimSpace(request.GetString("body", ""))
+	}
+	if messageText == "" {
+		return mcp.NewToolResultError("missing or empty message parameter"), nil
+	}
+
+	senderName := strings.TrimSpace(request.GetString("sender_name", "AI Assistant"))
+
+	var wsID uuid.UUID
+	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
+	if wsIDStr != "" {
+		parsedWs, err := uuid.Parse(wsIDStr)
+		if err != nil {
+			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+		}
+		wsID = parsedWs
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		wsID = id
+	}
+
+	var chat *domain.Chat
+	if wsID != uuid.Nil {
+		chat, err = s.chatRepo.GetChat(ctx, wsID, chatID)
+	} else {
+		chat, err = s.chatRepo.GetChatByID(ctx, chatID)
+	}
+	if err != nil {
+		if errors.Is(err, repository.ErrChatNotFound) || strings.Contains(err.Error(), "not found") {
+			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("failed to get chat: %v", err)), nil
+	}
+	wsID = chat.WorkspaceID
+
+	var recipientPhone string
+	if s.contactRepo != nil {
+		if contact, cErr := s.contactRepo.GetByID(ctx, wsID, chat.ContactID); cErr == nil && contact != nil {
+			recipientPhone = resolveContactPhone(contact)
+		}
+	}
+
+	channel := "whatsapp"
+	var senderIdentity string
+	if s.connectionRepo != nil && chat.ConnectionID != nil {
+		if conn, cErr := s.connectionRepo.GetByID(ctx, *chat.ConnectionID); cErr == nil && conn != nil {
+			channel = conn.Channel
+			senderIdentity = conn.SenderIdentity
+		}
+	}
+
+	traceID := fmt.Sprintf("mcp-chat-%s", uuid.New().String())
+	now := time.Now().UTC()
+
+	chatMsg := &domain.ChatMessage{
+		ID:          uuid.New(),
+		ChatID:      chat.ID,
+		WorkspaceID: wsID,
+		UID:         traceID,
+		Direction:   string(domain.DirectionOutbound),
+		SenderType:  string(domain.SenderTypeAIAgent),
+		SenderName:  senderName,
+		SenderID:    senderIdentity,
+		Body:        messageText,
+		CreatedAt:   now,
+	}
+	_ = s.chatRepo.AddChatMessage(ctx, chatMsg)
+	_ = s.chatRepo.TouchLastMessageAt(ctx, wsID, chat.ID, now)
+
+	if s.ingestor != nil && recipientPhone != "" {
+		req := &domain.CreateMessageRequest{
+			To:       recipientPhone,
+			Channel:  channel,
+			From:     senderIdentity,
+			Body:     messageText,
+			Type:     "text",
+			Metadata: map[string]string{
+				"source":      "mcp_gateway",
+				"sender_type": string(domain.SenderTypeAIAgent),
+				"sender_name": senderName,
+			},
+		}
+		_, _ = s.ingestor.Ingest(ctx, wsID, traceID, req)
+	}
+
+	if s.auditRepo != nil {
+		auditPayload, _ := json.Marshal(map[string]interface{}{
+			"chat_id":         chat.ID.String(),
+			"contact_id":      chat.ContactID.String(),
+			"to":              recipientPhone,
+			"channel":         channel,
+			"sender_identity": senderIdentity,
+			"body":            messageText,
+			"sender_name":     senderName,
+			"sender_type":     string(domain.SenderTypeAIAgent),
+		})
+		_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+			ID:          uuid.New(),
+			WorkspaceID: wsID,
+			TraceID:     traceID,
+			EventType:   "chat.message.sent",
+			Payload:     auditPayload,
+			CreatedAt:   now,
+		})
+	}
+
+	data, err := json.MarshalIndent(map[string]interface{}{
+		"success":   true,
+		"chat_id":   chat.ID,
+		"trace_id":  traceID,
+		"to":        recipientPhone,
+		"body":      messageText,
+		"queued_at": now,
+	}, "", "  ")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
 	}

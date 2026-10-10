@@ -706,6 +706,26 @@ func (s *Server) handleWABAChatSendMessage(ctx context.Context, request mcp.Call
 		return mcp.NewToolResultError(fmt.Sprintf("failed to dispatch message: %v", err)), nil
 	}
 
+	if s.auditRepo != nil {
+		auditPayload, _ := json.Marshal(map[string]interface{}{
+			"chat_id":         chat.ID.String(),
+			"to":              recipientPhone,
+			"channel":         "whatsapp_cloud",
+			"sender_identity": senderIdentity,
+			"body":            messageText,
+			"sender_name":     senderName,
+			"sender_type":     string(domain.SenderTypeAIAgent),
+		})
+		_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+			ID:          uuid.New(),
+			WorkspaceID: wsID,
+			TraceID:     traceID,
+			EventType:   "chat.message.sent",
+			Payload:     auditPayload,
+			CreatedAt:   time.Now().UTC(),
+		})
+	}
+
 	data, err := json.MarshalIndent(map[string]interface{}{
 		"success":                true,
 		"chat_id":                chat.ID,

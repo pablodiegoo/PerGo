@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -466,3 +467,44 @@ func (r *AuditRepository) AnonymizeAuditLog(ctx context.Context, id uuid.UUID, c
 	}
 	return nil
 }
+
+// InsertAuditLog inserts a new immutable audit log entry into PostgreSQL.
+func (r *AuditRepository) InsertAuditLog(ctx context.Context, entry *AuditEntry) error {
+	if entry == nil {
+		return errors.New("audit entry is nil")
+	}
+	if entry.WorkspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
+	if entry.ID == uuid.Nil {
+		entry.ID = uuid.New()
+	}
+	if entry.CreatedAt.IsZero() {
+		entry.CreatedAt = time.Now().UTC()
+	}
+	if entry.TraceID == "" {
+		entry.TraceID = fmt.Sprintf("trace-%s", entry.ID.String())
+	}
+	if entry.EventType == "" {
+		entry.EventType = "audit.event"
+	}
+	if entry.Payload == nil {
+		entry.Payload = []byte("{}")
+	}
+
+	query := `
+		INSERT INTO audit_logs (id, workspace_id, trace_id, event_type, payload, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+	`
+	_, err := r.pool.Exec(ctx, query, entry.ID, entry.WorkspaceID, entry.TraceID, entry.EventType, entry.Payload, entry.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("insert audit log: %w", err)
+	}
+	return nil
+}
+
+// Insert is an alias for InsertAuditLog.
+func (r *AuditRepository) Insert(ctx context.Context, entry *AuditEntry) error {
+	return r.InsertAuditLog(ctx, entry)
+}
+

@@ -775,6 +775,8 @@ func main() {
 	adminGroup.POST("/contacts/:id/toggle-bot", inboxHandler.ToggleBot)
 	adminGroup.POST("/inbox/chats/:id/enable-ai", inboxHandler.EnableChatAI)
 	adminGroup.POST("/inbox/chat_enable_ai", inboxHandler.EnableChatAI)
+	adminGroup.POST("/inbox/summarize", inboxHandler.SummarizeChat)
+	adminGroup.POST("/inbox/chat/summarize", inboxHandler.SummarizeChat)
 
 	// Device/Connection management routes
 	deviceHandler := &admin.DeviceHandler{
@@ -1061,6 +1063,8 @@ func main() {
 	// Chat Internal Notes API routes (v1)
 	v1Group.POST("/chats/:chat_id/notes", inboxHandler.APICreateNote)
 	v1Group.POST("/workspaces/:workspace_id/chats/:chat_id/notes", inboxHandler.APICreateNote)
+	v1Group.POST("/chats/:chat_id/summarize", inboxHandler.SummarizeChat)
+	v1Group.POST("/workspaces/:workspace_id/chats/:chat_id/summarize", inboxHandler.SummarizeChat)
 
 	// Static files
 	e.Static("/static", "static")

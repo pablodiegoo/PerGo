@@ -550,3 +550,57 @@ func TestAuditRepository_RetentionQueries(t *testing.T) {
 		t.Errorf("expected body '[EXPURGADO]', got %q", updatedBody)
 	}
 }
+
+func TestAuditRepository_InsertAuditLog(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+	ctx := context.Background()
+
+	wsRepo := NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "Audit Insert Test WS "+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	auditRepo := NewAuditRepository(pool)
+
+	entry := &AuditEntry{
+		ID:          uuid.New(),
+		WorkspaceID: ws.ID,
+		TraceID:     "trace-test-insert-1",
+		EventType:   "chat.message.sent",
+		Payload:     []byte(`{"body":"hello world","channel":"whatsapp"}`),
+		CreatedAt:   time.Now().UTC(),
+	}
+
+	if err := auditRepo.InsertAuditLog(ctx, entry); err != nil {
+		t.Fatalf("InsertAuditLog failed: %v", err)
+	}
+
+	// Verify using ListFiltered
+	entries, total, err := auditRepo.ListFiltered(ctx, AuditFilters{
+		WorkspaceID: &ws.ID,
+		TraceID:     "trace-test-insert-1",
+	})
+	if err != nil {
+		t.Fatalf("ListFiltered failed: %v", err)
+	}
+	if total != 1 || len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d (total: %d)", len(entries), total)
+	}
+	if entries[0].EventType != "chat.message.sent" {
+		t.Errorf("expected event_type 'chat.message.sent', got %q", entries[0].EventType)
+	}
+
+	// Test invalid workspace ID error
+	invalidEntry := &AuditEntry{
+		WorkspaceID: uuid.Nil,
+		TraceID:     "trace-nil",
+	}
+	if err := auditRepo.InsertAuditLog(ctx, invalidEntry); err != ErrInvalidWorkspaceID {
+		t.Errorf("expected ErrInvalidWorkspaceID, got %v", err)
+	}
+}
+
+
