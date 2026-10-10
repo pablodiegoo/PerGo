@@ -90,6 +90,15 @@ func (o *DispatchOrchestrator) Process(
 	traceID := qMsg.TraceID
 	workspaceID := qMsg.WorkspaceID
 
+	// --- Safety Filtering: Drop private messages and internal notes from external outbound dispatch ---
+	if qMsg.Metadata != nil {
+		if qMsg.Metadata["is_private"] == "true" || qMsg.Metadata["direction"] == string(domain.DirectionInternalNote) {
+			slog.Warn("orchestrator: dropping private note/internal message from external dispatch", "trace_id", traceID)
+			o.ack(msg, workspaceID)
+			return nil
+		}
+	}
+
 	// --- Database State Check / Idempotency ---
 	var dispatch *repository.MessageDispatch
 	if o.dispatchRepo != nil && traceID != "" {

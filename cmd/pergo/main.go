@@ -738,6 +738,7 @@ func main() {
 	adminGroup.GET("/inbox/chat", inboxHandler.ChatPanel)
 	adminGroup.GET("/inbox/messages", inboxHandler.PollMessages)
 	adminGroup.POST("/inbox/send", inboxHandler.SendMessage)
+	adminGroup.POST("/inbox/notes", inboxHandler.CreateNote)
 	adminGroup.GET("/inbox/new-message-modal", inboxHandler.NewMessageModal)
 	adminGroup.POST("/inbox/new-message-send", inboxHandler.NewMessageSend)
 	adminGroup.GET("/contacts/search", inboxHandler.SearchContacts)
@@ -1027,6 +1028,10 @@ func main() {
 	v1Group.GET("/workspaces/:workspace_id/webhook-secret", workspaceHandler.GetWebhookSecret)
 	v1Group.POST("/workspaces/flow-webhook-url", workspaceHandler.SetFlowWebhookURL)
 	v1Group.POST("/workspaces/:workspace_id/flow-webhook-url", workspaceHandler.SetFlowWebhookURL)
+
+	// Chat Internal Notes API routes (v1)
+	v1Group.POST("/chats/:chat_id/notes", inboxHandler.APICreateNote)
+	v1Group.POST("/workspaces/:workspace_id/chats/:chat_id/notes", inboxHandler.APICreateNote)
 
 	// Static files
 	e.Static("/static", "static")

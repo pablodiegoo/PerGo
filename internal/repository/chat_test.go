@@ -294,4 +294,61 @@ func TestChatRepository(t *testing.T) {
 			t.Errorf("expected at least 1 chat for phone filter, got 0")
 		}
 	})
+
+	t.Run("CreateInternalNote_And_GetChatByID", func(t *testing.T) {
+		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to find or create chat: %v", err)
+		}
+
+		// 1. Test GetChatByID
+		foundChat, err := chatRepo.GetChatByID(ctx, chat.ID)
+		if err != nil {
+			t.Fatalf("failed to get chat by id: %v", err)
+		}
+		if foundChat.ID != chat.ID || foundChat.WorkspaceID != ws.ID {
+			t.Errorf("expected chat %s in ws %s, got %s in ws %s", chat.ID, ws.ID, foundChat.ID, foundChat.WorkspaceID)
+		}
+
+		// 2. Test CreateInternalNote
+		noteBody := "This is a private AI draft note for human review."
+		authorName := "Claude AI"
+		note, err := chatRepo.CreateInternalNote(ctx, ws.ID, chat.ID, authorName, "ai_agent", noteBody)
+		if err != nil {
+			t.Fatalf("failed to create internal note: %v", err)
+		}
+
+		if note.Direction != string(domain.DirectionInternalNote) {
+			t.Errorf("expected direction 'internal_note', got %s", note.Direction)
+		}
+		if !note.IsPrivate {
+			t.Errorf("expected is_private to be true")
+		}
+		if note.Body != noteBody {
+			t.Errorf("expected body %q, got %q", noteBody, note.Body)
+		}
+		if note.SenderName != authorName {
+			t.Errorf("expected sender_name %q, got %q", authorName, note.SenderName)
+		}
+
+		// 3. Verify it is fetched in chat messages
+		msgs, err := chatRepo.ListChatMessages(ctx, ws.ID, chat.ID, "", "", 50)
+		if err != nil {
+			t.Fatalf("failed to list chat messages: %v", err)
+		}
+		found := false
+		for _, m := range msgs {
+			if m.UID == note.UID {
+				found = true
+				if m.Direction != "internal_note" || !m.IsPrivate {
+					t.Errorf("expected message in list to have direction 'internal_note' and is_private=true")
+				}
+				break
+			}
+		}
+		if !found {
+			t.Errorf("internal note UID %s not found in ListChatMessages", note.UID)
+		}
+	})
 }
+

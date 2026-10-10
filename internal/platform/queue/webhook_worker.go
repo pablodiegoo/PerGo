@@ -164,6 +164,19 @@ func (w *WebhookWorker) processEvent(ctx context.Context, msg jetstream.Msg, mod
 		return
 	}
 
+	// Safety Filtering: Internal notes and private drafts are strictly excluded from customer-facing webhooks
+	var safetyCheck struct {
+		IsPrivate bool   `json:"is_private"`
+		Direction string `json:"direction"`
+	}
+	if err := json.Unmarshal(msg.Data(), &safetyCheck); err == nil {
+		if safetyCheck.IsPrivate || safetyCheck.Direction == "internal_note" {
+			_ = msg.Ack()
+			return
+		}
+	}
+
+
 	wsID, err := uuid.Parse(evt.WorkspaceID)
 	if err != nil {
 		slog.Error("webhook worker: invalid workspace ID", "error", err, "workspace_id", evt.WorkspaceID)

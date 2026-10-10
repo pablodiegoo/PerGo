@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -886,3 +887,126 @@ func (h *InboxHandler) EnableChatAI(c *echo.Context) error {
 
 	return c.NoContent(http.StatusOK)
 }
+
+// CreateNote handles POST /admin/inbox/notes — creates a private internal note for a contact/chat.
+func (h *InboxHandler) CreateNote(c *echo.Context) error {
+	ctx := c.Request().Context()
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+
+	if workspaceID == uuid.Nil {
+		return c.HTML(http.StatusBadRequest, `<span class="text-red-400">Workspace não selecionado.</span>`)
+	}
+
+	body := strings.TrimSpace(c.FormValue("body"))
+	if body == "" {
+		return c.HTML(http.StatusBadRequest, `<span class="text-red-400">Nota não pode ser vazia.</span>`)
+	}
+
+	authorName := strings.TrimSpace(c.FormValue("author_name"))
+	if authorName == "" {
+		authorName = "Operador"
+	}
+
+	var chatID uuid.UUID
+	chatIDStr := c.FormValue("chat_id")
+	if chatIDStr != "" {
+		var err error
+		chatID, err = uuid.Parse(chatIDStr)
+		if err != nil {
+			return c.HTML(http.StatusBadRequest, `<span class="text-red-400">ID de chat inválido.</span>`)
+		}
+	} else {
+		// Resolve via contact_id
+		contactIDStr := c.FormValue("contact_id")
+		if contactIDStr == "" {
+			return c.HTML(http.StatusBadRequest, `<span class="text-red-400">chat_id ou contact_id obrigatório.</span>`)
+		}
+		contactID, err := uuid.Parse(contactIDStr)
+		if err != nil {
+			return c.HTML(http.StatusBadRequest, `<span class="text-red-400">ID de contato inválido.</span>`)
+		}
+		if h.ChatRepo != nil {
+			chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID)
+			if cErr != nil {
+				return c.HTML(http.StatusInternalServerError, `<span class="text-red-400">Erro ao localizar chat.</span>`)
+			}
+			chatID = chat.ID
+		}
+	}
+
+	if h.ChatRepo == nil {
+		return c.HTML(http.StatusServiceUnavailable, `<span class="text-red-400">ChatRepo não configurado.</span>`)
+	}
+
+	note, err := h.ChatRepo.CreateInternalNote(ctx, workspaceID, chatID, authorName, "human_agent", body)
+	if err != nil {
+		return c.HTML(http.StatusInternalServerError, `<span class="text-red-400">Erro ao criar nota: `+escapeHTML(err.Error())+`</span>`)
+	}
+
+	if mw.IsHTMX(c) {
+		threadMsg := repository.ThreadMessage{
+			ID:        note.ID,
+			TraceID:   note.UID,
+			Direction: string(domain.DirectionInternalNote),
+			Body:      note.Body,
+			CreatedAt: note.CreatedAt,
+			Metadata:  map[string]string{"author_name": authorName, "is_private": "true"},
+		}
+		return mw.Render(c, http.StatusOK, components.MessageBubble(threadMsg))
+	}
+
+	return c.JSON(http.StatusCreated, note)
+}
+
+// APICreateNote handles POST /api/v1/chats/:chat_id/notes
+func (h *InboxHandler) APICreateNote(c *echo.Context) error {
+	ctx := c.Request().Context()
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+
+	chatIDStr := c.Param("chat_id")
+	chatID, err := uuid.Parse(chatIDStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid chat_id"})
+	}
+
+	var req struct {
+		Body       string `json:"body"`
+		AuthorName string `json:"author_name"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	req.Body = strings.TrimSpace(req.Body)
+	if req.Body == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "body cannot be empty"})
+	}
+	if req.AuthorName == "" {
+		req.AuthorName = "AI Assistant"
+	}
+
+	if h.ChatRepo == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "chat repository not configured"})
+	}
+
+	note, err := h.ChatRepo.CreateInternalNote(ctx, workspaceID, chatID, req.AuthorName, "ai_agent", req.Body)
+	if err != nil {
+		if errors.Is(err, repository.ErrChatNotFound) || strings.Contains(err.Error(), "not found") {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "chat not found"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusCreated, note)
+}
+

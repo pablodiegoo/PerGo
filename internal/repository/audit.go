@@ -317,6 +317,22 @@ func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID u
 		  AND al.event_type = 'outbound_message'
 		  AND ($3::uuid IS NULL OR al.id > $3::uuid)
 
+		UNION ALL
+
+		SELECT cm.id, cm.uid AS trace_id, cm.direction, cm.body, cm.created_at, NULL::VARCHAR AS status,
+		jsonb_build_object(
+			'sender_name', COALESCE(cm.sender_name, ''),
+			'sender_type', COALESCE(cm.sender_type, ''),
+			'author_name', COALESCE(cm.sender_name, ''),
+			'is_private', CASE WHEN cm.is_private THEN 'true' ELSE 'false' END
+		) || COALESCE(cm.metadata, '{}'::jsonb) AS metadata
+		FROM chat_messages cm
+		JOIN chats c ON c.id = cm.chat_id AND c.workspace_id = cm.workspace_id
+		WHERE cm.workspace_id = $1
+		  AND c.contact_id = $2
+		  AND cm.direction = 'internal_note'
+		  AND ($3::uuid IS NULL OR cm.id > $3::uuid)
+
 		ORDER BY created_at ASC
 	`
 
