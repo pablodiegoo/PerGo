@@ -567,7 +567,11 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 			_ = p.chatRepo.TouchLastMessageAt(ctx, ev.WorkspaceID, chat.ID, occurredAt)
 
 			if ev.Channel == "whatsapp_cloud" {
-				exp := occurredAt.Add(24 * time.Hour)
+				duration := 24 * time.Hour
+				if ev.Metadata != nil && (ev.Metadata["entry_point_type"] == "ctwa" || ev.Metadata["is_referral"] == "true") {
+					duration = 72 * time.Hour
+				}
+				exp := occurredAt.Add(duration)
 				_ = p.chatRepo.UpdateServiceWindow(ctx, ev.WorkspaceID, chat.ID, &exp)
 			}
 

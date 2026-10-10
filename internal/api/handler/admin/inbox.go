@@ -329,8 +329,18 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		currentChat = chat
 	}
 
+	var windowExpiresAt *time.Time
+	if currentChat != nil && currentChat.ServiceWindowExpiresAt != nil {
+		windowExpiresAt = currentChat.ServiceWindowExpiresAt
+		if time.Now().UTC().Before(*currentChat.ServiceWindowExpiresAt) {
+			isWabaBlocked = false
+		} else {
+			isWabaBlocked = true
+		}
+	}
+
 	if mw.IsHTMX(c) {
-		return mw.Render(c, http.StatusOK, components.ChatPanel(contact, currentChat, replyOptions, messages, isWabaBlocked, members))
+		return mw.Render(c, http.StatusOK, components.ChatPanel(contact, currentChat, replyOptions, messages, isWabaBlocked, members, windowExpiresAt))
 	}
 
 	// Direct page reload -> render the full page with this chat panel pre-opened
@@ -339,7 +349,7 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "failed to load conversations: "+err.Error())
 	}
 
-	chatPanelComp := components.ChatPanel(contact, currentChat, replyOptions, messages, isWabaBlocked, members)
+	chatPanelComp := components.ChatPanel(contact, currentChat, replyOptions, messages, isWabaBlocked, members, windowExpiresAt)
 	return mw.Render(c, http.StatusOK, pages.InboxPage(conversations, unreadMap, "", unreadCount, chatPanelComp, connections))
 }
 

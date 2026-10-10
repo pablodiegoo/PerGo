@@ -63,6 +63,7 @@ func (r *ChatRepository) FindOrCreateChat(
 		if chat.Metadata == nil {
 			chat.Metadata = make(map[string]interface{})
 		}
+		chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen()
 		return &chat, nil
 	}
 
@@ -95,6 +96,7 @@ func (r *ChatRepository) FindOrCreateChat(
 	if chat.Metadata == nil {
 		chat.Metadata = make(map[string]interface{})
 	}
+	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen()
 
 	return &chat, nil
 }
@@ -132,6 +134,7 @@ func (r *ChatRepository) GetChat(ctx context.Context, workspaceID, chatID uuid.U
 	if chat.Metadata == nil {
 		chat.Metadata = make(map[string]interface{})
 	}
+	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen()
 
 	return &chat, nil
 }
@@ -319,6 +322,7 @@ func (r *ChatRepository) ListChats(
 		if c.Metadata == nil {
 			c.Metadata = make(map[string]interface{})
 		}
+		c.ServiceWindowIsOpen = c.IsServiceWindowOpen()
 		chats = append(chats, c)
 	}
 

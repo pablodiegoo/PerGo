@@ -76,3 +76,25 @@ func TestChatMessageDomain(t *testing.T) {
 		t.Errorf("mismatch decoded message: %+v", decoded)
 	}
 }
+
+func TestChatServiceWindow(t *testing.T) {
+	// Nil expires_at
+	chat := &domain.Chat{}
+	if chat.IsServiceWindowOpen() {
+		t.Errorf("expected IsServiceWindowOpen to be false when ServiceWindowExpiresAt is nil")
+	}
+
+	// Expired window
+	past := time.Now().UTC().Add(-1 * time.Hour)
+	chat.ServiceWindowExpiresAt = &past
+	if chat.IsServiceWindowOpen() {
+		t.Errorf("expected IsServiceWindowOpen to be false when expired")
+	}
+
+	// Active window
+	future := time.Now().UTC().Add(24 * time.Hour)
+	chat.ServiceWindowExpiresAt = &future
+	if !chat.IsServiceWindowOpen() {
+		t.Errorf("expected IsServiceWindowOpen to be true when in future")
+	}
+}
