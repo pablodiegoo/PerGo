@@ -240,4 +240,110 @@ func TestMCPChatTools(t *testing.T) {
 			t.Errorf("expected [mcp-msg-1, mcp-msg-2], got %s, %s", parsedBefore.Messages[0].UID, parsedBefore.Messages[1].UID)
 		}
 	})
+
+	t.Run("chat_create_draft_note", func(t *testing.T) {
+		// 1. Success with author_name and workspace_id
+		draftBody := "Proposed draft response from AI Agent for human review."
+		author := "Antigravity Assistant"
+		req := mcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"body":         draftBody,
+			"author_name":  author,
+		}
+
+		res, err := srv.handleChatCreateDraftNote(ctx, req)
+		if err != nil {
+			t.Fatalf("handleChatCreateDraftNote error: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("handleChatCreateDraftNote returned tool error: %+v", res.Content)
+		}
+
+		text := res.Content[0].(mcp.TextContent).Text
+		var createdNote domain.ChatMessage
+		if err := json.Unmarshal([]byte(text), &createdNote); err != nil {
+			t.Fatalf("failed to unmarshal note: %v", err)
+		}
+
+		if createdNote.ChatID != chat.ID {
+			t.Errorf("expected chat_id %s, got %s", chat.ID, createdNote.ChatID)
+		}
+		if createdNote.Direction != string(domain.DirectionInternalNote) {
+			t.Errorf("expected direction 'internal_note', got %s", createdNote.Direction)
+		}
+		if !createdNote.IsPrivate {
+			t.Errorf("expected is_private=true")
+		}
+		if createdNote.Body != draftBody {
+			t.Errorf("expected body %q, got %q", draftBody, createdNote.Body)
+		}
+		if createdNote.SenderName != author {
+			t.Errorf("expected sender_name %q, got %q", author, createdNote.SenderName)
+		}
+
+		// 2. Success with workspace_id omitted (auto-resolution by chat_id)
+		reqOmitted := mcp.CallToolRequest{}
+		reqOmitted.Params.Arguments = map[string]any{
+			"chat_id": chat.ID.String(),
+			"body":    "Another draft note without ws_id.",
+		}
+		resOmitted, err := srv.handleChatCreateDraftNote(ctx, reqOmitted)
+		if err != nil {
+			t.Fatalf("handleChatCreateDraftNote omitted ws error: %v", err)
+		}
+		if resOmitted.IsError {
+			t.Fatalf("handleChatCreateDraftNote returned error: %+v", resOmitted.Content)
+		}
+		var createdNote2 domain.ChatMessage
+		_ = json.Unmarshal([]byte(resOmitted.Content[0].(mcp.TextContent).Text), &createdNote2)
+		if createdNote2.SenderName != "AI Assistant" {
+			t.Errorf("expected default sender_name 'AI Assistant', got %s", createdNote2.SenderName)
+		}
+
+		// 3. Verify notes appear in chat_history
+		reqHist := mcp.CallToolRequest{}
+		reqHist.Params.Arguments = map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"limit":        10,
+		}
+		resHist, err := srv.handleChatHistory(ctx, reqHist)
+		if err != nil {
+			t.Fatalf("handleChatHistory error: %v", err)
+		}
+		var histParsed struct {
+			Messages []domain.ChatMessage `json:"messages"`
+			Count    int                  `json:"count"`
+		}
+		_ = json.Unmarshal([]byte(resHist.Content[0].(mcp.TextContent).Text), &histParsed)
+		// 3 original messages + 2 notes = 5 messages
+		if histParsed.Count != 5 {
+			t.Fatalf("expected 5 messages in chat_history, got %d", histParsed.Count)
+		}
+
+		// 4. Error: chat not found
+		reqNotFound := mcp.CallToolRequest{}
+		reqNotFound.Params.Arguments = map[string]any{
+			"chat_id": uuid.New().String(),
+			"body":    "test",
+		}
+		resNotFound, _ := srv.handleChatCreateDraftNote(ctx, reqNotFound)
+		if !resNotFound.IsError {
+			t.Errorf("expected error for non-existent chat_id")
+		}
+
+		// 5. Error: empty body
+		reqEmptyBody := mcp.CallToolRequest{}
+		reqEmptyBody.Params.Arguments = map[string]any{
+			"chat_id": chat.ID.String(),
+			"body":    "   ",
+		}
+		resEmpty, _ := srv.handleChatCreateDraftNote(ctx, reqEmptyBody)
+		if !resEmpty.IsError {
+			t.Errorf("expected error for empty body")
+		}
+	})
 }
+

@@ -237,3 +237,40 @@ func TestMessageBubble_StandardMessages(t *testing.T) {
 		t.Errorf("outbound message missing text body")
 	}
 }
+
+func TestMessageBubble_InternalNote(t *testing.T) {
+	noteMsg := repository.ThreadMessage{
+		ID:        uuid.New(),
+		Direction: "internal_note",
+		Body:      "Proposta de resposta gerada pela IA aguardando aprovação humana.",
+		CreatedAt: time.Now().UTC(),
+		Metadata: map[string]string{
+			"author_name": "Claude Agent",
+			"is_private":  "true",
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := components.MessageBubble(noteMsg).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("failed to render internal note: %v", err)
+	}
+
+	html := buf.String()
+	expectedSubstrings := []string{
+		"bg-amber-500/10",
+		"border-amber-300",
+		"Nota Interna",
+		"Claude Agent",
+		"Proposta de resposta gerada pela IA aguardando aprovação humana.",
+		"Approve & Send",
+		"btn-approve-send",
+		"data-draft=\"Proposta de resposta gerada pela IA aguardando aprovação humana.\"",
+	}
+
+	for _, expected := range expectedSubstrings {
+		if !strings.Contains(html, expected) {
+			t.Errorf("expected HTML to contain %q, but got:\n%s", expected, html)
+		}
+	}
+}
+

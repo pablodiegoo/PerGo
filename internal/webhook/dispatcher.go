@@ -128,6 +128,18 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, task WebhookDeliveryTa
 
 	payloadBytes := task.Payload
 
+	// Safety Filtering: Internal notes and private drafts are strictly excluded from customer-facing webhooks
+	var safetyCheck struct {
+		IsPrivate bool   `json:"is_private"`
+		Direction string `json:"direction"`
+	}
+	if err := json.Unmarshal(payloadBytes, &safetyCheck); err == nil {
+		if safetyCheck.IsPrivate || safetyCheck.Direction == "internal_note" {
+			return nil
+		}
+	}
+
+
 	// 2. Compliance PII Redaction for inbound events
 	if task.Mode == "inbound" {
 		var wsOptIn bool

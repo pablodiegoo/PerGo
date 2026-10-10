@@ -51,6 +51,10 @@ func NewEmailAdapter(p Provider) *EmailAdapter {
 
 // Dispatch satisfies the channel.Dispatcher interface.
 func (a *EmailAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (string, error) {
+	if m != nil && m.Metadata != nil && (m.Metadata["is_private"] == "true" || m.Metadata["direction"] == "internal_note") {
+		return "", nil
+	}
+
 	if a.provider == nil {
 		return "", channel.NewTerminalError(errors.New("no email provider configured"))
 	}

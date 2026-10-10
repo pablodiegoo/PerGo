@@ -108,6 +108,19 @@ func (p *Processor) Ingest(
 		return nil, &ValidationError{Response: valErr}
 	}
 
+	// 2.5 Safety: Exclude internal notes and private messages from external outbound dispatch
+	if req.Metadata != nil {
+		if req.Metadata["is_private"] == "true" || req.Metadata["direction"] == string(domain.DirectionInternalNote) {
+			return nil, &ValidationError{
+				Response: &domain.ErrorResponse{
+					Code:    "forbidden_dispatch",
+					Message: "internal notes and private messages are strictly excluded from external channel dispatch",
+				},
+			}
+		}
+	}
+
+
 	// 3. Process Media if present
 	if req.Media != nil {
 		if p.mediaEngine == nil {

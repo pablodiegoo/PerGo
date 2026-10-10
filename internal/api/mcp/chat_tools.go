@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -97,6 +98,33 @@ func (s *Server) registerChatTools() {
 			Required: []string{"workspace_id", "chat_id"},
 		},
 	}, s.handleChatHistory)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "chat_create_draft_note",
+		Description: "Create a private internal draft note attached to a chat thread. Internal notes are invisible to external contacts and used for teammate collaboration or AI draft suggestions before human dispatch.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the chat thread.",
+				},
+				"body": map[string]interface{}{
+					"type":        "string",
+					"description": "The content of the internal note or draft response.",
+				},
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UUID of the workspace.",
+				},
+				"author_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional display name of the note author (defaults to 'AI Assistant').",
+				},
+			},
+			Required: []string{"chat_id", "body"},
+		},
+	}, s.handleChatCreateDraftNote)
 }
 
 // ChatSummaryDTO enriches domain.Chat with resolved contact summary for API/MCP readability.
@@ -288,6 +316,60 @@ func (s *Server) handleChatHistory(ctx context.Context, request mcp.CallToolRequ
 		"before_uid": beforeUID,
 		"after_uid":  afterUID,
 	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleChatCreateDraftNote(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+
+	chatIDStr, err := request.RequireString("chat_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing chat_id parameter"), nil
+	}
+	chatID, err := uuid.Parse(strings.TrimSpace(chatIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
+	}
+
+	body, err := request.RequireString("body")
+	if err != nil {
+		return mcp.NewToolResultError("missing body parameter"), nil
+	}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return mcp.NewToolResultError("body parameter cannot be empty"), nil
+	}
+
+	var wsID uuid.UUID
+	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
+	if wsIDStr != "" {
+		parsedWs, err := uuid.Parse(wsIDStr)
+		if err != nil {
+			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+		}
+		wsID = parsedWs
+	}
+
+	authorName := strings.TrimSpace(request.GetString("author_name", "AI Assistant"))
+	if authorName == "" {
+		authorName = "AI Assistant"
+	}
+
+	note, err := s.chatRepo.CreateInternalNote(ctx, wsID, chatID, authorName, "ai_agent", body)
+	if err != nil {
+		if errors.Is(err, repository.ErrChatNotFound) || strings.Contains(err.Error(), "not found") {
+			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("failed to create draft note: %v", err)), nil
+	}
+
+	data, err := json.MarshalIndent(note, "", "  ")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
 	}

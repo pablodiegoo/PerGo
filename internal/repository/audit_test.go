@@ -185,6 +185,51 @@ func TestAuditRepository_ConversationsAndThread(t *testing.T) {
 		}
 	})
 
+	t.Run("ListThreadByContact includes internal notes from chat_messages", func(t *testing.T) {
+		chatRepo := NewChatRepository(pool)
+		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, nil, c1.ID)
+		if err != nil {
+			t.Fatalf("failed to find or create chat: %v", err)
+		}
+
+		noteBody := "Private teammate note about VIP status."
+		author := "Agent Mulder"
+		note, err := chatRepo.CreateInternalNote(ctx, ws.ID, chat.ID, author, "human", noteBody)
+		if err != nil {
+			t.Fatalf("failed to create internal note: %v", err)
+		}
+
+		thread, err := auditRepo.ListThreadByContact(ctx, ws.ID, c1.ID, nil)
+		if err != nil {
+			t.Fatalf("ListThreadByContact failed: %v", err)
+		}
+
+		var foundNote *ThreadMessage
+		for _, m := range thread {
+			if m.ID == note.ID {
+				foundNote = &m
+				break
+			}
+		}
+
+		if foundNote == nil {
+			t.Fatalf("expected internal note %s in thread, not found", note.ID)
+		}
+		if foundNote.Direction != "internal_note" {
+			t.Errorf("expected direction 'internal_note', got %s", foundNote.Direction)
+		}
+		if foundNote.Body != noteBody {
+			t.Errorf("expected body %q, got %q", noteBody, foundNote.Body)
+		}
+		if foundNote.Metadata["author_name"] != author {
+			t.Errorf("expected author_name %q, got %q", author, foundNote.Metadata["author_name"])
+		}
+		if foundNote.Metadata["is_private"] != "true" {
+			t.Errorf("expected is_private 'true', got %q", foundNote.Metadata["is_private"])
+		}
+	})
+
+
 	// Test ListThread with Dispatch Status join
 	t.Run("ListThreadByContact returns dispatch status for outbound messages", func(t *testing.T) {
 		dispatchRepo := NewMessageDispatchRepository(pool)

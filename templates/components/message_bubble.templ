@@ -316,6 +316,40 @@ templ MessageBubble(m repository.ThreadMessage) {
 				</div>
 			</div>
 		}
+	} else if m.Direction == "internal_note" {
+		<div class="msg-wrap flex items-center justify-center my-2 w-full" data-msg-id={ m.ID.String() }>
+			<!-- Internal Note / Draft Bubble -->
+			<div class="msg-bubble w-full max-w-lg bg-amber-500/10 border border-amber-300 dark:bg-amber-950/20 dark:border-amber-800/50 rounded-xl p-3.5 shadow-sm flex flex-col gap-2">
+				<!-- Header with Lock Icon and Author Attribution -->
+				<div class="flex items-center justify-between gap-2 border-b border-amber-200/60 dark:border-amber-800/40 pb-2">
+					<div class="flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-semibold text-xs">
+						<!-- Lock icon -->
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+						</svg>
+						<span>Nota Interna</span>
+						<span class="text-amber-600/80 dark:text-amber-400/80 font-normal">• { getAuthorName(m) }</span>
+					</div>
+					<span class="text-[10px] text-amber-600/80 dark:text-amber-400/80">{ m.CreatedAt.Format("15:04") }</span>
+				</div>
+				<!-- Body -->
+				<p class="text-xs text-amber-900 dark:text-amber-100 whitespace-pre-wrap break-words font-normal">{ msgBody(m.Body) }</p>
+				<!-- Approve & Send action button -->
+				<div class="flex items-center justify-end pt-1">
+					<button
+						type="button"
+						class="btn-approve-send inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-none transition-colors cursor-pointer"
+						data-draft={ m.Body }
+						onclick="var ta = document.getElementById('chat-textarea'); if(ta){ ta.value = this.getAttribute('data-draft'); ta.dispatchEvent(new Event('input')); ta.focus(); ta.scrollIntoView({behavior:'smooth'}); }"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+						</svg>
+						<span>Approve & Send</span>
+					</button>
+				</div>
+			</div>
+		</div>
 	} else {
 		if isProduct {
 			<div class="msg-wrap flex items-end gap-2 justify-end" data-msg-id={ m.ID.String() }>
@@ -444,6 +478,20 @@ func msgBody(body string) string {
 	}
 	return body
 }
+
+// getAuthorName returns the display name for the author of an internal note.
+func getAuthorName(m repository.ThreadMessage) string {
+	if m.Metadata != nil {
+		if a, ok := m.Metadata["author_name"]; ok && a != "" {
+			return a
+		}
+		if s, ok := m.Metadata["sender_name"]; ok && s != "" {
+			return s
+		}
+	}
+	return "AI Assistant"
+}
+
 
 // MessageBubbleList renders a list of message bubbles — used by PollMessages
 // to return incremental updates (hx-swap="beforeend" onto #chat-messages).

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -134,6 +135,44 @@ func (r *ChatRepository) GetChat(ctx context.Context, workspaceID, chatID uuid.U
 
 	return &chat, nil
 }
+
+// GetChatByID fetches a single chat by chat ID across any workspace.
+func (r *ChatRepository) GetChatByID(ctx context.Context, chatID uuid.UUID) (*domain.Chat, error) {
+	if chatID == uuid.Nil {
+		return nil, errors.New("chat_id is required")
+	}
+	var chat domain.Chat
+	var metaBytes []byte
+
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, workspace_id, connection_id, contact_id, status, assigned_user_id, assigned_email,
+		       tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
+		       created_at, updated_at
+		FROM chats
+		WHERE id = $1
+	`, chatID).Scan(
+		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status,
+		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &chat.AIDisabled,
+		&chat.ServiceWindowExpiresAt, &chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrChatNotFound
+		}
+		return nil, fmt.Errorf("get chat by id: %w", err)
+	}
+
+	if len(metaBytes) > 0 {
+		_ = json.Unmarshal(metaBytes, &chat.Metadata)
+	}
+	if chat.Metadata == nil {
+		chat.Metadata = make(map[string]interface{})
+	}
+
+	return &chat, nil
+}
+
 
 // ListChats retrieves chats for a workspace with filtering and pagination.
 func (r *ChatRepository) ListChats(
@@ -411,6 +450,69 @@ func (r *ChatRepository) AddChatMessage(ctx context.Context, msg *domain.ChatMes
 
 	return nil
 }
+
+// CreateInternalNote appends a private internal note to a chat thread.
+// It sets direction = DirectionInternalNote ("internal_note") and is_private = true.
+func (r *ChatRepository) CreateInternalNote(
+	ctx context.Context,
+	workspaceID, chatID uuid.UUID,
+	authorName, authorID, body string,
+) (*domain.ChatMessage, error) {
+	if chatID == uuid.Nil {
+		return nil, errors.New("chat_id is required")
+	}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return nil, errors.New("body cannot be empty")
+	}
+
+	var chat *domain.Chat
+	var err error
+	if workspaceID != uuid.Nil {
+		chat, err = r.GetChat(ctx, workspaceID, chatID)
+	} else {
+		chat, err = r.GetChatByID(ctx, chatID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	workspaceID = chat.WorkspaceID
+
+	noteUID := fmt.Sprintf("note_%s", uuid.New().String())
+	if authorName == "" {
+		authorName = "AI Assistant"
+	}
+	senderType := string(domain.SenderTypeAIAgent)
+	if authorID == "human" || authorID == "human_agent" {
+		senderType = string(domain.SenderTypeHumanAgent)
+	}
+
+	msg := &domain.ChatMessage{
+		ID:          uuid.New(),
+		ChatID:      chatID,
+		WorkspaceID: workspaceID,
+		UID:         noteUID,
+		Direction:   string(domain.DirectionInternalNote),
+		SenderType:  senderType,
+		SenderName:  authorName,
+		SenderID:    authorID,
+		Body:        body,
+		IsPrivate:   true,
+		Reactions:   []domain.Reaction{},
+		Metadata: map[string]interface{}{
+			"is_private":  true,
+			"author_name": authorName,
+		},
+		CreatedAt: time.Now().UTC(),
+	}
+
+	if err := r.AddChatMessage(ctx, msg); err != nil {
+		return nil, err
+	}
+
+	return msg, nil
+}
+
 
 // ListChatMessages returns messages for a given chat with deterministic cursor pagination.
 // Messages are returned in chronological order (oldest to newest).
