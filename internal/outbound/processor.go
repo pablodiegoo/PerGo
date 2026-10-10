@@ -379,12 +379,13 @@ func (p *Processor) Ingest(
 
 					if p.publisher != nil {
 						handoffPayload, _ := json.Marshal(map[string]interface{}{
-							"event":        "chat.handoff",
+							"event":        "chat.handoff.human_takeover",
 							"workspace_id": workspaceID.String(),
 							"chat_id":      chat.ID.String(),
 							"contact_id":   contact.ID.String(),
 							"timestamp":    time.Now().UTC().Format(time.RFC3339),
 						})
+						_ = p.publisher.Publish(ctx, "chat.handoff.human_takeover", handoffPayload, traceID)
 						_ = p.publisher.Publish(ctx, fmt.Sprintf("chat.handoff.%s", workspaceID.String()), handoffPayload, traceID)
 					}
 				}

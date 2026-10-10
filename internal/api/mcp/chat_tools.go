@@ -3,8 +3,10 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -97,6 +99,29 @@ func (s *Server) registerChatTools() {
 			Required: []string{"workspace_id", "chat_id"},
 		},
 	}, s.handleChatHistory)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "chat_enable_ai",
+		Description: "Enable or disable automated AI responses for a specific chat thread.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the chat thread.",
+				},
+				"enabled": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Whether automated AI responses should be enabled (true) or disabled (false).",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id", "enabled"},
+		},
+	}, s.handleChatEnableAI)
 }
 
 // ChatSummaryDTO enriches domain.Chat with resolved contact summary for API/MCP readability.
@@ -292,6 +317,65 @@ func (s *Server) handleChatHistory(ctx context.Context, request mcp.CallToolRequ
 		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
 	}
 
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleChatEnableAI(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+
+	wsIDStr, err := request.RequireString("workspace_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing workspace_id parameter"), nil
+	}
+	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	}
+
+	chatIDStr, err := request.RequireString("chat_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing chat_id parameter"), nil
+	}
+	chatID, err := uuid.Parse(strings.TrimSpace(chatIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
+	}
+
+	enabled, err := request.RequireBool("enabled")
+	if err != nil {
+		return mcp.NewToolResultError("missing or invalid enabled parameter: must be a boolean"), nil
+	}
+
+	// Update chat ai_disabled = !enabled
+	if err := s.chatRepo.SetAIDisabled(ctx, wsID, chatID, !enabled); err != nil {
+		if errors.Is(err, repository.ErrChatNotFound) {
+			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("failed to update chat AI status: %v", err)), nil
+	}
+
+	// Also update contact bot active state if contactRepo is configured
+	if s.contactRepo != nil {
+		chat, err := s.chatRepo.GetChat(ctx, wsID, chatID)
+		if err == nil && chat != nil {
+			var pausedAt *time.Time
+			if !enabled {
+				now := time.Now().UTC()
+				pausedAt = &now
+			}
+			_ = s.contactRepo.UpdateBotState(ctx, wsID, chat.ContactID, enabled, pausedAt)
+		}
+	}
+
+	res := map[string]interface{}{
+		"chat_id":     chatID.String(),
+		"enabled":     enabled,
+		"ai_disabled": !enabled,
+		"status":      "success",
+	}
+	data, _ := json.MarshalIndent(res, "", "  ")
 	return mcp.NewToolResultText(string(data)), nil
 }
 

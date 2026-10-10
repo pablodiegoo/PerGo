@@ -743,6 +743,8 @@ func main() {
 	adminGroup.GET("/contacts/search", inboxHandler.SearchContacts)
 	adminGroup.POST("/contacts/merge", inboxHandler.MergeContacts)
 	adminGroup.POST("/contacts/:id/toggle-bot", inboxHandler.ToggleBot)
+	adminGroup.POST("/inbox/chats/:id/enable-ai", inboxHandler.EnableChatAI)
+	adminGroup.POST("/inbox/chat_enable_ai", inboxHandler.EnableChatAI)
 
 	// Device/Connection management routes
 	deviceHandler := &admin.DeviceHandler{

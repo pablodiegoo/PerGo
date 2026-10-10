@@ -149,9 +149,14 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 	}
 
 	// Reset unread count on the parent Chat if ChatRepo is present
+	var currentChat *domain.Chat
 	if h.ChatRepo != nil && workspaceID != uuid.Nil {
-		if chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID); cErr == nil && chat != nil {
+		if chat, err := h.ChatRepo.GetChatByContact(ctx, workspaceID, contactID); err == nil && chat != nil {
 			_ = h.ChatRepo.UpdateChatUnreadCount(ctx, workspaceID, chat.ID, 0)
+			currentChat = chat
+		} else if chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID); cErr == nil && chat != nil {
+			_ = h.ChatRepo.UpdateChatUnreadCount(ctx, workspaceID, chat.ID, 0)
+			currentChat = chat
 		}
 	}
 
@@ -248,7 +253,7 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 	}
 
 	if mw.IsHTMX(c) {
-		return mw.Render(c, http.StatusOK, components.ChatPanel(contact, replyOptions, messages, isWabaBlocked))
+		return mw.Render(c, http.StatusOK, components.ChatPanel(contact, currentChat, replyOptions, messages, isWabaBlocked))
 	}
 
 	// Direct page reload -> render the full page with this chat panel pre-opened
@@ -257,7 +262,7 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "failed to load conversations: "+err.Error())
 	}
 
-	chatPanelComp := components.ChatPanel(contact, replyOptions, messages, isWabaBlocked)
+	chatPanelComp := components.ChatPanel(contact, currentChat, replyOptions, messages, isWabaBlocked)
 	return mw.Render(c, http.StatusOK, pages.InboxPage(conversations, unreadMap, "", unreadCount, chatPanelComp, connections))
 }
 
@@ -435,6 +440,19 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 				if cErr == nil && chat != nil {
 					_ = h.ChatRepo.SetAIDisabled(ctx, workspaceID, chat.ID, true)
 					_ = h.ChatRepo.TouchLastMessageAt(ctx, workspaceID, chat.ID, now)
+
+					if h.Publisher != nil {
+						handoffPayload, _ := json.Marshal(map[string]interface{}{
+							"event":        "chat.handoff.human_takeover",
+							"workspace_id": workspaceID.String(),
+							"chat_id":      chat.ID.String(),
+							"contact_id":   cProfile.ID.String(),
+							"timestamp":    now.Format(time.RFC3339),
+						})
+						_ = h.Publisher.Publish(ctx, "chat.handoff.human_takeover", handoffPayload, traceID)
+						_ = h.Publisher.Publish(ctx, fmt.Sprintf("chat.handoff.%s", workspaceID.String()), handoffPayload, traceID)
+					}
+
 					chatMsg := &domain.ChatMessage{
 						ChatID:      chat.ID,
 						WorkspaceID: workspaceID,
@@ -795,4 +813,76 @@ func (h *InboxHandler) ToggleBot(c *echo.Context) error {
 	contact.BotActive = newActive
 	contact.BotPausedAt = pausedAt
 	return mw.Render(c, http.StatusOK, components.BotStatusBadge(contact))
+}
+
+// EnableChatAI handles POST /admin/inbox/chats/:id/enable-ai and /admin/inbox/chat_enable_ai
+// Query/Form params: enabled (bool, default true), chat_id (if not in URL param).
+func (h *InboxHandler) EnableChatAI(c *echo.Context) error {
+	ctx := c.Request().Context()
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	chatIDStr := c.Param("id")
+	if chatIDStr == "" {
+		chatIDStr = c.QueryParam("chat_id")
+		if chatIDStr == "" {
+			chatIDStr = c.FormValue("chat_id")
+		}
+	}
+	if chatIDStr == "" {
+		return c.String(http.StatusBadRequest, "chat_id is required")
+	}
+	chatID, err := uuid.Parse(chatIDStr)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "invalid chat_id UUID")
+	}
+
+	enabledStr := c.QueryParam("enabled")
+	if enabledStr == "" {
+		enabledStr = c.FormValue("enabled")
+	}
+	enabled := true
+	if enabledStr != "" {
+		enabled = enabledStr == "true" || enabledStr == "1"
+	}
+
+	if h.ChatRepo != nil {
+		if err := h.ChatRepo.SetAIDisabled(ctx, workspaceID, chatID, !enabled); err != nil {
+			return c.String(http.StatusInternalServerError, "failed to update chat AI status: "+err.Error())
+		}
+
+		chat, err := h.ChatRepo.GetChat(ctx, workspaceID, chatID)
+		if err != nil {
+			return c.String(http.StatusNotFound, "chat not found")
+		}
+
+		if h.ContactRepo != nil {
+			var pausedAt *time.Time
+			if !enabled {
+				now := time.Now().UTC()
+				pausedAt = &now
+			}
+			_ = h.ContactRepo.UpdateBotState(ctx, workspaceID, chat.ContactID, enabled, pausedAt)
+		}
+
+		if mw.IsHTMX(c) {
+			return mw.Render(c, http.StatusOK, components.AIStatusBadge(chat))
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"status":      "success",
+			"chat_id":     chat.ID.String(),
+			"ai_disabled": chat.AIDisabled,
+			"enabled":     enabled,
+		})
+	}
+
+	return c.NoContent(http.StatusOK)
 }

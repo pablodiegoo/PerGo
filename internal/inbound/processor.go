@@ -238,6 +238,7 @@ type InboundProcessor struct {
 	dispatchRepo         *repository.MessageDispatchRepository
 	router               InboundRouter
 	chatRepo             *repository.ChatRepository
+	debouncer            *Debouncer
 }
 
 // NewInboundProcessor creates a new InboundProcessor.
@@ -268,6 +269,12 @@ func NewInboundProcessor(
 // SetChatRepository configures the ChatRepository for conversational inbox tracking.
 func (p *InboundProcessor) SetChatRepository(r *repository.ChatRepository) *InboundProcessor {
 	p.chatRepo = r
+	return p
+}
+
+// SetDebouncer configures the Debouncer for inbound AI sliding-window coalescing.
+func (p *InboundProcessor) SetDebouncer(d *Debouncer) *InboundProcessor {
+	p.debouncer = d
 	return p
 }
 
@@ -544,13 +551,15 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 	}
 
 	// 8.5 Shared Team Inbox Tracking: Upsert Chat & Append Inbound ChatMessage
+	var chat *domain.Chat
 	if p.chatRepo != nil && contact != nil {
 		var connID *uuid.UUID
 		if ev.ConnectionID != uuid.Nil {
 			connID = &ev.ConnectionID
 		}
 
-		chat, cErr := p.chatRepo.FindOrCreateChat(ctx, ev.WorkspaceID, connID, contact.ID)
+		var cErr error
+		chat, cErr = p.chatRepo.FindOrCreateChat(ctx, ev.WorkspaceID, connID, contact.ID)
 		if cErr != nil {
 			slog.Error("inbound processor: failed to find or create chat", "error", cErr, "contact_id", contact.ID, "trace_id", traceID)
 		} else if chat != nil {
@@ -611,13 +620,48 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 			if err := p.chatRepo.AddChatMessage(ctx, chatMsg); err != nil {
 				slog.Error("inbound processor: failed to add chat message", "error", err, "uid", msgUID, "trace_id", traceID)
 			}
+
+			// 8.6 Inbound Debounce Buffer & AI Handoff Gate
+			if p.debouncer != nil {
+				if chat.AIDisabled {
+					slog.Info("inbound processor: chat AI disabled by human takeover, bypassing automated AI dispatch",
+						"workspace_id", ev.WorkspaceID,
+						"chat_id", chat.ID,
+						"contact_id", contact.ID,
+						"trace_id", traceID,
+					)
+				} else {
+					debouncedMsg := &DebouncedMessage{
+						MessageID:    msgUID,
+						TraceID:      traceID,
+						WorkspaceID:  ev.WorkspaceID,
+						ConnectionID: connID,
+						ChatID:       chat.ID,
+						ContactID:    contact.ID,
+						Channel:      ev.Channel,
+						From:         ev.From,
+						To:           ev.To,
+						SenderName:   ev.SenderDisplayName(),
+						Body:         msgBody,
+						OccurredAt:   occurredAt,
+						Metadata:     map[string]interface{}{},
+					}
+					if err := p.debouncer.Enqueue(ctx, debouncedMsg); err != nil {
+						slog.Error("inbound processor: failed to enqueue message to debounce buffer", "error", err, "chat_id", chat.ID, "trace_id", traceID)
+					}
+				}
+			}
 		}
 	}
 
 	// 9. Route inbound event via InboundRouter
 	if p.router != nil && contact != nil {
-		if err := p.router.Route(ctx, contact, ev); err != nil {
-			slog.Error("inbound processor: router failed to route event", "error", err, "contact_id", contact.ID, "trace_id", traceID)
+		if chat != nil && chat.AIDisabled {
+			slog.Info("inbound processor: chat AI is disabled (human takeover), bypassing InboundRouter dispatch", "chat_id", chat.ID, "contact_id", contact.ID)
+		} else {
+			if err := p.router.Route(ctx, contact, ev); err != nil {
+				slog.Error("inbound processor: router failed to route event", "error", err, "contact_id", contact.ID, "trace_id", traceID)
+			}
 		}
 	}
 

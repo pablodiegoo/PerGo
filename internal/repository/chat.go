@@ -135,6 +135,49 @@ func (r *ChatRepository) GetChat(ctx context.Context, workspaceID, chatID uuid.U
 	return &chat, nil
 }
 
+// GetChatByContact retrieves the most recently active chat for a contact in a workspace.
+func (r *ChatRepository) GetChatByContact(ctx context.Context, workspaceID, contactID uuid.UUID) (*domain.Chat, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
+	if contactID == uuid.Nil {
+		return nil, errors.New("contact_id is required")
+	}
+
+	var chat domain.Chat
+	var metaBytes []byte
+
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, workspace_id, connection_id, contact_id, status, assigned_user_id, assigned_email,
+		       tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
+		       created_at, updated_at
+		FROM chats
+		WHERE workspace_id = $1 AND contact_id = $2
+		ORDER BY last_message_at DESC
+		LIMIT 1
+	`, workspaceID, contactID).Scan(
+		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status,
+		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &chat.AIDisabled,
+		&chat.ServiceWindowExpiresAt, &chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrChatNotFound
+		}
+		return nil, fmt.Errorf("get chat by contact: %w", err)
+	}
+
+	if len(metaBytes) > 0 {
+		_ = json.Unmarshal(metaBytes, &chat.Metadata)
+	}
+	if chat.Metadata == nil {
+		chat.Metadata = make(map[string]interface{})
+	}
+
+	return &chat, nil
+}
+
 // ListChats retrieves chats for a workspace with filtering and pagination.
 func (r *ChatRepository) ListChats(
 	ctx context.Context,

@@ -240,4 +240,48 @@ func TestMCPChatTools(t *testing.T) {
 			t.Errorf("expected [mcp-msg-1, mcp-msg-2], got %s, %s", parsedBefore.Messages[0].UID, parsedBefore.Messages[1].UID)
 		}
 	})
+
+	t.Run("chat_enable_ai", func(t *testing.T) {
+		// 1. Disable AI
+		res, err := srv.CallTool(ctx, "chat_enable_ai", map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"enabled":      false,
+		})
+		if err != nil {
+			t.Fatalf("chat_enable_ai call error: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("chat_enable_ai returned error: %+v", res.Content)
+		}
+
+		updatedChat, err := chatRepo.GetChat(ctx, ws.ID, chat.ID)
+		if err != nil {
+			t.Fatalf("get chat error: %v", err)
+		}
+		if !updatedChat.AIDisabled {
+			t.Errorf("expected ai_disabled to be true after enabled=false")
+		}
+
+		// 2. Re-enable AI
+		res2, err := srv.CallTool(ctx, "chat_enable_ai", map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"enabled":      true,
+		})
+		if err != nil {
+			t.Fatalf("chat_enable_ai call error: %v", err)
+		}
+		if res2.IsError {
+			t.Fatalf("chat_enable_ai returned error: %+v", res2.Content)
+		}
+
+		updatedChat2, err := chatRepo.GetChat(ctx, ws.ID, chat.ID)
+		if err != nil {
+			t.Fatalf("get chat error: %v", err)
+		}
+		if updatedChat2.AIDisabled {
+			t.Errorf("expected ai_disabled to be false after enabled=true")
+		}
+	})
 }
