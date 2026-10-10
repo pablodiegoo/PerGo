@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/domain"
@@ -52,7 +53,33 @@ func getLastMessageID(messages []repository.ThreadMessage) string {
 }
 
 // ChatPanel renders the full chat thread view (middle column) plus contact CRM metadata (right column).
-templ ChatPanel(contact *domain.Contact, replyOptions []ReplyOption, messages []repository.ThreadMessage, isWabaBlocked bool) {
+templ ChatPanel(contact *domain.Contact, replyOptions []ReplyOption, messages []repository.ThreadMessage, isWabaBlocked bool, windowExpiresAt ...*time.Time) {
+	{{
+		var expTime *time.Time
+		if len(windowExpiresAt) > 0 {
+			expTime = windowExpiresAt[0]
+		}
+		hasWaba := false
+		var defaultContact, defaultSender string
+		if len(replyOptions) > 0 {
+			defaultContact = replyOptions[0].RecipientPhone
+			defaultSender = replyOptions[0].SenderIdentity
+		}
+		for _, opt := range replyOptions {
+			if opt.Channel == "whatsapp_cloud" {
+				hasWaba = true
+				if defaultContact == "" {
+					defaultContact = opt.RecipientPhone
+					defaultSender = opt.SenderIdentity
+				}
+			}
+		}
+		for _, id := range contact.Identities {
+			if id.Channel == "whatsapp_cloud" {
+				hasWaba = true
+			}
+		}
+	}}
 	<div class="chat-main-container flex h-full w-full overflow-hidden text-[#37352f] dark:text-[#e3e3e3]" id="chat-panel-inner">
 		<!-- Middle column: Conversation Thread -->
 		<div class="chat-thread flex-1 flex flex-col h-full min-w-0 bg-[#fbfbfa] dark:bg-[#191919]">
@@ -65,6 +92,9 @@ templ ChatPanel(contact *domain.Contact, replyOptions []ReplyOption, messages []
 				<div class="flex items-center gap-2">
 					<p class="font-semibold text-sm text-[#37352f] dark:text-[#e3e3e3]">{ contact.Name }</p>
 					@BotStatusBadge(contact)
+					if hasWaba {
+						@WABAServiceWindowBadge(expTime, isWabaBlocked)
+					}
 				</div>
 				<div class="flex items-center gap-1.5 mt-0.5">
 					for i, identity := range contact.Identities {
@@ -108,12 +138,23 @@ templ ChatPanel(contact *domain.Contact, replyOptions []ReplyOption, messages []
 		</div>
 
 		<!-- WABA 24h Block Warning Banner -->
-		if isWabaBlocked {
-			<div class="px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800/50 text-amber-800 dark:text-amber-300 text-xs font-semibold flex items-center gap-1.5 flex-shrink-0">
-				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-				</svg>
-				<span>{ i18n.T(ctx, "inbox.waba_24h_window_closed") }</span>
+		if isWabaBlocked && hasWaba {
+			<div class="px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800/50 text-amber-800 dark:text-amber-300 text-xs font-semibold flex items-center justify-between gap-1.5 flex-shrink-0">
+				<div class="flex items-center gap-1.5">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+					</svg>
+					<span>{ i18n.T(ctx, "inbox.waba_24h_window_closed") }</span>
+				</div>
+				<button
+					type="button"
+					class="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
+					hx-get={ fmt.Sprintf("/admin/inbox/new-message-modal?type=template_only&from=%s&channel=whatsapp_cloud&to=%s", defaultContact, defaultSender) }
+					hx-target="#modal-container"
+					hx-swap="innerHTML"
+				>
+					Select Approved Template to Reopen
+				</button>
 			</div>
 		}
 
@@ -148,7 +189,7 @@ templ ChatPanel(contact *domain.Contact, replyOptions []ReplyOption, messages []
 				hx-swap="innerHTML"
 				hx-on::after-request="if(event.detail.successful){document.getElementById('chat-textarea').value='';document.getElementById('chat-textarea').style.height='40px';}"
 			>
-				@replyFormFields(replyOptions)
+				@replyFormFields(replyOptions, isWabaBlocked)
 			</form>
 		</div>
 	</div>
@@ -168,7 +209,7 @@ templ ChatPanel(contact *domain.Contact, replyOptions []ReplyOption, messages []
 }
 
 // replyFormFields renders the input fields, picker, and text area for compose form.
-templ replyFormFields(replyOptions []ReplyOption) {
+templ replyFormFields(replyOptions []ReplyOption, isWabaBlocked bool) {
 	{{
 		var defaultContact, defaultChannel, defaultSender string
 		hasWaba := false
@@ -182,6 +223,7 @@ templ replyFormFields(replyOptions []ReplyOption) {
 				hasWaba = true
 			}
 		}
+		isBlockedForCurrent := isWabaBlocked && defaultChannel == "whatsapp_cloud"
 	}}
 	<input type="hidden" id="chat-contact" name="contact" value={ defaultContact }/>
 	<input type="hidden" id="chat-channel" name="channel" value={ defaultChannel }/>
@@ -193,6 +235,7 @@ templ replyFormFields(replyOptions []ReplyOption) {
 				<span class="text-xs text-[#787774] dark:text-[#9b9b9b] font-medium">{ i18n.T(ctx, "inbox.reply_via") }</span>
 				<select 
 					id="chat-reply-picker"
+					data-waba-blocked={ fmt.Sprintf("%t", isWabaBlocked) }
 					class="text-xs border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg px-2 py-1 bg-white dark:bg-[#202020] text-[#37352f] dark:text-[#e3e3e3] focus:outline-none focus:ring-1 focus:ring-[#0284c7] focus:border-transparent cursor-pointer"
 					onchange="updateReplyFields(this)"
 				>
@@ -218,13 +261,13 @@ templ replyFormFields(replyOptions []ReplyOption) {
 		}
 
 		<div class="flex items-end gap-2">
-			<!-- WABA Template button -->
+			<!-- WABA Template button / Reopen button -->
 			if hasWaba {
 				<button
 					id="chat-tmpl-btn"
 					type="button"
 					class="h-10 px-3 border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg text-[#37352f] dark:text-[#e3e3e3] bg-white dark:bg-[#202020] hover:bg-[#e9e9e7]/50 dark:hover:bg-[#2f2f2f]/50 text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 shadow-none transition-colors cursor-pointer"
-					style={ fmt.Sprintf("display: %s;", map[bool]string{true: "flex", false: "none"}[defaultChannel == "whatsapp_cloud"]) }
+					style={ fmt.Sprintf("display: %s;", map[bool]string{true: "flex", false: "none"}[defaultChannel == "whatsapp_cloud" && !isBlockedForCurrent]) }
 					hx-get={ fmt.Sprintf("/admin/inbox/new-message-modal?type=template_only&from=%s&channel=whatsapp_cloud&to=%s", defaultContact, defaultSender) }
 					hx-target="#modal-container"
 					hx-swap="innerHTML"
@@ -234,18 +277,32 @@ templ replyFormFields(replyOptions []ReplyOption) {
 					</svg>
 					<span>{ i18n.T(ctx, "inbox.templates") }</span>
 				</button>
+				<button
+					id="chat-reopen-template-btn"
+					type="button"
+					class="h-10 px-3.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 transition-colors cursor-pointer shadow-sm"
+					style={ fmt.Sprintf("display: %s;", map[bool]string{true: "flex", false: "none"}[defaultChannel == "whatsapp_cloud" && isBlockedForCurrent]) }
+					hx-get={ fmt.Sprintf("/admin/inbox/new-message-modal?type=template_only&from=%s&channel=whatsapp_cloud&to=%s", defaultContact, defaultSender) }
+					hx-target="#modal-container"
+					hx-swap="innerHTML"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+					</svg>
+					<span>Select Approved Template to Reopen</span>
+				</button>
 			}
 
 			<textarea
 				id="chat-textarea"
 				name="body"
-				placeholder={ i18n.T(ctx, "inbox.type_message_placeholder") }
+				placeholder={ map[bool]string{true: "Meta 24h window closed. Select an approved template to reopen.", false: i18n.T(ctx, "inbox.type_message_placeholder")}[isBlockedForCurrent] }
 				rows="1"
 				class="flex-1 resize-none rounded-lg border border-[#e9e9e7] dark:border-[#2f2f2f] bg-[#fbfbfa] dark:bg-[#191919] px-3 py-2 text-sm text-[#37352f] dark:text-[#e3e3e3] placeholder-[#787774] dark:placeholder-[#9b9b9b] focus:outline-none focus:ring-2 focus:ring-[#0284c7] focus:border-transparent transition-shadow overflow-hidden disabled:opacity-50"
 				style="min-height:40px;max-height:160px;"
 				oninput="this.style.height='40px';this.style.height=Math.min(this.scrollHeight,160)+'px';"
 				onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();if(!this.disabled && this.value.trim()){htmx.trigger(this.closest('form'),'submit');}}"
-				if len(replyOptions) == 0 {
+				if len(replyOptions) == 0 || isBlockedForCurrent {
 					disabled
 				}
 			></textarea>
@@ -253,7 +310,7 @@ templ replyFormFields(replyOptions []ReplyOption) {
 				type="submit"
 				class="flex-shrink-0 h-10 w-10 rounded-full bg-[#0369a1] hover:bg-[#0284c7] active:bg-[#0284c7] flex items-center justify-center text-white transition-colors shadow-none cursor-pointer disabled:opacity-50"
 				aria-label={ i18n.T(ctx, "common.actions.send") }
-				if len(replyOptions) == 0 {
+				if len(replyOptions) == 0 || isBlockedForCurrent {
 					disabled
 				}
 			>
@@ -268,21 +325,53 @@ templ replyFormFields(replyOptions []ReplyOption) {
 	<script>
 		function updateReplyFields(select) {
 			var opt = select.options[select.selectedIndex];
+			var channel = opt.getAttribute('data-channel');
 			document.getElementById('chat-contact').value = opt.value;
-			document.getElementById('chat-channel').value = opt.getAttribute('data-channel');
+			document.getElementById('chat-channel').value = channel;
 			document.getElementById('chat-sender').value = opt.getAttribute('data-sender');
 			
+			var isWabaBlocked = select.getAttribute('data-waba-blocked') === 'true';
+			var txt = document.getElementById('chat-textarea');
+			var sendBtn = document.querySelector('#chat-send-form button[type="submit"]');
+			var reopenBtn = document.getElementById('chat-reopen-template-btn');
 			var tmplBtn = document.getElementById('chat-tmpl-btn');
-			if (tmplBtn) {
-				if (opt.getAttribute('data-channel') === 'whatsapp_cloud') {
-					tmplBtn.style.display = 'flex';
-					var from = opt.value;
-					var to = opt.getAttribute('data-sender');
-					tmplBtn.setAttribute('hx-get', '/admin/inbox/new-message-modal?type=template_only&from=' + from + '&channel=whatsapp_cloud&to=' + to);
-					htmx.process(tmplBtn);
+
+			if (channel === 'whatsapp_cloud') {
+				var from = opt.value;
+				var to = opt.getAttribute('data-sender');
+				if (isWabaBlocked) {
+					if (txt) {
+						txt.disabled = true;
+						txt.placeholder = 'Meta 24h window closed. Select an approved template to reopen.';
+					}
+					if (sendBtn) { sendBtn.disabled = true; }
+					if (reopenBtn) {
+						reopenBtn.style.display = 'flex';
+						reopenBtn.setAttribute('hx-get', '/admin/inbox/new-message-modal?type=template_only&from=' + from + '&channel=whatsapp_cloud&to=' + to);
+						htmx.process(reopenBtn);
+					}
+					if (tmplBtn) { tmplBtn.style.display = 'none'; }
 				} else {
-					tmplBtn.style.display = 'none';
+					if (txt) {
+						txt.disabled = false;
+						txt.placeholder = 'Digite uma mensagem...';
+					}
+					if (sendBtn) { sendBtn.disabled = false; }
+					if (reopenBtn) { reopenBtn.style.display = 'none'; }
+					if (tmplBtn) {
+						tmplBtn.style.display = 'flex';
+						tmplBtn.setAttribute('hx-get', '/admin/inbox/new-message-modal?type=template_only&from=' + from + '&channel=whatsapp_cloud&to=' + to);
+						htmx.process(tmplBtn);
+					}
 				}
+			} else {
+				if (txt) {
+					txt.disabled = false;
+					txt.placeholder = 'Digite uma mensagem...';
+				}
+				if (sendBtn) { sendBtn.disabled = false; }
+				if (reopenBtn) { reopenBtn.style.display = 'none'; }
+				if (tmplBtn) { tmplBtn.style.display = 'none'; }
 			}
 		}
 	</script>
@@ -411,5 +500,81 @@ templ ContactCRMPanel(contact *domain.Contact) {
 			</div>
 		</div>
 	</div>
+}
+
+// WABAServiceWindowBadge renders the live 24h Meta customer service window countdown badge.
+templ WABAServiceWindowBadge(expiresAt *time.Time, isBlocked bool) {
+	{{
+		badgeColor := "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
+		badgeText := "🔴 Expired"
+		expiresISO := ""
+		if expiresAt != nil && !isBlocked && expiresAt.After(time.Now().UTC()) {
+			expiresISO = expiresAt.Format(time.RFC3339)
+			rem := time.Until(*expiresAt)
+			hrs := int(rem.Hours())
+			mins := int(rem.Minutes()) % 60
+			if hrs < 4 {
+				badgeColor = "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+				badgeText = fmt.Sprintf("🟡 %dh %02dm remaining", hrs, mins)
+			} else {
+				badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+				badgeText = fmt.Sprintf("🟢 %dh %02dm remaining", hrs, mins)
+			}
+		}
+	}}
+	<span
+		id="waba-window-countdown"
+		data-expires-at={ expiresISO }
+		class={ "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors select-none " + badgeColor }
+		title="Meta WhatsApp 24-hour Customer Service Window"
+	>
+		{ badgeText }
+	</span>
+	if expiresISO != "" {
+		<script>
+			(function() {
+				var el = document.getElementById('waba-window-countdown');
+				if (!el) return;
+				var expiresStr = el.getAttribute('data-expires-at');
+				if (!expiresStr) return;
+				var expTime = new Date(expiresStr).getTime();
+
+				function updateBadge() {
+					var now = new Date().getTime();
+					var diff = expTime - now;
+					if (diff <= 0) {
+						el.innerText = '🔴 Expired';
+						el.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors select-none bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800';
+						var txt = document.getElementById('chat-textarea');
+						if (txt) {
+							txt.disabled = true;
+							txt.placeholder = 'Meta 24h window closed. Select an approved template to reopen.';
+						}
+						var reopenBtn = document.getElementById('chat-reopen-template-btn');
+						if (reopenBtn) { reopenBtn.style.display = 'flex'; }
+						var tmplBtn = document.getElementById('chat-tmpl-btn');
+						if (tmplBtn) { tmplBtn.style.display = 'none'; }
+						var sendBtn = document.querySelector('#chat-send-form button[type="submit"]');
+						if (sendBtn) { sendBtn.disabled = true; }
+						return;
+					}
+					var totalMins = Math.floor(diff / 60000);
+					var hrs = Math.floor(totalMins / 60);
+					var mins = totalMins % 60;
+					var padMins = mins < 10 ? '0' + mins : mins;
+					if (hrs < 4) {
+						el.innerText = '🟡 ' + hrs + 'h ' + padMins + 'm remaining';
+						el.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors select-none bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800';
+					} else {
+						el.innerText = '🟢 ' + hrs + 'h ' + padMins + 'm remaining';
+						el.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors select-none bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800';
+					}
+				}
+
+				setInterval(updateBadge, 30000);
+				updateBadge();
+			})();
+		</script>
+	}
 }
 

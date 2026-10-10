@@ -53,10 +53,19 @@ type Chat struct {
 	UnreadCount            int                    `json:"unread_count"`
 	AIDisabled             bool                   `json:"ai_disabled"`
 	ServiceWindowExpiresAt *time.Time             `json:"service_window_expires_at,omitempty"`
+	ServiceWindowIsOpen    bool                   `json:"service_window_is_open"`
 	LastMessageAt          time.Time              `json:"last_message_at"`
 	Metadata               map[string]interface{} `json:"metadata"`
 	CreatedAt              time.Time              `json:"created_at"`
 	UpdatedAt              time.Time              `json:"updated_at"`
+}
+
+// IsServiceWindowOpen reports whether the customer service window is active.
+func (c *Chat) IsServiceWindowOpen() bool {
+	if c == nil || c.ServiceWindowExpiresAt == nil {
+		return false
+	}
+	return time.Now().UTC().Before(*c.ServiceWindowExpiresAt)
 }
 
 // ChatMessage represents a single message, dispatch, or internal note within a Chat.

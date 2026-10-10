@@ -100,4 +100,36 @@ func TestInboundProcessor_ChatIngress(t *testing.T) {
 	if msgs[0].Body != "Hello from customer!" {
 		t.Errorf("expected body 'Hello from customer!', got %s", msgs[0].Body)
 	}
+
+	// Test 72h window on CTWA
+	now := time.Now().UTC()
+	ctwaEvent := &inbound.InboundEvent{
+		WorkspaceID:  ws.ID,
+		ConnectionID: connID,
+		MessageID:    "wamid-ctwa-001",
+		TraceID:      "trace-ctwa-001",
+		Channel:      "whatsapp_cloud",
+		From:         "+5511988887777",
+		To:           "bot123",
+		Body:         "Hello from ad!",
+		OccurredAt:   now,
+		Metadata:     map[string]string{"entry_point_type": "ctwa"},
+	}
+	if err := proc.Process(ctx, ctwaEvent); err != nil {
+		t.Fatalf("failed to process CTWA inbound event: %v", err)
+	}
+	chatAfter, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
+	if err != nil {
+		t.Fatalf("failed to get chat after CTWA: %v", err)
+	}
+	if chatAfter.ServiceWindowExpiresAt == nil {
+		t.Fatalf("expected service window to be set")
+	}
+	diff := chatAfter.ServiceWindowExpiresAt.Sub(now)
+	if diff < 71*time.Hour || diff > 73*time.Hour {
+		t.Errorf("expected ~72h window duration, got %v", diff)
+	}
+	if !chatAfter.IsServiceWindowOpen() {
+		t.Errorf("expected IsServiceWindowOpen() to be true")
+	}
 }

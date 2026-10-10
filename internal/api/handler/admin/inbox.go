@@ -149,9 +149,11 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 	}
 
 	// Reset unread count on the parent Chat if ChatRepo is present
+	var chat *domain.Chat
 	if h.ChatRepo != nil && workspaceID != uuid.Nil {
-		if chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID); cErr == nil && chat != nil {
-			_ = h.ChatRepo.UpdateChatUnreadCount(ctx, workspaceID, chat.ID, 0)
+		if c, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID); cErr == nil && c != nil {
+			_ = h.ChatRepo.UpdateChatUnreadCount(ctx, workspaceID, c.ID, 0)
+			chat = c
 		}
 	}
 
@@ -247,8 +249,18 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		isWabaBlocked = !hasOpenWindow
 	}
 
+	var windowExpiresAt *time.Time
+	if chat != nil && chat.ServiceWindowExpiresAt != nil {
+		windowExpiresAt = chat.ServiceWindowExpiresAt
+		if time.Now().UTC().Before(*chat.ServiceWindowExpiresAt) {
+			isWabaBlocked = false
+		} else {
+			isWabaBlocked = true
+		}
+	}
+
 	if mw.IsHTMX(c) {
-		return mw.Render(c, http.StatusOK, components.ChatPanel(contact, replyOptions, messages, isWabaBlocked))
+		return mw.Render(c, http.StatusOK, components.ChatPanel(contact, replyOptions, messages, isWabaBlocked, windowExpiresAt))
 	}
 
 	// Direct page reload -> render the full page with this chat panel pre-opened
@@ -257,7 +269,7 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "failed to load conversations: "+err.Error())
 	}
 
-	chatPanelComp := components.ChatPanel(contact, replyOptions, messages, isWabaBlocked)
+	chatPanelComp := components.ChatPanel(contact, replyOptions, messages, isWabaBlocked, windowExpiresAt)
 	return mw.Render(c, http.StatusOK, pages.InboxPage(conversations, unreadMap, "", unreadCount, chatPanelComp, connections))
 }
 

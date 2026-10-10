@@ -117,6 +117,14 @@ type Server struct {
 	queueInspector    QueueInspector
 	telegramBaseURL   string
 	httpClient        *http.Client
+	wabaTemplateRepo  *repository.WABATemplateRepository
+}
+
+// WithWABATemplateRepo configures the WABATemplateRepository for WABA template MCP tools.
+func WithWABATemplateRepo(repo *repository.WABATemplateRepository) ServerOption {
+	return func(s *Server) {
+		s.wabaTemplateRepo = repo
+	}
 }
 
 // WithChatRepo configures the ChatRepository for conversational MCP tools.
@@ -691,6 +699,7 @@ func (s *Server) registerTools() {
 	}, s.handleReplayWebhookDLQ)
 
 	s.registerChatTools()
+	s.registerWABATools()
 }
 
 func (s *Server) handleCreateWorkspace(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
