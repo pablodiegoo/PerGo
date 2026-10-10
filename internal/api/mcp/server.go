@@ -25,6 +25,7 @@ import (
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/pkg/slug"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
@@ -1843,3 +1844,50 @@ func generateRandomHexSecret(byteLength int) (string, error) {
 	}
 	return hex.EncodeToString(b), nil
 }
+
+// resolveWorkspaceID extracts the tenant workspace UUID from the tool request arguments
+// or authenticated context, and strictly enforces tenant scope isolation.
+func (s *Server) resolveWorkspaceID(ctx context.Context, request mcp.CallToolRequest) (uuid.UUID, *mcp.CallToolResult) {
+	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
+	var wsID uuid.UUID
+	if wsIDStr != "" {
+		parsed, err := uuid.Parse(wsIDStr)
+		if err != nil {
+			return uuid.Nil, mcp.NewToolResultError("invalid workspace_id: must be a valid UUID")
+		}
+		wsID = parsed
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		wsID = id
+	} else {
+		return uuid.Nil, mcp.NewToolResultError("missing workspace_id parameter")
+	}
+
+	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && wsID != authWS {
+		return uuid.Nil, mcp.NewToolResultError("workspace_id mismatch with authenticated token")
+	}
+
+	return wsID, nil
+}
+
+// resolveWorkspaceIDOptional extracts the workspace UUID if provided, but does not error if omitted.
+func (s *Server) resolveWorkspaceIDOptional(ctx context.Context, request mcp.CallToolRequest) (uuid.UUID, *mcp.CallToolResult) {
+	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
+	var wsID uuid.UUID
+	if wsIDStr != "" {
+		parsed, err := uuid.Parse(wsIDStr)
+		if err != nil {
+			return uuid.Nil, mcp.NewToolResultError("invalid workspace_id: must be a valid UUID")
+		}
+		wsID = parsed
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		wsID = id
+	}
+
+	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && wsID != uuid.Nil && wsID != authWS {
+		return uuid.Nil, mcp.NewToolResultError("workspace_id mismatch with authenticated token")
+	}
+
+	return wsID, nil
+}
+
+

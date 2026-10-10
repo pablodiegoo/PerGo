@@ -375,10 +375,10 @@ func (p *Processor) Ingest(
 
 	// 5.5 Shared Team Inbox Tracking: Upsert Chat & Append Outbound ChatMessage
 	if p.chatRepo != nil && p.contactRepo != nil && conn != nil {
-		senderType := string(domain.SenderTypeHumanAgent)
+		senderType := domain.SenderTypeHumanAgent
 		if req.Metadata != nil {
 			if st, ok := req.Metadata["sender_type"]; ok && st != "" {
-				senderType = st
+				senderType = domain.SenderType(st)
 			}
 		}
 
@@ -386,7 +386,7 @@ func (p *Processor) Ingest(
 		if cErr == nil && contact != nil {
 			chat, chatErr := p.chatRepo.FindOrCreateChat(ctx, workspaceID, &conn.ID, contact.ID)
 			if chatErr == nil && chat != nil {
-				if senderType == string(domain.SenderTypeHumanAgent) {
+				if senderType == domain.SenderTypeHumanAgent {
 					_ = p.chatRepo.SetAIDisabled(ctx, workspaceID, chat.ID, true)
 					_ = p.contactRepo.UpdateBotState(ctx, workspaceID, contact.ID, false, &qMsg.QueuedAt)
 
@@ -423,7 +423,7 @@ func (p *Processor) Ingest(
 					ChatID:      chat.ID,
 					WorkspaceID: workspaceID,
 					UID:         traceID,
-					Direction:   string(domain.DirectionOutbound),
+					Direction:   domain.DirectionOutbound,
 					SenderType:  senderType,
 					SenderName:  req.Metadata["sender_name"],
 					SenderID:    conn.SenderIdentity,

@@ -19,6 +19,7 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/pablojhp.pergo/api"
 	"github.com/pablojhp.pergo/internal/api/handler"
@@ -328,6 +329,24 @@ func main() {
 
 	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo, contactRepo, dispatchRepo, inboundRouter)
 	inboundProcessor.SetChatRepository(chatRepo)
+
+	if cfg.RedisURL != "" {
+		redisOpts, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			redisOpts = &redis.Options{Addr: cfg.RedisURL}
+		}
+		rdb := redis.NewClient(redisOpts)
+		ctxPing, cancelPing := context.WithTimeout(ctx, 2*time.Second)
+		if err := rdb.Ping(ctxPing).Err(); err == nil {
+			debouncer := inbound.NewDebouncer(rdb)
+			inboundProcessor.SetDebouncer(debouncer)
+			slog.Info("inbound debounce buffer connected", "addr", redisOpts.Addr)
+		} else {
+			slog.Warn("inbound debounce buffer: redis ping failed, operating in bypass mode", "error", err)
+		}
+		cancelPing()
+	}
+
 	sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, cfg.WAVersion, inboundProcessor)
 	sessionManager.SetPublisher(publisher)
 	go func() {
@@ -374,6 +393,7 @@ func main() {
 	}
 	dispatcherHTTPClient := security.NewSafeWebhookClient(security.WithTimeout(10*time.Second), security.WithAllowlist(webhookAllowlist...))
 	webhookDispatcher := webhook.NewDefaultDispatcher(webhookSubRepo, webhookDLQRepo, wsRepo, dispatcherHTTPClient, verbsEngine)
+	inboundProcessor.SetReactionWebhookDispatcher(webhookDispatcher)
 	webhookWorker, err := queue.NewWebhookWorker(ctx, nc, webhookDispatcher, webhookSubRepo)
 	if err != nil {
 		slog.Error("failed to start webhook worker", "error", err)

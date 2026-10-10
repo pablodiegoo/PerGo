@@ -218,7 +218,7 @@ func TestDraftFirstInternalNotesIntegration(t *testing.T) {
 	if createdNote.ChatID != chat.ID {
 		t.Errorf("expected chat ID %s, got %s", chat.ID, createdNote.ChatID)
 	}
-	if createdNote.Direction != string(domain.DirectionInternalNote) {
+	if createdNote.Direction != domain.DirectionInternalNote {
 		t.Errorf("expected direction 'internal_note', got %s", createdNote.Direction)
 	}
 	if !createdNote.IsPrivate {
@@ -256,7 +256,7 @@ func TestDraftFirstInternalNotesIntegration(t *testing.T) {
 	if histParsed.Count != 2 {
 		t.Fatalf("expected 2 messages in chat_history (inbound + internal_note), got %d", histParsed.Count)
 	}
-	if histParsed.Messages[1].Direction != string(domain.DirectionInternalNote) {
+	if histParsed.Messages[1].Direction != domain.DirectionInternalNote {
 		t.Errorf("expected second message to be internal_note, got %s", histParsed.Messages[1].Direction)
 	}
 	if !histParsed.Messages[1].IsPrivate {

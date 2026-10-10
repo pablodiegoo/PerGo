@@ -204,7 +204,7 @@ func TestChatTracerBulletIntegration(t *testing.T) {
 	if histParsed.Messages[0].Body != messageText {
 		t.Errorf("expected body %s, got %s", messageText, histParsed.Messages[0].Body)
 	}
-	if histParsed.Messages[0].Direction != string(domain.DirectionInbound) {
+	if histParsed.Messages[0].Direction != domain.DirectionInbound {
 		t.Errorf("expected direction inbound, got %s", histParsed.Messages[0].Direction)
 	}
 
@@ -296,7 +296,7 @@ func TestChatTracerBulletIntegration(t *testing.T) {
 	if histParsed2.Count != 2 {
 		t.Fatalf("expected 2 messages in MCP chat_history after outbound reply, got %d", histParsed2.Count)
 	}
-	if histParsed2.Messages[1].Direction != string(domain.DirectionOutbound) {
+	if histParsed2.Messages[1].Direction != domain.DirectionOutbound {
 		t.Errorf("expected direction outbound, got %s", histParsed2.Messages[1].Direction)
 	}
 	if histParsed2.Messages[1].Body != outboundBody {

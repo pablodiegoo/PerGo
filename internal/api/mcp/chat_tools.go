@@ -531,18 +531,9 @@ func (s *Server) handleListChats(ctx context.Context, request mcp.CallToolReques
 		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
 	}
 
-	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
-	var wsID uuid.UUID
-	if wsIDStr != "" {
-		var err error
-		wsID, err = uuid.Parse(wsIDStr)
-		if err != nil {
-			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
-		}
-	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
-		wsID = id
-	} else {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	status := strings.TrimSpace(request.GetString("status", ""))
@@ -628,13 +619,9 @@ func (s *Server) handleChatDetails(ctx context.Context, request mcp.CallToolRequ
 		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	chatIDStr, err := request.RequireString("chat_id")
@@ -689,13 +676,9 @@ func (s *Server) handleChatHistory(ctx context.Context, request mcp.CallToolRequ
 		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	chatIDStr, err := request.RequireString("chat_id")
@@ -744,13 +727,9 @@ func (s *Server) handleChatEnableAI(ctx context.Context, request mcp.CallToolReq
 		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	chatIDStr, err := request.RequireString("chat_id")
@@ -821,14 +800,9 @@ func (s *Server) handleChatCreateDraftNote(ctx context.Context, request mcp.Call
 		return mcp.NewToolResultError("body parameter cannot be empty"), nil
 	}
 
-	var wsID uuid.UUID
-	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
-	if wsIDStr != "" {
-		parsedWs, err := uuid.Parse(wsIDStr)
-		if err != nil {
-			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
-		}
-		wsID = parsedWs
+	wsID, resErr := s.resolveWorkspaceIDOptional(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	authorName := strings.TrimSpace(request.GetString("author_name", "AI Assistant"))
@@ -842,6 +816,10 @@ func (s *Server) handleChatCreateDraftNote(ctx context.Context, request mcp.Call
 			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
 		}
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create draft note: %v", err)), nil
+	}
+
+	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && note.WorkspaceID != authWS {
+		return mcp.NewToolResultError("workspace_id mismatch with authenticated token"), nil
 	}
 
 	if s.auditRepo != nil {
@@ -914,18 +892,9 @@ func (s *Server) handleWorkspaceQuotas(ctx context.Context, request mcp.CallTool
 		return mcp.NewToolResultError("workspace repository is not configured on this server"), nil
 	}
 
-	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
-	var wsID uuid.UUID
-	if wsIDStr != "" {
-		var err error
-		wsID, err = uuid.Parse(wsIDStr)
-		if err != nil {
-			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
-		}
-	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
-		wsID = id
-	} else {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	ws, err := s.wsRepo.GetByID(ctx, wsID)
@@ -973,18 +942,9 @@ func (s *Server) handleWorkspaceTeam(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError("workspace repository is not configured on this server"), nil
 	}
 
-	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
-	var wsID uuid.UUID
-	if wsIDStr != "" {
-		var err error
-		wsID, err = uuid.Parse(wsIDStr)
-		if err != nil {
-			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
-		}
-	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
-		wsID = id
-	} else {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	members, err := s.wsRepo.ListMembers(ctx, wsID)
@@ -1072,13 +1032,9 @@ func (s *Server) handleChatAssign(ctx context.Context, request mcp.CallToolReque
 		return mcp.NewToolResultError("workspace repository is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	chatIDStr, err := request.RequireString("chat_id")
@@ -1151,13 +1107,9 @@ func (s *Server) handleChatUnassign(ctx context.Context, request mcp.CallToolReq
 		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	chatIDStr, err := request.RequireString("chat_id")
@@ -1211,13 +1163,9 @@ func (s *Server) handleChatSetLabel(ctx context.Context, request mcp.CallToolReq
 		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	chatIDStr, err := request.RequireString("chat_id")
@@ -1294,13 +1242,9 @@ func (s *Server) handleChatRemoveLabel(ctx context.Context, request mcp.CallTool
 		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	chatIDStr, err := request.RequireString("chat_id")
@@ -1374,13 +1318,9 @@ func (s *Server) handleChatOpen(ctx context.Context, request mcp.CallToolRequest
 		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	chatIDStr, err := request.RequireString("chat_id")
@@ -1431,13 +1371,9 @@ func (s *Server) handleChatClose(ctx context.Context, request mcp.CallToolReques
 		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	chatIDStr, err := request.RequireString("chat_id")
@@ -1513,19 +1449,12 @@ func (s *Server) handleMessageReact(ctx context.Context, request mcp.CallToolReq
 		sender = "ai_agent"
 	}
 
-	var wsID uuid.UUID
-	var chatIDStr string
-	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
-	if wsIDStr != "" {
-		parsedWSID, pErr := uuid.Parse(wsIDStr)
-		if pErr != nil {
-			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
-		}
-		wsID = parsedWSID
-	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
-		wsID = id
+	wsID, resErr := s.resolveWorkspaceIDOptional(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
+	var chatIDStr string
 	var msg *domain.ChatMessage
 	if wsID != uuid.Nil {
 		var mErr error
@@ -1635,16 +1564,9 @@ func (s *Server) handleChatSummarize(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
 	}
 
-	var wsID uuid.UUID
-	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
-	if wsIDStr != "" {
-		parsedWs, err := uuid.Parse(wsIDStr)
-		if err != nil {
-			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
-		}
-		wsID = parsedWs
-	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
-		wsID = id
+	wsID, resErr := s.resolveWorkspaceIDOptional(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	var chat *domain.Chat
@@ -1660,6 +1582,9 @@ func (s *Server) handleChatSummarize(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError(fmt.Sprintf("failed to get chat: %v", err)), nil
 	}
 	wsID = chat.WorkspaceID
+	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && wsID != authWS {
+		return mcp.NewToolResultError("workspace_id does not match authenticated context"), nil
+	}
 
 	messages, err := s.chatRepo.ListChatMessages(ctx, wsID, chatID, "", "", 50)
 	if err != nil {
@@ -1710,16 +1635,9 @@ func (s *Server) handleChatSendMessage(ctx context.Context, request mcp.CallTool
 		replyToUID = &rUID
 	}
 
-	var wsID uuid.UUID
-	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
-	if wsIDStr != "" {
-		parsedWs, err := uuid.Parse(wsIDStr)
-		if err != nil {
-			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
-		}
-		wsID = parsedWs
-	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
-		wsID = id
+	wsID, resErr := s.resolveWorkspaceIDOptional(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	var chat *domain.Chat
@@ -1735,6 +1653,9 @@ func (s *Server) handleChatSendMessage(ctx context.Context, request mcp.CallTool
 		return mcp.NewToolResultError(fmt.Sprintf("failed to get chat: %v", err)), nil
 	}
 	wsID = chat.WorkspaceID
+	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && wsID != authWS {
+		return mcp.NewToolResultError("workspace_id does not match authenticated context"), nil
+	}
 
 	var recipientPhone string
 	if s.contactRepo != nil {
@@ -1760,8 +1681,8 @@ func (s *Server) handleChatSendMessage(ctx context.Context, request mcp.CallTool
 		ChatID:      chat.ID,
 		WorkspaceID: wsID,
 		UID:         traceID,
-		Direction:   string(domain.DirectionOutbound),
-		SenderType:  string(domain.SenderTypeAIAgent),
+		Direction:   domain.DirectionOutbound,
+		SenderType:  domain.SenderTypeAIAgent,
 		SenderName:  senderName,
 		SenderID:    senderIdentity,
 		Body:        messageText,
@@ -1841,22 +1762,9 @@ func (s *Server) handleWorkspaceWhatsAppAccounts(ctx context.Context, request mc
 		return mcp.NewToolResultError("connection repository is not configured on this server"), nil
 	}
 
-	var wsID uuid.UUID
-	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
-	if wsIDStr != "" {
-		parsedWs, err := uuid.Parse(wsIDStr)
-		if err != nil {
-			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
-		}
-		wsID = parsedWs
-	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
-		wsID = id
-	} else {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-
-	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && wsID != authWS {
-		return mcp.NewToolResultError("workspace_id does not match authenticated context"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	conns, err := s.connectionRepo.ListByWorkspace(ctx, wsID)
@@ -1925,16 +1833,9 @@ func (s *Server) handleMessageDetails(ctx context.Context, request mcp.CallToolR
 	}
 	messageUID = strings.TrimSpace(messageUID)
 
-	var wsID uuid.UUID
-	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
-	if wsIDStr != "" {
-		parsedWs, err := uuid.Parse(wsIDStr)
-		if err != nil {
-			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
-		}
-		wsID = parsedWs
-	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
-		wsID = id
+	wsID, resErr := s.resolveWorkspaceIDOptional(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	chatIDStr := strings.TrimSpace(request.GetString("chat_id", ""))
@@ -1974,10 +1875,10 @@ func (s *Server) handleMessageDetails(ctx context.Context, request mcp.CallToolR
 	deliveryStatus := "delivered"
 	var failureReason *string
 
-	if msg.Direction == string(domain.DirectionInbound) {
+	if msg.Direction == domain.DirectionInbound {
 		status = "received"
 		deliveryStatus = "received"
-	} else if msg.IsPrivate || msg.Direction == "internal_note" {
+	} else if msg.IsPrivate || msg.Direction == domain.DirectionInternalNote {
 		status = "internal"
 		deliveryStatus = "internal"
 	} else {
@@ -2045,16 +1946,9 @@ func (s *Server) handleWhatsAppAccountSendMessage(ctx context.Context, request m
 		return mcp.NewToolResultError("missing or empty message body"), nil
 	}
 
-	var wsID uuid.UUID
-	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
-	if wsIDStr != "" {
-		parsedWs, err := uuid.Parse(wsIDStr)
-		if err != nil {
-			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
-		}
-		wsID = parsedWs
-	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
-		wsID = id
+	wsID, resErr := s.resolveWorkspaceIDOptional(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	var conn *repository.Connection
@@ -2129,8 +2023,8 @@ func (s *Server) handleWhatsAppAccountSendMessage(ctx context.Context, request m
 			ChatID:      *chatID,
 			WorkspaceID: wsID,
 			UID:         traceID,
-			Direction:   string(domain.DirectionOutbound),
-			SenderType:  string(domain.SenderTypeAIAgent),
+			Direction:   domain.DirectionOutbound,
+			SenderType:  domain.SenderTypeAIAgent,
 			SenderName:  senderName,
 			SenderID:    conn.SenderIdentity,
 			Body:        messageText,
@@ -2220,16 +2114,9 @@ func (s *Server) handleMessageReply(ctx context.Context, request mcp.CallToolReq
 
 	senderName := strings.TrimSpace(request.GetString("sender_name", "AI Assistant"))
 
-	var wsID uuid.UUID
-	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
-	if wsIDStr != "" {
-		parsedWs, err := uuid.Parse(wsIDStr)
-		if err != nil {
-			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
-		}
-		wsID = parsedWs
-	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
-		wsID = id
+	wsID, resErr := s.resolveWorkspaceIDOptional(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	chatIDStr := strings.TrimSpace(request.GetString("chat_id", ""))
@@ -2294,8 +2181,8 @@ func (s *Server) handleMessageReply(ctx context.Context, request mcp.CallToolReq
 		ChatID:      chat.ID,
 		WorkspaceID: wsID,
 		UID:         traceID,
-		Direction:   string(domain.DirectionOutbound),
-		SenderType:  string(domain.SenderTypeAIAgent),
+		Direction:   domain.DirectionOutbound,
+		SenderType:  domain.SenderTypeAIAgent,
 		SenderName:  senderName,
 		SenderID:    senderIdentity,
 		Body:        messageText,

@@ -127,10 +127,10 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
-	if msgs[0].Direction != string(domain.DirectionOutbound) {
+	if msgs[0].Direction != domain.DirectionOutbound {
 		t.Errorf("expected direction outbound, got %s", msgs[0].Direction)
 	}
-	if msgs[0].SenderType != string(domain.SenderTypeHumanAgent) {
+	if msgs[0].SenderType != domain.SenderTypeHumanAgent {
 		t.Errorf("expected sender type human_agent, got %s", msgs[0].SenderType)
 	}
 	if msgs[0].Body != "Hello from human agent!" {

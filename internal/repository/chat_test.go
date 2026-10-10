@@ -61,7 +61,7 @@ func TestChatRepository(t *testing.T) {
 		if chat1.ID == uuid.Nil {
 			t.Fatal("expected non-nil chat ID")
 		}
-		if chat1.Status != string(domain.ChatStatusOpen) {
+		if chat1.Status != domain.ChatStatusOpen {
 			t.Errorf("expected open status, got %s", chat1.Status)
 		}
 		if chat1.UnreadCount != 0 {
@@ -132,7 +132,7 @@ func TestChatRepository(t *testing.T) {
 			t.Fatalf("failed to get updated chat: %v", err)
 		}
 
-		if updated.Status != string(domain.ChatStatusClosed) {
+		if updated.Status != domain.ChatStatusClosed {
 			t.Errorf("expected status closed, got %s", updated.Status)
 		}
 		if updated.AssignedEmail == nil || *updated.AssignedEmail != email {
@@ -172,8 +172,8 @@ func TestChatRepository(t *testing.T) {
 				ChatID:      chat.ID,
 				WorkspaceID: ws.ID,
 				UID:         uid,
-				Direction:   string(domain.DirectionInbound),
-				SenderType:  string(domain.SenderTypeContact),
+				Direction:   domain.DirectionInbound,
+				SenderType:  domain.SenderTypeContact,
 				SenderName:  "Alice",
 				SenderID:    "+5511999999999",
 				Body:        "Message " + uid,
@@ -233,8 +233,8 @@ func TestChatRepository(t *testing.T) {
 			ChatID:      chat.ID,
 			WorkspaceID: ws.ID,
 			UID:         msgUID,
-			Direction:   string(domain.DirectionInbound),
-			SenderType:  string(domain.SenderTypeContact),
+			Direction:   domain.DirectionInbound,
+			SenderType:  domain.SenderTypeContact,
 			Body:        "Reactions testing",
 			CreatedAt:   time.Now().UTC(),
 		}
@@ -356,7 +356,7 @@ func TestChatRepository(t *testing.T) {
 			t.Fatalf("failed to create internal note: %v", err)
 		}
 
-		if note.Direction != string(domain.DirectionInternalNote) {
+		if note.Direction != domain.DirectionInternalNote {
 			t.Errorf("expected direction 'internal_note', got %s", note.Direction)
 		}
 		if !note.IsPrivate {

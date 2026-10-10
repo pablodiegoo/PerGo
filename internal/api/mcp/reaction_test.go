@@ -97,8 +97,8 @@ func TestMCPMessageReact(t *testing.T) {
 		ChatID:      chat.ID,
 		WorkspaceID: ws.ID,
 		UID:         msgUID,
-		Direction:   string(domain.DirectionInbound),
-		SenderType:  string(domain.SenderTypeContact),
+		Direction:   domain.DirectionInbound,
+		SenderType:  domain.SenderTypeContact,
 		Body:        "React to me!",
 		CreatedAt:   time.Now().UTC(),
 	}

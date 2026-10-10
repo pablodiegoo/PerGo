@@ -94,7 +94,7 @@ func TestInboundProcessor_ChatIngress(t *testing.T) {
 	if msgs[0].UID != msgID {
 		t.Errorf("expected message UID %s, got %s", msgID, msgs[0].UID)
 	}
-	if msgs[0].Direction != string(domain.DirectionInbound) {
+	if msgs[0].Direction != domain.DirectionInbound {
 		t.Errorf("expected direction inbound, got %s", msgs[0].Direction)
 	}
 	if msgs[0].Body != "Hello from customer!" {

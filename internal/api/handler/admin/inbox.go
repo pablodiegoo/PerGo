@@ -57,6 +57,7 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 	statusFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("status")))
 	assignedFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("assigned")))
 	tagFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("tag")))
+	searchFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("search")))
 
 	unreadMap := make(map[string]bool, len(conversations))
 	unreadCount := 0
@@ -67,7 +68,7 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 
 		if h.ChatRepo != nil && workspaceID != uuid.Nil {
 			if chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, conv.ContactID); cErr == nil && chat != nil {
-				conv.Status = chat.Status
+				conv.Status = string(chat.Status)
 				conv.AssignedEmail = chat.AssignedEmail
 				conv.Tags = chat.Tags
 			}
@@ -111,6 +112,16 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 				}
 			}
 			if !hasTag {
+				continue
+			}
+		}
+
+		// Apply search query filter
+		if searchFilter != "" {
+			match := strings.Contains(strings.ToLower(conv.ContactName), searchFilter) ||
+				strings.Contains(strings.ToLower(conv.RecipientIdentity), searchFilter) ||
+				strings.Contains(strings.ToLower(conv.LastMessageBody), searchFilter)
+			if !match {
 				continue
 			}
 		}
@@ -543,8 +554,8 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 						ChatID:      chat.ID,
 						WorkspaceID: workspaceID,
 						UID:         traceID,
-						Direction:   string(domain.DirectionOutbound),
-						SenderType:  string(domain.SenderTypeHumanAgent),
+						Direction:   domain.DirectionOutbound,
+						SenderType:  domain.SenderTypeHumanAgent,
 						SenderName:  "Agent",
 						SenderID:    recipientIdentity,
 						Body:        body,

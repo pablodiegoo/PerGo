@@ -193,7 +193,10 @@
     "reopen_chat_title": "Reabrir chat",
     "resolve_chat_title": "Resolver / Fechar chat",
     "summarize_tooltip": "Resumo inteligente do chat em 3 tópicos",
-    "another_operator_in_chat": "Outro operador no chat"
+    "another_operator_in_chat": "Outro operador no chat",
+    "filter_open": "Abertos",
+    "filter_unassigned": "Não atribuídos",
+    "filter_resolved": "Resolvidos"
   },
   "ban_warning": {
     "title": "WhatsApp Web não é oficial",

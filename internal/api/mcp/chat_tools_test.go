@@ -73,8 +73,8 @@ func TestMCPChatTools(t *testing.T) {
 		ChatID:      chat.ID,
 		WorkspaceID: ws.ID,
 		UID:         "mcp-msg-1",
-		Direction:   string(domain.DirectionInbound),
-		SenderType:  string(domain.SenderTypeContact),
+		Direction:   domain.DirectionInbound,
+		SenderType:  domain.SenderTypeContact,
 		SenderName:  "Diana",
 		SenderID:    "+5511999998888",
 		Body:        "Hello MCP!",
@@ -84,8 +84,8 @@ func TestMCPChatTools(t *testing.T) {
 		ChatID:      chat.ID,
 		WorkspaceID: ws.ID,
 		UID:         "mcp-msg-2",
-		Direction:   string(domain.DirectionOutbound),
-		SenderType:  string(domain.SenderTypeHumanAgent),
+		Direction:   domain.DirectionOutbound,
+		SenderType:  domain.SenderTypeHumanAgent,
 		SenderName:  "Agent Smith",
 		SenderID:    "+551100001111",
 		Body:        "Greetings Diana! How can I assist?",
@@ -95,8 +95,8 @@ func TestMCPChatTools(t *testing.T) {
 		ChatID:      chat.ID,
 		WorkspaceID: ws.ID,
 		UID:         "mcp-msg-3",
-		Direction:   string(domain.DirectionInbound),
-		SenderType:  string(domain.SenderTypeContact),
+		Direction:   domain.DirectionInbound,
+		SenderType:  domain.SenderTypeContact,
 		SenderName:  "Diana",
 		SenderID:    "+5511999998888",
 		Body:        "I need help with my account.",
@@ -316,7 +316,7 @@ func TestMCPChatTools(t *testing.T) {
 		if createdNote.ChatID != chat.ID {
 			t.Errorf("expected chat_id %s, got %s", chat.ID, createdNote.ChatID)
 		}
-		if createdNote.Direction != string(domain.DirectionInternalNote) {
+		if createdNote.Direction != domain.DirectionInternalNote {
 			t.Errorf("expected direction 'internal_note', got %s", createdNote.Direction)
 		}
 		if !createdNote.IsPrivate {

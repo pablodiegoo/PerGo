@@ -87,13 +87,22 @@ templ InboxContent(conversations []repository.ConversationSummary, unreadMap map
 					</button>
 				</div>
 			</div>
-			<!-- Search bar (static UI, future enhancement) -->
+			<!-- Search bar -->
 			<div class="inbox-search px-3 py-2 border-b border-[#e9e9e7] dark:border-[#2f2f2f]">
 				<div class="relative">
-					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-2.5 top-2 text-[#787774] dark:text-[#9b9b9b]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 absolute left-2.5 top-2.5 text-[#787774] dark:text-[#9b9b9b]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
 					</svg>
-					<input type="search" placeholder={ i18n.T(ctx, "inbox.search_placeholder") } class="w-full pl-8 pr-3 py-1.5 text-sm border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] placeholder-[#787774] dark:placeholder-[#9b9b9b] focus:outline-none focus:ring-1 focus:ring-[#0284c7] focus:border-transparent" disabled/>
+					<input 
+						type="search" 
+						name="search"
+						placeholder={ i18n.T(ctx, "inbox.search_placeholder") } 
+						class="w-full pl-8 pr-3 py-1.5 text-sm border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] placeholder-[#787774] dark:placeholder-[#9b9b9b] focus:outline-none focus:ring-1 focus:ring-[#0284c7] focus:border-transparent"
+						hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s", activeChannel) }
+						hx-trigger="keyup changed delay:300ms, search"
+						hx-target="#conv-list"
+						hx-swap="outerHTML"
+					/>
 				</div>
 			</div>
 			<!-- Conversation list with polling -->

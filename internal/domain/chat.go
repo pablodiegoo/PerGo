@@ -61,7 +61,7 @@ type Chat struct {
 	WorkspaceID            uuid.UUID              `json:"workspace_id"`
 	ConnectionID           *uuid.UUID             `json:"connection_id,omitempty"`
 	ContactID              uuid.UUID              `json:"contact_id"`
-	Status                 string                 `json:"status"` // "open", "closed"
+	Status                 ChatStatus             `json:"status"` // "open", "closed"
 	AssignedUserID         *uuid.UUID             `json:"assigned_user_id,omitempty"`
 	AssignedEmail          *string                `json:"assigned_email,omitempty"`
 	Tags                   []string               `json:"tags"`
@@ -89,8 +89,8 @@ type ChatMessage struct {
 	ChatID      uuid.UUID              `json:"chat_id"`
 	WorkspaceID uuid.UUID              `json:"workspace_id"`
 	UID         string                 `json:"uid"`
-	Direction   string                 `json:"direction"`
-	SenderType  string                 `json:"sender_type"`
+	Direction   Direction              `json:"direction"`
+	SenderType  SenderType             `json:"sender_type"`
 	SenderName  string                 `json:"sender_name,omitempty"`
 	SenderID    string                 `json:"sender_id,omitempty"`
 	Body        string                 `json:"body"`
@@ -139,7 +139,7 @@ func SummarizeMessages(messages []ChatMessage, chat *Chat) ChatSynopsis {
 			continue
 		}
 
-		if msg.Direction == string(DirectionInbound) || msg.SenderType == string(SenderTypeContact) {
+		if msg.Direction == DirectionInbound || msg.SenderType == SenderTypeContact {
 			inboundBodies = append(inboundBodies, body)
 		} else {
 			allAgentBodies = append(allAgentBodies, body)
@@ -197,11 +197,11 @@ func SummarizeMessages(messages []ChatMessage, chat *Chat) ChatSynopsis {
 
 	// 3. Current Status
 	currentStatus := "Open chat with no recent messages."
-	if chat != nil && chat.Status == "closed" {
+	if chat != nil && chat.Status == ChatStatusClosed {
 		currentStatus = "Chat resolved and closed."
 	} else if len(messages) > 0 {
 		lastMsg := messages[len(messages)-1]
-		if lastMsg.Direction == string(DirectionInbound) || lastMsg.SenderType == string(SenderTypeContact) {
+		if lastMsg.Direction == DirectionInbound || lastMsg.SenderType == SenderTypeContact {
 			currentStatus = "Awaiting team response (latest message received from customer)."
 		} else {
 			currentStatus = "Awaiting customer response (team replied recently)."

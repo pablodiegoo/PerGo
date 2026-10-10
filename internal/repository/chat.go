@@ -545,9 +545,9 @@ func (r *ChatRepository) CreateInternalNote(
 	if authorName == "" {
 		authorName = "AI Assistant"
 	}
-	senderType := string(domain.SenderTypeAIAgent)
+	senderType := domain.SenderTypeAIAgent
 	if authorID == "human" || authorID == "human_agent" {
-		senderType = string(domain.SenderTypeHumanAgent)
+		senderType = domain.SenderTypeHumanAgent
 	}
 
 	msg := &domain.ChatMessage{
@@ -555,7 +555,7 @@ func (r *ChatRepository) CreateInternalNote(
 		ChatID:      chatID,
 		WorkspaceID: workspaceID,
 		UID:         noteUID,
-		Direction:   string(domain.DirectionInternalNote),
+		Direction:   domain.DirectionInternalNote,
 		SenderType:  senderType,
 		SenderName:  authorName,
 		SenderID:    authorID,

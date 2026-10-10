@@ -242,13 +242,9 @@ func (s *Server) handleWABAAccounts(ctx context.Context, request mcp.CallToolReq
 		return mcp.NewToolResultError("connection repository is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	conns, err := s.connectionRepo.ListByWorkspace(ctx, wsID)
@@ -318,13 +314,9 @@ func (s *Server) handleWABAListChats(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	var connIDFilter *uuid.UUID
@@ -473,13 +465,9 @@ func (s *Server) handleWABATemplates(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError("WABA template repository is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	var connIDFilter *uuid.UUID
@@ -496,6 +484,7 @@ func (s *Server) handleWABATemplates(ctx context.Context, request mcp.CallToolRe
 	categoryFilter := strings.TrimSpace(request.GetString("category", ""))
 
 	var rawTemplates []repository.WABATemplate
+	var err error
 	if connIDFilter != nil {
 		rawTemplates, err = s.wabaTemplateRepo.ListByConnection(ctx, *connIDFilter)
 	} else {
@@ -553,13 +542,9 @@ func (s *Server) handleWABATemplateDetails(ctx context.Context, request mcp.Call
 		return mcp.NewToolResultError("WABA template repository is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	templateIDStr := strings.TrimSpace(request.GetString("template_id", ""))
@@ -568,6 +553,7 @@ func (s *Server) handleWABATemplateDetails(ctx context.Context, request mcp.Call
 	connIDStr := strings.TrimSpace(request.GetString("connection_id", ""))
 
 	var tmpl *repository.WABATemplate
+	var err error
 	if templateIDStr != "" {
 		tmplID, pErr := uuid.Parse(templateIDStr)
 		if pErr != nil {
@@ -626,13 +612,9 @@ func (s *Server) handleWABAChatSendMessage(ctx context.Context, request mcp.Call
 		return mcp.NewToolResultError("outbound ingestor is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	chatIDStr, err := request.RequireString("chat_id")
@@ -750,13 +732,9 @@ func (s *Server) handleWABAChatSendTemplate(ctx context.Context, request mcp.Cal
 		return mcp.NewToolResultError("outbound ingestor is not configured on this server"), nil
 	}
 
-	wsIDStr, err := request.RequireString("workspace_id")
-	if err != nil {
-		return mcp.NewToolResultError("missing workspace_id parameter"), nil
-	}
-	wsID, err := uuid.Parse(strings.TrimSpace(wsIDStr))
-	if err != nil {
-		return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
 	}
 
 	chatIDStr, err := request.RequireString("chat_id")

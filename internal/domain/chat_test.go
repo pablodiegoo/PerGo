@@ -18,7 +18,7 @@ func TestChatDomain(t *testing.T) {
 		ID:            chatID,
 		WorkspaceID:   wsID,
 		ContactID:     contactID,
-		Status:        string(domain.ChatStatusOpen),
+		Status:        domain.ChatStatusOpen,
 		Tags:          []string{"vip", "onboarding"},
 		UnreadCount:   2,
 		LastMessageAt: time.Now().UTC(),
@@ -37,7 +37,7 @@ func TestChatDomain(t *testing.T) {
 		t.Fatalf("failed to unmarshal Chat: %v", err)
 	}
 
-	if decoded.ID != chatID || decoded.Status != string(domain.ChatStatusOpen) {
+	if decoded.ID != chatID || decoded.Status != domain.ChatStatusOpen {
 		t.Errorf("mismatch decoded chat: %+v", decoded)
 	}
 }
@@ -52,8 +52,8 @@ func TestChatMessageDomain(t *testing.T) {
 		ChatID:      chatID,
 		WorkspaceID: wsID,
 		UID:         "msg-12345",
-		Direction:   string(domain.DirectionInbound),
-		SenderType:  string(domain.SenderTypeContact),
+		Direction:   domain.DirectionInbound,
+		SenderType:  domain.SenderTypeContact,
 		Body:        "Hello there!",
 		Reactions: []domain.Reaction{
 			{Emoji: "👍", Sender: "agent1", CreatedAt: time.Now().UTC()},

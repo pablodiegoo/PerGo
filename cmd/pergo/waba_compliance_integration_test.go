@@ -246,7 +246,7 @@ func TestWABAComplianceIntegration(t *testing.T) {
 		if len(msgs) != 1 {
 			t.Fatalf("expected 1 outbound message recorded, got %d", len(msgs))
 		}
-		if msgs[0].Direction != string(domain.DirectionOutbound) {
+		if msgs[0].Direction != domain.DirectionOutbound {
 			t.Errorf("expected outbound direction, got %s", msgs[0].Direction)
 		}
 		if !strings.Contains(msgs[0].Body, "order_status_update") {
