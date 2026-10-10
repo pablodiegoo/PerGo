@@ -101,6 +101,7 @@ type Server struct {
 	connectionRepo    *repository.ConnectionRepository
 	contactRepo       *repository.ContactRepository
 	auditRepo         *repository.AuditRepository
+	chatRepo          *repository.ChatRepository
 	ingestor          outbound.OutboundProcessor
 	apiKeyRepo        *repository.APIKeyRepository
 	webhookSubRepo    *repository.WebhookSubscriptionRepository
@@ -116,6 +117,13 @@ type Server struct {
 	queueInspector    QueueInspector
 	telegramBaseURL   string
 	httpClient        *http.Client
+}
+
+// WithChatRepo configures the ChatRepository for conversational MCP tools.
+func WithChatRepo(repo *repository.ChatRepository) ServerOption {
+	return func(s *Server) {
+		s.chatRepo = repo
+	}
 }
 
 // WithWebhookDLQRepo configures the Webhook DLQ repository.
@@ -681,6 +689,8 @@ func (s *Server) registerTools() {
 			Required: []string{"workspace_id"},
 		},
 	}, s.handleReplayWebhookDLQ)
+
+	s.registerChatTools()
 }
 
 func (s *Server) handleCreateWorkspace(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

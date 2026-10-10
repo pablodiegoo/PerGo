@@ -237,6 +237,7 @@ type InboundProcessor struct {
 	contactRepo          *repository.ContactRepository
 	dispatchRepo         *repository.MessageDispatchRepository
 	router               InboundRouter
+	chatRepo             *repository.ChatRepository
 }
 
 // NewInboundProcessor creates a new InboundProcessor.
@@ -262,6 +263,12 @@ func NewInboundProcessor(
 		dispatchRepo:         dispatchRepo,
 		router:               router,
 	}
+}
+
+// SetChatRepository configures the ChatRepository for conversational inbox tracking.
+func (p *InboundProcessor) SetChatRepository(r *repository.ChatRepository) *InboundProcessor {
+	p.chatRepo = r
+	return p
 }
 
 // Process executes the ingestion pipeline for an inbound event.
@@ -532,6 +539,77 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 					orderEv.TraceID = traceID
 				}
 				_ = p.PublishOrderCreated(ctx, ev.WorkspaceID, &orderEv)
+			}
+		}
+	}
+
+	// 8.5 Shared Team Inbox Tracking: Upsert Chat & Append Inbound ChatMessage
+	if p.chatRepo != nil && contact != nil {
+		var connID *uuid.UUID
+		if ev.ConnectionID != uuid.Nil {
+			connID = &ev.ConnectionID
+		}
+
+		chat, cErr := p.chatRepo.FindOrCreateChat(ctx, ev.WorkspaceID, connID, contact.ID)
+		if cErr != nil {
+			slog.Error("inbound processor: failed to find or create chat", "error", cErr, "contact_id", contact.ID, "trace_id", traceID)
+		} else if chat != nil {
+			_ = p.chatRepo.IncrementUnreadCount(ctx, ev.WorkspaceID, chat.ID)
+			_ = p.chatRepo.TouchLastMessageAt(ctx, ev.WorkspaceID, chat.ID, occurredAt)
+
+			if ev.Channel == "whatsapp_cloud" {
+				exp := occurredAt.Add(24 * time.Hour)
+				_ = p.chatRepo.UpdateServiceWindow(ctx, ev.WorkspaceID, chat.ID, &exp)
+			}
+
+			msgUID := ev.MessageID
+			if msgUID == "" {
+				msgUID = traceID
+			}
+
+			msgBody := ev.Body
+			if msgBody == "" && ev.Interactive != nil {
+				if ev.Interactive.ButtonReply != nil {
+					msgBody = ev.Interactive.ButtonReply.Title
+				} else if ev.Interactive.ListReply != nil {
+					msgBody = ev.Interactive.ListReply.Title
+				} else if ev.Interactive.NFMReply != nil {
+					if ev.Interactive.NFMReply.Body != "" {
+						msgBody = ev.Interactive.NFMReply.Body
+					} else {
+						msgBody = fmt.Sprintf("[Flow Submission: %s]", ev.Interactive.NFMReply.Name)
+					}
+				}
+			}
+
+			var mediaURL, mediaType *string
+			if payload.Media != nil {
+				if payload.Media.MediaURL != "" {
+					mediaURL = &payload.Media.MediaURL
+				}
+				if payload.Media.MediaType != "" {
+					mediaType = &payload.Media.MediaType
+				}
+			}
+
+			chatMsg := &domain.ChatMessage{
+				ChatID:      chat.ID,
+				WorkspaceID: ev.WorkspaceID,
+				UID:         msgUID,
+				Direction:   string(domain.DirectionInbound),
+				SenderType:  string(domain.SenderTypeContact),
+				SenderName:  ev.SenderDisplayName(),
+				SenderID:    ev.From,
+				Body:        msgBody,
+				MediaURL:    mediaURL,
+				MediaType:   mediaType,
+				IsPrivate:   false,
+				Reactions:   []domain.Reaction{},
+				Metadata:    map[string]interface{}{},
+				CreatedAt:   occurredAt,
+			}
+			if err := p.chatRepo.AddChatMessage(ctx, chatMsg); err != nil {
+				slog.Error("inbound processor: failed to add chat message", "error", err, "uid", msgUID, "trace_id", traceID)
 			}
 		}
 	}

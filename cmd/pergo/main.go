@@ -321,8 +321,10 @@ func main() {
 	typebotSessionRepo := repository.NewTypebotSessionRepository(pool)
 	typebotForwarder := typebot.NewForwarder(typebotSessionRepo, integrationRepo, publisher)
 	inboundRouter := inbound.NewDefaultRouter(chatwootSyncer, typebotForwarder)
+	chatRepo := repository.NewChatRepository(pool)
 
 	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo, contactRepo, dispatchRepo, inboundRouter)
+	inboundProcessor.SetChatRepository(chatRepo)
 	sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, cfg.WAVersion, inboundProcessor)
 	sessionManager.SetPublisher(publisher)
 	go func() {
@@ -514,6 +516,8 @@ func main() {
 	outboundProcessor := outbound.NewProcessor(queueDepth, mediaEngine, connectionRepo, publisher)
 	outboundProcessor.SetWindowChecker(windowChecker)
 	outboundProcessor.SetTemplateRepository(wabaTemplateRepo)
+	outboundProcessor.SetChatRepository(chatRepo)
+	outboundProcessor.SetContactRepository(contactRepo)
 
 	messageHandler := &handler.MessageHandler{
 		Ingestor: outboundProcessor,
@@ -534,6 +538,7 @@ func main() {
 		[]byte(cfg.SessionSecret),
 		cfg.ExternalURL,
 		mcp.WithWebhookDLQRepo(webhookDLQRepo),
+		mcp.WithChatRepo(chatRepo),
 		mcp.WithJetStreamPublisher(publisher),
 		mcp.WithJetStream(js),
 		mcp.WithNATSConn(nc),
@@ -719,6 +724,7 @@ func main() {
 	// Inbox routes
 	inboxHandler := &admin.InboxHandler{
 		Repo:           auditRepo,
+		ChatRepo:       chatRepo,
 		Sessions:       recipientSessionRepo,
 		Workspaces:     wsRepo,
 		Connections:    connectionRepo,

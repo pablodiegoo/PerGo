@@ -98,8 +98,8 @@ templ InboxContent(conversations []repository.ConversationSummary, unreadMap map
 			<!-- Conversation list with polling -->
 			@components.ConvList(conversations, unreadMap, activeChannel, unreadCount)
 		</div>
-		<!-- Right panel: chat view -->
-		<div id="chat-panel" class="chat-panel flex-1 flex flex-col bg-[#fbfbfa] dark:bg-[#191919] h-full overflow-hidden">
+		<!-- Right panel: chat view (middle conversation + right CRM panel) -->
+		<div id="chat-panel" class="chat-panel flex-1 flex bg-[#fbfbfa] dark:bg-[#191919] h-full overflow-hidden">
 			if chatPanel != nil {
 				@chatPanel
 			} else {

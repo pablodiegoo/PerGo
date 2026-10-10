@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -45,6 +46,8 @@ type Processor struct {
 	mediaEngine   media.Engine
 	windowChecker *session.WindowChecker
 	templateRepo  *repository.WABATemplateRepository
+	chatRepo      *repository.ChatRepository
+	contactRepo   *repository.ContactRepository
 }
 
 // NewProcessor creates a new OutboundProcessor implementation.
@@ -71,6 +74,18 @@ func (p *Processor) SetWindowChecker(w *session.WindowChecker) *Processor {
 // SetTemplateRepository attaches a WABATemplateRepository for template validation.
 func (p *Processor) SetTemplateRepository(r *repository.WABATemplateRepository) *Processor {
 	p.templateRepo = r
+	return p
+}
+
+// SetChatRepository configures the ChatRepository for conversational inbox tracking.
+func (p *Processor) SetChatRepository(r *repository.ChatRepository) *Processor {
+	p.chatRepo = r
+	return p
+}
+
+// SetContactRepository configures the ContactRepository for recipient profile resolution.
+func (p *Processor) SetContactRepository(r *repository.ContactRepository) *Processor {
+	p.contactRepo = r
 	return p
 }
 
@@ -342,6 +357,72 @@ func (p *Processor) Ingest(
 		if err := p.publisher.Publish(ctx, "messages.outbound", payload, traceID); err != nil {
 			slog.Error("failed to publish message", "error", err, "trace_id", traceID)
 			return nil, err
+		}
+	}
+
+	// 5.5 Shared Team Inbox Tracking: Upsert Chat & Append Outbound ChatMessage
+	if p.chatRepo != nil && p.contactRepo != nil && conn != nil {
+		senderType := string(domain.SenderTypeHumanAgent)
+		if req.Metadata != nil {
+			if st, ok := req.Metadata["sender_type"]; ok && st != "" {
+				senderType = st
+			}
+		}
+
+		contact, cErr := p.contactRepo.ResolveContact(ctx, workspaceID, conn.Channel, req.To, "", "", req.To)
+		if cErr == nil && contact != nil {
+			chat, chatErr := p.chatRepo.FindOrCreateChat(ctx, workspaceID, &conn.ID, contact.ID)
+			if chatErr == nil && chat != nil {
+				if senderType == string(domain.SenderTypeHumanAgent) {
+					_ = p.chatRepo.SetAIDisabled(ctx, workspaceID, chat.ID, true)
+					_ = p.contactRepo.UpdateBotState(ctx, workspaceID, contact.ID, false, &qMsg.QueuedAt)
+
+					if p.publisher != nil {
+						handoffPayload, _ := json.Marshal(map[string]interface{}{
+							"event":        "chat.handoff",
+							"workspace_id": workspaceID.String(),
+							"chat_id":      chat.ID.String(),
+							"contact_id":   contact.ID.String(),
+							"timestamp":    time.Now().UTC().Format(time.RFC3339),
+						})
+						_ = p.publisher.Publish(ctx, fmt.Sprintf("chat.handoff.%s", workspaceID.String()), handoffPayload, traceID)
+					}
+				}
+				_ = p.chatRepo.TouchLastMessageAt(ctx, workspaceID, chat.ID, qMsg.QueuedAt)
+
+				bodyText := req.Body
+				if bodyText == "" && req.TemplateName != "" {
+					bodyText = fmt.Sprintf("[Template: %s]", req.TemplateName)
+				}
+
+				var mediaURL, mediaType *string
+				if req.Media != nil {
+					if req.Media.MediaURL != "" {
+						mediaURL = &req.Media.MediaURL
+					}
+					if req.Media.MediaType != "" {
+						mediaType = &req.Media.MediaType
+					}
+				}
+
+				chatMsg := &domain.ChatMessage{
+					ChatID:      chat.ID,
+					WorkspaceID: workspaceID,
+					UID:         traceID,
+					Direction:   string(domain.DirectionOutbound),
+					SenderType:  senderType,
+					SenderName:  req.Metadata["sender_name"],
+					SenderID:    conn.SenderIdentity,
+					Body:        bodyText,
+					MediaURL:    mediaURL,
+					MediaType:   mediaType,
+					IsPrivate:   false,
+					Reactions:   []domain.Reaction{},
+					Metadata:    map[string]interface{}{},
+					CreatedAt:   qMsg.QueuedAt,
+				}
+				_ = p.chatRepo.AddChatMessage(ctx, chatMsg)
+			}
 		}
 	}
 

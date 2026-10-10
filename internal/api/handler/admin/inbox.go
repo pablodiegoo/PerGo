@@ -35,6 +35,7 @@ type InboxHandler struct {
 	Templates      *repository.WABATemplateRepository
 	ContactRepo    *repository.ContactRepository
 	UserActionLogs *repository.UserActionLogRepository
+	ChatRepo       *repository.ChatRepository
 }
 
 // loadConversations fetches conversations and computes unread state.
@@ -147,6 +148,13 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		_ = h.Sessions.UpdateLastReadAtByContact(ctx, workspaceID, contactID, time.Now().UTC())
 	}
 
+	// Reset unread count on the parent Chat if ChatRepo is present
+	if h.ChatRepo != nil && workspaceID != uuid.Nil {
+		if chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID); cErr == nil && chat != nil {
+			_ = h.ChatRepo.UpdateChatUnreadCount(ctx, workspaceID, chat.ID, 0)
+		}
+	}
+
 	// Load the thread messages (full history — no cursor)
 	messages, err := h.Repo.ListThreadByContact(ctx, workspaceID, contactID, nil)
 	if err != nil {
@@ -154,7 +162,10 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 	}
 
 	// Resolve connections in workspace to find default/active senders
-	connections, _ := h.Connections.ListByWorkspace(ctx, workspaceID)
+	var connections []*repository.Connection
+	if h.Connections != nil {
+		connections, _ = h.Connections.ListByWorkspace(ctx, workspaceID)
+	}
 	defaultSenders := make(map[string]string)
 	for _, conn := range connections {
 		if conn.IsDefault || defaultSenders[conn.Channel] == "" {
@@ -414,6 +425,30 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 		if err == nil && cProfile != nil {
 			now := time.Now().UTC()
 			_ = h.ContactRepo.UpdateBotState(ctx, workspaceID, cProfile.ID, false, &now)
+
+			if h.ChatRepo != nil {
+				var connID *uuid.UUID
+				if connectionID != uuid.Nil {
+					connID = &connectionID
+				}
+				chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, connID, cProfile.ID)
+				if cErr == nil && chat != nil {
+					_ = h.ChatRepo.SetAIDisabled(ctx, workspaceID, chat.ID, true)
+					_ = h.ChatRepo.TouchLastMessageAt(ctx, workspaceID, chat.ID, now)
+					chatMsg := &domain.ChatMessage{
+						ChatID:      chat.ID,
+						WorkspaceID: workspaceID,
+						UID:         traceID,
+						Direction:   string(domain.DirectionOutbound),
+						SenderType:  string(domain.SenderTypeHumanAgent),
+						SenderName:  "Agent",
+						SenderID:    recipientIdentity,
+						Body:        body,
+						CreatedAt:   now,
+					}
+					_ = h.ChatRepo.AddChatMessage(ctx, chatMsg)
+				}
+			}
 		}
 	}
 
