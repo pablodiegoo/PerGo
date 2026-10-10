@@ -105,7 +105,7 @@ func EnsureInboundStream(ctx context.Context, nc *nats.Conn) (jetstream.Stream, 
 
 	stream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:      "INBOUND",
-		Subjects:  []string{"inbound.events.>"},
+		Subjects:  []string{"inbound.events.>", "messages.events.>"},
 		Retention: jetstream.LimitsPolicy,
 		MaxMsgs:   10000,
 		Storage:   jetstream.FileStorage,

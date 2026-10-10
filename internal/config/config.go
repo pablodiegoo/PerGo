@@ -27,6 +27,7 @@ type Config struct {
 	S3UsePathStyle bool
 	ExternalURL    string
 	WAVersion      string
+	RedisURL       string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -35,6 +36,7 @@ func Load() *Config {
 		Env:            envOrDefault("PERGO_ENV", envOrDefault("ENV", "development")),
 		DatabaseURL:    envOrDefault("PERGO_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"),
 		NATSUrl:        envOrDefault("PERGO_NATS_URL", "nats://localhost:4222"),
+		RedisURL:       envOrDefault("PERGO_REDIS_URL", envOrDefault("REDIS_URL", "localhost:6379")),
 		ServerPort:     envOrDefault("PERGO_SERVER_PORT", "8080"),
 		DebugPort:      envOrDefault("PERGO_DEBUG_PORT", "6060"),
 		KEKBase64:      os.Getenv("PERGO_KEK_BASE64"),

@@ -124,6 +124,13 @@ type InboundStoryEvent struct {
 	MediaURL string `json:"media_url,omitempty"`
 }
 
+// InboundReaction represents an inbound message reaction (add or remove).
+type InboundReaction struct {
+	MessageUID string `json:"message_uid"`
+	Emoji      string `json:"emoji"`
+	Action     string `json:"action"` // "add" | "remove"
+}
+
 // InboundEvent is the channel-agnostic inbound payload.
 type InboundEvent struct {
 	WorkspaceID  uuid.UUID
@@ -139,6 +146,7 @@ type InboundEvent struct {
 	Contacts     []InboundContact
 	Interactive  *InboundInteractive
 	Story        *InboundStoryEvent
+	Reaction     *InboundReaction
 	SenderName   string
 	OccurredAt   time.Time
 	Metadata     map[string]string
@@ -235,8 +243,16 @@ type InboundProcessor struct {
 	auditWriter          audit.Writer
 	recipientSessionRepo *repository.RecipientSessionRepository
 	contactRepo          *repository.ContactRepository
-	dispatchRepo         *repository.MessageDispatchRepository
-	router               InboundRouter
+	dispatchRepo              *repository.MessageDispatchRepository
+	router                    InboundRouter
+	chatRepo                  *repository.ChatRepository
+	debouncer                 *Debouncer
+	reactionWebhookDispatcher ReactionWebhookDispatcher
+}
+
+// ReactionWebhookDispatcher defines the interface for dispatching signed reaction webhooks.
+type ReactionWebhookDispatcher interface {
+	DispatchReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, payload []byte, traceID string) error
 }
 
 // NewInboundProcessor creates a new InboundProcessor.
@@ -264,6 +280,24 @@ func NewInboundProcessor(
 	}
 }
 
+// SetChatRepository configures the ChatRepository for conversational inbox tracking.
+func (p *InboundProcessor) SetChatRepository(r *repository.ChatRepository) *InboundProcessor {
+	p.chatRepo = r
+	return p
+}
+
+// SetDebouncer configures the Debouncer for inbound AI sliding-window coalescing.
+func (p *InboundProcessor) SetDebouncer(d *Debouncer) *InboundProcessor {
+	p.debouncer = d
+	return p
+}
+
+// SetReactionWebhookDispatcher configures webhook dispatching for reaction events.
+func (p *InboundProcessor) SetReactionWebhookDispatcher(d ReactionWebhookDispatcher) *InboundProcessor {
+	p.reactionWebhookDispatcher = d
+	return p
+}
+
 // Process executes the ingestion pipeline for an inbound event.
 func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error {
 	if ev.WorkspaceID == uuid.Nil {
@@ -273,6 +307,73 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 	traceID := ev.TraceID
 	if traceID == "" {
 		traceID = uuid.New().String()
+	}
+
+	if ev.Reaction != nil {
+		occurredAt := ev.OccurredAt
+		if occurredAt.IsZero() {
+			occurredAt = time.Now().UTC()
+		}
+
+		var updatedReactions []domain.Reaction
+		var chatID *uuid.UUID
+		if p.chatRepo != nil {
+			if msg, mErr := p.chatRepo.GetChatMessageByUID(ctx, ev.WorkspaceID, ev.Reaction.MessageUID); mErr == nil && msg != nil {
+				chatID = &msg.ChatID
+			}
+			var err error
+			if ev.Reaction.Action == "remove" || ev.Reaction.Emoji == "" {
+				updatedReactions, err = p.chatRepo.RemoveReaction(ctx, ev.WorkspaceID, ev.Reaction.MessageUID, ev.Reaction.Emoji, ev.From)
+			} else {
+				updatedReactions, err = p.chatRepo.AddReaction(ctx, ev.WorkspaceID, ev.Reaction.MessageUID, domain.Reaction{
+					Emoji:     ev.Reaction.Emoji,
+					Sender:    ev.From,
+					CreatedAt: occurredAt,
+				})
+			}
+			if err != nil {
+				slog.Error("inbound processor: failed to record reaction", "error", err, "message_uid", ev.Reaction.MessageUID, "trace_id", traceID)
+			}
+		}
+
+		action := ev.Reaction.Action
+		if action == "" {
+			if ev.Reaction.Emoji == "" {
+				action = "remove"
+			} else {
+				action = "add"
+			}
+		}
+
+		var chatIDStr string
+		if chatID != nil {
+			chatIDStr = chatID.String()
+		}
+
+		rxEvent := domain.ReactionUpdatedPayload{
+			Event:       "message.reaction.updated",
+			WorkspaceID: ev.WorkspaceID.String(),
+			ChatID:      chatIDStr,
+			MessageUID:  ev.Reaction.MessageUID,
+			Emoji:       ev.Reaction.Emoji,
+			Sender:      ev.From,
+			Action:      action,
+			Reactions:   updatedReactions,
+			Timestamp:   occurredAt.Format(time.RFC3339),
+		}
+		payloadBytes, err := json.Marshal(rxEvent)
+		if err == nil {
+			if p.publisher != nil {
+				_ = p.publisher.Publish(ctx, "messages.events.reaction_updated", payloadBytes, traceID)
+			}
+			if p.reactionWebhookDispatcher != nil {
+				_ = p.reactionWebhookDispatcher.DispatchReaction(ctx, ev.WorkspaceID, ev.Reaction.MessageUID, payloadBytes, traceID)
+			}
+			if p.auditWriter != nil {
+				_ = p.auditWriter.Write(audit.NewEvent(ev.WorkspaceID, traceID, "reaction_updated", payloadBytes))
+			}
+		}
+		return nil
 	}
 
 	if ev.Metadata != nil && ev.Metadata["type"] == "status_update" {
@@ -536,10 +637,122 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		}
 	}
 
+	// 8.5 Shared Team Inbox Tracking: Upsert Chat & Append Inbound ChatMessage
+	var chat *domain.Chat
+	if p.chatRepo != nil && contact != nil {
+		var connID *uuid.UUID
+		if ev.ConnectionID != uuid.Nil {
+			connID = &ev.ConnectionID
+		}
+
+		var cErr error
+		chat, cErr = p.chatRepo.FindOrCreateChat(ctx, ev.WorkspaceID, connID, contact.ID)
+		if cErr != nil {
+			slog.Error("inbound processor: failed to find or create chat", "error", cErr, "contact_id", contact.ID, "trace_id", traceID)
+		} else if chat != nil {
+			_ = p.chatRepo.IncrementUnreadCount(ctx, ev.WorkspaceID, chat.ID)
+			_ = p.chatRepo.TouchLastMessageAt(ctx, ev.WorkspaceID, chat.ID, occurredAt)
+
+			if ev.Channel == "whatsapp_cloud" {
+				duration := 24 * time.Hour
+				if ev.Metadata != nil && (ev.Metadata["entry_point_type"] == "ctwa" || ev.Metadata["is_referral"] == "true") {
+					duration = 72 * time.Hour
+				}
+				exp := occurredAt.Add(duration)
+				_ = p.chatRepo.UpdateServiceWindow(ctx, ev.WorkspaceID, chat.ID, &exp)
+			}
+
+			msgUID := ev.MessageID
+			if msgUID == "" {
+				msgUID = traceID
+			}
+
+			msgBody := ev.Body
+			if msgBody == "" && ev.Interactive != nil {
+				if ev.Interactive.ButtonReply != nil {
+					msgBody = ev.Interactive.ButtonReply.Title
+				} else if ev.Interactive.ListReply != nil {
+					msgBody = ev.Interactive.ListReply.Title
+				} else if ev.Interactive.NFMReply != nil {
+					if ev.Interactive.NFMReply.Body != "" {
+						msgBody = ev.Interactive.NFMReply.Body
+					} else {
+						msgBody = fmt.Sprintf("[Flow Submission: %s]", ev.Interactive.NFMReply.Name)
+					}
+				}
+			}
+
+			var mediaURL, mediaType *string
+			if payload.Media != nil {
+				if payload.Media.MediaURL != "" {
+					mediaURL = &payload.Media.MediaURL
+				}
+				if payload.Media.MediaType != "" {
+					mediaType = &payload.Media.MediaType
+				}
+			}
+
+			chatMsg := &domain.ChatMessage{
+				ChatID:      chat.ID,
+				WorkspaceID: ev.WorkspaceID,
+				UID:         msgUID,
+				Direction:   domain.DirectionInbound,
+				SenderType:  domain.SenderTypeContact,
+				SenderName:  ev.SenderDisplayName(),
+				SenderID:    ev.From,
+				Body:        msgBody,
+				MediaURL:    mediaURL,
+				MediaType:   mediaType,
+				IsPrivate:   false,
+				Reactions:   []domain.Reaction{},
+				Metadata:    map[string]interface{}{},
+				CreatedAt:   occurredAt,
+			}
+			if err := p.chatRepo.AddChatMessage(ctx, chatMsg); err != nil {
+				slog.Error("inbound processor: failed to add chat message", "error", err, "uid", msgUID, "trace_id", traceID)
+			}
+
+			// 8.6 Inbound Debounce Buffer & AI Handoff Gate
+			if p.debouncer != nil {
+				if chat.AIDisabled {
+					slog.Info("inbound processor: chat AI disabled by human takeover, bypassing automated AI dispatch",
+						"workspace_id", ev.WorkspaceID,
+						"chat_id", chat.ID,
+						"contact_id", contact.ID,
+						"trace_id", traceID,
+					)
+				} else {
+					debouncedMsg := &DebouncedMessage{
+						MessageID:    msgUID,
+						TraceID:      traceID,
+						WorkspaceID:  ev.WorkspaceID,
+						ConnectionID: connID,
+						ChatID:       chat.ID,
+						ContactID:    contact.ID,
+						Channel:      ev.Channel,
+						From:         ev.From,
+						To:           ev.To,
+						SenderName:   ev.SenderDisplayName(),
+						Body:         msgBody,
+						OccurredAt:   occurredAt,
+						Metadata:     map[string]interface{}{},
+					}
+					if err := p.debouncer.Enqueue(ctx, debouncedMsg); err != nil {
+						slog.Error("inbound processor: failed to enqueue message to debounce buffer", "error", err, "chat_id", chat.ID, "trace_id", traceID)
+					}
+				}
+			}
+		}
+	}
+
 	// 9. Route inbound event via InboundRouter
 	if p.router != nil && contact != nil {
-		if err := p.router.Route(ctx, contact, ev); err != nil {
-			slog.Error("inbound processor: router failed to route event", "error", err, "contact_id", contact.ID, "trace_id", traceID)
+		if chat != nil && chat.AIDisabled {
+			slog.Info("inbound processor: chat AI is disabled (human takeover), bypassing InboundRouter dispatch", "chat_id", chat.ID, "contact_id", contact.ID)
+		} else {
+			if err := p.router.Route(ctx, contact, ev); err != nil {
+				slog.Error("inbound processor: router failed to route event", "error", err, "contact_id", contact.ID, "trace_id", traceID)
+			}
 		}
 	}
 

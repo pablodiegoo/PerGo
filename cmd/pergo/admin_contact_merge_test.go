@@ -79,7 +79,7 @@ func run(m *testing.M) int {
 
 	// Connect to pool with retries to ensure Postgres is fully ready
 	var pool *pgxpool.Pool
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 25; i++ {
 		pool, err = pgxpool.New(ctx, pgConnStr)
 		if err == nil {
 			err = pool.Ping(ctx)
@@ -88,7 +88,7 @@ func run(m *testing.M) int {
 			}
 			pool.Close()
 		}
-		log.Printf("waiting for postgres to accept connections (attempt %d/10)... error: %v", i+1, err)
+		log.Printf("waiting for postgres to accept connections (attempt %d/25)... error: %v", i+1, err)
 		time.Sleep(1 * time.Second)
 	}
 	if err != nil {

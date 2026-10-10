@@ -185,6 +185,51 @@ func TestAuditRepository_ConversationsAndThread(t *testing.T) {
 		}
 	})
 
+	t.Run("ListThreadByContact includes internal notes from chat_messages", func(t *testing.T) {
+		chatRepo := NewChatRepository(pool)
+		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, nil, c1.ID)
+		if err != nil {
+			t.Fatalf("failed to find or create chat: %v", err)
+		}
+
+		noteBody := "Private teammate note about VIP status."
+		author := "Agent Mulder"
+		note, err := chatRepo.CreateInternalNote(ctx, ws.ID, chat.ID, author, "human", noteBody)
+		if err != nil {
+			t.Fatalf("failed to create internal note: %v", err)
+		}
+
+		thread, err := auditRepo.ListThreadByContact(ctx, ws.ID, c1.ID, nil)
+		if err != nil {
+			t.Fatalf("ListThreadByContact failed: %v", err)
+		}
+
+		var foundNote *ThreadMessage
+		for _, m := range thread {
+			if m.ID == note.ID {
+				foundNote = &m
+				break
+			}
+		}
+
+		if foundNote == nil {
+			t.Fatalf("expected internal note %s in thread, not found", note.ID)
+		}
+		if foundNote.Direction != "internal_note" {
+			t.Errorf("expected direction 'internal_note', got %s", foundNote.Direction)
+		}
+		if foundNote.Body != noteBody {
+			t.Errorf("expected body %q, got %q", noteBody, foundNote.Body)
+		}
+		if foundNote.Metadata["author_name"] != author {
+			t.Errorf("expected author_name %q, got %q", author, foundNote.Metadata["author_name"])
+		}
+		if foundNote.Metadata["is_private"] != "true" {
+			t.Errorf("expected is_private 'true', got %q", foundNote.Metadata["is_private"])
+		}
+	})
+
+
 	// Test ListThread with Dispatch Status join
 	t.Run("ListThreadByContact returns dispatch status for outbound messages", func(t *testing.T) {
 		dispatchRepo := NewMessageDispatchRepository(pool)
@@ -505,3 +550,57 @@ func TestAuditRepository_RetentionQueries(t *testing.T) {
 		t.Errorf("expected body '[EXPURGADO]', got %q", updatedBody)
 	}
 }
+
+func TestAuditRepository_InsertAuditLog(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+	ctx := context.Background()
+
+	wsRepo := NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "Audit Insert Test WS "+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	auditRepo := NewAuditRepository(pool)
+
+	entry := &AuditEntry{
+		ID:          uuid.New(),
+		WorkspaceID: ws.ID,
+		TraceID:     "trace-test-insert-1",
+		EventType:   "chat.message.sent",
+		Payload:     []byte(`{"body":"hello world","channel":"whatsapp"}`),
+		CreatedAt:   time.Now().UTC(),
+	}
+
+	if err := auditRepo.InsertAuditLog(ctx, entry); err != nil {
+		t.Fatalf("InsertAuditLog failed: %v", err)
+	}
+
+	// Verify using ListFiltered
+	entries, total, err := auditRepo.ListFiltered(ctx, AuditFilters{
+		WorkspaceID: &ws.ID,
+		TraceID:     "trace-test-insert-1",
+	})
+	if err != nil {
+		t.Fatalf("ListFiltered failed: %v", err)
+	}
+	if total != 1 || len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d (total: %d)", len(entries), total)
+	}
+	if entries[0].EventType != "chat.message.sent" {
+		t.Errorf("expected event_type 'chat.message.sent', got %q", entries[0].EventType)
+	}
+
+	// Test invalid workspace ID error
+	invalidEntry := &AuditEntry{
+		WorkspaceID: uuid.Nil,
+		TraceID:     "trace-nil",
+	}
+	if err := auditRepo.InsertAuditLog(ctx, invalidEntry); err != ErrInvalidWorkspaceID {
+		t.Errorf("expected ErrInvalidWorkspaceID, got %v", err)
+	}
+}
+
+

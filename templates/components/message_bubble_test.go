@@ -64,7 +64,7 @@ func TestMessageBubble_InboundOrderSummary(t *testing.T) {
 	html := buf.String()
 
 	expectedSubstrings := []string{
-		"🛒 Pedido do Catálogo",
+		"Pedido do Catálogo",
 		"cat_9999",
 		"Nota do Cliente",
 		"Por favor entregar no portão lateral.",
@@ -118,7 +118,7 @@ func TestMessageBubble_OutboundProductCard_Single(t *testing.T) {
 	html := buf.String()
 
 	expectedSubstrings := []string{
-		"📦 Catálogo de Produtos",
+		"Catálogo de Produtos",
 		"cat_1234",
 		"Oferta Especial",
 		"Confira este produto incrível!",
@@ -184,7 +184,7 @@ func TestMessageBubble_OutboundProductCard_Multi(t *testing.T) {
 	html := buf.String()
 
 	expectedSubstrings := []string{
-		"📦 Catálogo de Produtos",
+		"Catálogo de Produtos",
 		"cat_5678",
 		"Nosso Cardápio",
 		"2 Seção(ões) de Produtos",
@@ -237,3 +237,40 @@ func TestMessageBubble_StandardMessages(t *testing.T) {
 		t.Errorf("outbound message missing text body")
 	}
 }
+
+func TestMessageBubble_InternalNote(t *testing.T) {
+	noteMsg := repository.ThreadMessage{
+		ID:        uuid.New(),
+		Direction: "internal_note",
+		Body:      "Proposta de resposta gerada pela IA aguardando aprovação humana.",
+		CreatedAt: time.Now().UTC(),
+		Metadata: map[string]string{
+			"author_name": "Claude Agent",
+			"is_private":  "true",
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := components.MessageBubble(noteMsg).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("failed to render internal note: %v", err)
+	}
+
+	html := buf.String()
+	expectedSubstrings := []string{
+		"bg-amber-500/10",
+		"border-amber-300",
+		"Nota Interna",
+		"Claude Agent",
+		"Proposta de resposta gerada pela IA aguardando aprovação humana.",
+		"Approve & Send",
+		"btn-approve-send",
+		"data-draft=\"Proposta de resposta gerada pela IA aguardando aprovação humana.\"",
+	}
+
+	for _, expected := range expectedSubstrings {
+		if !strings.Contains(html, expected) {
+			t.Errorf("expected HTML to contain %q, but got:\n%s", expected, html)
+		}
+	}
+}
+

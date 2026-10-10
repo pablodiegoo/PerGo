@@ -116,6 +116,10 @@ func NewAdapter(connectionsRepo *repository.ConnectionRepository, client *http.C
 
 // Dispatch sends a message through the Instagram REST API.
 func (a *InstagramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (string, error) {
+	if m != nil && m.Metadata != nil && (m.Metadata["is_private"] == "true" || m.Metadata["direction"] == "internal_note") {
+		return "", nil
+	}
+
 	_, err := tenant.RequireWorkspaceID(ctx)
 	if err != nil {
 		return "", channel.NewTerminalError(err)

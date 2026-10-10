@@ -65,6 +65,10 @@ func (a *WhatsAppAdapter) SetSessionFinder(finder SessionFinder) {
 // Returns channel.TerminalError for 403/logged-out errors (non-retryable).
 // Returns regular error for transient failures (retryable).
 func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (string, error) {
+	if m != nil && m.Metadata != nil && (m.Metadata["is_private"] == "true" || m.Metadata["direction"] == "internal_note") {
+		return "", nil
+	}
+
 	var wc *WhatsAppClient
 	if a.sessionFinder != nil {
 		wc = a.sessionFinder.GetClient(m.SenderIdentity)

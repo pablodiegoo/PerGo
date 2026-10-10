@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pablojhp.pergo/internal/domain"
@@ -51,108 +52,309 @@ func getLastMessageID(messages []repository.ThreadMessage) string {
 	return messages[len(messages)-1].ID.String()
 }
 
-// ChatPanel renders the full chat thread view for a selected conversation.
-templ ChatPanel(contact *domain.Contact, replyOptions []ReplyOption, messages []repository.ThreadMessage, isWabaBlocked bool) {
-	<div class="chat-thread flex flex-col h-full text-[#37352f] dark:text-[#e3e3e3]" id="chat-panel-inner">
-		<!-- Header -->
-		<div class="chat-thread-header flex items-center gap-3 px-4 py-3 border-b border-[#e9e9e7] dark:border-[#2f2f2f] bg-white dark:bg-[#202020] flex-shrink-0">
-			<div class="h-9 w-9 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm select-none">
-				{ safeInitialStr(contact.Name) }
-			</div>
-			<div>
-				<div class="flex items-center gap-2">
-					<p class="font-semibold text-sm text-[#37352f] dark:text-[#e3e3e3]">{ contact.Name }</p>
-					@BotStatusBadge(contact)
+// ChatPanel renders the full chat thread view (middle column) plus contact CRM metadata (right column).
+templ ChatPanel(contact *domain.Contact, chat *domain.Chat, replyOptions []ReplyOption, messages []repository.ThreadMessage, isWabaBlocked bool, extra ...any) {
+	{{
+		var members []repository.WorkspaceMember
+		var expTime *time.Time
+		if chat != nil && chat.ServiceWindowExpiresAt != nil {
+			expTime = chat.ServiceWindowExpiresAt
+		}
+		for _, x := range extra {
+			switch v := x.(type) {
+			case []repository.WorkspaceMember:
+				members = v
+			case *time.Time:
+				if expTime == nil {
+					expTime = v
+				}
+			}
+		}
+
+		hasWaba := false
+		var defaultContact, defaultSender string
+		if len(replyOptions) > 0 {
+			defaultContact = replyOptions[0].RecipientPhone
+			defaultSender = replyOptions[0].SenderIdentity
+		}
+		for _, opt := range replyOptions {
+			if opt.Channel == "whatsapp_cloud" {
+				hasWaba = true
+				if defaultContact == "" {
+					defaultContact = opt.RecipientPhone
+					defaultSender = opt.SenderIdentity
+				}
+			}
+		}
+		for _, id := range contact.Identities {
+			if id.Channel == "whatsapp_cloud" {
+				hasWaba = true
+			}
+		}
+	}}
+	<div class="chat-main-container flex h-full w-full overflow-hidden text-[#37352f] dark:text-[#e3e3e3]" id="chat-panel-inner" data-contact-id={ contact.ID.String() }>
+		<!-- Middle column: Conversation Thread -->
+		<div class="chat-thread flex-1 flex flex-col h-full min-w-0 bg-[#fbfbfa] dark:bg-[#191919]">
+			<!-- Header -->
+			<div class="chat-thread-header flex items-center justify-between px-4 py-3 border-b border-[#e9e9e7] dark:border-[#2f2f2f] bg-white dark:bg-[#202020] flex-shrink-0">
+				<div class="flex items-center gap-3 min-w-0">
+					<div class="h-9 w-9 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm select-none shrink-0">
+						{ safeInitialStr(contact.Name) }
+					</div>
+					<div class="min-w-0">
+						<div class="flex items-center gap-2">
+							<p class="font-semibold text-sm text-[#37352f] dark:text-[#e3e3e3] truncate">{ contact.Name }</p>
+							@BotStatusBadge(contact)
+							if chat != nil {
+								@AIStatusBadge(chat)
+							}
+							if hasWaba {
+								@WABAServiceWindowBadge(expTime, isWabaBlocked)
+							}
+						</div>
+						<div class="flex items-center gap-1.5 mt-0.5 truncate">
+							for i, identity := range contact.Identities {
+								if i > 0 {
+									<span class="text-[#e9e9e7] dark:text-[#2f2f2f] text-[10px]">|</span>
+								}
+								<span class="text-[10px] text-[#787774] dark:text-[#9b9b9b]">{ channelLabelStr(identity.Channel) }: { identity.SenderIdentity }</span>
+							}
+						</div>
+					</div>
 				</div>
-				<div class="flex items-center gap-1.5 mt-0.5">
-					for i, identity := range contact.Identities {
-						if i > 0 {
-							<span class="text-[#e9e9e7] dark:text-[#2f2f2f] text-[10px]">|</span>
-						}
-						<span class="text-[10px] text-[#787774] dark:text-[#9b9b9b]">{ channelLabelStr(identity.Channel) }: { identity.SenderIdentity }</span>
+
+				<!-- Header Triage & Presence Controls -->
+				<div class="flex items-center gap-2 shrink-0">
+					<!-- Active Viewers & Collision Alert -->
+					<div id="chat-presence-container" class="flex items-center gap-1.5">
+						<div id="chat-presence-viewers" class="flex items-center -space-x-1.5 overflow-hidden"></div>
+						<div id="chat-collision-alert" class="hidden items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/60 shadow-xs">
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 animate-pulse text-amber-600 dark:text-amber-400" viewBox="0 0 20 20" fill="currentColor">
+								<path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+							</svg>
+							<span id="chat-collision-text">{ i18n.T(ctx, "inbox.another_operator_in_chat") }</span>
+						</div>
+					</div>
+
+					<!-- 1-Click AI Summarize Button -->
+					if chat != nil {
+						<div class="relative inline-block text-left" id="chat-summarize-container">
+							<button
+								type="button"
+								hx-post={ fmt.Sprintf("/admin/inbox/summarize?chat_id=%s", chat.ID.String()) }
+								hx-target="#chat-summary-target"
+								hx-indicator="#summarize-spinner"
+								class="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-sky-200 dark:border-sky-800/60 text-xs font-semibold rounded-lg bg-sky-50 dark:bg-sky-950/40 text-[#0284c7] dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/50 transition-colors cursor-pointer shadow-none"
+								title={ i18n.T(ctx, "inbox.summarize_tooltip") }
+							>
+								<span id="summarize-spinner" class="htmx-indicator animate-spin inline-flex items-center text-xs mr-0.5 text-sky-600 dark:text-sky-400">
+									<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+										<line x1="12" y1="2" x2="12" y2="6"></line>
+										<line x1="12" y1="18" x2="12" y2="22"></line>
+										<line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+										<line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+									</svg>
+								</span>
+								<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+								</svg>
+								<span>1-Click AI Summarize</span>
+							</button>
+							<div id="chat-summary-target"></div>
+						</div>
 					}
-				</div>
-			</div>
 
-			<!-- Merging UI Dropdown inside Chat Panel Header -->
-			<div class="relative inline-block text-left ml-auto" id="merge-dropdown-container">
-				<button 
-					type="button" 
-					class="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-[#e9e9e7] dark:border-[#2f2f2f] text-xs font-semibold rounded-lg text-[#37352f] dark:text-[#e3e3e3] bg-white dark:bg-[#202020] hover:bg-[#e9e9e7]/50 dark:hover:bg-[#2f2f2f]/50 shadow-none transition-colors cursor-pointer"
-					onclick="document.getElementById('merge-menu').classList.toggle('hidden')"
-				>
-					{ i18n.T(ctx, "inbox.merge_contact") }
-				</button>
+					<!-- Resolve / Reopen Button -->
+					if chat != nil && chat.Status == "closed" {
+						<button
+							type="button"
+							hx-post={ fmt.Sprintf("/admin/inbox/status?contact_id=%s&status=open", contact.ID.String()) }
+							hx-target="#chat-panel"
+							class="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-[#e9e9e7] dark:border-[#2f2f2f] text-xs font-semibold rounded-lg text-[#0284c7] bg-white dark:bg-[#202020] hover:bg-sky-50 dark:hover:bg-sky-950/40 shadow-none transition-colors cursor-pointer"
+							title={ i18n.T(ctx, "inbox.reopen_chat_title") }
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="1 4 1 10 7 10"></polyline>
+								<path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+							</svg>
+							<span>{ i18n.T(ctx, "inbox.reopen_chat") }</span>
+						</button>
+					} else {
+						<button
+							type="button"
+							hx-post={ fmt.Sprintf("/admin/inbox/status?contact_id=%s&status=closed", contact.ID.String()) }
+							hx-target="#chat-panel"
+							class="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-emerald-300 dark:border-emerald-800 text-xs font-semibold rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-colors cursor-pointer shadow-none"
+							title={ i18n.T(ctx, "inbox.resolve_chat_title") }
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<polyline points="20 6 9 17 4 12"></polyline>
+							</svg>
+							<span>{ i18n.T(ctx, "inbox.resolve_chat") }</span>
+						</button>
+					}
 
-				<div 
-					id="merge-menu" 
-					class="hidden origin-top-right absolute right-0 mt-2 w-72 rounded-lg shadow-lg bg-white dark:bg-[#202020] ring-1 ring-black/5 focus:outline-none z-50 p-3 border border-[#e9e9e7] dark:border-[#2f2f2f]"
-				>
-					<p class="text-xs font-semibold text-[#787774] dark:text-[#9b9b9b] mb-2">{ i18n.T(ctx, "inbox.merge_with_other") }</p>
-					<input 
-						type="text" 
-						name="q" 
-						placeholder={ i18n.T(ctx, "inbox.search_name_or_phone") } 
-						class="w-full px-2 py-1.5 text-xs border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] focus:outline-none focus:ring-1 focus:ring-[#0284c7]"
-						hx-get={ fmt.Sprintf("/admin/contacts/search?exclude_id=%s", contact.ID.String()) }
-						hx-trigger="keyup changed delay:300ms"
-						hx-target="#merge-results"
-					/>
-					<div id="merge-results" class="mt-2 max-h-48 overflow-y-auto flex flex-col gap-1">
-						<!-- Results populated dynamically by HTMX -->
+					<!-- Merging UI Dropdown inside Chat Panel Header -->
+					<div class="relative inline-block text-left" id="merge-dropdown-container">
+						<button 
+							type="button" 
+							class="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-[#e9e9e7] dark:border-[#2f2f2f] text-xs font-semibold rounded-lg text-[#37352f] dark:text-[#e3e3e3] bg-white dark:bg-[#202020] hover:bg-[#e9e9e7]/50 dark:hover:bg-[#2f2f2f]/50 shadow-none transition-colors cursor-pointer"
+							onclick="document.getElementById('merge-menu').classList.toggle('hidden')"
+						>
+							{ i18n.T(ctx, "inbox.merge_contact") }
+						</button>
+
+						<div 
+							id="merge-menu" 
+							class="hidden origin-top-right absolute right-0 mt-2 w-72 rounded-lg shadow-lg bg-white dark:bg-[#202020] ring-1 ring-black/5 focus:outline-none z-50 p-3 border border-[#e9e9e7] dark:border-[#2f2f2f]"
+						>
+							<p class="text-xs font-semibold text-[#787774] dark:text-[#9b9b9b] mb-2">{ i18n.T(ctx, "inbox.merge_with_other") }</p>
+							<input 
+								type="text" 
+								name="q" 
+								placeholder={ i18n.T(ctx, "inbox.search_name_or_phone") } 
+								class="w-full px-2 py-1.5 text-xs border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] focus:outline-none focus:ring-1 focus:ring-[#0284c7]"
+								hx-get={ fmt.Sprintf("/admin/contacts/search?exclude_id=%s", contact.ID.String()) }
+								hx-trigger="keyup changed delay:300ms"
+								hx-target="#merge-results"
+							/>
+							<div id="merge-results" class="mt-2 max-h-48 overflow-y-auto flex flex-col gap-1"></div>
+						</div>
 					</div>
 				</div>
 			</div>
-		</div>
 
-		<!-- WABA 24h Block Warning Banner -->
-		if isWabaBlocked {
-			<div class="px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800/50 text-amber-800 dark:text-amber-300 text-xs font-semibold flex items-center gap-1.5 flex-shrink-0">
-				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-				</svg>
-				<span>{ i18n.T(ctx, "inbox.waba_24h_window_closed") }</span>
-			</div>
-		}
+			<!-- WABA 24h Block Warning Banner -->
+			if isWabaBlocked && hasWaba {
+				<div class="px-4 py-2 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800/50 text-amber-800 dark:text-amber-300 text-xs font-semibold flex items-center justify-between gap-1.5 flex-shrink-0">
+					<div class="flex items-center gap-1.5">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+						</svg>
+						<span>{ i18n.T(ctx, "inbox.waba_24h_window_closed") }</span>
+					</div>
+					<button
+						type="button"
+						class="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
+						hx-get={ fmt.Sprintf("/admin/inbox/new-message-modal?type=template_only&from=%s&channel=whatsapp_cloud&to=%s", defaultContact, defaultSender) }
+						hx-target="#modal-container"
+						hx-swap="innerHTML"
+					>
+						Select Approved Template to Reopen
+					</button>
+				</div>
+			}
 
-		<!-- Message viewport -->
-		<div
-			id="chat-messages"
-			class="chat-messages flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2 bg-[#fbfbfa] dark:bg-[#191919]"
-		>
-			if len(messages) == 0 {
-				<div class="text-center text-[#787774] dark:text-[#9b9b9b] text-sm py-8 select-none">{ i18n.T(ctx, "inbox.no_messages") }</div>
-			}
-			for _, m := range messages {
-				@MessageBubble(m)
-			}
-		</div>
-		<!-- Invisible polling sentinel — appends new bubbles every 3s after last message ID -->
-		<div
-			id="chat-poll-anchor"
-			hx-get={ fmt.Sprintf("/admin/inbox/messages?contact_id=%s&after_id=%s", contact.ID.String(), getLastMessageID(messages)) }
-			hx-target="#chat-messages"
-			hx-swap="beforeend scroll:bottom"
-			hx-trigger="every 3s"
-			class="hidden"
-		></div>
-		
-		<!-- Send form -->
-		<div class="chat-input-area px-4 py-3 border-t border-[#e9e9e7] dark:border-[#2f2f2f] bg-white dark:bg-[#202020] flex-shrink-0">
-			<form
-				id="chat-send-form"
-				hx-post="/admin/inbox/send"
-				hx-target="#chat-send-status"
-				hx-swap="innerHTML"
-				hx-on::after-request="if(event.detail.successful){document.getElementById('chat-textarea').value='';document.getElementById('chat-textarea').style.height='40px';}"
+			<!-- Message viewport -->
+			<div
+				id="chat-messages"
+				class="chat-messages flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-2 bg-[#fbfbfa] dark:bg-[#191919]"
 			>
-				@replyFormFields(replyOptions)
-			</form>
+				if len(messages) == 0 {
+					<div class="text-center text-[#787774] dark:text-[#9b9b9b] text-sm py-8 select-none">{ i18n.T(ctx, "inbox.no_messages") }</div>
+				}
+				for _, m := range messages {
+					@MessageBubble(m)
+				}
+			</div>
+			<!-- Invisible polling sentinel — appends new bubbles every 3s after last message ID -->
+			<div
+				id="chat-poll-anchor"
+				hx-get={ fmt.Sprintf("/admin/inbox/messages?contact_id=%s&after_id=%s", contact.ID.String(), getLastMessageID(messages)) }
+				hx-target="#chat-messages"
+				hx-swap="beforeend scroll:bottom"
+				hx-trigger="every 3s"
+				class="hidden"
+			></div>
+			
+			<!-- Send form -->
+			<div class="chat-input-area px-4 py-3 border-t border-[#e9e9e7] dark:border-[#2f2f2f] bg-white dark:bg-[#202020] flex-shrink-0">
+				<form
+					id="chat-send-form"
+					hx-post="/admin/inbox/send"
+					hx-target="#chat-send-status"
+					hx-swap="innerHTML"
+					hx-on::after-request="if(event.detail.successful){document.getElementById('chat-textarea').value='';document.getElementById('chat-textarea').style.height='40px';}"
+				>
+					@replyFormFields(replyOptions, isWabaBlocked)
+				</form>
+			</div>
+		</div>
+
+		<!-- Right column: Contact CRM Metadata -->
+		<div class="contact-crm-sidebar w-80 flex-shrink-0 border-l border-[#e9e9e7] dark:border-[#2f2f2f] bg-white dark:bg-[#202020] h-full overflow-y-auto hidden md:flex md:flex-col">
+			@ContactCRMPanel(contact, chat, members)
 		</div>
 	</div>
-	<!-- Initial scroll to bottom -->
+
+	<!-- Presence and Heartbeat Client Script -->
 	<script>
 		(function() {
+			var contactId = document.getElementById('chat-panel-inner')?.dataset?.contactId || '';
+			var presenceViewers = document.getElementById('chat-presence-viewers');
+			var collisionAlert = document.getElementById('chat-collision-alert');
+			var collisionText = document.getElementById('chat-collision-text');
+			
+			function sendHeartbeat(status) {
+				var formData = new FormData();
+				formData.append('contact_id', contactId);
+				formData.append('status', status || 'viewing');
+				fetch('/admin/inbox/presence', {
+					method: 'POST',
+					body: formData
+				}).catch(function(){});
+			}
+
+			sendHeartbeat('viewing');
+			var hbInterval = setInterval(function() {
+				sendHeartbeat('viewing');
+			}, 8000);
+
+			var textarea = document.getElementById('chat-textarea');
+			if (textarea) {
+				textarea.addEventListener('input', function() {
+					sendHeartbeat('typing');
+				});
+			}
+
+			var evtSource = new EventSource('/admin/inbox/presence?contact_id=' + contactId);
+			evtSource.addEventListener('presence', function(e) {
+				try {
+					var viewers = JSON.parse(e.data);
+					if (!viewers || !presenceViewers) return;
+					presenceViewers.innerHTML = '';
+					
+					viewers.forEach(function(v) {
+						var avatar = document.createElement('div');
+						var isTyping = v.status === 'typing';
+						avatar.className = 'h-7 w-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm ring-2 ' +
+							(isTyping ? 'bg-amber-500 ring-amber-300 animate-pulse' : 'bg-sky-600 ring-white dark:ring-zinc-800');
+						avatar.title = (v.name || v.email) + ' (' + v.email + ') - ' + (isTyping ? 'digitando...' : 'visualizando');
+						avatar.textContent = (v.name || v.email || '?').charAt(0).toUpperCase();
+						presenceViewers.appendChild(avatar);
+					});
+
+					if (collisionAlert) {
+						if (viewers.length > 1) {
+							collisionAlert.classList.remove('hidden');
+							collisionAlert.classList.add('flex');
+							if (collisionText) {
+								var names = viewers.map(function(v){ return v.name || v.email; }).join(', ');
+								collisionText.textContent = viewers.length + ' operadores (' + names + ')';
+							}
+						} else {
+							collisionAlert.classList.add('hidden');
+							collisionAlert.classList.remove('flex');
+						}
+					}
+				} catch(err) {}
+			});
+
+			window.addEventListener('beforeunload', function() {
+				clearInterval(hbInterval);
+				if (evtSource) evtSource.close();
+			});
+
 			var vp = document.getElementById('chat-messages');
 			if (vp) { vp.scrollTop = vp.scrollHeight; }
 		})();
@@ -160,7 +362,7 @@ templ ChatPanel(contact *domain.Contact, replyOptions []ReplyOption, messages []
 }
 
 // replyFormFields renders the input fields, picker, and text area for compose form.
-templ replyFormFields(replyOptions []ReplyOption) {
+templ replyFormFields(replyOptions []ReplyOption, isWabaBlocked bool) {
 	{{
 		var defaultContact, defaultChannel, defaultSender string
 		hasWaba := false
@@ -174,6 +376,7 @@ templ replyFormFields(replyOptions []ReplyOption) {
 				hasWaba = true
 			}
 		}
+		isBlockedForCurrent := isWabaBlocked && defaultChannel == "whatsapp_cloud"
 	}}
 	<input type="hidden" id="chat-contact" name="contact" value={ defaultContact }/>
 	<input type="hidden" id="chat-channel" name="channel" value={ defaultChannel }/>
@@ -185,6 +388,7 @@ templ replyFormFields(replyOptions []ReplyOption) {
 				<span class="text-xs text-[#787774] dark:text-[#9b9b9b] font-medium">{ i18n.T(ctx, "inbox.reply_via") }</span>
 				<select 
 					id="chat-reply-picker"
+					data-waba-blocked={ fmt.Sprintf("%t", isWabaBlocked) }
 					class="text-xs border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg px-2 py-1 bg-white dark:bg-[#202020] text-[#37352f] dark:text-[#e3e3e3] focus:outline-none focus:ring-1 focus:ring-[#0284c7] focus:border-transparent cursor-pointer"
 					onchange="updateReplyFields(this)"
 				>
@@ -210,13 +414,13 @@ templ replyFormFields(replyOptions []ReplyOption) {
 		}
 
 		<div class="flex items-end gap-2">
-			<!-- WABA Template button -->
+			<!-- WABA Template button / Reopen button -->
 			if hasWaba {
 				<button
 					id="chat-tmpl-btn"
 					type="button"
 					class="h-10 px-3 border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg text-[#37352f] dark:text-[#e3e3e3] bg-white dark:bg-[#202020] hover:bg-[#e9e9e7]/50 dark:hover:bg-[#2f2f2f]/50 text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 shadow-none transition-colors cursor-pointer"
-					style={ fmt.Sprintf("display: %s;", map[bool]string{true: "flex", false: "none"}[defaultChannel == "whatsapp_cloud"]) }
+					style={ fmt.Sprintf("display: %s;", map[bool]string{true: "flex", false: "none"}[defaultChannel == "whatsapp_cloud" && !isBlockedForCurrent]) }
 					hx-get={ fmt.Sprintf("/admin/inbox/new-message-modal?type=template_only&from=%s&channel=whatsapp_cloud&to=%s", defaultContact, defaultSender) }
 					hx-target="#modal-container"
 					hx-swap="innerHTML"
@@ -226,18 +430,32 @@ templ replyFormFields(replyOptions []ReplyOption) {
 					</svg>
 					<span>{ i18n.T(ctx, "inbox.templates") }</span>
 				</button>
+				<button
+					id="chat-reopen-template-btn"
+					type="button"
+					class="h-10 px-3.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold flex items-center gap-1.5 flex-shrink-0 transition-colors cursor-pointer shadow-sm"
+					style={ fmt.Sprintf("display: %s;", map[bool]string{true: "flex", false: "none"}[defaultChannel == "whatsapp_cloud" && isBlockedForCurrent]) }
+					hx-get={ fmt.Sprintf("/admin/inbox/new-message-modal?type=template_only&from=%s&channel=whatsapp_cloud&to=%s", defaultContact, defaultSender) }
+					hx-target="#modal-container"
+					hx-swap="innerHTML"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+					</svg>
+					<span>Select Approved Template to Reopen</span>
+				</button>
 			}
 
 			<textarea
 				id="chat-textarea"
 				name="body"
-				placeholder={ i18n.T(ctx, "inbox.type_message_placeholder") }
+				placeholder={ map[bool]string{true: "Meta 24h window closed. Select an approved template to reopen.", false: i18n.T(ctx, "inbox.type_message_placeholder")}[isBlockedForCurrent] }
 				rows="1"
 				class="flex-1 resize-none rounded-lg border border-[#e9e9e7] dark:border-[#2f2f2f] bg-[#fbfbfa] dark:bg-[#191919] px-3 py-2 text-sm text-[#37352f] dark:text-[#e3e3e3] placeholder-[#787774] dark:placeholder-[#9b9b9b] focus:outline-none focus:ring-2 focus:ring-[#0284c7] focus:border-transparent transition-shadow overflow-hidden disabled:opacity-50"
 				style="min-height:40px;max-height:160px;"
 				oninput="this.style.height='40px';this.style.height=Math.min(this.scrollHeight,160)+'px';"
 				onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();if(!this.disabled && this.value.trim()){htmx.trigger(this.closest('form'),'submit');}}"
-				if len(replyOptions) == 0 {
+				if len(replyOptions) == 0 || isBlockedForCurrent {
 					disabled
 				}
 			></textarea>
@@ -245,7 +463,7 @@ templ replyFormFields(replyOptions []ReplyOption) {
 				type="submit"
 				class="flex-shrink-0 h-10 w-10 rounded-full bg-[#0369a1] hover:bg-[#0284c7] active:bg-[#0284c7] flex items-center justify-center text-white transition-colors shadow-none cursor-pointer disabled:opacity-50"
 				aria-label={ i18n.T(ctx, "common.actions.send") }
-				if len(replyOptions) == 0 {
+				if len(replyOptions) == 0 || isBlockedForCurrent {
 					disabled
 				}
 			>
@@ -260,21 +478,53 @@ templ replyFormFields(replyOptions []ReplyOption) {
 	<script>
 		function updateReplyFields(select) {
 			var opt = select.options[select.selectedIndex];
+			var channel = opt.getAttribute('data-channel');
 			document.getElementById('chat-contact').value = opt.value;
-			document.getElementById('chat-channel').value = opt.getAttribute('data-channel');
+			document.getElementById('chat-channel').value = channel;
 			document.getElementById('chat-sender').value = opt.getAttribute('data-sender');
 			
+			var isWabaBlocked = select.getAttribute('data-waba-blocked') === 'true';
+			var txt = document.getElementById('chat-textarea');
+			var sendBtn = document.querySelector('#chat-send-form button[type="submit"]');
+			var reopenBtn = document.getElementById('chat-reopen-template-btn');
 			var tmplBtn = document.getElementById('chat-tmpl-btn');
-			if (tmplBtn) {
-				if (opt.getAttribute('data-channel') === 'whatsapp_cloud') {
-					tmplBtn.style.display = 'flex';
-					var from = opt.value;
-					var to = opt.getAttribute('data-sender');
-					tmplBtn.setAttribute('hx-get', '/admin/inbox/new-message-modal?type=template_only&from=' + from + '&channel=whatsapp_cloud&to=' + to);
-					htmx.process(tmplBtn);
+
+			if (channel === 'whatsapp_cloud') {
+				var from = opt.value;
+				var to = opt.getAttribute('data-sender');
+				if (isWabaBlocked) {
+					if (txt) {
+						txt.disabled = true;
+						txt.placeholder = 'Meta 24h window closed. Select an approved template to reopen.';
+					}
+					if (sendBtn) { sendBtn.disabled = true; }
+					if (reopenBtn) {
+						reopenBtn.style.display = 'flex';
+						reopenBtn.setAttribute('hx-get', '/admin/inbox/new-message-modal?type=template_only&from=' + from + '&channel=whatsapp_cloud&to=' + to);
+						htmx.process(reopenBtn);
+					}
+					if (tmplBtn) { tmplBtn.style.display = 'none'; }
 				} else {
-					tmplBtn.style.display = 'none';
+					if (txt) {
+						txt.disabled = false;
+						txt.placeholder = 'Digite uma mensagem...';
+					}
+					if (sendBtn) { sendBtn.disabled = false; }
+					if (reopenBtn) { reopenBtn.style.display = 'none'; }
+					if (tmplBtn) {
+						tmplBtn.style.display = 'flex';
+						tmplBtn.setAttribute('hx-get', '/admin/inbox/new-message-modal?type=template_only&from=' + from + '&channel=whatsapp_cloud&to=' + to);
+						htmx.process(tmplBtn);
+					}
 				}
+			} else {
+				if (txt) {
+					txt.disabled = false;
+					txt.placeholder = 'Digite uma mensagem...';
+				}
+				if (sendBtn) { sendBtn.disabled = false; }
+				if (reopenBtn) { reopenBtn.style.display = 'none'; }
+				if (tmplBtn) { tmplBtn.style.display = 'none'; }
 			}
 		}
 	</script>
@@ -286,7 +536,7 @@ templ ContactSearchResults(results []domain.Contact, primaryID uuid.UUID) {
 		<div 
 			class="p-2 hover:bg-[#fbfbfa] dark:hover:bg-[#191919] rounded-lg cursor-pointer text-xs flex justify-between items-center border-b border-[#e9e9e7] dark:border-[#2f2f2f] last:border-b-0"
 			hx-post={ fmt.Sprintf("/admin/contacts/merge?primary_id=%s&secondary_id=%s", primaryID.String(), c.ID.String()) }
-			hx-confirm={ fmt.Sprintf("Tem certeza que deseja mesclar %s com este contato? Todo o histórico de conversas será unificado.", c.Name) }
+			hx-confirm={ fmt.Sprintf("Tem certeza que deseja mesclar %s com este contato? Todo o histórico de chats será unificado.", c.Name) }
 			hx-target="body"
 		>
 			<div>
@@ -323,3 +573,373 @@ templ BotStatusBadge(contact *domain.Contact) {
 		}
 	</button>
 }
+
+templ AIStatusBadge(chat *domain.Chat) {
+	if chat != nil {
+		<div id="ai-status-container" class="inline-flex items-center gap-1.5">
+			if chat.AIDisabled {
+				<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 select-none">
+					<span class="h-1.5 w-1.5 rounded-full bg-amber-500 mr-1.5 animate-pulse" aria-hidden="true"></span>
+					AI Paused (Human Takeover)
+				</span>
+				<button
+					id="btn-resume-ai"
+					hx-post={ fmt.Sprintf("/admin/inbox/chats/%s/enable-ai?enabled=true", chat.ID.String()) }
+					hx-target="#ai-status-container"
+					hx-swap="outerHTML"
+					class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer transition-colors shadow-none select-none"
+				>
+					Resume AI
+				</button>
+			} else {
+				<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 select-none">
+					<span class="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1.5" aria-hidden="true"></span>
+					AI Active
+				</span>
+			}
+		</div>
+	}
+}
+
+// ContactCRMPanel renders the 3rd column containing the contact profile and CRM attributes.
+templ ContactCRMPanel(contact *domain.Contact, extra ...any) {
+	{{
+		var chat *domain.Chat
+		var members []repository.WorkspaceMember
+		for _, x := range extra {
+			if c, ok := x.(*domain.Chat); ok {
+				chat = c
+			} else if m, ok := x.([]repository.WorkspaceMember); ok {
+				members = m
+			}
+		}
+	}}
+	<div class="flex flex-col gap-5 p-5 text-[#37352f] dark:text-[#e3e3e3]">
+		<!-- Contact Header / Avatar -->
+		<div class="flex flex-col items-center text-center pb-4 border-b border-[#e9e9e7] dark:border-[#2f2f2f]">
+			<div class="h-16 w-16 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-xl select-none mb-3 shadow-sm">
+				{ safeInitialStr(contact.Name) }
+			</div>
+			<h2 class="text-base font-bold text-[#37352f] dark:text-[#e3e3e3]">{ contact.Name }</h2>
+			if contact.Email != nil && *contact.Email != "" {
+				<p class="text-xs text-[#787774] dark:text-[#9b9b9b] mt-0.5">{ *contact.Email }</p>
+			}
+			<div class="mt-3">
+				@BotStatusBadge(contact)
+			</div>
+		</div>
+
+		<!-- Triage: Assignee Selector -->
+		<div>
+			<h3 class="text-xs font-semibold uppercase tracking-wider text-[#787774] dark:text-[#9b9b9b] mb-2">{ i18n.T(ctx, "inbox.assigned_to") }</h3>
+			<form hx-post={ fmt.Sprintf("/admin/inbox/assign?contact_id=%s", contact.ID.String()) } hx-target="#chat-panel">
+				<select
+					name="email"
+					onchange="htmx.trigger(this.closest('form'), 'submit')"
+					class="w-full text-xs border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg px-2.5 py-1.5 bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] focus:outline-none focus:ring-1 focus:ring-[#0284c7] cursor-pointer"
+				>
+					<option value="">{ i18n.T(ctx, "inbox.unassigned") }</option>
+					for _, m := range members {
+						<option value={ m.Email } selected?={ chat != nil && chat.AssignedEmail != nil && *chat.AssignedEmail == m.Email }>
+							{ m.Name } ({ m.Email })
+						</option>
+					}
+				</select>
+			</form>
+		</div>
+
+		<!-- Triage: Tags Management -->
+		<div>
+			<div class="flex items-center justify-between mb-2">
+				<h3 class="text-xs font-semibold uppercase tracking-wider text-[#787774] dark:text-[#9b9b9b]">Etiquetas</h3>
+				<button
+					type="button"
+					onclick="document.getElementById('tag-input-form').classList.toggle('hidden')"
+					class="text-xs text-[#0284c7] hover:underline cursor-pointer"
+				>
+					+ Adicionar
+				</button>
+			</div>
+			<form id="tag-input-form" class="hidden mb-2" hx-post={ fmt.Sprintf("/admin/inbox/tags/add?contact_id=%s", contact.ID.String()) } hx-target="#chat-panel">
+				<div class="flex gap-1.5">
+					<input type="text" name="tag" placeholder="Nova etiqueta..." class="flex-1 px-2 py-1 text-xs border border-[#e9e9e7] dark:border-[#2f2f2f] rounded bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] focus:outline-none focus:ring-1 focus:ring-[#0284c7]"/>
+					<button type="submit" class="px-2 py-1 text-xs bg-[#0284c7] text-white rounded hover:bg-[#0369a1] cursor-pointer">Salvar</button>
+				</div>
+			</form>
+			<div class="flex flex-wrap gap-1.5">
+				{{
+					allTags := contact.Tags
+					if chat != nil && len(chat.Tags) > 0 {
+						tagSet := make(map[string]bool)
+						for _, t := range allTags {
+							tagSet[t] = true
+						}
+						for _, t := range chat.Tags {
+							if !tagSet[t] {
+								allTags = append(allTags, t)
+								tagSet[t] = true
+							}
+						}
+					}
+				}}
+				for _, tag := range allTags {
+					<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-sky-50 dark:bg-sky-950/40 text-[#0284c7] dark:text-sky-300 border border-sky-200 dark:border-sky-800">
+						<span>{ tag }</span>
+						<button
+							type="button"
+							hx-post={ fmt.Sprintf("/admin/inbox/tags/remove?contact_id=%s&tag=%s", contact.ID.String(), tag) }
+							hx-target="#chat-panel"
+							class="text-sky-400 hover:text-sky-700 dark:hover:text-white cursor-pointer ml-0.5"
+							title="Remover etiqueta"
+						>
+							×
+						</button>
+					</span>
+				}
+				if len(allTags) == 0 {
+					<p class="text-xs text-[#787774] dark:text-[#9b9b9b]">Nenhuma etiqueta aplicada</p>
+				}
+			</div>
+		</div>
+
+		<!-- Identities / Channels -->
+		<div>
+			<h3 class="text-xs font-semibold uppercase tracking-wider text-[#787774] dark:text-[#9b9b9b] mb-2">Canais & Identidades</h3>
+			<div class="flex flex-col gap-2">
+				for _, identity := range contact.Identities {
+					<div class="flex items-center justify-between p-2 rounded-lg bg-[#fbfbfa] dark:bg-[#191919] border border-[#e9e9e7] dark:border-[#2f2f2f] text-xs">
+						<div class="flex items-center gap-2">
+							<span class="font-medium text-[#37352f] dark:text-[#e3e3e3]">{ channelLabelStr(identity.Channel) }</span>
+						</div>
+						<span class="text-[#787774] dark:text-[#9b9b9b] font-mono text-[11px]">{ identity.SenderIdentity }</span>
+					</div>
+				}
+				if len(contact.Identities) == 0 {
+					<p class="text-xs text-[#787774] dark:text-[#9b9b9b]">Nenhum canal associado</p>
+				}
+			</div>
+		</div>
+
+		<!-- CRM Attributes -->
+		<div>
+			<h3 class="text-xs font-semibold uppercase tracking-wider text-[#787774] dark:text-[#9b9b9b] mb-2">Atributos CRM</h3>
+			if len(contact.Attributes) > 0 {
+				<div class="flex flex-col gap-1.5">
+					for k, v := range contact.Attributes {
+						<div class="flex justify-between items-center text-xs p-2 rounded-lg bg-[#fbfbfa] dark:bg-[#191919] border border-[#e9e9e7] dark:border-[#2f2f2f]">
+							<span class="font-medium text-[#787774] dark:text-[#9b9b9b] truncate">{ k }</span>
+							<span class="font-semibold text-[#37352f] dark:text-[#e3e3e3] truncate max-w-[140px] text-right">{ v }</span>
+						</div>
+					}
+				</div>
+			} else {
+				<p class="text-xs text-[#787774] dark:text-[#9b9b9b]">Nenhum atributo personalizado</p>
+			}
+		</div>
+
+		<!-- Audit & Timestamps Timeline -->
+		<div class="pt-3 border-t border-[#e9e9e7] dark:border-[#2f2f2f] text-[11px] text-[#787774] dark:text-[#9b9b9b] flex flex-col gap-2">
+			<div class="flex items-center justify-between font-semibold uppercase tracking-wider text-[10px] text-[#787774] dark:text-[#9b9b9b]">
+				<span>Timeline de Auditoria</span>
+				<span class="text-[9px] lowercase bg-[#f1f1ef] dark:bg-[#2b2b2b] px-1.5 py-0.5 rounded font-mono">imutável</span>
+			</div>
+			<div class="space-y-2 mt-1">
+				<div class="flex items-start gap-2">
+					<div class="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1 shrink-0"></div>
+					<div class="flex-1">
+						<p class="font-medium text-[#37352f] dark:text-[#e3e3e3]">{ i18n.T(ctx, "inbox.registered_at") }</p>
+						<p class="text-[10px] text-[#787774] dark:text-[#9b9b9b]">{ contact.CreatedAt.Format("02/01/2006 15:04:05") }</p>
+					</div>
+				</div>
+				if chat != nil && !chat.LastMessageAt.IsZero() {
+					<div class="flex items-start gap-2">
+						<div class="w-1.5 h-1.5 rounded-full bg-sky-500 mt-1 shrink-0"></div>
+						<div class="flex-1">
+							<p class="font-medium text-[#37352f] dark:text-[#e3e3e3]">Última Interação de Chat</p>
+							<p class="text-[10px] text-[#787774] dark:text-[#9b9b9b]">{ chat.LastMessageAt.Format("02/01/2006 15:04:05") }</p>
+						</div>
+					</div>
+				}
+				if contact.UpdatedAt.After(contact.CreatedAt) {
+					<div class="flex items-start gap-2">
+						<div class="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1 shrink-0"></div>
+						<div class="flex-1">
+							<p class="font-medium text-[#37352f] dark:text-[#e3e3e3]">{ i18n.T(ctx, "inbox.last_update") }</p>
+							<p class="text-[10px] text-[#787774] dark:text-[#9b9b9b]">{ contact.UpdatedAt.Format("02/01/2006 15:04:05") }</p>
+						</div>
+					</div>
+				}
+				if chat != nil && chat.AIDisabled {
+					<div class="flex items-start gap-2">
+						<div class="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1 shrink-0"></div>
+						<div class="flex-1">
+							<p class="font-medium text-[#37352f] dark:text-[#e3e3e3]">Handoff Humano Ativado</p>
+							<p class="text-[10px] text-[#787774] dark:text-[#9b9b9b]">IA desativada por operador</p>
+						</div>
+					</div>
+				}
+			</div>
+		</div>
+	</div>
+}
+
+// WABAServiceWindowBadge renders the live 24h Meta customer service window countdown badge.
+templ WABAServiceWindowBadge(expiresAt *time.Time, isBlocked bool) {
+	{{
+		badgeColor := "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
+		dotColor := "bg-rose-500"
+		badgeText := "Expired"
+		expiresISO := ""
+		if expiresAt != nil && !isBlocked && expiresAt.After(time.Now().UTC()) {
+			expiresISO = expiresAt.Format(time.RFC3339)
+			rem := time.Until(*expiresAt)
+			hrs := int(rem.Hours())
+			mins := int(rem.Minutes()) % 60
+			if hrs < 4 {
+				badgeColor = "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+				dotColor = "bg-amber-500"
+				badgeText = fmt.Sprintf("%dh %02dm remaining", hrs, mins)
+			} else {
+				badgeColor = "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+				dotColor = "bg-emerald-500"
+				badgeText = fmt.Sprintf("%dh %02dm remaining", hrs, mins)
+			}
+		}
+	}}
+	<span
+		id="waba-window-countdown"
+		data-expires-at={ expiresISO }
+		class={ "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors select-none " + badgeColor }
+		title="Meta WhatsApp 24-hour Customer Service Window"
+	>
+		<span id="waba-status-dot" class={ "inline-block w-2 h-2 rounded-full " + dotColor }></span>
+		<span id="waba-status-text">{ badgeText }</span>
+	</span>
+	if expiresISO != "" {
+		<script>
+			(function() {
+				var el = document.getElementById('waba-window-countdown');
+				if (!el) return;
+				var expiresStr = el.getAttribute('data-expires-at');
+				if (!expiresStr) return;
+				var expTime = new Date(expiresStr).getTime();
+
+				function updateBadge() {
+					var now = new Date().getTime();
+					var diff = expTime - now;
+					var dot = document.getElementById('waba-status-dot');
+					var txtSpan = document.getElementById('waba-status-text');
+					if (diff <= 0) {
+						if (txtSpan) txtSpan.innerText = 'Expired';
+						if (dot) dot.className = 'inline-block w-2 h-2 rounded-full bg-rose-500';
+						el.className = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors select-none bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800';
+						var txt = document.getElementById('chat-textarea');
+						if (txt) {
+							txt.disabled = true;
+							txt.placeholder = 'Meta 24h window closed. Select an approved template to reopen.';
+						}
+						var reopenBtn = document.getElementById('chat-reopen-template-btn');
+						if (reopenBtn) { reopenBtn.style.display = 'flex'; }
+						var tmplBtn = document.getElementById('chat-tmpl-btn');
+						if (tmplBtn) { tmplBtn.style.display = 'none'; }
+						var sendBtn = document.querySelector('#chat-send-form button[type="submit"]');
+						if (sendBtn) { sendBtn.disabled = true; }
+						return;
+					}
+					var totalMins = Math.floor(diff / 60000);
+					var hrs = Math.floor(totalMins / 60);
+					var mins = totalMins % 60;
+					var padMins = mins < 10 ? '0' + mins : mins;
+					if (hrs < 4) {
+						if (txtSpan) txtSpan.innerText = hrs + 'h ' + padMins + 'm remaining';
+						if (dot) dot.className = 'inline-block w-2 h-2 rounded-full bg-amber-500';
+						el.className = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors select-none bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800';
+					} else {
+						if (txtSpan) txtSpan.innerText = hrs + 'h ' + padMins + 'm remaining';
+						if (dot) dot.className = 'inline-block w-2 h-2 rounded-full bg-emerald-500';
+						el.className = 'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-colors select-none bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800';
+					}
+				}
+
+				setInterval(updateBadge, 30000);
+				updateBadge();
+			})();
+		</script>
+	}
+}
+
+// ChatSummaryPopover renders a clean Paper-Calm card displaying the 3-bullet conversation synopsis.
+templ ChatSummaryPopover(summary domain.ChatSynopsis) {
+	<div 
+		id="chat-summary-popover" 
+		x-data="{ open: true }"
+		x-show="open"
+		x-transition:enter="transition ease-out duration-100"
+		x-transition:enter-start="opacity-0 scale-95"
+		x-transition:enter-end="opacity-100 scale-100"
+		x-transition:leave="transition ease-in duration-75"
+		x-transition:leave-start="opacity-100 scale-100"
+		x-transition:leave-end="opacity-0 scale-95"
+		@click.outside="open = false; $el.remove()"
+		@keydown.escape.window="open = false; $el.remove()"
+		class="absolute right-0 top-10 w-96 p-4 rounded-xl shadow-notion-popover bg-white dark:bg-[#202020] border border-[#e9e9e7] dark:border-[#2f2f2f] text-[#37352f] dark:text-[#e3e3e3] z-50"
+	>
+		<div class="flex items-center justify-between pb-2 mb-3 border-b border-[#f1f1ef] dark:border-[#2b2b2b]">
+			<div class="flex items-center gap-1.5 font-semibold text-xs text-[#0284c7] dark:text-sky-400">
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+				</svg>
+				<span>1-Click AI Summarize</span>
+			</div>
+			<button 
+				type="button" 
+				@click="open = false; $el.closest('#chat-summary-popover').remove()" 
+				class="p-1 rounded-md text-[#787774] hover:text-[#37352f] hover:bg-[#f1f1ef] dark:hover:bg-[#2b2b2b] text-xs transition-colors cursor-pointer"
+				title={ i18n.T(ctx, "close_summary") }
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<line x1="18" y1="6" x2="6" y2="18"></line>
+					<line x1="6" y1="6" x2="18" y2="18"></line>
+				</svg>
+			</button>
+		</div>
+		
+		<div class="space-y-3 text-xs leading-relaxed">
+			<div class="bg-sky-50/60 dark:bg-sky-950/30 p-2.5 rounded-lg border border-sky-100 dark:border-sky-900/50">
+				<p class="font-semibold text-sky-800 dark:text-sky-300 flex items-center gap-1.5 mb-1">
+					<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<circle cx="12" cy="12" r="10"></circle>
+						<line x1="12" y1="8" x2="12" y2="12"></line>
+						<line x1="12" y1="16" x2="12.01" y2="16"></line>
+					</svg>
+					<span>Customer Issues</span>
+				</p>
+				<p class="text-[#37352f] dark:text-[#d4d4d4] pl-5">{ summary.CustomerIssues }</p>
+			</div>
+
+			<div class="bg-amber-50/60 dark:bg-amber-950/30 p-2.5 rounded-lg border border-amber-100 dark:border-amber-900/50">
+				<p class="font-semibold text-amber-800 dark:text-amber-300 flex items-center gap-1.5 mb-1">
+					<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+						<circle cx="9" cy="7" r="4"></circle>
+						<polyline points="16 11 18 13 22 9"></polyline>
+					</svg>
+					<span>Promises Made</span>
+				</p>
+				<p class="text-[#37352f] dark:text-[#d4d4d4] pl-5">{ summary.PromisesMade }</p>
+			</div>
+
+			<div class="bg-emerald-50/60 dark:bg-emerald-950/30 p-2.5 rounded-lg border border-emerald-100 dark:border-emerald-900/50">
+				<p class="font-semibold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 mb-1">
+					<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<line x1="12" y1="17" x2="12" y2="22"></line>
+						<path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path>
+					</svg>
+					<span>Current Status</span>
+				</p>
+				<p class="text-[#37352f] dark:text-[#d4d4d4] pl-5">{ summary.CurrentStatus }</p>
+			</div>
+		</div>
+	</div>
+}
+

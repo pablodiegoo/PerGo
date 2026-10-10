@@ -10,6 +10,43 @@ import (
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
+type ReactionCount struct {
+	Emoji string
+	Count int
+}
+
+func aggregateReactions(reactions []domain.Reaction) []ReactionCount {
+	if len(reactions) == 0 {
+		return nil
+	}
+	counts := make(map[string]int)
+	var order []string
+	for _, r := range reactions {
+		if _, exists := counts[r.Emoji]; !exists {
+			order = append(order, r.Emoji)
+		}
+		counts[r.Emoji]++
+	}
+	res := make([]ReactionCount, 0, len(order))
+	for _, emoji := range order {
+		res = append(res, ReactionCount{
+			Emoji: emoji,
+			Count: counts[emoji],
+		})
+	}
+	return res
+}
+
+func getMsgUID(m repository.ThreadMessage) string {
+	if m.UID != "" {
+		return m.UID
+	}
+	if m.TraceID != "" {
+		return m.TraceID
+	}
+	return m.ID.String()
+}
+
 type OrderDetails struct {
 	CatalogID    string
 	Items        []domain.OrderProductItem
@@ -225,6 +262,66 @@ func formatPrice(price float64, currency string) string {
 	}
 }
 
+// ReactionBadgeList renders aggregated reaction pills and an interactive reaction popover trigger.
+templ ReactionBadgeList(msgUID string, reactions []domain.Reaction) {
+	{{ aggregated := aggregateReactions(reactions) }}
+	<div id={ fmt.Sprintf("reaction-badges-%s", msgUID) } class="reaction-badge-list flex items-center flex-wrap gap-1 mt-0.5" x-data="{ open: false }">
+		for _, rc := range aggregated {
+			<button
+				type="button"
+				class="reaction-badge inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 text-zinc-700 cursor-pointer shadow-xs transition"
+				hx-post="/admin/inbox/reactions"
+				hx-vals={ fmt.Sprintf(`{"message_uid": "%s", "emoji": "%s"}`, msgUID, rc.Emoji) }
+				hx-target={ fmt.Sprintf("#reaction-badges-%s", msgUID) }
+				hx-swap="outerHTML"
+				title={ fmt.Sprintf("Reação %s (%d)", rc.Emoji, rc.Count) }
+			>
+				<span>{ rc.Emoji }</span>
+				<span class="text-[10px] font-semibold text-zinc-500">{ strconv.Itoa(rc.Count) }</span>
+			</button>
+		}
+		<div class="relative inline-block">
+			<button
+				type="button"
+				@click="open = !open"
+				class="reaction-trigger-btn inline-flex items-center justify-center h-5 w-5 rounded-full text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 border border-transparent hover:border-zinc-200 text-xs transition"
+				title="Adicionar reação"
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+				</svg>
+			</button>
+			<div
+				x-show="open"
+				@click.outside="open = false"
+				@keydown.escape.window="open = false"
+				x-transition:enter="transition ease-out duration-100"
+				x-transition:enter-start="transform opacity-0 scale-95"
+				x-transition:enter-end="transform opacity-100 scale-100"
+				x-transition:leave="transition ease-in duration-75"
+				x-transition:leave-start="transform opacity-100 scale-100"
+				x-transition:leave-end="transform opacity-0 scale-95"
+				class="reaction-popover absolute z-50 bottom-full mb-1 left-0 flex items-center gap-1 bg-white border border-zinc-200 rounded-xl p-1 shadow-lg shadow-black/5"
+				style="display: none;"
+			>
+				for _, emoji := range []string{"👍", "❤️", "😂", "😮", "😢", "🙏"} {
+					<button
+						type="button"
+						@click="open = false"
+						class="hover:bg-zinc-100 rounded-lg p-1 text-sm transition transform hover:scale-125"
+						hx-post="/admin/inbox/reactions"
+						hx-vals={ fmt.Sprintf(`{"message_uid": "%s", "emoji": "%s"}`, msgUID, emoji) }
+						hx-target={ fmt.Sprintf("#reaction-badges-%s", msgUID) }
+						hx-swap="outerHTML"
+					>
+						{ emoji }
+					</button>
+				}
+			</div>
+		</div>
+	</div>
+}
+
 // MessageBubble renders a single message bubble.
 //   - Inbound: left-aligned white card with contact initials avatar on the left.
 //     If inbound order: styled order summary card with item list, price totals, and customer notes.
@@ -235,164 +332,221 @@ templ MessageBubble(m repository.ThreadMessage) {
 	{{ productDetails, isProduct := parseProductDetails(m) }}
 	if m.Direction == "inbound" {
 		if isOrder {
-			<div class="msg-wrap flex items-end gap-2 justify-start" data-msg-id={ m.ID.String() }>
+			<div class="msg-wrap flex items-end gap-2 justify-start group" data-msg-id={ m.ID.String() } data-msg-uid={ getMsgUID(m) }>
 				<!-- Contact avatar -->
 				<div class="flex-shrink-0 h-7 w-7 rounded-full bg-gradient-to-br from-zinc-300 to-zinc-400 flex items-center justify-center text-zinc-700 font-semibold text-xs select-none">
 					?
 				</div>
-				<!-- Order Summary Card Bubble -->
-				<div class="msg-bubble max-w-xs lg:max-w-md bg-white border border-zinc-200 rounded-2xl rounded-bl-none p-3 shadow-sm flex flex-col gap-2">
-					<!-- Top badge -->
-					<div class="flex items-center justify-between gap-2 border-b border-zinc-100 pb-2">
-						<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-							🛒 Pedido do Catálogo
-						</span>
-						if orderDetails.CatalogID != "" {
-							<span class="text-[11px] font-mono text-zinc-500">ID: { orderDetails.CatalogID }</span>
-						}
-					</div>
-
-					<!-- Customer note callout -->
-					if orderDetails.CustomerNote != "" {
-						<div class="bg-amber-50 border-l-2 border-amber-400 px-2.5 py-1.5 rounded-r text-xs text-amber-900">
-							<span class="font-semibold block text-[10px] text-amber-700 uppercase tracking-wider">Nota do Cliente</span>
-							<p class="whitespace-pre-wrap">{ orderDetails.CustomerNote }</p>
+				<div class="flex flex-col items-start gap-1">
+					<!-- Order Summary Card Bubble -->
+					<div class="msg-bubble max-w-xs lg:max-w-md bg-white border border-zinc-200 rounded-2xl rounded-bl-none p-3 shadow-sm flex flex-col gap-2">
+						<!-- Top badge -->
+						<div class="flex items-center justify-between gap-2 border-b border-zinc-100 pb-2">
+							<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+								<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<circle cx="8" cy="21" r="1"></circle>
+									<circle cx="19" cy="21" r="1"></circle>
+									<path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"></path>
+								</svg>
+								<span>Pedido do Catálogo</span>
+							</span>
+							if orderDetails.CatalogID != "" {
+								<span class="text-[11px] font-mono text-zinc-500">ID: { orderDetails.CatalogID }</span>
+							}
 						</div>
-					}
 
-					<!-- Items Table -->
-					if len(orderDetails.Items) > 0 {
-						<div class="mt-1">
-							<div class="grid grid-cols-12 gap-1 text-[11px] font-semibold text-zinc-500 uppercase border-b border-zinc-200 pb-1 mb-1">
-								<div class="col-span-6">Item</div>
-								<div class="col-span-2 text-center">Qtd</div>
-								<div class="col-span-4 text-right">Preço</div>
+						<!-- Customer note callout -->
+						if orderDetails.CustomerNote != "" {
+							<div class="bg-amber-50 border-l-2 border-amber-400 px-2.5 py-1.5 rounded-r text-xs text-amber-900">
+								<span class="font-semibold block text-[10px] text-amber-700 uppercase tracking-wider">Nota do Cliente</span>
+								<p class="whitespace-pre-wrap">{ orderDetails.CustomerNote }</p>
 							</div>
-							<div class="flex flex-col gap-1 text-xs text-zinc-800">
-								for _, item := range orderDetails.Items {
-									<div class="grid grid-cols-12 gap-1 items-center">
-										<div class="col-span-6 font-mono text-[11px] truncate" title={ item.ProductRetailerID }>
-											{ item.ProductRetailerID }
+						}
+
+						<!-- Items Table -->
+						if len(orderDetails.Items) > 0 {
+							<div class="mt-1">
+								<div class="grid grid-cols-12 gap-1 text-[11px] font-semibold text-zinc-500 uppercase border-b border-zinc-200 pb-1 mb-1">
+									<div class="col-span-6">Item</div>
+									<div class="col-span-2 text-center">Qtd</div>
+									<div class="col-span-4 text-right">Preço</div>
+								</div>
+								<div class="flex flex-col gap-1 text-xs text-zinc-800">
+									for _, item := range orderDetails.Items {
+										<div class="grid grid-cols-12 gap-1 items-center">
+											<div class="col-span-6 font-mono text-[11px] truncate" title={ item.ProductRetailerID }>
+												{ item.ProductRetailerID }
+											</div>
+											<div class="col-span-2 text-center text-zinc-600 font-medium">
+												{ strconv.Itoa(item.Quantity) }
+											</div>
+											<div class="col-span-4 text-right font-medium">
+												{ formatPrice(item.ItemPrice, item.Currency) }
+											</div>
 										</div>
-										<div class="col-span-2 text-center text-zinc-600 font-medium">
-											{ strconv.Itoa(item.Quantity) }
-										</div>
-										<div class="col-span-4 text-right font-medium">
-											{ formatPrice(item.ItemPrice, item.Currency) }
+									}
+								</div>
+							</div>
+						}
+
+						<!-- Subtotal & Currency -->
+						<div class="flex items-center justify-between border-t border-zinc-100 pt-2 mt-1">
+							<div class="flex items-center gap-1.5">
+								<span class="text-xs text-zinc-500 font-medium">Total:</span>
+								<span class="text-sm font-bold text-emerald-700">
+									{ formatPrice(orderDetails.TotalPrice, orderDetails.Currency) }
+								</span>
+								if orderDetails.Currency != "" {
+									<span class="text-[10px] uppercase font-semibold px-1.5 py-0.5 bg-zinc-100 text-zinc-600 rounded">
+										{ orderDetails.Currency }
+									</span>
+								}
+							</div>
+							<p class="text-[10px] text-zinc-400">{ m.CreatedAt.Format("15:04") }</p>
+						</div>
+					</div>
+					@ReactionBadgeList(getMsgUID(m), m.Reactions)
+				</div>
+			</div>
+		} else {
+			<div class="msg-wrap flex items-end gap-2 justify-start group" data-msg-id={ m.ID.String() } data-msg-uid={ getMsgUID(m) }>
+				<!-- Contact avatar -->
+				<div class="flex-shrink-0 h-7 w-7 rounded-full bg-gradient-to-br from-zinc-300 to-zinc-400 flex items-center justify-center text-zinc-700 font-semibold text-xs select-none">
+					?
+				</div>
+				<div class="flex flex-col items-start gap-1">
+					<!-- Bubble -->
+					<div class="msg-bubble max-w-xs lg:max-w-md bg-white border border-zinc-200 rounded-2xl rounded-bl-none px-3 py-2 shadow-sm">
+						<p class="text-sm text-zinc-800 whitespace-pre-wrap break-words">{ msgBody(m.Body) }</p>
+						<p class="text-xs text-zinc-400 text-right mt-1">{ m.CreatedAt.Format("15:04") }</p>
+					</div>
+					@ReactionBadgeList(getMsgUID(m), m.Reactions)
+				</div>
+			</div>
+		}
+	} else if m.Direction == "internal_note" {
+		<div class="msg-wrap flex items-center justify-center my-2 w-full" data-msg-id={ m.ID.String() }>
+			<!-- Internal Note / Draft Bubble -->
+			<div class="msg-bubble w-full max-w-lg bg-amber-500/10 border border-amber-300 dark:bg-amber-950/20 dark:border-amber-800/50 rounded-xl p-3.5 shadow-sm flex flex-col gap-2">
+				<!-- Header with Lock Icon and Author Attribution -->
+				<div class="flex items-center justify-between gap-2 border-b border-amber-200/60 dark:border-amber-800/40 pb-2">
+					<div class="flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-semibold text-xs">
+						<!-- Lock icon -->
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+						</svg>
+						<span>Nota Interna</span>
+						<span class="text-amber-600/80 dark:text-amber-400/80 font-normal">• { getAuthorName(m) }</span>
+					</div>
+					<span class="text-[10px] text-amber-600/80 dark:text-amber-400/80">{ m.CreatedAt.Format("15:04") }</span>
+				</div>
+				<!-- Body -->
+				<p class="text-xs text-amber-900 dark:text-amber-100 whitespace-pre-wrap break-words font-normal">{ msgBody(m.Body) }</p>
+				<!-- Approve & Send action button -->
+				<div class="flex items-center justify-end pt-1">
+					<button
+						type="button"
+						class="btn-approve-send inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-none transition-colors cursor-pointer"
+						data-draft={ m.Body }
+						onclick="var ta = document.getElementById('chat-textarea'); if(ta){ ta.value = this.getAttribute('data-draft'); ta.dispatchEvent(new Event('input')); ta.focus(); ta.scrollIntoView({behavior:'smooth'}); }"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
+						</svg>
+						<span>Approve & Send</span>
+					</button>
+				</div>
+			</div>
+		</div>
+	} else {
+		if isProduct {
+			<div class="msg-wrap flex items-end gap-2 justify-end group" data-msg-id={ m.ID.String() } data-msg-uid={ getMsgUID(m) }>
+				<div class="flex flex-col items-end gap-1">
+					<!-- Catalog Product Card Bubble -->
+					<div class="msg-bubble max-w-xs lg:max-w-md bg-zinc-900 text-white rounded-2xl rounded-br-none p-3 shadow-md border border-zinc-800 flex flex-col gap-2">
+						<!-- Header / Catalog Badge -->
+						<div class="flex items-center justify-between gap-2 border-b border-zinc-800 pb-2">
+							<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-900/60 text-blue-300 border border-blue-700/50">
+								<svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									<path d="m7.5 4.27 9 5.15"></path>
+									<path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path>
+									<path d="m3.3 7 8.7 5 8.7-5"></path>
+									<path d="M12 22V12"></path>
+								</svg>
+								<span>Catálogo de Produtos</span>
+							</span>
+							if productDetails.CatalogID != "" {
+								<span class="text-[11px] font-mono text-zinc-400">ID: { productDetails.CatalogID }</span>
+							}
+						</div>
+
+						if productDetails.Header != "" {
+							<div class="font-bold text-sm text-blue-200">{ productDetails.Header }</div>
+						}
+
+						if productDetails.Body != "" {
+							<p class="text-xs text-zinc-300 whitespace-pre-wrap">{ productDetails.Body }</p>
+						}
+
+						<!-- Display sections or single product SKU -->
+						if len(productDetails.Sections) > 0 {
+							<div class="flex flex-col gap-2 mt-1">
+								<div class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
+									{ strconv.Itoa(len(productDetails.Sections)) } Seção(ões) de Produtos
+								</div>
+								for _, sec := range productDetails.Sections {
+									<div class="bg-zinc-800/80 rounded-lg p-2 text-xs border border-zinc-700/50">
+										if sec.Title != "" {
+											<div class="font-semibold text-zinc-200 mb-1 text-[11px] flex items-center justify-between">
+												<span>{ sec.Title }</span>
+												<span class="text-[10px] text-zinc-400">({ strconv.Itoa(len(sec.ProductItems)) } itens)</span>
+											</div>
+										}
+										<div class="flex flex-wrap gap-1">
+											for _, item := range sec.ProductItems {
+												<span class="inline-block px-1.5 py-0.5 bg-zinc-900 text-zinc-300 font-mono text-[10px] rounded border border-zinc-700">
+													SKU: { item.ProductRetailerID }
+													if item.ItemPrice > 0 {
+														<span class="ml-1 text-emerald-400">({ formatPrice(item.ItemPrice, item.Currency) })</span>
+													}
+												</span>
+											}
 										</div>
 									</div>
 								}
 							</div>
-						</div>
-					}
-
-					<!-- Subtotal & Currency -->
-					<div class="flex items-center justify-between border-t border-zinc-100 pt-2 mt-1">
-						<div class="flex items-center gap-1.5">
-							<span class="text-xs text-zinc-500 font-medium">Total:</span>
-							<span class="text-sm font-bold text-emerald-700">
-								{ formatPrice(orderDetails.TotalPrice, orderDetails.Currency) }
-							</span>
-							if orderDetails.Currency != "" {
-								<span class="text-[10px] uppercase font-semibold px-1.5 py-0.5 bg-zinc-100 text-zinc-600 rounded">
-									{ orderDetails.Currency }
-								</span>
-							}
-						</div>
-						<p class="text-[10px] text-zinc-400">{ m.CreatedAt.Format("15:04") }</p>
-					</div>
-				</div>
-			</div>
-		} else {
-			<div class="msg-wrap flex items-end gap-2 justify-start" data-msg-id={ m.ID.String() }>
-				<!-- Contact avatar -->
-				<div class="flex-shrink-0 h-7 w-7 rounded-full bg-gradient-to-br from-zinc-300 to-zinc-400 flex items-center justify-center text-zinc-700 font-semibold text-xs select-none">
-					?
-				</div>
-				<!-- Bubble -->
-				<div class="msg-bubble max-w-xs lg:max-w-md bg-white border border-zinc-200 rounded-2xl rounded-bl-none px-3 py-2 shadow-sm">
-					<p class="text-sm text-zinc-800 whitespace-pre-wrap break-words">{ msgBody(m.Body) }</p>
-					<p class="text-xs text-zinc-400 text-right mt-1">{ m.CreatedAt.Format("15:04") }</p>
-				</div>
-			</div>
-		}
-	} else {
-		if isProduct {
-			<div class="msg-wrap flex items-end gap-2 justify-end" data-msg-id={ m.ID.String() }>
-				<!-- Catalog Product Card Bubble -->
-				<div class="msg-bubble max-w-xs lg:max-w-md bg-zinc-900 text-white rounded-2xl rounded-br-none p-3 shadow-md border border-zinc-800 flex flex-col gap-2">
-					<!-- Header / Catalog Badge -->
-					<div class="flex items-center justify-between gap-2 border-b border-zinc-800 pb-2">
-						<span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-900/60 text-blue-300 border border-blue-700/50">
-							📦 Catálogo de Produtos
-						</span>
-						if productDetails.CatalogID != "" {
-							<span class="text-[11px] font-mono text-zinc-400">ID: { productDetails.CatalogID }</span>
-						}
-					</div>
-
-					if productDetails.Header != "" {
-						<div class="font-bold text-sm text-blue-200">{ productDetails.Header }</div>
-					}
-
-					if productDetails.Body != "" {
-						<p class="text-xs text-zinc-300 whitespace-pre-wrap">{ productDetails.Body }</p>
-					}
-
-					<!-- Display sections or single product SKU -->
-					if len(productDetails.Sections) > 0 {
-						<div class="flex flex-col gap-2 mt-1">
-							<div class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
-								{ strconv.Itoa(len(productDetails.Sections)) } Seção(ões) de Produtos
+						} else if productDetails.ProductRetailerID != "" {
+							<div class="bg-zinc-800/80 rounded-lg p-2 text-xs border border-zinc-700/50 flex items-center justify-between">
+								<span class="text-zinc-400 text-[11px]">Produto SKU:</span>
+								<span class="font-mono text-xs text-blue-300 font-bold">{ productDetails.ProductRetailerID }</span>
 							</div>
-							for _, sec := range productDetails.Sections {
-								<div class="bg-zinc-800/80 rounded-lg p-2 text-xs border border-zinc-700/50">
-									if sec.Title != "" {
-										<div class="font-semibold text-zinc-200 mb-1 text-[11px] flex items-center justify-between">
-											<span>{ sec.Title }</span>
-											<span class="text-[10px] text-zinc-400">({ strconv.Itoa(len(sec.ProductItems)) } itens)</span>
-										</div>
-									}
-									<div class="flex flex-wrap gap-1">
-										for _, item := range sec.ProductItems {
-											<span class="inline-block px-1.5 py-0.5 bg-zinc-900 text-zinc-300 font-mono text-[10px] rounded border border-zinc-700">
-												SKU: { item.ProductRetailerID }
-												if item.ItemPrice > 0 {
-													<span class="ml-1 text-emerald-400">({ formatPrice(item.ItemPrice, item.Currency) })</span>
-												}
-											</span>
-										}
-									</div>
-								</div>
-							}
-						</div>
-					} else if productDetails.ProductRetailerID != "" {
-						<div class="bg-zinc-800/80 rounded-lg p-2 text-xs border border-zinc-700/50 flex items-center justify-between">
-							<span class="text-zinc-400 text-[11px]">Produto SKU:</span>
-							<span class="font-mono text-xs text-blue-300 font-bold">{ productDetails.ProductRetailerID }</span>
-						</div>
-					}
+						}
 
-					if productDetails.Footer != "" {
-						<div class="text-[10px] text-zinc-400 italic border-t border-zinc-800/60 pt-1 mt-1">{ productDetails.Footer }</div>
-					}
+						if productDetails.Footer != "" {
+							<div class="text-[10px] text-zinc-400 italic border-t border-zinc-800/60 pt-1 mt-1">{ productDetails.Footer }</div>
+						}
 
-					<!-- Time and Status -->
-					<div class="flex items-center justify-end gap-1 mt-1">
-						<p class="text-[10px] text-zinc-400">{ m.CreatedAt.Format("15:04") }</p>
-						@statusCheckmarks(m.Status)
+						<!-- Time and Status -->
+						<div class="flex items-center justify-end gap-1 mt-1">
+							<p class="text-[10px] text-zinc-400">{ m.CreatedAt.Format("15:04") }</p>
+							@statusCheckmarks(m.Status)
+						</div>
 					</div>
+					@ReactionBadgeList(getMsgUID(m), m.Reactions)
 				</div>
 			</div>
 		} else {
-			<div class="msg-wrap flex items-end gap-2 justify-end" data-msg-id={ m.ID.String() }>
-				<!-- Bubble -->
-				<div class="msg-bubble max-w-xs lg:max-w-md rounded-2xl rounded-br-none px-3 py-2 shadow-sm" style="background-color:#3b82f6;">
-					<p class="text-sm text-white whitespace-pre-wrap break-words">{ msgBody(m.Body) }</p>
-					<div class="flex items-center justify-end gap-1 mt-1">
-						<p class="text-xs text-blue-200">{ m.CreatedAt.Format("15:04") }</p>
-						@statusCheckmarks(m.Status)
+			<div class="msg-wrap flex items-end gap-2 justify-end group" data-msg-id={ m.ID.String() } data-msg-uid={ getMsgUID(m) }>
+				<div class="flex flex-col items-end gap-1">
+					<!-- Bubble -->
+					<div class="msg-bubble max-w-xs lg:max-w-md rounded-2xl rounded-br-none px-3 py-2 shadow-sm" style="background-color:#3b82f6;">
+						<p class="text-sm text-white whitespace-pre-wrap break-words">{ msgBody(m.Body) }</p>
+						<div class="flex items-center justify-end gap-1 mt-1">
+							<p class="text-xs text-blue-200">{ m.CreatedAt.Format("15:04") }</p>
+							@statusCheckmarks(m.Status)
+						</div>
 					</div>
+					@ReactionBadgeList(getMsgUID(m), m.Reactions)
 				</div>
 			</div>
 		}
@@ -444,6 +598,20 @@ func msgBody(body string) string {
 	}
 	return body
 }
+
+// getAuthorName returns the display name for the author of an internal note.
+func getAuthorName(m repository.ThreadMessage) string {
+	if m.Metadata != nil {
+		if a, ok := m.Metadata["author_name"]; ok && a != "" {
+			return a
+		}
+		if s, ok := m.Metadata["sender_name"]; ok && s != "" {
+			return s
+		}
+	}
+	return "AI Assistant"
+}
+
 
 // MessageBubbleList renders a list of message bubbles — used by PollMessages
 // to return incremental updates (hx-swap="beforeend" onto #chat-messages).

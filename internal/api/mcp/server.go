@@ -25,6 +25,7 @@ import (
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/pkg/slug"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
+	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/session"
@@ -94,13 +95,15 @@ func WithHTTPClient(client *http.Client) ServerOption {
 
 // Server encapsulates the MCP Server instance and its service dependencies.
 type Server struct {
-	MCPServer *server.MCPServer
-	SSEServer *server.SSEServer
+	MCPServer        *server.MCPServer
+	SSEServer        *server.SSEServer
+	StreamableServer *server.StreamableHTTPServer
 
 	wsRepo            *repository.WorkspaceRepository
 	connectionRepo    *repository.ConnectionRepository
 	contactRepo       *repository.ContactRepository
 	auditRepo         *repository.AuditRepository
+	chatRepo          *repository.ChatRepository
 	ingestor          outbound.OutboundProcessor
 	apiKeyRepo        *repository.APIKeyRepository
 	webhookSubRepo    *repository.WebhookSubscriptionRepository
@@ -116,6 +119,21 @@ type Server struct {
 	queueInspector    QueueInspector
 	telegramBaseURL   string
 	httpClient        *http.Client
+	wabaTemplateRepo  *repository.WABATemplateRepository
+}
+
+// WithWABATemplateRepo configures the WABATemplateRepository for WABA template MCP tools.
+func WithWABATemplateRepo(repo *repository.WABATemplateRepository) ServerOption {
+	return func(s *Server) {
+		s.wabaTemplateRepo = repo
+	}
+}
+
+// WithChatRepo configures the ChatRepository for conversational MCP tools.
+func WithChatRepo(repo *repository.ChatRepository) ServerOption {
+	return func(s *Server) {
+		s.chatRepo = repo
+	}
 }
 
 // WithWebhookDLQRepo configures the Webhook DLQ repository.
@@ -181,6 +199,14 @@ func NewServer(
 
 	// Create SSE transport server mounted on base path "/api/mcp"
 	s.SSEServer = server.NewSSEServer(mcpSrv, server.WithStaticBasePath("/api/mcp"))
+
+	// Create RFC 2025-03-26 Streamable HTTP transport server mounted on "/mcp"
+	s.StreamableServer = server.NewStreamableHTTPServer(
+		mcpSrv,
+		server.WithEndpointPath("/mcp"),
+		server.WithDisableLocalhostProtection(true),
+		server.WithSessionIdManager(&server.StatelessSessionIdManager{}),
+	)
 
 	return s
 }
@@ -681,6 +707,9 @@ func (s *Server) registerTools() {
 			Required: []string{"workspace_id"},
 		},
 	}, s.handleReplayWebhookDLQ)
+
+	s.registerChatTools()
+	s.registerWABATools()
 }
 
 func (s *Server) handleCreateWorkspace(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1815,3 +1844,50 @@ func generateRandomHexSecret(byteLength int) (string, error) {
 	}
 	return hex.EncodeToString(b), nil
 }
+
+// resolveWorkspaceID extracts the tenant workspace UUID from the tool request arguments
+// or authenticated context, and strictly enforces tenant scope isolation.
+func (s *Server) resolveWorkspaceID(ctx context.Context, request mcp.CallToolRequest) (uuid.UUID, *mcp.CallToolResult) {
+	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
+	var wsID uuid.UUID
+	if wsIDStr != "" {
+		parsed, err := uuid.Parse(wsIDStr)
+		if err != nil {
+			return uuid.Nil, mcp.NewToolResultError("invalid workspace_id: must be a valid UUID")
+		}
+		wsID = parsed
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		wsID = id
+	} else {
+		return uuid.Nil, mcp.NewToolResultError("missing workspace_id parameter")
+	}
+
+	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && wsID != authWS {
+		return uuid.Nil, mcp.NewToolResultError("workspace_id mismatch with authenticated token")
+	}
+
+	return wsID, nil
+}
+
+// resolveWorkspaceIDOptional extracts the workspace UUID if provided, but does not error if omitted.
+func (s *Server) resolveWorkspaceIDOptional(ctx context.Context, request mcp.CallToolRequest) (uuid.UUID, *mcp.CallToolResult) {
+	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
+	var wsID uuid.UUID
+	if wsIDStr != "" {
+		parsed, err := uuid.Parse(wsIDStr)
+		if err != nil {
+			return uuid.Nil, mcp.NewToolResultError("invalid workspace_id: must be a valid UUID")
+		}
+		wsID = parsed
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		wsID = id
+	}
+
+	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && wsID != uuid.Nil && wsID != authWS {
+		return uuid.Nil, mcp.NewToolResultError("workspace_id mismatch with authenticated token")
+	}
+
+	return wsID, nil
+}
+
+

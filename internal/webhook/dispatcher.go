@@ -105,6 +105,42 @@ func NewDefaultDispatcher(subStore SubscriptionStore, dlqStore DLQStore, wsStore
 	}
 }
 
+// DispatchReaction dispatches a reaction update to all active workspace subscriptions listening to message.reaction.updated.
+func (d *DefaultDispatcher) DispatchReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, payload []byte, traceID string) error {
+	type subscriptionLister interface {
+		ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]*repository.WebhookSubscription, error)
+	}
+	lister, ok := d.subStore.(subscriptionLister)
+	if !ok || lister == nil {
+		return nil
+	}
+	subs, err := lister.ListByWorkspace(ctx, workspaceID)
+	if err != nil {
+		return err
+	}
+	for _, sub := range subs {
+		if !sub.Active {
+			continue
+		}
+		if MatchesAny(sub.EventTypes, "message.reaction.updated") {
+			task := WebhookDeliveryTask{
+				ID:             uuid.New(),
+				SubscriptionID: sub.ID,
+				WorkspaceID:    workspaceID,
+				Event:          "message.reaction.updated",
+				TraceID:        traceID,
+				MessageID:      messageUID,
+				Payload:        payload,
+				Mode:           "reaction",
+			}
+			if err := d.Dispatch(ctx, task); err != nil {
+				slog.Error("failed to dispatch reaction webhook", "subscription_id", sub.ID, "error", err)
+			}
+		}
+	}
+	return nil
+}
+
 // Dispatch processes compliance, signs the payload, and posts it to the subscription's configured webhook URL.
 func (d *DefaultDispatcher) Dispatch(ctx context.Context, task WebhookDeliveryTask) error {
 	// 1. Fetch Subscription by SubscriptionID
@@ -127,6 +163,18 @@ func (d *DefaultDispatcher) Dispatch(ctx context.Context, task WebhookDeliveryTa
 	}
 
 	payloadBytes := task.Payload
+
+	// Safety Filtering: Internal notes and private drafts are strictly excluded from customer-facing webhooks
+	var safetyCheck struct {
+		IsPrivate bool   `json:"is_private"`
+		Direction string `json:"direction"`
+	}
+	if err := json.Unmarshal(payloadBytes, &safetyCheck); err == nil {
+		if safetyCheck.IsPrivate || safetyCheck.Direction == "internal_note" {
+			return nil
+		}
+	}
+
 
 	// 2. Compliance PII Redaction for inbound events
 	if task.Mode == "inbound" {

@@ -45,7 +45,7 @@ func NewChatModal(templates []repository.WABATemplate, fromContact string, isTem
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<h3 class=\"font-bold text-zinc-950 text-base\">Iniciar Nova Conversa</h3>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<h3 class=\"font-bold text-zinc-950 text-base\">Iniciar Novo Chat</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

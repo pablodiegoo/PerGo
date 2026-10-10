@@ -21,6 +21,7 @@ type WebhookEvent struct {
 	Event       string `json:"event"`
 	TraceID     string `json:"trace_id"`
 	MessageID   string `json:"message_id"`
+	MessageUID  string `json:"message_uid"`
 	Channel     string `json:"channel"`
 	Timestamp   string `json:"timestamp"`
 	WorkspaceID string `json:"workspace_id"`
@@ -32,6 +33,7 @@ type WebhookWorker struct {
 	js               jetstream.JetStream
 	consumer         jetstream.Consumer
 	inboundConsumer  jetstream.Consumer
+	reactionConsumer jetstream.Consumer
 	deliveryConsumer jetstream.Consumer
 	dispatcher       webhook.WebhookDispatcher
 	subRepo          *repository.WebhookSubscriptionRepository
@@ -86,6 +88,20 @@ func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dispatcher webhook.Web
 		return nil, fmt.Errorf("create inbound webhook consumer: %w", err)
 	}
 
+	// Create reaction consumer
+	reactionConsumer, err := createConsumerWithRetry(ctx, inboundStream, jetstream.ConsumerConfig{
+		Durable:       "reaction-webhooks-consumer",
+		Description:   "Reaction webhook delivery worker consumer",
+		DeliverPolicy: jetstream.DeliverAllPolicy,
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		AckWait:       15 * time.Second,
+		MaxDeliver:    10,
+		FilterSubject: "messages.events.>",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create reaction webhook consumer: %w", err)
+	}
+
 	// Ensure WEBHOOK_DELIVERIES stream exists
 	deliveryStream, err := EnsureWebhookDeliveryStream(ctx, nc)
 	if err != nil {
@@ -112,6 +128,7 @@ func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dispatcher webhook.Web
 		js:               js,
 		consumer:         consumer,
 		inboundConsumer:  inboundConsumer,
+		reactionConsumer: reactionConsumer,
 		deliveryConsumer: deliveryConsumer,
 		dispatcher:       dispatcher,
 		subRepo:          subRepo,
@@ -119,9 +136,10 @@ func NewWebhookWorker(ctx context.Context, nc *nats.Conn, dispatcher webhook.Web
 		done:             make(chan struct{}),
 	}
 
-	w.wg.Add(3)
+	w.wg.Add(4)
 	go w.run(ctx, w.consumer, "outbound")
 	go w.run(ctx, w.inboundConsumer, "inbound")
+	go w.run(ctx, w.reactionConsumer, "reaction")
 	go w.run(ctx, w.deliveryConsumer, "delivery")
 	return w, nil
 }
@@ -163,6 +181,22 @@ func (w *WebhookWorker) processEvent(ctx context.Context, msg jetstream.Msg, mod
 		_ = msg.Ack()
 		return
 	}
+	if evt.MessageID == "" && evt.MessageUID != "" {
+		evt.MessageID = evt.MessageUID
+	}
+
+	// Safety Filtering: Internal notes and private drafts are strictly excluded from customer-facing webhooks
+	var safetyCheck struct {
+		IsPrivate bool   `json:"is_private"`
+		Direction string `json:"direction"`
+	}
+	if err := json.Unmarshal(msg.Data(), &safetyCheck); err == nil {
+		if safetyCheck.IsPrivate || safetyCheck.Direction == "internal_note" {
+			_ = msg.Ack()
+			return
+		}
+	}
+
 
 	wsID, err := uuid.Parse(evt.WorkspaceID)
 	if err != nil {

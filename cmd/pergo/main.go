@@ -19,8 +19,8 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"github.com/redis/go-redis/v9"
 
-	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/pablojhp.pergo/api"
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
@@ -49,6 +49,7 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/platform/shutdown"
 	"github.com/pablojhp.pergo/internal/platform/storage"
+	"github.com/pablojhp.pergo/internal/presence"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/retention"
 	"github.com/pablojhp.pergo/internal/security"
@@ -135,6 +136,8 @@ func main() {
 		webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, encryptor)
 		webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
 		userActionLogRepo := repository.NewUserActionLogRepository(pool)
+		chatRepo := repository.NewChatRepository(pool)
+		wabaTemplateRepo := repository.NewWABATemplateRepository(pool)
 
 		verbsEngine := webhook.NewVerbsEngine(publisher, contactRepo, userActionLogRepo, connectionRepo)
 		webhookDispatcher := webhook.NewDefaultDispatcher(webhookSubRepo, webhookDLQRepo, wsRepo, nil, verbsEngine)
@@ -158,14 +161,15 @@ func main() {
 			[]byte(cfg.SessionSecret),
 			cfg.ExternalURL,
 			mcp.WithWebhookDLQRepo(webhookDLQRepo),
+			mcp.WithChatRepo(chatRepo),
+			mcp.WithWABATemplateRepo(wabaTemplateRepo),
 			mcp.WithJetStreamPublisher(publisher),
 			mcp.WithJetStream(js),
 			mcp.WithNATSConn(nc),
 		)
 
-		stdServer := mcpserver.NewStdioServer(mcpServer.MCPServer)
 		slog.Info("starting MCP server in stdio mode")
-		if err := stdServer.Listen(ctx, os.Stdin, os.Stdout); err != nil {
+		if err := mcp.RunStdio(ctx, mcpServer, apiKeyRepo, os.Args[2:], os.Stdin, os.Stdout, os.Stderr); err != nil {
 			slog.Error("MCP stdio server execution failed", "error", err)
 			os.Exit(1)
 		}
@@ -321,8 +325,28 @@ func main() {
 	typebotSessionRepo := repository.NewTypebotSessionRepository(pool)
 	typebotForwarder := typebot.NewForwarder(typebotSessionRepo, integrationRepo, publisher)
 	inboundRouter := inbound.NewDefaultRouter(chatwootSyncer, typebotForwarder)
+	chatRepo := repository.NewChatRepository(pool)
 
 	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo, contactRepo, dispatchRepo, inboundRouter)
+	inboundProcessor.SetChatRepository(chatRepo)
+
+	if cfg.RedisURL != "" {
+		redisOpts, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			redisOpts = &redis.Options{Addr: cfg.RedisURL}
+		}
+		rdb := redis.NewClient(redisOpts)
+		ctxPing, cancelPing := context.WithTimeout(ctx, 2*time.Second)
+		if err := rdb.Ping(ctxPing).Err(); err == nil {
+			debouncer := inbound.NewDebouncer(rdb)
+			inboundProcessor.SetDebouncer(debouncer)
+			slog.Info("inbound debounce buffer connected", "addr", redisOpts.Addr)
+		} else {
+			slog.Warn("inbound debounce buffer: redis ping failed, operating in bypass mode", "error", err)
+		}
+		cancelPing()
+	}
+
 	sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, cfg.WAVersion, inboundProcessor)
 	sessionManager.SetPublisher(publisher)
 	go func() {
@@ -369,6 +393,7 @@ func main() {
 	}
 	dispatcherHTTPClient := security.NewSafeWebhookClient(security.WithTimeout(10*time.Second), security.WithAllowlist(webhookAllowlist...))
 	webhookDispatcher := webhook.NewDefaultDispatcher(webhookSubRepo, webhookDLQRepo, wsRepo, dispatcherHTTPClient, verbsEngine)
+	inboundProcessor.SetReactionWebhookDispatcher(webhookDispatcher)
 	webhookWorker, err := queue.NewWebhookWorker(ctx, nc, webhookDispatcher, webhookSubRepo)
 	if err != nil {
 		slog.Error("failed to start webhook worker", "error", err)
@@ -514,6 +539,8 @@ func main() {
 	outboundProcessor := outbound.NewProcessor(queueDepth, mediaEngine, connectionRepo, publisher)
 	outboundProcessor.SetWindowChecker(windowChecker)
 	outboundProcessor.SetTemplateRepository(wabaTemplateRepo)
+	outboundProcessor.SetChatRepository(chatRepo)
+	outboundProcessor.SetContactRepository(contactRepo)
 
 	messageHandler := &handler.MessageHandler{
 		Ingestor: outboundProcessor,
@@ -534,11 +561,27 @@ func main() {
 		[]byte(cfg.SessionSecret),
 		cfg.ExternalURL,
 		mcp.WithWebhookDLQRepo(webhookDLQRepo),
+		mcp.WithChatRepo(chatRepo),
+		mcp.WithWABATemplateRepo(wabaTemplateRepo),
 		mcp.WithJetStreamPublisher(publisher),
 		mcp.WithJetStream(js),
 		mcp.WithNATSConn(nc),
 	)
 	e.Any("/api/mcp/*", echo.WrapHandler(mcpServer.SSEServer))
+
+	// --- Universal Agnostic MCP Gateway & Auto-Discovery Endpoints ---
+	universalGateway := mcp.NewUniversalGateway(mcpServer, cfg.ExternalURL)
+	e.Any("/mcp", echo.WrapHandler(universalGateway))
+	e.Any("/mcp/*", echo.WrapHandler(universalGateway))
+	e.POST("/oauth/register", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthRegister)))
+	e.GET("/oauth/authorize", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthAuthorize)))
+	e.POST("/oauth/token", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthToken)))
+	e.GET("/.well-known/mcp", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownMCP)))
+	e.GET("/.well-known/mcp.json", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownMCP)))
+	e.GET("/.well-known/opencode", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOpenCode)))
+	e.GET("/.well-known/opencode.json", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOpenCode)))
+	e.GET("/.well-known/oauth-protected-resource", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOAuthProtectedResource)))
+	e.GET("/.well-known/oauth-authorization-server", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOAuthAuthorizationServer)))
 
 	// --- Media proxy handler (GET /media/:workspace_id/:hash) ---
 	mediaHandler := handler.NewMediaHandler(s3Client)
@@ -717,26 +760,43 @@ func main() {
 	adminGroup.GET("/logs/outbound/export", auditHandler.ExportOutboundCSV)
 
 	// Inbox routes
+	presenceTracker := presence.NewTracker(15 * time.Second)
 	inboxHandler := &admin.InboxHandler{
-		Repo:           auditRepo,
-		Sessions:       recipientSessionRepo,
-		Workspaces:     wsRepo,
-		Connections:    connectionRepo,
-		Publisher:      publisher,
-		Templates:      wabaTemplateRepo,
-		ContactRepo:    contactRepo,
-		UserActionLogs: userActionLogRepo,
+		Repo:              auditRepo,
+		ChatRepo:          chatRepo,
+		Sessions:          recipientSessionRepo,
+		Workspaces:        wsRepo,
+		Connections:       connectionRepo,
+		Publisher:         publisher,
+		Templates:         wabaTemplateRepo,
+		ContactRepo:       contactRepo,
+		UserActionLogs:    userActionLogRepo,
+		Presence:          presenceTracker,
+		WebhookSubRepo:    webhookSubRepo,
+		WebhookDispatcher: webhookDispatcher,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
 	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)
 	adminGroup.GET("/inbox/chat", inboxHandler.ChatPanel)
+	adminGroup.GET("/inbox/presence", inboxHandler.PresenceStream)
+	adminGroup.POST("/inbox/presence", inboxHandler.PresenceHeartbeat)
+	adminGroup.POST("/inbox/assign", inboxHandler.AssignChat)
+	adminGroup.POST("/inbox/tags/add", inboxHandler.AddChatTag)
+	adminGroup.POST("/inbox/tags/remove", inboxHandler.RemoveChatTag)
+	adminGroup.POST("/inbox/status", inboxHandler.UpdateChatStatus)
 	adminGroup.GET("/inbox/messages", inboxHandler.PollMessages)
 	adminGroup.POST("/inbox/send", inboxHandler.SendMessage)
+	adminGroup.POST("/inbox/notes", inboxHandler.CreateNote)
+	adminGroup.POST("/inbox/reactions", inboxHandler.ToggleReaction)
 	adminGroup.GET("/inbox/new-message-modal", inboxHandler.NewMessageModal)
 	adminGroup.POST("/inbox/new-message-send", inboxHandler.NewMessageSend)
 	adminGroup.GET("/contacts/search", inboxHandler.SearchContacts)
 	adminGroup.POST("/contacts/merge", inboxHandler.MergeContacts)
 	adminGroup.POST("/contacts/:id/toggle-bot", inboxHandler.ToggleBot)
+	adminGroup.POST("/inbox/chats/:id/enable-ai", inboxHandler.EnableChatAI)
+	adminGroup.POST("/inbox/chat_enable_ai", inboxHandler.EnableChatAI)
+	adminGroup.POST("/inbox/summarize", inboxHandler.SummarizeChat)
+	adminGroup.POST("/inbox/chat/summarize", inboxHandler.SummarizeChat)
 
 	// Device/Connection management routes
 	deviceHandler := &admin.DeviceHandler{
@@ -1019,6 +1079,12 @@ func main() {
 	v1Group.GET("/workspaces/:workspace_id/webhook-secret", workspaceHandler.GetWebhookSecret)
 	v1Group.POST("/workspaces/flow-webhook-url", workspaceHandler.SetFlowWebhookURL)
 	v1Group.POST("/workspaces/:workspace_id/flow-webhook-url", workspaceHandler.SetFlowWebhookURL)
+
+	// Chat Internal Notes API routes (v1)
+	v1Group.POST("/chats/:chat_id/notes", inboxHandler.APICreateNote)
+	v1Group.POST("/workspaces/:workspace_id/chats/:chat_id/notes", inboxHandler.APICreateNote)
+	v1Group.POST("/chats/:chat_id/summarize", inboxHandler.SummarizeChat)
+	v1Group.POST("/workspaces/:workspace_id/chats/:chat_id/summarize", inboxHandler.SummarizeChat)
 
 	// Static files
 	e.Static("/static", "static")
