@@ -16,6 +16,7 @@ import (
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/webhook"
 	"github.com/pablojhp.pergo/templates/components"
 	"github.com/pablojhp.pergo/templates/pages"
 )
@@ -27,15 +28,17 @@ type MessagePublisher interface {
 
 // InboxHandler holds dependencies for the conversational inbox.
 type InboxHandler struct {
-	Repo           *repository.AuditRepository
-	Sessions       *repository.RecipientSessionRepository
-	Workspaces     *repository.WorkspaceRepository
-	Connections    *repository.ConnectionRepository
-	Publisher      MessagePublisher
-	Templates      *repository.WABATemplateRepository
-	ContactRepo    *repository.ContactRepository
-	UserActionLogs *repository.UserActionLogRepository
-	ChatRepo       *repository.ChatRepository
+	Repo              *repository.AuditRepository
+	Sessions          *repository.RecipientSessionRepository
+	Workspaces        *repository.WorkspaceRepository
+	Connections       *repository.ConnectionRepository
+	Publisher         MessagePublisher
+	Templates         *repository.WABATemplateRepository
+	ContactRepo       *repository.ContactRepository
+	UserActionLogs    *repository.UserActionLogRepository
+	ChatRepo          *repository.ChatRepository
+	WebhookSubRepo    *repository.WebhookSubscriptionRepository
+	WebhookDispatcher webhook.WebhookDispatcher
 }
 
 // loadConversations fetches conversations and computes unread state.
@@ -796,3 +799,117 @@ func (h *InboxHandler) ToggleBot(c *echo.Context) error {
 	contact.BotPausedAt = pausedAt
 	return mw.Render(c, http.StatusOK, components.BotStatusBadge(contact))
 }
+
+// ToggleReaction handles POST /admin/inbox/reactions — toggles an emoji reaction on a message.
+func (h *InboxHandler) ToggleReaction(c *echo.Context) error {
+	ctx := c.Request().Context()
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+
+	messageUID := strings.TrimSpace(c.FormValue("message_uid"))
+	emoji := strings.TrimSpace(c.FormValue("emoji"))
+	if messageUID == "" || emoji == "" {
+		return c.String(http.StatusBadRequest, "message_uid and emoji are required")
+	}
+
+	if h.ChatRepo == nil {
+		return c.String(http.StatusInternalServerError, "chat repository not configured")
+	}
+
+	var chatIDStr string
+	if workspaceID == uuid.Nil {
+		msg, err := h.ChatRepo.FindMessageByUID(ctx, messageUID)
+		if err != nil {
+			return c.String(http.StatusNotFound, "message not found: "+err.Error())
+		}
+		workspaceID = msg.WorkspaceID
+		chatIDStr = msg.ChatID.String()
+	} else {
+		if msg, err := h.ChatRepo.GetChatMessageByUID(ctx, workspaceID, messageUID); err == nil && msg != nil {
+			chatIDStr = msg.ChatID.String()
+		}
+	}
+
+	sender := "operator"
+	if email, ok := c.Get("user_email").(string); ok && email != "" {
+		sender = email
+	}
+
+	existingReactions, err := h.ChatRepo.GetReactions(ctx, workspaceID, messageUID)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to get reactions: "+err.Error())
+	}
+
+	hasReacted := false
+	for _, r := range existingReactions {
+		if r.Emoji == emoji && (r.Sender == sender || r.Sender == "operator") {
+			hasReacted = true
+			break
+		}
+	}
+
+	var updatedReactions []domain.Reaction
+	action := "add"
+	if hasReacted {
+		action = "remove"
+		updatedReactions, err = h.ChatRepo.RemoveReaction(ctx, workspaceID, messageUID, emoji, sender)
+	} else {
+		updatedReactions, err = h.ChatRepo.AddReaction(ctx, workspaceID, messageUID, domain.Reaction{
+			Emoji:     emoji,
+			Sender:    sender,
+			CreatedAt: time.Now().UTC(),
+		})
+	}
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to mutate reaction: "+err.Error())
+	}
+
+	traceID := uuid.New().String()
+	rxEvent := domain.ReactionUpdatedPayload{
+		Event:       "message.reaction.updated",
+		WorkspaceID: workspaceID.String(),
+		ChatID:      chatIDStr,
+		MessageUID:  messageUID,
+		Emoji:       emoji,
+		Sender:      sender,
+		Action:      action,
+		Reactions:   updatedReactions,
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+	}
+
+	if payloadBytes, mErr := json.Marshal(rxEvent); mErr == nil {
+		if h.Publisher != nil {
+			_ = h.Publisher.Publish(ctx, "messages.events.reaction_updated", payloadBytes, traceID)
+		}
+		if h.WebhookDispatcher != nil && h.WebhookSubRepo != nil {
+			subs, sErr := h.WebhookSubRepo.ListByWorkspace(ctx, workspaceID)
+			if sErr == nil {
+				for _, sub := range subs {
+					if !sub.Active {
+						continue
+					}
+					if webhook.MatchesAny(sub.EventTypes, "message.reaction.updated") {
+						task := webhook.WebhookDeliveryTask{
+							ID:             uuid.New(),
+							SubscriptionID: sub.ID,
+							WorkspaceID:    workspaceID,
+							Event:          "message.reaction.updated",
+							TraceID:        traceID,
+							MessageID:      messageUID,
+							Payload:        payloadBytes,
+							Mode:           "outbound",
+						}
+						_ = h.WebhookDispatcher.Dispatch(ctx, task)
+					}
+				}
+			}
+		}
+	}
+
+	return mw.Render(c, http.StatusOK, components.ReactionBadgeList(messageUID, updatedReactions))
+}
+

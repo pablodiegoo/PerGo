@@ -723,21 +723,24 @@ func main() {
 
 	// Inbox routes
 	inboxHandler := &admin.InboxHandler{
-		Repo:           auditRepo,
-		ChatRepo:       chatRepo,
-		Sessions:       recipientSessionRepo,
-		Workspaces:     wsRepo,
-		Connections:    connectionRepo,
-		Publisher:      publisher,
-		Templates:      wabaTemplateRepo,
-		ContactRepo:    contactRepo,
-		UserActionLogs: userActionLogRepo,
+		Repo:              auditRepo,
+		ChatRepo:          chatRepo,
+		Sessions:          recipientSessionRepo,
+		Workspaces:        wsRepo,
+		Connections:       connectionRepo,
+		Publisher:         publisher,
+		Templates:         wabaTemplateRepo,
+		ContactRepo:       contactRepo,
+		UserActionLogs:    userActionLogRepo,
+		WebhookSubRepo:    webhookSubRepo,
+		WebhookDispatcher: webhookDispatcher,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
 	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)
 	adminGroup.GET("/inbox/chat", inboxHandler.ChatPanel)
 	adminGroup.GET("/inbox/messages", inboxHandler.PollMessages)
 	adminGroup.POST("/inbox/send", inboxHandler.SendMessage)
+	adminGroup.POST("/inbox/reactions", inboxHandler.ToggleReaction)
 	adminGroup.GET("/inbox/new-message-modal", inboxHandler.NewMessageModal)
 	adminGroup.POST("/inbox/new-message-send", inboxHandler.NewMessageSend)
 	adminGroup.GET("/contacts/search", inboxHandler.SearchContacts)

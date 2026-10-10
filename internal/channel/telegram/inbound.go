@@ -55,10 +55,25 @@ type telegramCallbackQuery struct {
 	Data    string           `json:"data"`
 }
 
+type telegramReactionType struct {
+	Type  string `json:"type"` // "emoji" or "custom_emoji"
+	Emoji string `json:"emoji"`
+}
+
+type telegramMessageReactionUpdated struct {
+	Chat        *telegramChat          `json:"chat"`
+	MessageID   int64                  `json:"message_id"`
+	User        *telegramUser          `json:"user,omitempty"`
+	Date        int64                  `json:"date"`
+	OldReaction []telegramReactionType `json:"old_reaction"`
+	NewReaction []telegramReactionType `json:"new_reaction"`
+}
+
 type telegramUpdate struct {
-	UpdateID      int64                  `json:"update_id"`
-	Message       *telegramMessage       `json:"message,omitempty"`
-	CallbackQuery *telegramCallbackQuery `json:"callback_query,omitempty"`
+	UpdateID        int64                           `json:"update_id"`
+	Message         *telegramMessage                `json:"message,omitempty"`
+	CallbackQuery   *telegramCallbackQuery          `json:"callback_query,omitempty"`
+	MessageReaction *telegramMessageReactionUpdated `json:"message_reaction,omitempty"`
 }
 
 type telegramMessage struct {
@@ -168,7 +183,24 @@ func (a *TelegramInboundAdapter) Parse(
 	var contact *telegramContact
 	var msgDate int64
 
-	if update.CallbackQuery != nil {
+	var inboundReaction *inbound.InboundReaction
+	if update.MessageReaction != nil {
+		chat = update.MessageReaction.Chat
+		fromUser = update.MessageReaction.User
+		msgDate = update.MessageReaction.Date
+		targetMsgID := strconv.FormatInt(update.MessageReaction.MessageID, 10)
+		var emoji string
+		action := "remove"
+		if len(update.MessageReaction.NewReaction) > 0 {
+			emoji = update.MessageReaction.NewReaction[0].Emoji
+			action = "add"
+		}
+		inboundReaction = &inbound.InboundReaction{
+			MessageUID: targetMsgID,
+			Emoji:      emoji,
+			Action:     action,
+		}
+	} else if update.CallbackQuery != nil {
 		isCallback = true
 		callbackData = update.CallbackQuery.Data
 		callbackID = update.CallbackQuery.ID
@@ -344,6 +376,10 @@ func (a *TelegramInboundAdapter) Parse(
 		occurredAt = time.Unix(msgDate, 0).UTC()
 	}
 
+	if inboundReaction != nil {
+		metadata["type"] = "reaction"
+	}
+
 	return []*inbound.InboundEvent{
 		{
 			WorkspaceID:  conn.WorkspaceID,
@@ -357,6 +393,7 @@ func (a *TelegramInboundAdapter) Parse(
 			Location:     inboundLocation,
 			Contacts:     inboundContacts,
 			Interactive:  interactive,
+			Reaction:     inboundReaction,
 			SenderName:   senderName,
 			OccurredAt:   occurredAt,
 			Metadata:     metadata,

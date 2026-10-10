@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pablojhp.pergo/internal/domain"
 )
 
 // AuditEntry represents a single audit log entry for review.
@@ -182,12 +183,14 @@ type ConversationSummary struct {
 // ThreadMessage represents a single message in a chronological conversation thread.
 type ThreadMessage struct {
 	ID        uuid.UUID         `json:"id"`
+	UID       string            `json:"uid,omitempty"`
 	TraceID   string            `json:"trace_id"`
 	Direction string            `json:"direction"` // "inbound" or "outbound"
 	Body      string            `json:"body"`
 	CreatedAt time.Time         `json:"created_at"`
 	Status    *string           `json:"status"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
+	Reactions []domain.Reaction `json:"reactions,omitempty"`
 }
 
 // ListConversations lists unified conversations grouped by contact_id.
@@ -287,11 +290,26 @@ func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID u
 		return nil, ErrInvalidWorkspaceID
 	}
 	query := `
-		SELECT al.id, al.trace_id, 'inbound' AS direction, COALESCE(al.payload->>'body', '') AS body, al.created_at, NULL::VARCHAR AS status, COALESCE(al.payload->'metadata', '{}'::jsonb) AS metadata
+		SELECT 
+			al.id, 
+			al.trace_id, 
+			'inbound' AS direction, 
+			COALESCE(al.payload->>'body', '') AS body, 
+			al.created_at, 
+			NULL::VARCHAR AS status, 
+			COALESCE(al.payload->'metadata', '{}'::jsonb) AS metadata,
+			COALESCE(cm.uid, al.payload->>'message_id', al.trace_id, al.id::text) AS uid,
+			COALESCE(cm.reactions, '[]'::jsonb) AS reactions
 		FROM audit_logs al
 		JOIN contact_identities ci ON ci.workspace_id = al.workspace_id 
 			AND ci.channel = al.payload->>'channel' 
 			AND ci.sender_identity = al.payload->>'from'
+		LEFT JOIN chat_messages cm ON cm.workspace_id = al.workspace_id 
+			AND (
+				cm.uid = al.payload->>'message_id' 
+				OR cm.uid = al.trace_id 
+				OR cm.uid = al.id::text
+			)
 		WHERE al.workspace_id = $1
 		  AND ci.contact_id = $2
 		  AND al.event_type = 'inbound_message'
@@ -299,19 +317,33 @@ func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID u
 
 		UNION ALL
 
-		SELECT al.id, al.trace_id, 'outbound' AS direction, COALESCE(NULLIF(al.payload->'request'->>'body', ''), al.payload->'request'->>'template_name', '') AS body, al.created_at, md.status AS status,
-		COALESCE(
-			al.payload->'request'->'metadata',
-			jsonb_build_object(
-				'type', COALESCE(al.payload->'request'->>'type', ''),
-				'product_json', COALESCE(al.payload->'request'->>'product', '')
-			)
-		) AS metadata
+		SELECT 
+			al.id, 
+			al.trace_id, 
+			'outbound' AS direction, 
+			COALESCE(NULLIF(al.payload->'request'->>'body', ''), al.payload->'request'->>'template_name', '') AS body, 
+			al.created_at, 
+			md.status AS status,
+			COALESCE(
+				al.payload->'request'->'metadata',
+				jsonb_build_object(
+					'type', COALESCE(al.payload->'request'->>'type', ''),
+					'product_json', COALESCE(al.payload->'request'->>'product', '')
+				)
+			) AS metadata,
+			COALESCE(cm.uid, al.payload->'request'->>'message_id', al.trace_id, al.id::text) AS uid,
+			COALESCE(cm.reactions, '[]'::jsonb) AS reactions
 		FROM audit_logs al
 		JOIN contact_identities ci ON ci.workspace_id = al.workspace_id 
 			AND ci.channel = COALESCE(al.payload->'request'->>'channel', al.payload->>'channel') 
 			AND ci.sender_identity = al.payload->'request'->>'to'
 		LEFT JOIN message_dispatches md ON md.trace_id = al.trace_id
+		LEFT JOIN chat_messages cm ON cm.workspace_id = al.workspace_id 
+			AND (
+				cm.uid = al.payload->'request'->>'message_id' 
+				OR cm.uid = al.trace_id 
+				OR cm.uid = al.id::text
+			)
 		WHERE al.workspace_id = $1
 		  AND ci.contact_id = $2
 		  AND al.event_type = 'outbound_message'
@@ -330,8 +362,12 @@ func (r *AuditRepository) ListThreadByContact(ctx context.Context, workspaceID u
 	for rows.Next() {
 		var m ThreadMessage
 		var metaBytes []byte
-		if err := rows.Scan(&m.ID, &m.TraceID, &m.Direction, &m.Body, &m.CreatedAt, &m.Status, &metaBytes); err != nil {
+		var reactionsBytes []byte
+		if err := rows.Scan(&m.ID, &m.TraceID, &m.Direction, &m.Body, &m.CreatedAt, &m.Status, &metaBytes, &m.UID, &reactionsBytes); err != nil {
 			return nil, fmt.Errorf("scan thread message: %w", err)
+		}
+		if len(reactionsBytes) > 0 {
+			_ = json.Unmarshal(reactionsBytes, &m.Reactions)
 		}
 		if len(metaBytes) > 0 {
 			var metaAny map[string]any

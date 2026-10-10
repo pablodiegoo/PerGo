@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/webhook"
 )
 
 func (s *Server) registerChatTools() {
@@ -97,6 +99,38 @@ func (s *Server) registerChatTools() {
 			Required: []string{"workspace_id", "chat_id"},
 		},
 	}, s.handleChatHistory)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "message_react",
+		Description: "Add or remove an emoji reaction on a specific message UID, persisting reactions in PostgreSQL JSONB, broadcasting NATS events, and triggering signed webhooks.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"message_uid": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique message identifier (UID) to react to.",
+				},
+				"emoji": map[string]interface{}{
+					"type":        "string",
+					"description": "The emoji symbol to add or remove (e.g. '👍', '❤️', '🔥').",
+				},
+				"action": map[string]interface{}{
+					"type":        "string",
+					"description": "Reaction action: 'add' or 'remove' (default: 'add').",
+					"enum":        []string{"add", "remove"},
+				},
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional workspace UUID if known. If omitted, resolved automatically from the message record.",
+				},
+				"sender": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional sender identifier for the reaction (default: 'ai_agent').",
+				},
+			},
+			Required: []string{"message_uid", "emoji"},
+		},
+	}, s.handleMessageReact)
 }
 
 // ChatSummaryDTO enriches domain.Chat with resolved contact summary for API/MCP readability.
@@ -288,6 +322,131 @@ func (s *Server) handleChatHistory(ctx context.Context, request mcp.CallToolRequ
 		"before_uid": beforeUID,
 		"after_uid":  afterUID,
 	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleMessageReact(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+
+	messageUID, err := request.RequireString("message_uid")
+	if err != nil || strings.TrimSpace(messageUID) == "" {
+		return mcp.NewToolResultError("missing or invalid message_uid parameter"), nil
+	}
+	messageUID = strings.TrimSpace(messageUID)
+
+	emoji, err := request.RequireString("emoji")
+	if err != nil || strings.TrimSpace(emoji) == "" {
+		return mcp.NewToolResultError("missing or invalid emoji parameter"), nil
+	}
+	emoji = strings.TrimSpace(emoji)
+
+	action := strings.ToLower(strings.TrimSpace(request.GetString("action", "add")))
+	if action == "" {
+		action = "add"
+	}
+	if action != "add" && action != "remove" {
+		return mcp.NewToolResultError("invalid action: must be 'add' or 'remove'"), nil
+	}
+
+	sender := strings.TrimSpace(request.GetString("sender", "ai_agent"))
+	if sender == "" {
+		sender = "ai_agent"
+	}
+
+	var wsID uuid.UUID
+	var chatIDStr string
+	wsIDStr := strings.TrimSpace(request.GetString("workspace_id", ""))
+	if wsIDStr != "" {
+		parsedWSID, pErr := uuid.Parse(wsIDStr)
+		if pErr != nil {
+			return mcp.NewToolResultError("invalid workspace_id: must be a valid UUID"), nil
+		}
+		wsID = parsedWSID
+		if msg, mErr := s.chatRepo.GetChatMessageByUID(ctx, wsID, messageUID); mErr == nil && msg != nil {
+			chatIDStr = msg.ChatID.String()
+		}
+	} else {
+		msg, mErr := s.chatRepo.FindMessageByUID(ctx, messageUID)
+		if mErr != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("message not found: %s", messageUID)), nil
+		}
+		wsID = msg.WorkspaceID
+		chatIDStr = msg.ChatID.String()
+	}
+
+	var updatedReactions []domain.Reaction
+	if action == "add" {
+		updatedReactions, err = s.chatRepo.AddReaction(ctx, wsID, messageUID, domain.Reaction{
+			Emoji:     emoji,
+			Sender:    sender,
+			CreatedAt: time.Now().UTC(),
+		})
+	} else {
+		updatedReactions, err = s.chatRepo.RemoveReaction(ctx, wsID, messageUID, emoji, sender)
+	}
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to update message reaction: %v", err)), nil
+	}
+
+	traceID := uuid.New().String()
+	rxEvent := domain.ReactionUpdatedPayload{
+		Event:       "message.reaction.updated",
+		WorkspaceID: wsID.String(),
+		ChatID:      chatIDStr,
+		MessageUID:  messageUID,
+		Emoji:       emoji,
+		Sender:      sender,
+		Action:      action,
+		Reactions:   updatedReactions,
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+	}
+
+	payloadBytes, err := json.Marshal(rxEvent)
+	if err == nil {
+		if s.publisher != nil {
+			_ = s.publisher.Publish(ctx, "messages.events.reaction_updated", payloadBytes, traceID)
+		}
+		if s.webhookDispatcher != nil && s.webhookSubRepo != nil {
+			subs, sErr := s.webhookSubRepo.ListByWorkspace(ctx, wsID)
+			if sErr == nil {
+				for _, sub := range subs {
+					if !sub.Active {
+						continue
+					}
+					if webhook.MatchesAny(sub.EventTypes, "message.reaction.updated") {
+						task := webhook.WebhookDeliveryTask{
+							ID:             uuid.New(),
+							SubscriptionID: sub.ID,
+							WorkspaceID:    wsID,
+							Event:          "message.reaction.updated",
+							TraceID:        traceID,
+							MessageID:      messageUID,
+							Payload:        payloadBytes,
+							Mode:           "outbound",
+						}
+						_ = s.webhookDispatcher.Dispatch(ctx, task)
+					}
+				}
+			}
+		}
+	}
+
+	response := map[string]interface{}{
+		"message_uid": messageUID,
+		"action":      action,
+		"emoji":       emoji,
+		"sender":      sender,
+		"reactions":   updatedReactions,
+		"count":       len(updatedReactions),
+	}
+
+	data, err := json.MarshalIndent(response, "", "  ")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
 	}

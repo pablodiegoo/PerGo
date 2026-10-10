@@ -257,6 +257,44 @@ func TestChatRepository(t *testing.T) {
 		if len(fetchedMsg.Reactions) != 2 || fetchedMsg.Reactions[0].Emoji != "❤️" {
 			t.Errorf("expected reactions [❤️, 🔥], got %+v", fetchedMsg.Reactions)
 		}
+
+		// Test AddReaction idempotency
+		rxList, err := chatRepo.AddReaction(ctx, ws.ID, msgUID, domain.Reaction{
+			Emoji:  "👍",
+			Sender: "user_a",
+		})
+		if err != nil {
+			t.Fatalf("failed to add reaction: %v", err)
+		}
+		if len(rxList) != 3 {
+			t.Fatalf("expected 3 reactions, got %d", len(rxList))
+		}
+
+		// Duplicate add should be idempotent
+		rxListDup, err := chatRepo.AddReaction(ctx, ws.ID, msgUID, domain.Reaction{
+			Emoji:  "👍",
+			Sender: "user_a",
+		})
+		if err != nil {
+			t.Fatalf("failed to add duplicate reaction: %v", err)
+		}
+		if len(rxListDup) != 3 {
+			t.Fatalf("expected 3 reactions after duplicate add, got %d", len(rxListDup))
+		}
+
+		// Remove reaction
+		rxListRem, err := chatRepo.RemoveReaction(ctx, ws.ID, msgUID, "👍", "user_a")
+		if err != nil {
+			t.Fatalf("failed to remove reaction: %v", err)
+		}
+		if len(rxListRem) != 2 {
+			t.Fatalf("expected 2 reactions after remove, got %d", len(rxListRem))
+		}
+		for _, r := range rxListRem {
+			if r.Emoji == "👍" && r.Sender == "user_a" {
+				t.Errorf("expected reaction 👍 from user_a to be removed")
+			}
+		}
 	})
 
 	t.Run("ListChats_Filters", func(t *testing.T) {

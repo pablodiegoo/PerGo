@@ -40,6 +40,19 @@ type Reaction struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// ReactionUpdatedPayload is the typed payload for reaction events published to NATS and webhooks.
+type ReactionUpdatedPayload struct {
+	Event       string     `json:"event"`
+	WorkspaceID string     `json:"workspace_id"`
+	ChatID      string     `json:"chat_id,omitempty"`
+	MessageUID  string     `json:"message_uid"`
+	Emoji       string     `json:"emoji"`
+	Sender      string     `json:"sender"`
+	Action      string     `json:"action"` // "add" | "remove"
+	Reactions   []Reaction `json:"reactions"`
+	Timestamp   string     `json:"timestamp"`
+}
+
 // Chat represents a conversational thread between a workspace connection and a contact.
 type Chat struct {
 	ID                     uuid.UUID              `json:"id"`

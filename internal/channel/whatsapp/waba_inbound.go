@@ -125,6 +125,10 @@ type ValueData struct {
 				Phone string `json:"phone"`
 			} `json:"phones"`
 		} `json:"contacts,omitempty"`
+		Reaction *struct {
+			MessageID string `json:"message_id"`
+			Emoji     string `json:"emoji"`
+		} `json:"reaction,omitempty"`
 		Referral *wabaReferralObj `json:"referral,omitempty"`
 	} `json:"messages,omitempty"`
 	Statuses []struct {
@@ -470,6 +474,20 @@ func (a *WABAInboundAdapter) Parse(
 					}
 				}
 
+				var inboundReaction *inbound.InboundReaction
+				if msg.Type == "reaction" && msg.Reaction != nil {
+					act := "add"
+					if msg.Reaction.Emoji == "" {
+						act = "remove"
+					}
+					inboundReaction = &inbound.InboundReaction{
+						MessageUID: msg.Reaction.MessageID,
+						Emoji:      msg.Reaction.Emoji,
+						Action:     act,
+					}
+					metadata["type"] = "reaction"
+				}
+
 				msgOccurredAt := inbound.ParseUnixTimestamp(msg.Timestamp)
 
 				events = append(events, &inbound.InboundEvent{
@@ -484,6 +502,7 @@ func (a *WABAInboundAdapter) Parse(
 					Location:     inboundLocation,
 					Contacts:     inboundContacts,
 					Interactive:  inboundInteractive,
+					Reaction:     inboundReaction,
 					OccurredAt:   msgOccurredAt,
 					Metadata:     metadata,
 				})
