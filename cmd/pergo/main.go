@@ -689,9 +689,10 @@ func main() {
 	adminPublic.POST("/locale", admin.SetLocale)
 	adminPublic.POST("/locale/", admin.SetLocale)
 
-	// Protected admin routes (session auth required)
+	// Protected admin routes (session auth or proxy auth required)
 	adminGroup := e.Group("/admin")
 	adminGroup.Use(middleware.HTMXMiddleware())
+	adminGroup.Use(middleware.InternalProxyAuthMiddleware(cfg.MasterKey))
 	adminGroup.Use(middleware.SessionAuthMiddleware())
 	adminGroup.Use(middleware.DashboardAuditMiddleware(userActionLogRepo))
 	adminGroup.Use(middleware.ActiveWorkspaceMiddleware(wsRepo))
