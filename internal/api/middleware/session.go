@@ -36,6 +36,10 @@ func SessionAuthMiddleware() echo.MiddlewareFunc {
 	secret := getSessionSecret()
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
+			if proxyAuth, ok := c.Get("proxy_authenticated").(bool); ok && proxyAuth {
+				return next(c)
+			}
+
 			cookie, err := c.Cookie(sessionCookieName)
 			if err != nil || cookie.Value == "" {
 				return redirectOrHTMX(c, "/admin/login")

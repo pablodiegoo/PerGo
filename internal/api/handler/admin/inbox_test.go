@@ -2,12 +2,16 @@ package admin_test
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +22,7 @@ import (
 	"github.com/nats-io/nats.go"
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/i18n"
 	"github.com/pablojhp.pergo/internal/outbound"
@@ -1253,3 +1258,251 @@ func TestInboxHandler_NewMessageModal_Renders(t *testing.T) {
 		t.Errorf("expected body to contain form action /admin/inbox/new-message-send, got: %s", body)
 	}
 }
+
+// computeInboxProxySig is a test helper for HMAC-SHA256 signatures.
+func computeInboxProxySig(scope, actorID, actorEmail, actorRole, timestamp, masterKey string) string {
+	payload := fmt.Sprintf("%s\n%s\n%s\n%s\n%s", scope, actorID, actorEmail, actorRole, timestamp)
+	mac := hmac.New(sha256.New, []byte(masterKey))
+	mac.Write([]byte(payload))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// TestInboxHandler_FramelessEmbeddedMode verifies that:
+// - X-PerGo-Embedded: true returns frameless inbox markup containing inbox-shell but NOT sidebar.
+// - embedded=true query parameter also triggers frameless mode.
+// - standard requests without embedded flags include the CPaaS sidebar.
+func TestInboxHandler_FramelessEmbeddedMode(t *testing.T) {
+	wsID := uuid.New()
+	h := &admin.InboxHandler{}
+
+	t.Run("X-PerGo-Embedded header renders frameless inbox without sidebar", func(t *testing.T) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/admin/inbox", nil)
+		req.Header.Set("X-PerGo-Embedded", "true")
+		req = withWorkspaceContext(req, wsID)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := h.View(c)
+		if err != nil {
+			t.Fatalf("View returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got: %d", rec.Code)
+		}
+
+		body := rec.Body.String()
+		if !strings.Contains(body, "inbox-shell") {
+			t.Errorf("expected response to contain 'inbox-shell', got: %s", body)
+		}
+		if strings.Contains(body, "<nav class=\"sidebar") || strings.Contains(body, "class=\"sidebar") {
+			t.Errorf("expected response NOT to contain sidebar in frameless mode, got: %s", body)
+		}
+		// Standalone assets must be present
+		if !strings.Contains(body, "htmx.org") {
+			t.Error("expected frameless layout to contain HTMX script")
+		}
+		if !strings.Contains(body, "alpinejs") {
+			t.Error("expected frameless layout to contain AlpineJS script")
+		}
+		if !strings.Contains(body, "tailwindcss") {
+			t.Error("expected frameless layout to contain Tailwind CSS script")
+		}
+	})
+
+	t.Run("embedded=true query param renders frameless inbox without sidebar", func(t *testing.T) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/admin/inbox?embedded=true", nil)
+		req = withWorkspaceContext(req, wsID)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := h.View(c)
+		if err != nil {
+			t.Fatalf("View returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got: %d", rec.Code)
+		}
+
+		body := rec.Body.String()
+		if !strings.Contains(body, "inbox-shell") {
+			t.Errorf("expected response to contain 'inbox-shell'")
+		}
+		if strings.Contains(body, "<nav class=\"sidebar") || strings.Contains(body, "class=\"sidebar") {
+			t.Errorf("expected response NOT to contain sidebar in frameless mode")
+		}
+	})
+
+	t.Run("standard non-embedded request renders full CPaaS layout with sidebar", func(t *testing.T) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/admin/inbox", nil)
+		req = withWorkspaceContext(req, wsID)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		err := h.View(c)
+		if err != nil {
+			t.Fatalf("View returned error: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got: %d", rec.Code)
+		}
+
+		body := rec.Body.String()
+		if !strings.Contains(body, "inbox-shell") {
+			t.Errorf("expected response to contain 'inbox-shell'")
+		}
+		if !strings.Contains(body, "sidebar") {
+			t.Errorf("expected response to contain sidebar in standard layout mode")
+		}
+	})
+}
+
+// TestInboxHandler_ProxyAuth verifies end-to-end authentication via InternalProxyAuthMiddleware:
+// - Valid HMAC -> 200 OK
+// - Invalid HMAC -> 401 Unauthorized
+// - Expired HMAC -> 401 Unauthorized
+// - Valid HMAC + X-PerGo-Embedded: true -> 200 OK and frameless markup
+func TestInboxHandler_ProxyAuth(t *testing.T) {
+	masterKey := "test-proxy-auth-master-key"
+	wsID := uuid.New()
+	actorID := "usr_proxy_001"
+	actorEmail := "agent@enterprise.com"
+	actorRole := "operator"
+
+	setupRouter := func() (*echo.Echo, *admin.InboxHandler) {
+		e := echo.New()
+		e.Use(middleware.InternalProxyAuthMiddleware(masterKey))
+		e.Use(middleware.SessionAuthMiddleware())
+
+		h := &admin.InboxHandler{}
+		e.GET("/admin/inbox", h.View)
+		return e, h
+	}
+
+	t.Run("valid HMAC signature returns 200 OK", func(t *testing.T) {
+		e, _ := setupRouter()
+		ts := strconv.FormatInt(time.Now().Unix(), 10)
+		sig := computeInboxProxySig(wsID.String(), actorID, actorEmail, actorRole, ts, masterKey)
+
+		req := httptest.NewRequest(http.MethodGet, "/admin/inbox", nil)
+		req.Header.Set(middleware.HeaderProxySignature, sig)
+		req.Header.Set(middleware.HeaderWorkspaceScope, wsID.String())
+		req.Header.Set(middleware.HeaderActorID, actorID)
+		req.Header.Set(middleware.HeaderActorEmail, actorEmail)
+		req.Header.Set(middleware.HeaderActorRole, actorRole)
+		req.Header.Set(middleware.HeaderTimestamp, ts)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), "inbox-shell") {
+			t.Errorf("expected response body to contain 'inbox-shell'")
+		}
+	})
+
+	t.Run("valid HMAC signature with X-PerGo-Embedded true renders frameless without sidebar", func(t *testing.T) {
+		e, _ := setupRouter()
+		ts := strconv.FormatInt(time.Now().Unix(), 10)
+		sig := computeInboxProxySig(wsID.String(), actorID, actorEmail, actorRole, ts, masterKey)
+
+		req := httptest.NewRequest(http.MethodGet, "/admin/inbox", nil)
+		req.Header.Set(middleware.HeaderProxySignature, sig)
+		req.Header.Set(middleware.HeaderWorkspaceScope, wsID.String())
+		req.Header.Set(middleware.HeaderActorID, actorID)
+		req.Header.Set(middleware.HeaderActorEmail, actorEmail)
+		req.Header.Set(middleware.HeaderActorRole, actorRole)
+		req.Header.Set(middleware.HeaderTimestamp, ts)
+		req.Header.Set(middleware.HeaderEmbedded, "true")
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 OK, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		body := rec.Body.String()
+		if !strings.Contains(body, "inbox-shell") {
+			t.Errorf("expected body to contain 'inbox-shell'")
+		}
+		if strings.Contains(body, "<nav class=\"sidebar") || strings.Contains(body, "class=\"sidebar") {
+			t.Errorf("expected body NOT to contain sidebar in embedded mode")
+		}
+	})
+
+	t.Run("invalid HMAC signature returns 401 Unauthorized", func(t *testing.T) {
+		e, _ := setupRouter()
+		ts := strconv.FormatInt(time.Now().Unix(), 10)
+
+		req := httptest.NewRequest(http.MethodGet, "/admin/inbox", nil)
+		req.Header.Set(middleware.HeaderProxySignature, "invalid-tampered-sig")
+		req.Header.Set(middleware.HeaderWorkspaceScope, wsID.String())
+		req.Header.Set(middleware.HeaderActorID, actorID)
+		req.Header.Set(middleware.HeaderActorEmail, actorEmail)
+		req.Header.Set(middleware.HeaderActorRole, actorRole)
+		req.Header.Set(middleware.HeaderTimestamp, ts)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 Unauthorized, got: %d", rec.Code)
+		}
+		var errResp map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
+			t.Fatalf("failed to decode JSON response: %v", err)
+		}
+		if errResp["code"] != "unauthorized" || errResp["message"] != "invalid proxy signature" {
+			t.Errorf("unexpected error payload: %+v", errResp)
+		}
+	})
+
+	t.Run("expired timestamp returns 401 Unauthorized", func(t *testing.T) {
+		e, _ := setupRouter()
+		expiredTS := strconv.FormatInt(time.Now().Unix()-120, 10)
+		sig := computeInboxProxySig(wsID.String(), actorID, actorEmail, actorRole, expiredTS, masterKey)
+
+		req := httptest.NewRequest(http.MethodGet, "/admin/inbox", nil)
+		req.Header.Set(middleware.HeaderProxySignature, sig)
+		req.Header.Set(middleware.HeaderWorkspaceScope, wsID.String())
+		req.Header.Set(middleware.HeaderActorID, actorID)
+		req.Header.Set(middleware.HeaderActorEmail, actorEmail)
+		req.Header.Set(middleware.HeaderActorRole, actorRole)
+		req.Header.Set(middleware.HeaderTimestamp, expiredTS)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("expected 401 Unauthorized, got: %d", rec.Code)
+		}
+		var errResp map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
+			t.Fatalf("failed to decode JSON response: %v", err)
+		}
+		if errResp["code"] != "unauthorized" || errResp["message"] != "expired proxy timestamp" {
+			t.Errorf("unexpected error payload: %+v", errResp)
+		}
+	})
+
+	t.Run("missing proxy signature and missing session cookie redirects to login", func(t *testing.T) {
+		e, _ := setupRouter()
+		req := httptest.NewRequest(http.MethodGet, "/admin/inbox", nil)
+		rec := httptest.NewRecorder()
+
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusFound {
+			t.Fatalf("expected 302 Found redirect to login, got: %d", rec.Code)
+		}
+		if rec.Header().Get("Location") != "/admin/login" {
+			t.Errorf("expected redirect to /admin/login, got: %s", rec.Header().Get("Location"))
+		}
+	})
+}
+
