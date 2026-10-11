@@ -45,13 +45,13 @@ func (r *ChatRepository) FindOrCreateChat(
 	var metaBytes []byte
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, workspace_id, connection_id, contact_id, status, assigned_user_id, assigned_email,
+		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
 		       tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
 		       created_at, updated_at
 		FROM chats
 		WHERE workspace_id = $1 AND contact_id = $2 AND (connection_id = $3 OR (connection_id IS NULL AND $3 IS NULL))
 	`, workspaceID, contactID, connectionID).Scan(
-		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status,
+		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
 		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &chat.AIDisabled,
 		&chat.ServiceWindowExpiresAt, &chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
@@ -77,11 +77,11 @@ func (r *ChatRepository) FindOrCreateChat(
 		VALUES ($1, $2, $3, 'open', '{}', 0, FALSE, '{}')
 		ON CONFLICT (workspace_id, connection_id, contact_id)
 		DO UPDATE SET updated_at = NOW()
-		RETURNING id, workspace_id, connection_id, contact_id, status, assigned_user_id, assigned_email,
+		RETURNING id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
 		          tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
 		          created_at, updated_at
 	`, workspaceID, connectionID, contactID).Scan(
-		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status,
+		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
 		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &chat.AIDisabled,
 		&chat.ServiceWindowExpiresAt, &chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
@@ -110,13 +110,13 @@ func (r *ChatRepository) GetChat(ctx context.Context, workspaceID, chatID uuid.U
 	var metaBytes []byte
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, workspace_id, connection_id, contact_id, status, assigned_user_id, assigned_email,
+		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
 		       tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
 		       created_at, updated_at
 		FROM chats
 		WHERE workspace_id = $1 AND id = $2
 	`, workspaceID, chatID).Scan(
-		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status,
+		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
 		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &chat.AIDisabled,
 		&chat.ServiceWindowExpiresAt, &chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
@@ -152,7 +152,7 @@ func (r *ChatRepository) GetChatByContact(ctx context.Context, workspaceID, cont
 	var metaBytes []byte
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, workspace_id, connection_id, contact_id, status, assigned_user_id, assigned_email,
+		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
 		       tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
 		       created_at, updated_at
 		FROM chats
@@ -160,7 +160,7 @@ func (r *ChatRepository) GetChatByContact(ctx context.Context, workspaceID, cont
 		ORDER BY last_message_at DESC
 		LIMIT 1
 	`, workspaceID, contactID).Scan(
-		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status,
+		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
 		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &chat.AIDisabled,
 		&chat.ServiceWindowExpiresAt, &chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
@@ -192,13 +192,13 @@ func (r *ChatRepository) GetChatByID(ctx context.Context, chatID uuid.UUID) (*do
 	var metaBytes []byte
 
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, workspace_id, connection_id, contact_id, status, assigned_user_id, assigned_email,
+		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
 		       tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
 		       created_at, updated_at
 		FROM chats
 		WHERE id = $1
 	`, chatID).Scan(
-		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status,
+		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
 		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &chat.AIDisabled,
 		&chat.ServiceWindowExpiresAt, &chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
@@ -242,7 +242,7 @@ func (r *ChatRepository) ListChats(
 	}
 
 	query := `
-		SELECT id, workspace_id, connection_id, contact_id, status, assigned_user_id, assigned_email,
+		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
 		       tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
 		       created_at, updated_at
 		FROM chats
@@ -254,6 +254,15 @@ func (r *ChatRepository) ListChats(
 	if filter.Status != "" {
 		query += fmt.Sprintf(" AND status = $%d", argIdx)
 		args = append(args, filter.Status)
+		argIdx++
+	}
+
+	if filter.Channel != "" {
+		query += fmt.Sprintf(` AND (
+			connection_id IN (SELECT id FROM connections WHERE workspace_id = $1 AND channel = $%d)
+			OR contact_id IN (SELECT contact_id FROM contact_identities WHERE workspace_id = $1 AND channel = $%d)
+		)`, argIdx, argIdx)
+		args = append(args, filter.Channel)
 		argIdx++
 	}
 
@@ -310,7 +319,7 @@ func (r *ChatRepository) ListChats(
 		var c domain.Chat
 		var metaBytes []byte
 		if err := rows.Scan(
-			&c.ID, &c.WorkspaceID, &c.ConnectionID, &c.ContactID, &c.Status,
+			&c.ID, &c.WorkspaceID, &c.ConnectionID, &c.ContactID, &c.Status, &c.SnoozedUntil,
 			&c.AssignedUserID, &c.AssignedEmail, &c.Tags, &c.UnreadCount, &c.AIDisabled,
 			&c.ServiceWindowExpiresAt, &c.LastMessageAt, &metaBytes, &c.CreatedAt, &c.UpdatedAt,
 		); err != nil {
@@ -331,10 +340,28 @@ func (r *ChatRepository) ListChats(
 
 // UpdateChatStatus updates the lifecycle state of a chat.
 func (r *ChatRepository) UpdateChatStatus(ctx context.Context, workspaceID, chatID uuid.UUID, status string) error {
+	var query string
+	if status == string(domain.ChatStatusSnoozed) {
+		query = `UPDATE chats SET status = $3, updated_at = NOW() WHERE workspace_id = $1 AND id = $2`
+	} else {
+		query = `UPDATE chats SET status = $3, snoozed_until = NULL, updated_at = NOW() WHERE workspace_id = $1 AND id = $2`
+	}
+	res, err := r.pool.Exec(ctx, query, workspaceID, chatID, status)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return ErrChatNotFound
+	}
+	return nil
+}
+
+// SnoozeChat sets the chat status to 'snoozed' with an optional snooze expiration timestamp.
+func (r *ChatRepository) SnoozeChat(ctx context.Context, workspaceID, chatID uuid.UUID, snoozedUntil *time.Time) error {
 	res, err := r.pool.Exec(ctx, `
-		UPDATE chats SET status = $3, updated_at = NOW()
+		UPDATE chats SET status = 'snoozed', snoozed_until = $3, updated_at = NOW()
 		WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, chatID, status)
+	`, workspaceID, chatID, snoozedUntil)
 	if err != nil {
 		return err
 	}
@@ -575,7 +602,6 @@ func (r *ChatRepository) CreateInternalNote(
 
 	return msg, nil
 }
-
 
 // ListChatMessages returns messages for a given chat with deterministic cursor pagination.
 // Messages are returned in chronological order (oldest to newest).

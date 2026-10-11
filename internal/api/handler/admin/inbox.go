@@ -44,6 +44,27 @@ type InboxHandler struct {
 	WebhookDispatcher webhook.WebhookDispatcher
 }
 
+// resolveCurrentOperatorEmail resolves the authenticated operator's email from context,
+// session cookie, header, or the single workspace member fallback.
+func (h *InboxHandler) resolveCurrentOperatorEmail(c *echo.Context, workspaceID uuid.UUID) string {
+	if email, ok := c.Get("user_email").(string); ok && strings.TrimSpace(email) != "" {
+		return strings.TrimSpace(email)
+	}
+	if cookie, err := c.Cookie("pergo-user-email"); err == nil && cookie != nil && strings.TrimSpace(cookie.Value) != "" {
+		return strings.TrimSpace(cookie.Value)
+	}
+	if headerEmail := strings.TrimSpace(c.Request().Header.Get("X-User-Email")); headerEmail != "" {
+		return headerEmail
+	}
+	if h.Workspaces != nil && workspaceID != uuid.Nil {
+		ctx := c.Request().Context()
+		if members, err := h.Workspaces.ListMembers(ctx, workspaceID); err == nil && len(members) == 1 {
+			return members[0].Email
+		}
+	}
+	return ""
+}
+
 // loadConversations fetches conversations and computes unread state.
 // Returns conversations, unreadMap keyed by contact ID, and total unread count.
 func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID, channelFilter string) ([]repository.ConversationSummary, map[string]bool, int, error) {
@@ -59,6 +80,11 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 	tagFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("tag")))
 	searchFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("search")))
 
+	var currentOperatorEmail string
+	if assignedFilter == "me" {
+		currentOperatorEmail = h.resolveCurrentOperatorEmail(c, workspaceID)
+	}
+
 	unreadMap := make(map[string]bool, len(conversations))
 	unreadCount := 0
 	filtered := make([]repository.ConversationSummary, 0, len(conversations))
@@ -68,6 +94,13 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 
 		if h.ChatRepo != nil && workspaceID != uuid.Nil {
 			if chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, conv.ContactID); cErr == nil && chat != nil {
+				if chat.Status == domain.ChatStatusSnoozed && chat.SnoozedUntil != nil && chat.SnoozedUntil.Before(time.Now().UTC()) {
+					if uErr := h.ChatRepo.UpdateChatStatus(ctx, workspaceID, chat.ID, string(domain.ChatStatusOpen)); uErr != nil {
+						slog.WarnContext(ctx, "failed to auto un-snooze chat in inbox", "error", uErr, "chat_id", chat.ID)
+					}
+					chat.Status = domain.ChatStatusOpen
+					chat.SnoozedUntil = nil
+				}
 				conv.Status = string(chat.Status)
 				conv.AssignedEmail = chat.AssignedEmail
 				conv.Tags = chat.Tags
@@ -83,21 +116,33 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 			if conv.Status != "closed" {
 				continue
 			}
+		case "snoozed":
+			if conv.Status != "snoozed" {
+				continue
+			}
 		case "unassigned":
-			if conv.Status == "closed" || (conv.AssignedEmail != nil && *conv.AssignedEmail != "") {
+			if conv.Status == "closed" || conv.Status == "snoozed" || (conv.AssignedEmail != nil && *conv.AssignedEmail != "") {
 				continue
 			}
 		case "all":
 			// no status filtering
 		default: // "open" or empty
-			if conv.Status == "closed" {
+			if conv.Status == "closed" || conv.Status == "snoozed" {
 				continue
 			}
 		}
 
 		// Apply assigned filter
 		if assignedFilter != "" {
-			if conv.AssignedEmail == nil || strings.ToLower(*conv.AssignedEmail) != assignedFilter {
+			if assignedFilter == "unassigned" {
+				if conv.AssignedEmail != nil && *conv.AssignedEmail != "" {
+					continue
+				}
+			} else if assignedFilter == "me" {
+				if currentOperatorEmail == "" || conv.AssignedEmail == nil || !strings.EqualFold(*conv.AssignedEmail, currentOperatorEmail) {
+					continue
+				}
+			} else if conv.AssignedEmail == nil || strings.ToLower(*conv.AssignedEmail) != assignedFilter {
 				continue
 			}
 		}
@@ -162,10 +207,11 @@ func (h *InboxHandler) View(c *echo.Context) error {
 		connections, _ = h.Connections.ListByWorkspace(c.Request().Context(), workspaceID)
 	}
 
-	inboxPage := pages.InboxPage(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter)
+	assignedFilter := c.QueryParam("assigned")
+	inboxPage := pages.InboxPage(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter, assignedFilter)
 
 	if mw.IsHTMX(c) {
-		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter))
+		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter, assignedFilter))
 	}
 	return mw.Render(c, http.StatusOK, inboxPage)
 }
@@ -181,13 +227,14 @@ func (h *InboxHandler) PollConversations(c *echo.Context) error {
 	}
 	connectionFilter := c.QueryParam("connection")
 	statusFilter := c.QueryParam("status")
+	assignedFilter := c.QueryParam("assigned")
 
 	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, connectionFilter)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to load conversations")
 	}
 
-	return mw.Render(c, http.StatusOK, components.ConvList(conversations, unreadMap, connectionFilter, unreadCount, statusFilter))
+	return mw.Render(c, http.StatusOK, components.ConvList(conversations, unreadMap, connectionFilter, unreadCount, statusFilter, assignedFilter))
 }
 
 // ReplyOption holds reply connection options for picker
@@ -1265,7 +1312,22 @@ func (h *InboxHandler) UpdateChatStatus(c *echo.Context) error {
 	if status == "" {
 		status = strings.ToLower(strings.TrimSpace(c.FormValue("status")))
 	}
-	if status != "closed" {
+	var snoozedUntil *time.Time
+	if status == "snoozed" {
+		untilStr := strings.TrimSpace(c.QueryParam("snoozed_until"))
+		if untilStr == "" {
+			untilStr = strings.TrimSpace(c.FormValue("snoozed_until"))
+		}
+		if untilStr != "" {
+			if parsed, pErr := time.Parse(time.RFC3339, untilStr); pErr == nil {
+				snoozedUntil = &parsed
+			}
+		}
+		if snoozedUntil == nil {
+			defaultUntil := time.Now().UTC().Add(24 * time.Hour)
+			snoozedUntil = &defaultUntil
+		}
+	} else if status != "closed" {
 		status = "open"
 	}
 
@@ -1274,8 +1336,14 @@ func (h *InboxHandler) UpdateChatStatus(c *echo.Context) error {
 		if cErr != nil {
 			return c.String(http.StatusInternalServerError, "failed to find or create chat: "+cErr.Error())
 		}
-		if err := h.ChatRepo.UpdateChatStatus(ctx, workspaceID, chat.ID, status); err != nil {
-			return c.String(http.StatusInternalServerError, "failed to update chat status: "+err.Error())
+		if status == "snoozed" {
+			if err := h.ChatRepo.SnoozeChat(ctx, workspaceID, chat.ID, snoozedUntil); err != nil {
+				return c.String(http.StatusInternalServerError, "failed to snooze chat: "+err.Error())
+			}
+		} else {
+			if err := h.ChatRepo.UpdateChatStatus(ctx, workspaceID, chat.ID, status); err != nil {
+				return c.String(http.StatusInternalServerError, "failed to update chat status: "+err.Error())
+			}
 		}
 		if h.Repo != nil {
 			auditPayload, _ := json.Marshal(map[string]interface{}{
@@ -1465,6 +1533,7 @@ func (h *InboxHandler) APICreateNote(c *echo.Context) error {
 
 	return c.JSON(http.StatusCreated, note)
 }
+
 // ToggleReaction handles POST /admin/inbox/reactions — toggles an emoji reaction on a message.
 func (h *InboxHandler) ToggleReaction(c *echo.Context) error {
 	ctx := c.Request().Context()
@@ -1497,8 +1566,8 @@ func (h *InboxHandler) ToggleReaction(c *echo.Context) error {
 	chatIDStr = msg.ChatID.String()
 
 	sender := "operator"
-	if email, ok := c.Get("user_email").(string); ok && email != "" {
-		sender = email
+	if opEmail := h.resolveCurrentOperatorEmail(c, workspaceID); opEmail != "" {
+		sender = opEmail
 	}
 
 	existingReactions, err := h.ChatRepo.GetReactions(ctx, workspaceID, messageUID)
@@ -1660,4 +1729,3 @@ func (h *InboxHandler) SummarizeChat(c *echo.Context) error {
 
 	return mw.Render(c, http.StatusOK, components.ChatSummaryPopover(synopsis))
 }
-

@@ -623,6 +623,17 @@ func main() {
 	webhookSubscriptionAPIHandler := apipkg.NewWebhookSubscriptionAPIHandler(webhookSubRepo, apipkg.WithSubscriptionAllowlist(webhookAllowlist...))
 	webhookSubscriptionAPIHandler.RegisterRoutes(e, middleware.EnforceWorkspaceScope())
 
+	// --- Public Chat REST API handler ---
+	chatAPIHandler := apipkg.NewChatAPIHandler(
+		chatRepo,
+		apipkg.WithChatContactRepo(contactRepo),
+		apipkg.WithChatConnectionRepo(connectionRepo),
+		apipkg.WithChatWorkspaceRepo(wsRepo),
+		apipkg.WithChatAuditRepo(auditRepo),
+		apipkg.WithChatMessagePublisher(publisher),
+	)
+	chatAPIHandler.RegisterRoutes(e, middleware.EnforceWorkspaceScope())
+
 	// --- WABA Meta Flows Data Exchange endpoint ---
 	flowDataExchangeHandler := handler.NewFlowDataExchangeHandler(connectionRepo, wsRepo)
 	e.POST("/api/v1/waba/flows/data-exchange", flowDataExchangeHandler.HandleFlowDataExchange)

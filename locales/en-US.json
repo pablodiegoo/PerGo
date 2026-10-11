@@ -196,7 +196,14 @@
     "another_operator_in_chat": "Another operator in chat",
     "filter_open": "Open",
     "filter_unassigned": "Unassigned",
-    "filter_resolved": "Resolved"
+    "filter_resolved": "Resolved",
+    "filter_all": "All",
+    "filter_mine": "My Chats",
+    "filter_snoozed": "Snoozed",
+    "snooze_chat": "Snooze",
+    "unsnooze_chat": "Un-snooze",
+    "promote_draft": "Use as Reply",
+    "approve_and_send": "Approve & Send"
   },
   "ban_warning": {
     "title": "WhatsApp Web is unofficial",

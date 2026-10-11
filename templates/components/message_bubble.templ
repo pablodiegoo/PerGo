@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/i18n"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -442,18 +443,31 @@ templ MessageBubble(m repository.ThreadMessage) {
 				</div>
 				<!-- Body -->
 				<p class="text-xs text-amber-900 dark:text-amber-100 whitespace-pre-wrap break-words font-normal">{ msgBody(m.Body) }</p>
-				<!-- Approve & Send action button -->
-				<div class="flex items-center justify-end pt-1">
+				<!-- Draft Promotion Actions -->
+				<div class="flex items-center justify-end gap-2 pt-1">
 					<button
 						type="button"
-						class="btn-approve-send inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-none transition-colors cursor-pointer"
+						class="btn-use-reply inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-lg bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 transition-colors cursor-pointer"
 						data-draft={ m.Body }
 						onclick="var ta = document.getElementById('chat-textarea'); if(ta){ ta.value = this.getAttribute('data-draft'); ta.dispatchEvent(new Event('input')); ta.focus(); ta.scrollIntoView({behavior:'smooth'}); }"
+						title={ i18n.T(ctx, "inbox.promote_draft") }
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
+						</svg>
+						<span>{ i18n.T(ctx, "inbox.promote_draft") }</span>
+					</button>
+					<button
+						type="button"
+						class="btn-approve-send inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-none transition-colors cursor-pointer"
+						data-draft={ m.Body }
+						onclick="var ta = document.getElementById('chat-textarea'); if(ta){ ta.value = this.getAttribute('data-draft'); ta.dispatchEvent(new Event('input')); var form = document.getElementById('chat-send-form'); if(form){ form.requestSubmit(); } }"
+						title={ i18n.T(ctx, "inbox.approve_and_send") }
 					>
 						<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/>
 						</svg>
-						<span>Approve & Send</span>
+						<span>{ i18n.T(ctx, "inbox.approve_and_send") }</span>
 					</button>
 				</div>
 			</div>

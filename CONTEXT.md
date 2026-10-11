@@ -170,6 +170,22 @@ _Avoid_: Message queue, delay timer, spam filter
 An event-driven circuit breaker that immediately deactivates automated AI agents for a Chat when an authenticated human teammate sends a message.
 _Avoid_: Bot pause, human override, manual takeover
 
+**Chat Snooze**:
+A temporal suspension state where an active Chat is hidden from the primary open inbox until a specified expiration timestamp or until a new Inbound Event arrives from the contact.
+_Avoid_: Sleep mode, muted chat, postponed ticket
+
+**Draft Promotion**:
+The atomic operational transition in the inbox UI or API where an Internal Note containing an AI proposal or draft is approved and dispatched as a live outbound message to the contact.
+_Avoid_: Note publish, draft send, turn note into message
+
+**Public Chat REST API**:
+The headless, API-key-authenticated REST interface under `/api/v1/chats` enabling external agent runtimes, CRM workflows, and scripts to query, read, and manipulate chats, messages, and notes programmatically without MCP or browser sessions.
+_Avoid_: Chat controller, inbox endpoint, bot API
+
+**WABA Direct Chat Initiation**:
+Creating a brand-new outbound conversation thread to a phone number using an approved Meta HSM Template via `waba_start_chat` before any inbound customer interaction has occurred.
+_Avoid_: Cold template blast, proactive WABA message, new WABA thread
+
 ### Localization & Presentation
 
 **Supported Locale**:

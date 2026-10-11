@@ -31,8 +31,9 @@ const (
 type ChatStatus string
 
 const (
-	ChatStatusOpen   ChatStatus = "open"
-	ChatStatusClosed ChatStatus = "closed"
+	ChatStatusOpen    ChatStatus = "open"
+	ChatStatusClosed  ChatStatus = "closed"
+	ChatStatusSnoozed ChatStatus = "snoozed"
 )
 
 // Reaction represents an emoji reaction attached to a message.
@@ -61,7 +62,8 @@ type Chat struct {
 	WorkspaceID            uuid.UUID              `json:"workspace_id"`
 	ConnectionID           *uuid.UUID             `json:"connection_id,omitempty"`
 	ContactID              uuid.UUID              `json:"contact_id"`
-	Status                 ChatStatus             `json:"status"` // "open", "closed"
+	Status                 ChatStatus             `json:"status"` // "open", "closed", "snoozed"
+	SnoozedUntil           *time.Time             `json:"snoozed_until,omitempty"`
 	AssignedUserID         *uuid.UUID             `json:"assigned_user_id,omitempty"`
 	AssignedEmail          *string                `json:"assigned_email,omitempty"`
 	Tags                   []string               `json:"tags"`
@@ -106,6 +108,7 @@ type ChatMessage struct {
 // ChatFilter encapsulates querying criteria for listing workspace chats.
 type ChatFilter struct {
 	Status        string     `json:"status,omitempty"`
+	Channel       string     `json:"channel,omitempty"`
 	Unread        *bool      `json:"unread,omitempty"`
 	Phone         string     `json:"phone,omitempty"`
 	ContactID     *uuid.UUID `json:"contact_id,omitempty"`
@@ -222,5 +225,3 @@ func SummarizeMessages(messages []ChatMessage, chat *Chat) ChatSynopsis {
 		CurrentStatus:  currentStatus,
 	}
 }
-
-

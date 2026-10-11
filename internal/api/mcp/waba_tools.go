@@ -220,6 +220,283 @@ func (s *Server) registerWABATools() {
 			Required: []string{"workspace_id", "chat_id", "template_name", "language"},
 		},
 	}, s.handleWABAChatSendTemplate)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "waba_chat_details",
+		Description: "Retrieve comprehensive details, contact attributes, 24-hour customer service window status, and labels for a specific WABA chat thread.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the WABA chat thread.",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id"},
+		},
+	}, s.handleWABAChatDetails)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "waba_chat_history",
+		Description: "Read messages in a WABA chat thread with bidirectional cursor pagination, direction filtering, and sender attribution.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the WABA chat thread.",
+				},
+				"before_uid": map[string]interface{}{
+					"type":        "string",
+					"description": "Cursor for fetching messages before this message UID.",
+				},
+				"after_uid": map[string]interface{}{
+					"type":        "string",
+					"description": "Cursor for fetching messages after this message UID.",
+				},
+				"limit": map[string]interface{}{
+					"type":        "integer",
+					"description": "Maximum number of messages to return (default: 50, max: 100).",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id"},
+		},
+	}, s.handleWABAChatHistory)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "waba_message_details",
+		Description: "Inspect a single WABA message by UID in the workspace, including reactions, delivery state, and metadata.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"message_uid": map[string]interface{}{
+					"type":        "string",
+					"description": "The unique message UID or trace ID.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UUID of the chat thread.",
+				},
+			},
+			Required: []string{"workspace_id", "message_uid"},
+		},
+	}, s.handleWABAMessageDetails)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "waba_start_chat",
+		Description: "Open a brand-new WABA conversation with an approved Meta message template (HSM) directly to a destination phone number. Initiates the thread even before any inbound customer interaction.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"connection_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the Meta WhatsApp Cloud (WABA) connection.",
+				},
+				"phone": map[string]interface{}{
+					"type":        "string",
+					"description": "Destination phone number in international format (e.g. '+15551234567').",
+				},
+				"template_name": map[string]interface{}{
+					"type":        "string",
+					"description": "The registered name of the approved Meta HSM template.",
+				},
+				"language": map[string]interface{}{
+					"type":        "string",
+					"description": "Language code of the template (e.g. 'pt_BR', 'en_US').",
+				},
+				"components": map[string]interface{}{
+					"type":        "array",
+					"description": "Optional structured array of template components with parameters.",
+				},
+				"parameters": map[string]interface{}{
+					"type":        "object",
+					"description": "Optional map of variable parameters (e.g. {'body': ['John', '12345']}).",
+				},
+				"sender_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional agent display name.",
+				},
+			},
+			Required: []string{"workspace_id", "connection_id", "phone", "template_name", "language"},
+		},
+	}, s.handleWABAStartChat)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "waba_message_react",
+		Description: "Set or clear an emoji reaction on a message in a WABA chat thread.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional UUID of the chat thread.",
+				},
+				"message_uid": map[string]interface{}{
+					"type":        "string",
+					"description": "The UID of the message to react to.",
+				},
+				"emoji": map[string]interface{}{
+					"type":        "string",
+					"description": "The emoji character to react with (e.g. '👍', '❤️', '😊').",
+				},
+				"action": map[string]interface{}{
+					"type":        "string",
+					"description": "Action to perform: 'add' (default) or 'remove'.",
+				},
+				"sender": map[string]interface{}{
+					"type":        "string",
+					"description": "Identifier of the actor reacting (default: 'ai_agent').",
+				},
+			},
+			Required: []string{"workspace_id", "message_uid", "emoji"},
+		},
+	}, s.handleWABAMessageReact)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "waba_chat_open",
+		Description: "Reopen a closed or snoozed WABA chat thread.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the WABA chat thread to reopen.",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id"},
+		},
+	}, s.handleWABAChatOpen)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "waba_chat_close",
+		Description: "Close (archive) an active WABA chat thread.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the WABA chat thread to close.",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id"},
+		},
+	}, s.handleWABAChatClose)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "waba_chat_assign",
+		Description: "Assign a WABA chat thread to a verified teammate by email. Strictly validates that the teammate belongs to the workspace team.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the WABA chat thread.",
+				},
+				"email": map[string]interface{}{
+					"type":        "string",
+					"description": "The email address of the teammate to assign.",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id", "email"},
+		},
+	}, s.handleWABAChatAssign)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "waba_chat_unassign",
+		Description: "Remove teammate assignment from a WABA chat thread.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the WABA chat thread.",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id"},
+		},
+	}, s.handleWABAChatUnassign)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "waba_chat_set_label",
+		Description: "Idempotently attach a label/tag to a WABA chat thread.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the WABA chat thread.",
+				},
+				"label": map[string]interface{}{
+					"type":        "string",
+					"description": "The label/tag name to attach (e.g. 'sales-qualified', 'vip').",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id", "label"},
+		},
+	}, s.handleWABAChatSetLabel)
+
+	s.MCPServer.AddTool(mcp.Tool{
+		Name:        "waba_chat_remove_label",
+		Description: "Idempotently remove a label/tag from a WABA chat thread.",
+		InputSchema: mcp.ToolInputSchema{
+			Type: "object",
+			Properties: map[string]interface{}{
+				"workspace_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the workspace.",
+				},
+				"chat_id": map[string]interface{}{
+					"type":        "string",
+					"description": "The UUID of the WABA chat thread.",
+				},
+				"label": map[string]interface{}{
+					"type":        "string",
+					"description": "The label/tag name to remove.",
+				},
+			},
+			Required: []string{"workspace_id", "chat_id", "label"},
+		},
+	}, s.handleWABAChatRemoveLabel)
 }
 
 // WABAAccountDTO summarizes a Meta WhatsApp Cloud connection.
@@ -671,11 +948,11 @@ func (s *Server) handleWABAChatSendMessage(ctx context.Context, request mcp.Call
 
 	traceID := fmt.Sprintf("mcp-waba-%s", uuid.New().String())
 	req := &domain.CreateMessageRequest{
-		To:       recipientPhone,
-		Channel:  "whatsapp_cloud",
-		From:     senderIdentity,
-		Body:     messageText,
-		Type:     "text",
+		To:      recipientPhone,
+		Channel: "whatsapp_cloud",
+		From:    senderIdentity,
+		Body:    messageText,
+		Type:    "text",
 		Metadata: map[string]string{
 			"source":      "mcp_gateway",
 			"sender_type": string(domain.SenderTypeAIAgent),
@@ -939,6 +1216,299 @@ func parseTemplateComponents(args map[string]any) ([]domain.TemplateComponent, e
 	}
 
 	return nil, nil
+}
+
+func (s *Server) handleWABAChatDetails(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
+	}
+
+	chatIDStr, err := request.RequireString("chat_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing chat_id parameter"), nil
+	}
+	chatID, err := uuid.Parse(strings.TrimSpace(chatIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
+	}
+
+	chat, err := s.chatRepo.GetChat(ctx, wsID, chatID)
+	if err != nil {
+		if errors.Is(err, repository.ErrChatNotFound) {
+			return mcp.NewToolResultError(fmt.Sprintf("waba chat not found: %s", chatID)), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("failed to get waba chat: %v", err)), nil
+	}
+
+	isOpen := chat.IsServiceWindowOpen()
+	var remSec int64
+	var badge string
+	now := time.Now().UTC()
+	if isOpen && chat.ServiceWindowExpiresAt != nil {
+		remSec = int64(chat.ServiceWindowExpiresAt.Sub(now).Seconds())
+		hours := remSec / 3600
+		mins := (remSec % 3600) / 60
+		if hours < 4 {
+			badge = fmt.Sprintf("🟡 %dh %02dm remaining", hours, mins)
+		} else {
+			badge = fmt.Sprintf("🟢 %dh %02dm remaining", hours, mins)
+		}
+	} else {
+		badge = "🔴 Expired"
+	}
+
+	response := map[string]interface{}{
+		"chat":                         chat,
+		"service_window_is_open":       isOpen,
+		"service_window_expires_at":    chat.ServiceWindowExpiresAt,
+		"service_window_remaining_sec": remSec,
+		"service_window_status_badge":  badge,
+	}
+
+	if s.contactRepo != nil {
+		if contact, cErr := s.contactRepo.GetByID(ctx, wsID, chat.ContactID); cErr == nil && contact != nil {
+			response["contact"] = contact
+			response["phone"] = resolveContactPhone(contact)
+		}
+	}
+
+	if s.connectionRepo != nil && chat.ConnectionID != nil {
+		if conn, connErr := s.connectionRepo.GetByID(ctx, *chat.ConnectionID); connErr == nil && conn != nil {
+			response["connection"] = map[string]interface{}{
+				"id":              conn.ID,
+				"name":            conn.Name,
+				"channel":         conn.Channel,
+				"sender_identity": conn.SenderIdentity,
+				"status":          conn.Status,
+			}
+		}
+	}
+
+	data, err := json.MarshalIndent(response, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+func (s *Server) handleWABAChatHistory(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return s.handleChatHistory(ctx, request)
+}
+
+func (s *Server) handleWABAMessageDetails(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return s.handleMessageDetails(ctx, request)
+}
+
+func (s *Server) handleWABAMessageReact(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return s.handleMessageReact(ctx, request)
+}
+
+func (s *Server) handleWABAChatOpen(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return s.handleChatOpen(ctx, request)
+}
+
+func (s *Server) handleWABAChatClose(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return s.handleChatClose(ctx, request)
+}
+
+func (s *Server) handleWABAChatAssign(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return s.handleChatAssign(ctx, request)
+}
+
+func (s *Server) handleWABAChatUnassign(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return s.handleChatUnassign(ctx, request)
+}
+
+func (s *Server) handleWABAChatSetLabel(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return s.handleChatSetLabel(ctx, request)
+}
+
+func (s *Server) handleWABAChatRemoveLabel(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return s.handleChatRemoveLabel(ctx, request)
+}
+
+func (s *Server) handleWABAStartChat(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if s.chatRepo == nil {
+		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
+	}
+	if s.connectionRepo == nil {
+		return mcp.NewToolResultError("connection repository is not configured on this server"), nil
+	}
+	if s.ingestor == nil {
+		return mcp.NewToolResultError("outbound message ingestor is not configured on this server"), nil
+	}
+
+	wsID, resErr := s.resolveWorkspaceID(ctx, request)
+	if resErr != nil {
+		return resErr, nil
+	}
+
+	connIDStr, err := request.RequireString("connection_id")
+	if err != nil {
+		return mcp.NewToolResultError("missing connection_id parameter"), nil
+	}
+	connID, err := uuid.Parse(strings.TrimSpace(connIDStr))
+	if err != nil {
+		return mcp.NewToolResultError("invalid connection_id: must be a valid UUID"), nil
+	}
+
+	conn, err := s.connectionRepo.GetByID(ctx, connID)
+	if err != nil || conn == nil {
+		return mcp.NewToolResultError(fmt.Sprintf("connection not found: %s", connID)), nil
+	}
+	if conn.WorkspaceID != wsID {
+		return mcp.NewToolResultError("connection does not belong to specified workspace"), nil
+	}
+	if conn.Channel != "whatsapp_cloud" {
+		return mcp.NewToolResultError(fmt.Sprintf("connection %s is channel '%s', expected 'whatsapp_cloud'", conn.ID, conn.Channel)), nil
+	}
+
+	phoneStr, err := request.RequireString("phone")
+	if err != nil || strings.TrimSpace(phoneStr) == "" {
+		return mcp.NewToolResultError("missing or empty phone parameter"), nil
+	}
+	phone := strings.TrimSpace(phoneStr)
+
+	templateName, err := request.RequireString("template_name")
+	if err != nil || strings.TrimSpace(templateName) == "" {
+		return mcp.NewToolResultError("missing or empty template_name parameter"), nil
+	}
+	templateName = strings.TrimSpace(templateName)
+
+	language, err := request.RequireString("language")
+	if err != nil || strings.TrimSpace(language) == "" {
+		return mcp.NewToolResultError("missing or empty language parameter"), nil
+	}
+	language = strings.TrimSpace(language)
+
+	senderName := strings.TrimSpace(request.GetString("sender_name", "AI Assistant"))
+	if senderName == "" {
+		senderName = "AI Assistant"
+	}
+
+	// Verify template is approved
+	if s.wabaTemplateRepo != nil {
+		tmpl, tErr := s.wabaTemplateRepo.GetByNameAndLanguage(ctx, conn.ID, templateName, language)
+		if tErr != nil {
+			if errors.Is(tErr, repository.ErrTemplateNotFound) || tErr.Error() == "no rows in result set" {
+				return mcp.NewToolResultError(fmt.Sprintf("template '%s' (%s) not found for connection %s", templateName, language, conn.ID)), nil
+			}
+			return mcp.NewToolResultError(fmt.Sprintf("failed to lookup template: %v", tErr)), nil
+		}
+		if !strings.EqualFold(tmpl.Status, "APPROVED") {
+			return mcp.NewToolResultError(fmt.Sprintf("template '%s' is not APPROVED (current status: %s)", templateName, tmpl.Status)), nil
+		}
+	}
+
+	args := request.GetArguments()
+	components, err := parseTemplateComponents(args)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("invalid template parameters: %v", err)), nil
+	}
+
+	// Resolve or create contact
+	var contactID uuid.UUID
+	if s.contactRepo != nil {
+		contact, cErr := s.contactRepo.ResolveContact(ctx, wsID, "whatsapp_cloud", phone, phone, "", "")
+		if cErr != nil || contact == nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to resolve contact for phone %s: %v", phone, cErr)), nil
+		}
+		contactID = contact.ID
+	} else {
+		return mcp.NewToolResultError("contact repository is not configured on this server"), nil
+	}
+
+	// Find or create chat
+	chat, cErr := s.chatRepo.FindOrCreateChat(ctx, wsID, &conn.ID, contactID)
+	if cErr != nil || chat == nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to find or create chat for contact %s: %v", contactID, cErr)), nil
+	}
+
+	traceID := fmt.Sprintf("mcp-waba-start-%s", uuid.New().String())
+	req := &domain.CreateMessageRequest{
+		To:           phone,
+		Channel:      "whatsapp_cloud",
+		From:         conn.SenderIdentity,
+		TemplateName: templateName,
+		Language:     language,
+		Components:   components,
+		Type:         "template",
+		Metadata: map[string]string{
+			"source":        "mcp_gateway",
+			"connection_id": conn.ID.String(),
+			"sender_type":   string(domain.SenderTypeAIAgent),
+			"sender_name":   senderName,
+			"chat_id":       chat.ID.String(),
+		},
+	}
+
+	qMsg, err := s.ingestor.Ingest(ctx, wsID, traceID, req)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to dispatch template message: %v", err)), nil
+	}
+
+	now := time.Now().UTC()
+	chatMsg := &domain.ChatMessage{
+		ID:          uuid.New(),
+		ChatID:      chat.ID,
+		WorkspaceID: wsID,
+		UID:         traceID,
+		Direction:   domain.DirectionOutbound,
+		SenderType:  domain.SenderTypeAIAgent,
+		SenderName:  senderName,
+		SenderID:    conn.SenderIdentity,
+		Body:        fmt.Sprintf("[Template: %s (%s)]", templateName, language),
+		Metadata: map[string]interface{}{
+			"template_name": templateName,
+			"language":      language,
+			"type":          "template",
+		},
+		CreatedAt: now,
+	}
+	_ = s.chatRepo.AddChatMessage(ctx, chatMsg)
+	_ = s.chatRepo.TouchLastMessageAt(ctx, wsID, chat.ID, now)
+
+	if s.auditRepo != nil {
+		auditPayload, _ := json.Marshal(map[string]interface{}{
+			"chat_id":       chat.ID.String(),
+			"contact_id":    contactID.String(),
+			"connection_id": conn.ID.String(),
+			"to":            phone,
+			"template_name": templateName,
+			"language":      language,
+			"sender_name":   senderName,
+		})
+		_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+			ID:          uuid.New(),
+			WorkspaceID: wsID,
+			TraceID:     traceID,
+			EventType:   "waba.chat.started",
+			Payload:     auditPayload,
+			CreatedAt:   now,
+		})
+	}
+
+	data, err := json.MarshalIndent(map[string]interface{}{
+		"success":       true,
+		"chat_id":       chat.ID,
+		"contact_id":    contactID,
+		"connection_id": conn.ID,
+		"trace_id":      traceID,
+		"template_name": templateName,
+		"language":      language,
+		"to":            phone,
+		"queued_at":     qMsg.QueuedAt,
+	}, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(data)), nil
 }
 
 // Ensure unused math package import does not cause compile error if unused

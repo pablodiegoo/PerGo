@@ -18,13 +18,13 @@ type InboxMessage struct {
 }
 
 // InboxPage renders the full split-pane inbox page with sidebar, conversation list, and chat panel.
-templ InboxPage(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection, statusFilter ...string) {
-	@layout.Base(i18n.T(ctx, "inbox.title"), InboxContent(conversations, unreadMap, activeChannel, unreadCount, chatPanel, connections, statusFilter...))
+templ InboxPage(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection, filters ...string) {
+	@layout.Base(i18n.T(ctx, "inbox.title"), InboxContent(conversations, unreadMap, activeChannel, unreadCount, chatPanel, connections, filters...))
 }
 
 // InboxContent renders the split-pane layout (conversation list + chat panel).
 // Used both for full-page render and HTMX partial swap.
-templ InboxContent(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection, statusFilter ...string) {
+templ InboxContent(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection, filters ...string) {
 
 	<div class="inbox-shell flex h-full w-full overflow-hidden text-[#37352f] dark:text-[#e3e3e3]">
 		<!-- Left panel: conversation list -->
@@ -106,7 +106,7 @@ templ InboxContent(conversations []repository.ConversationSummary, unreadMap map
 				</div>
 			</div>
 			<!-- Conversation list with polling -->
-			@components.ConvList(conversations, unreadMap, activeChannel, unreadCount, statusFilter...)
+			@components.ConvList(conversations, unreadMap, activeChannel, unreadCount, filters...)
 		</div>
 		<!-- Right panel: chat view (middle conversation + right CRM panel) -->
 		<div id="chat-panel" class="chat-panel flex-1 flex bg-[#fbfbfa] dark:bg-[#191919] h-full overflow-hidden">
@@ -141,6 +141,112 @@ templ InboxContent(conversations []repository.ConversationSummary, unreadMap map
 			if (dropdown && container && !dropdown.classList.contains('hidden')) {
 				if (!container.contains(e.target)) {
 					dropdown.classList.add('hidden');
+				}
+			}
+		});
+
+		// Focus guard
+		function isInputActive() {
+			var el = document.activeElement;
+			if (!el) return false;
+			var tag = el.tagName ? el.tagName.toLowerCase() : '';
+			return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+		}
+
+		function getActiveContactId() {
+			var panel = document.getElementById('chat-panel-inner');
+			if (panel && panel.dataset && panel.dataset.contactId) {
+				return panel.dataset.contactId;
+			}
+			var params = new URLSearchParams(window.location.search);
+			return params.get('contact_id') || '';
+		}
+
+		// Global Keyboard Navigation & Triage Shortcuts
+		window.addEventListener('keydown', function(e) {
+			if (isInputActive()) {
+				if (e.key === 'Escape') {
+					document.activeElement.blur();
+				}
+				return;
+			}
+
+			if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+			var key = e.key.toUpperCase();
+			if (key === 'J') { // Next chat
+				e.preventDefault();
+				var items = document.querySelectorAll('.conv-item');
+				if (!items || items.length === 0) return;
+				var activeContactId = getActiveContactId();
+				var activeIndex = -1;
+				if (activeContactId) {
+					for (var i = 0; i < items.length; i++) {
+						if (items[i].dataset.contactId === activeContactId || items[i].id === 'conv-' + activeContactId) {
+							activeIndex = i;
+							break;
+						}
+					}
+				}
+				var nextIndex = activeIndex + 1 < items.length ? activeIndex + 1 : 0;
+				items[nextIndex].click();
+				items[nextIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+			} else if (key === 'K') { // Previous chat
+				e.preventDefault();
+				var items = document.querySelectorAll('.conv-item');
+				if (!items || items.length === 0) return;
+				var activeContactId = getActiveContactId();
+				var activeIndex = -1;
+				if (activeContactId) {
+					for (var i = 0; i < items.length; i++) {
+						if (items[i].dataset.contactId === activeContactId || items[i].id === 'conv-' + activeContactId) {
+							activeIndex = i;
+							break;
+						}
+					}
+				}
+				var prevIndex = activeIndex - 1 >= 0 ? activeIndex - 1 : items.length - 1;
+				items[prevIndex].click();
+				items[prevIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+			} else if (key === 'E') { // Resolve / Reopen chat
+				e.preventDefault();
+				var btnResolve = document.getElementById('btn-resolve-chat');
+				if (btnResolve) {
+					btnResolve.click();
+				}
+			} else if (key === 'S') { // Snooze or Un-snooze chat
+				e.preventDefault();
+				var btnSnooze = document.getElementById('btn-snooze-chat');
+				if (btnSnooze) {
+					btnSnooze.click();
+				} else {
+					var btnUnsnooze = document.getElementById('btn-unsnooze-chat');
+					if (btnUnsnooze) {
+						btnUnsnooze.click();
+					}
+				}
+			} else if (key === 'A') { // Assign chat
+				e.preventDefault();
+				var assignSelect = document.getElementById('chat-assign-select');
+				if (assignSelect) {
+					assignSelect.focus();
+					assignSelect.scrollIntoView({ behavior: 'smooth' });
+				}
+			} else if (key === 'L') { // Label / Tag chat
+				e.preventDefault();
+				var tagForm = document.getElementById('tag-input-form');
+				var tagInput = document.getElementById('chat-tag-input');
+				if (tagForm && tagInput) {
+					tagForm.classList.remove('hidden');
+					tagInput.focus();
+					tagInput.scrollIntoView({ behavior: 'smooth' });
+				}
+			} else if (e.key === '/') { // Quick search chats
+				e.preventDefault();
+				var searchInput = document.querySelector('.inbox-search input[type="search"]');
+				if (searchInput) {
+					searchInput.focus();
+					searchInput.select();
 				}
 			}
 		});

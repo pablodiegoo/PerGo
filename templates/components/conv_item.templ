@@ -2,6 +2,8 @@ package components
 
 import (
 	"fmt"
+
+	"github.com/pablojhp.pergo/internal/i18n"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -52,6 +54,7 @@ templ ConvItem(conv repository.ConversationSummary, unread bool) {
 		hx-swap="innerHTML"
 		hx-push-url="true"
 		id={ "conv-" + conv.ContactID.String() }
+		data-contact-id={ conv.ContactID.String() }
 	>
 		<!-- Avatar -->
 		<div class="conv-avatar flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500 flex items-center justify-center text-white font-semibold text-sm select-none">
@@ -82,9 +85,17 @@ templ ConvItem(conv repository.ConversationSummary, unread bool) {
 			</div>
 			<!-- Triage pills (Assignee & Tags & Status) -->
 			<div class="flex items-center gap-1.5 mt-1.5 flex-wrap">
+				if conv.Status == "snoozed" {
+					<span class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+						<svg xmlns="http://www.w3.org/2000/svg" class="h-2.5 w-2.5" viewBox="0 0 20 20" fill="currentColor">
+							<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+						</svg>
+						{ i18n.T(ctx, "inbox.filter_snoozed") }
+					</span>
+				}
 				if conv.Status == "closed" {
 					<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
-						Resolvido
+						{ i18n.T(ctx, "inbox.filter_resolved") }
 					</span>
 				}
 				if conv.AssignedEmail != nil && *conv.AssignedEmail != "" {

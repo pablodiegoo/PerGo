@@ -236,13 +236,13 @@ type Publisher interface {
 // InboundProcessor handles workspace verification, deduplication, PII checking,
 // S3 uploading, NATS publishing, and audit logging for all messaging channels.
 type InboundProcessor struct {
-	dedupRepo            *repository.InboundDedupRepository
-	wsRepo               *repository.WorkspaceRepository
-	mediaEngine          media.Engine
-	publisher            Publisher
-	auditWriter          audit.Writer
-	recipientSessionRepo *repository.RecipientSessionRepository
-	contactRepo          *repository.ContactRepository
+	dedupRepo                 *repository.InboundDedupRepository
+	wsRepo                    *repository.WorkspaceRepository
+	mediaEngine               media.Engine
+	publisher                 Publisher
+	auditWriter               audit.Writer
+	recipientSessionRepo      *repository.RecipientSessionRepository
+	contactRepo               *repository.ContactRepository
 	dispatchRepo              *repository.MessageDispatchRepository
 	router                    InboundRouter
 	chatRepo                  *repository.ChatRepository
@@ -650,6 +650,9 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		if cErr != nil {
 			slog.Error("inbound processor: failed to find or create chat", "error", cErr, "contact_id", contact.ID, "trace_id", traceID)
 		} else if chat != nil {
+			if chat.Status == domain.ChatStatusSnoozed || chat.Status == domain.ChatStatusClosed {
+				_ = p.chatRepo.UpdateChatStatus(ctx, ev.WorkspaceID, chat.ID, string(domain.ChatStatusOpen))
+			}
 			_ = p.chatRepo.IncrementUnreadCount(ctx, ev.WorkspaceID, chat.ID)
 			_ = p.chatRepo.TouchLastMessageAt(ctx, ev.WorkspaceID, chat.ID, occurredAt)
 

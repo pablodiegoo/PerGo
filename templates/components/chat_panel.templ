@@ -164,9 +164,41 @@ templ ChatPanel(contact *domain.Contact, chat *domain.Chat, replyOptions []Reply
 						</div>
 					}
 
+					<!-- Snooze / Un-snooze Button -->
+					if chat != nil && chat.Status == "snoozed" {
+						<button
+							id="btn-unsnooze-chat"
+							type="button"
+							hx-post={ fmt.Sprintf("/admin/inbox/status?contact_id=%s&status=open", contact.ID.String()) }
+							hx-target="#chat-panel"
+							class="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-sky-300 dark:border-sky-800 text-xs font-semibold rounded-lg bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-100 transition-colors cursor-pointer shadow-none"
+							title={ i18n.T(ctx, "inbox.unsnooze_chat") }
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+								<path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
+							</svg>
+							<span>{ i18n.T(ctx, "inbox.unsnooze_chat") }</span>
+						</button>
+					} else if chat != nil && chat.Status != "closed" {
+						<button
+							id="btn-snooze-chat"
+							type="button"
+							hx-post={ fmt.Sprintf("/admin/inbox/status?contact_id=%s&status=snoozed", contact.ID.String()) }
+							hx-target="#chat-panel"
+							class="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-amber-300 dark:border-amber-800 text-xs font-semibold rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100 transition-colors cursor-pointer shadow-none"
+							title={ i18n.T(ctx, "inbox.snooze_chat") }
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+								<path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+							</svg>
+							<span>{ i18n.T(ctx, "inbox.snooze_chat") }</span>
+						</button>
+					}
+
 					<!-- Resolve / Reopen Button -->
 					if chat != nil && chat.Status == "closed" {
 						<button
+							id="btn-resolve-chat"
 							type="button"
 							hx-post={ fmt.Sprintf("/admin/inbox/status?contact_id=%s&status=open", contact.ID.String()) }
 							hx-target="#chat-panel"
@@ -181,6 +213,7 @@ templ ChatPanel(contact *domain.Contact, chat *domain.Chat, replyOptions []Reply
 						</button>
 					} else {
 						<button
+							id="btn-resolve-chat"
 							type="button"
 							hx-post={ fmt.Sprintf("/admin/inbox/status?contact_id=%s&status=closed", contact.ID.String()) }
 							hx-target="#chat-panel"
@@ -634,6 +667,7 @@ templ ContactCRMPanel(contact *domain.Contact, extra ...any) {
 			<h3 class="text-xs font-semibold uppercase tracking-wider text-[#787774] dark:text-[#9b9b9b] mb-2">{ i18n.T(ctx, "inbox.assigned_to") }</h3>
 			<form hx-post={ fmt.Sprintf("/admin/inbox/assign?contact_id=%s", contact.ID.String()) } hx-target="#chat-panel">
 				<select
+					id="chat-assign-select"
 					name="email"
 					onchange="htmx.trigger(this.closest('form'), 'submit')"
 					class="w-full text-xs border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg px-2.5 py-1.5 bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] focus:outline-none focus:ring-1 focus:ring-[#0284c7] cursor-pointer"
@@ -662,7 +696,7 @@ templ ContactCRMPanel(contact *domain.Contact, extra ...any) {
 			</div>
 			<form id="tag-input-form" class="hidden mb-2" hx-post={ fmt.Sprintf("/admin/inbox/tags/add?contact_id=%s", contact.ID.String()) } hx-target="#chat-panel">
 				<div class="flex gap-1.5">
-					<input type="text" name="tag" placeholder="Nova etiqueta..." class="flex-1 px-2 py-1 text-xs border border-[#e9e9e7] dark:border-[#2f2f2f] rounded bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] focus:outline-none focus:ring-1 focus:ring-[#0284c7]"/>
+					<input id="chat-tag-input" type="text" name="tag" placeholder="Nova etiqueta..." class="flex-1 px-2 py-1 text-xs border border-[#e9e9e7] dark:border-[#2f2f2f] rounded bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] focus:outline-none focus:ring-1 focus:ring-[#0284c7]"/>
 					<button type="submit" class="px-2 py-1 text-xs bg-[#0284c7] text-white rounded hover:bg-[#0369a1] cursor-pointer">Salvar</button>
 				</div>
 			</form>

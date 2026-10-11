@@ -7,30 +7,71 @@ import (
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
-// ConvList renders the conversation list with quick filter tabs (Open, Unassigned, Closed) and a polling trigger.
+// ConvList renders the conversation list with assignment tabs, status pills (Open, Snoozed, Closed) and a polling trigger.
 // It is used both in the full-page initial render and as an HTMX fragment for 5s polling.
-templ ConvList(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, statusFilter ...string) {
+templ ConvList(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, filters ...string) {
 	{{
 		activeStatus := "open"
-		if len(statusFilter) > 0 && statusFilter[0] != "" {
-			activeStatus = statusFilter[0]
+		activeAssigned := ""
+		if len(filters) > 0 && filters[0] != "" {
+			activeStatus = filters[0]
+		}
+		if len(filters) > 1 {
+			activeAssigned = filters[1]
 		}
 	}}
 	<div
 		id="conv-list"
-		hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=%s", activeChannel, activeStatus) }
+		hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=%s&assigned=%s", activeChannel, activeStatus, activeAssigned) }
 		hx-trigger="every 5s, refreshChats from:body"
 		hx-swap="outerHTML"
 		class="conv-list flex flex-col h-full"
 	>
-		<!-- Quick Filter Tabs (Open, Unassigned, Closed) -->
-		<div class="conv-tabs flex items-center border-b border-[#e9e9e7] dark:border-[#2f2f2f] px-2 py-1.5 bg-[#fbfbfa] dark:bg-[#191919] gap-1 flex-shrink-0 text-xs">
+		<!-- Quick Assignment Tabs (Todos / Meus Chats / Não Atribuídos) -->
+		<div class="conv-assignment-tabs flex items-center border-b border-[#e9e9e7] dark:border-[#2f2f2f] px-2 py-1 bg-white dark:bg-[#202020] gap-1 flex-shrink-0 text-xs">
 			<button
 				type="button"
-				hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=open", activeChannel) }
+				hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=%s&assigned=", activeChannel, activeStatus) }
 				hx-target="#conv-list"
 				hx-swap="outerHTML"
-				class={ "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer",
+				class={ "px-2 py-1 rounded font-medium transition-colors cursor-pointer",
+					templ.KV("text-[#0284c7] font-semibold border-b-2 border-[#0284c7]", activeAssigned == ""),
+					templ.KV("text-[#787774] dark:text-[#9b9b9b] hover:text-[#37352f] dark:hover:text-[#e3e3e3]", activeAssigned != "") }
+			>
+				{ i18n.T(ctx, "inbox.filter_all") }
+			</button>
+			<button
+				type="button"
+				hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=%s&assigned=me", activeChannel, activeStatus) }
+				hx-target="#conv-list"
+				hx-swap="outerHTML"
+				class={ "px-2 py-1 rounded font-medium transition-colors cursor-pointer",
+					templ.KV("text-[#0284c7] font-semibold border-b-2 border-[#0284c7]", activeAssigned == "me"),
+					templ.KV("text-[#787774] dark:text-[#9b9b9b] hover:text-[#37352f] dark:hover:text-[#e3e3e3]", activeAssigned != "me") }
+			>
+				{ i18n.T(ctx, "inbox.filter_mine") }
+			</button>
+			<button
+				type="button"
+				hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=%s&assigned=unassigned", activeChannel, activeStatus) }
+				hx-target="#conv-list"
+				hx-swap="outerHTML"
+				class={ "px-2 py-1 rounded font-medium transition-colors cursor-pointer",
+					templ.KV("text-[#0284c7] font-semibold border-b-2 border-[#0284c7]", activeAssigned == "unassigned"),
+					templ.KV("text-[#787774] dark:text-[#9b9b9b] hover:text-[#37352f] dark:hover:text-[#e3e3e3]", activeAssigned != "unassigned") }
+			>
+				{ i18n.T(ctx, "inbox.filter_unassigned") }
+			</button>
+		</div>
+
+		<!-- Status Filter Pills (Abertos / Adiados / Fechados) -->
+		<div class="conv-status-pills flex items-center border-b border-[#e9e9e7] dark:border-[#2f2f2f] px-2 py-1.5 bg-[#fbfbfa] dark:bg-[#191919] gap-1 flex-shrink-0 text-xs">
+			<button
+				type="button"
+				hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=open&assigned=%s", activeChannel, activeAssigned) }
+				hx-target="#conv-list"
+				hx-swap="outerHTML"
+				class={ "px-2.5 py-0.5 rounded-full font-medium transition-colors cursor-pointer",
 					templ.KV("bg-white dark:bg-[#202020] text-[#0284c7] font-semibold shadow-xs border border-[#e9e9e7] dark:border-[#2f2f2f]", activeStatus == "open" || activeStatus == ""),
 					templ.KV("text-[#787774] dark:text-[#9b9b9b] hover:text-[#37352f] dark:hover:text-[#e3e3e3]", activeStatus != "open" && activeStatus != "") }
 			>
@@ -38,21 +79,21 @@ templ ConvList(conversations []repository.ConversationSummary, unreadMap map[str
 			</button>
 			<button
 				type="button"
-				hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=unassigned", activeChannel) }
+				hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=snoozed&assigned=%s", activeChannel, activeAssigned) }
 				hx-target="#conv-list"
 				hx-swap="outerHTML"
-				class={ "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer",
-					templ.KV("bg-white dark:bg-[#202020] text-[#0284c7] font-semibold shadow-xs border border-[#e9e9e7] dark:border-[#2f2f2f]", activeStatus == "unassigned"),
-					templ.KV("text-[#787774] dark:text-[#9b9b9b] hover:text-[#37352f] dark:hover:text-[#e3e3e3]", activeStatus != "unassigned") }
+				class={ "px-2.5 py-0.5 rounded-full font-medium transition-colors cursor-pointer",
+					templ.KV("bg-white dark:bg-[#202020] text-[#0284c7] font-semibold shadow-xs border border-[#e9e9e7] dark:border-[#2f2f2f]", activeStatus == "snoozed"),
+					templ.KV("text-[#787774] dark:text-[#9b9b9b] hover:text-[#37352f] dark:hover:text-[#e3e3e3]", activeStatus != "snoozed") }
 			>
-				{ i18n.T(ctx, "inbox.filter_unassigned") }
+				{ i18n.T(ctx, "inbox.filter_snoozed") }
 			</button>
 			<button
 				type="button"
-				hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=closed", activeChannel) }
+				hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=closed&assigned=%s", activeChannel, activeAssigned) }
 				hx-target="#conv-list"
 				hx-swap="outerHTML"
-				class={ "px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer",
+				class={ "px-2.5 py-0.5 rounded-full font-medium transition-colors cursor-pointer",
 					templ.KV("bg-white dark:bg-[#202020] text-[#0284c7] font-semibold shadow-xs border border-[#e9e9e7] dark:border-[#2f2f2f]", activeStatus == "closed"),
 					templ.KV("text-[#787774] dark:text-[#9b9b9b] hover:text-[#37352f] dark:hover:text-[#e3e3e3]", activeStatus != "closed") }
 			>

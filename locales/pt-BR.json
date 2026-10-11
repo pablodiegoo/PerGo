@@ -196,7 +196,14 @@
     "another_operator_in_chat": "Outro operador no chat",
     "filter_open": "Abertos",
     "filter_unassigned": "Não atribuídos",
-    "filter_resolved": "Resolvidos"
+    "filter_resolved": "Resolvidos",
+    "filter_all": "Todos",
+    "filter_mine": "Meus Chats",
+    "filter_snoozed": "Adiados",
+    "snooze_chat": "Adiar",
+    "unsnooze_chat": "Despertar",
+    "promote_draft": "Usar como Resposta",
+    "approve_and_send": "Aprovar & Enviar"
   },
   "ban_warning": {
     "title": "WhatsApp Web não é oficial",
