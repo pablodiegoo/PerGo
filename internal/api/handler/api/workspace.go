@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -15,10 +16,13 @@ import (
 // WorkspaceRepo defines data access operations required for workspace provisioning and management.
 type WorkspaceRepo interface {
 	Create(ctx context.Context, name string) (*repository.Workspace, error)
+	CreateWithID(ctx context.Context, id uuid.UUID, name string) (*repository.Workspace, error)
 	GenerateWebhookSecret(ctx context.Context, id uuid.UUID) (string, error)
 	SetFlowWebhookURL(ctx context.Context, id uuid.UUID, flowWebhookURL *string) error
 	SetMediaRetentionDays(ctx context.Context, id uuid.UUID, days int) error
 	List(ctx context.Context, limit int) ([]repository.Workspace, error)
+	AddMember(ctx context.Context, member *repository.WorkspaceMember) error
+	RemoveMemberByEmail(ctx context.Context, workspaceID uuid.UUID, email string) error
 }
 
 // APIKeyRepo defines data access operations required for API key provisioning.
@@ -42,16 +46,22 @@ func NewWorkspaceAPIHandler(wsRepo WorkspaceRepo, apiKeyRepo APIKeyRepo) *Worksp
 
 // RegisterRoutes registers the workspace API routes with Echo and applies master authentication.
 func (h *WorkspaceAPIHandler) RegisterRoutes(e *echo.Echo, masterAuth echo.MiddlewareFunc) {
-	g := e.Group("/api/v1/workspaces")
-	if masterAuth != nil {
-		g.Use(masterAuth)
+	for _, prefix := range []string{"/api/v1/workspaces", "/api/v1/master/workspaces"} {
+		g := e.Group(prefix)
+		if masterAuth != nil {
+			g.Use(masterAuth)
+		}
+		g.POST("", h.Create)
+		g.POST("/", h.Create)
+		g.GET("", h.List)
+		g.GET("/", h.List)
+		g.PATCH("/:id/retention", h.UpdateRetention)
+		g.POST("/:id/members", h.UpsertMember)
+		g.POST("/:id/members/", h.UpsertMember)
+		g.DELETE("/:id/members/:email", h.RemoveMember)
 	}
-	g.POST("", h.Create)
-	g.POST("/", h.Create)
-	g.GET("", h.List)
-	g.GET("/", h.List)
-	g.PATCH("/:id/retention", h.UpdateRetention)
 }
+
 
 // WorkspaceItem defines the JSON representation of a workspace entity in list responses.
 type WorkspaceItem struct {
@@ -70,13 +80,23 @@ type ListWorkspacesResponse struct {
 	Workspaces []WorkspaceItem `json:"workspaces"`
 }
 
+// WorkspaceMemberInput defines the JSON payload for workspace member creation or upsert.
+type WorkspaceMemberInput struct {
+	Name                  string      `json:"name"`
+	Email                 string      `json:"email"`
+	Role                  string      `json:"role"`
+	AssignedConnectionIDs []uuid.UUID `json:"assigned_connection_ids,omitempty"`
+}
+
 // CreateWorkspaceRequest defines the JSON payload for workspace provisioning.
 type CreateWorkspaceRequest struct {
-	Name                  string  `json:"name"`
-	FlowWebhookURL        *string `json:"flow_webhook_url,omitempty"`
-	MediaRetentionDays    *int    `json:"media_retention_days,omitempty"`
-	GenerateAPIKey        *bool   `json:"generate_api_key,omitempty"`
-	GenerateWebhookSecret *bool   `json:"generate_webhook_secret,omitempty"`
+	WorkspaceID           *uuid.UUID             `json:"workspace_id,omitempty"`
+	Name                  string                 `json:"name"`
+	FlowWebhookURL        *string                `json:"flow_webhook_url,omitempty"`
+	MediaRetentionDays    *int                   `json:"media_retention_days,omitempty"`
+	GenerateAPIKey        *bool                  `json:"generate_api_key,omitempty"`
+	GenerateWebhookSecret *bool                  `json:"generate_webhook_secret,omitempty"`
+	Members               []WorkspaceMemberInput `json:"members,omitempty"`
 }
 
 // CreateWorkspaceResponse defines the JSON response returned upon successful workspace provisioning.
@@ -109,12 +129,50 @@ func (h *WorkspaceAPIHandler) Create(c *echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	ws, err := h.wsRepo.Create(ctx, name)
+	var ws *repository.Workspace
+	var err error
+	if req.WorkspaceID != nil && *req.WorkspaceID != uuid.Nil {
+		ws, err = h.wsRepo.CreateWithID(ctx, *req.WorkspaceID, name)
+	} else {
+		ws, err = h.wsRepo.Create(ctx, name)
+	}
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"code":    "internal_error",
 			"message": "failed to create workspace",
 		})
+	}
+
+	for _, mInput := range req.Members {
+		email := strings.TrimSpace(mInput.Email)
+		if email == "" {
+			continue
+		}
+		role := strings.TrimSpace(mInput.Role)
+		if role == "" {
+			role = "operator"
+		}
+		name := strings.TrimSpace(mInput.Name)
+		if name == "" {
+			name = email
+		}
+		assignedConns := mInput.AssignedConnectionIDs
+		if assignedConns == nil {
+			assignedConns = []uuid.UUID{}
+		}
+		m := &repository.WorkspaceMember{
+			WorkspaceID:           ws.ID,
+			Name:                  name,
+			Email:                 email,
+			Role:                  role,
+			AssignedConnectionIDs: assignedConns,
+		}
+		if err := h.wsRepo.AddMember(ctx, m); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"code":    "internal_error",
+				"message": "failed to add member",
+			})
+		}
 	}
 
 	if req.FlowWebhookURL != nil && *req.FlowWebhookURL != "" {
@@ -259,3 +317,116 @@ func (h *WorkspaceAPIHandler) UpdateRetention(c *echo.Context) error {
 		"media_retention_days": req.MediaRetentionDays,
 	})
 }
+
+// UpsertMember handles POST /api/v1/master/workspaces/:id/members
+// and POST /api/v1/workspaces/:id/members.
+func (h *WorkspaceAPIHandler) UpsertMember(c *echo.Context) error {
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil || idStr == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "invalid workspace id",
+		})
+	}
+	wsID, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "invalid workspace id",
+		})
+	}
+
+	var req WorkspaceMemberInput
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "invalid request body",
+		})
+	}
+
+	email := strings.TrimSpace(req.Email)
+	if email == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "email is required",
+		})
+	}
+
+	role := strings.TrimSpace(req.Role)
+	if role == "" {
+		role = "operator"
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = email
+	}
+	assignedConns := req.AssignedConnectionIDs
+	if assignedConns == nil {
+		assignedConns = []uuid.UUID{}
+	}
+
+	member := &repository.WorkspaceMember{
+		WorkspaceID:           wsID,
+		Name:                  name,
+		Email:                 email,
+		Role:                  role,
+		AssignedConnectionIDs: assignedConns,
+	}
+
+	ctx := c.Request().Context()
+	if err := h.wsRepo.AddMember(ctx, member); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"code":    "internal_error",
+			"message": "failed to upsert member",
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"status": "ok",
+		"member": member,
+	})
+}
+
+// RemoveMember handles DELETE /api/v1/master/workspaces/:id/members/:email
+// and DELETE /api/v1/workspaces/:id/members/:email.
+func (h *WorkspaceAPIHandler) RemoveMember(c *echo.Context) error {
+	idStr, err := echo.PathParam[string](c, "id")
+	if err != nil || idStr == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "invalid workspace id",
+		})
+	}
+	wsID, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "invalid workspace id",
+		})
+	}
+
+	email, err := echo.PathParam[string](c, "email")
+	if err != nil || strings.TrimSpace(email) == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "invalid member email",
+		})
+	}
+
+	if unescaped, err := url.PathUnescape(email); err == nil && unescaped != "" {
+		email = unescaped
+	}
+
+	ctx := c.Request().Context()
+	if err := h.wsRepo.RemoveMemberByEmail(ctx, wsID, email); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"code":    "internal_error",
+			"message": "failed to remove member",
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]string{
+		"status": "ok",
+	})
+}
+

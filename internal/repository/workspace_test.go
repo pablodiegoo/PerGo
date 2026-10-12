@@ -220,3 +220,80 @@ func TestWorkspaceRepository_CreateWithID_And_GetByName(t *testing.T) {
 		}
 	})
 }
+
+func TestWorkspaceRepository_AddMember_And_RemoveMemberByEmail(t *testing.T) {
+	pool := getTestPoolWithMigrations(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	repo := repository.NewWorkspaceRepository(pool)
+
+	ws, err := repo.Create(ctx, "Member Test WS "+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+
+	t.Run("AddMember inserts new member and populates ID and timestamps", func(t *testing.T) {
+		member := &repository.WorkspaceMember{
+			WorkspaceID: ws.ID,
+			Name:        "Alice Developer",
+			Email:       "alice@example.com",
+			Role:        "operator",
+		}
+		if err := repo.AddMember(ctx, member); err != nil {
+			t.Fatalf("unexpected error adding member: %v", err)
+		}
+		if member.ID == uuid.Nil {
+			t.Fatal("expected member ID to be assigned")
+		}
+		if member.CreatedAt.IsZero() || member.UpdatedAt.IsZero() {
+			t.Fatal("expected member timestamps to be set")
+		}
+
+		fetched, err := repo.GetMemberByEmail(ctx, ws.ID, "alice@example.com")
+		if err != nil {
+			t.Fatalf("unexpected error getting member: %v", err)
+		}
+		if fetched.Name != "Alice Developer" || fetched.Role != "operator" {
+			t.Errorf("unexpected fetched member: %+v", fetched)
+		}
+	})
+
+	t.Run("AddMember upserts on conflict (workspace_id, email)", func(t *testing.T) {
+		member := &repository.WorkspaceMember{
+			WorkspaceID: ws.ID,
+			Name:        "Alice Senior",
+			Email:       "alice@example.com",
+			Role:        "admin",
+		}
+		if err := repo.AddMember(ctx, member); err != nil {
+			t.Fatalf("unexpected error upserting member: %v", err)
+		}
+
+		fetched, err := repo.GetMemberByEmail(ctx, ws.ID, "alice@example.com")
+		if err != nil {
+			t.Fatalf("unexpected error getting member after upsert: %v", err)
+		}
+		if fetched.Name != "Alice Senior" || fetched.Role != "admin" {
+			t.Errorf("expected updated name and role, got: %+v", fetched)
+		}
+	})
+
+	t.Run("RemoveMemberByEmail removes member", func(t *testing.T) {
+		if err := repo.RemoveMemberByEmail(ctx, ws.ID, "alice@example.com"); err != nil {
+			t.Fatalf("unexpected error removing member: %v", err)
+		}
+
+		_, err := repo.GetMemberByEmail(ctx, ws.ID, "alice@example.com")
+		if err == nil {
+			t.Fatal("expected error getting deleted member, got nil")
+		}
+	})
+
+	t.Run("RemoveMemberByEmail is idempotent for non-existent member", func(t *testing.T) {
+		if err := repo.RemoveMemberByEmail(ctx, ws.ID, "nonexistent@example.com"); err != nil {
+			t.Fatalf("unexpected error removing nonexistent member: %v", err)
+		}
+	})
+}
+
