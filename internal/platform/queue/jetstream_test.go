@@ -193,3 +193,27 @@ func TestPublishDedup(t *testing.T) {
 		t.Error("expected no second message (dedup), but got one")
 	}
 }
+
+func TestEnsureStream_NoSubjectOverlapWithInbound(t *testing.T) {
+	nc := connectNATS(t)
+	ctx := context.Background()
+
+	// Ensure MESSAGES stream exists
+	stream, err := EnsureStream(ctx, nc)
+	if err != nil {
+		t.Fatalf("EnsureStream failed: %v", err)
+	}
+	if stream == nil {
+		t.Fatal("expected stream to not be nil")
+	}
+
+	// Ensure INBOUND stream exists concurrently on the same NATS connection
+	inboundStream, err := EnsureInboundStream(ctx, nc)
+	if err != nil {
+		t.Fatalf("EnsureInboundStream failed (subject overlap): %v", err)
+	}
+	if inboundStream == nil {
+		t.Fatal("expected inboundStream to not be nil")
+	}
+}
+
