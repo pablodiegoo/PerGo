@@ -850,6 +850,69 @@ func TestWorkspaceAPIHandler_UpsertMember(t *testing.T) {
 			t.Fatalf("expected 500, got %d", rec.Code)
 		}
 	})
+
+	t.Run("invalid role returns bad request", func(t *testing.T) {
+		h := apipkg.NewWorkspaceAPIHandler(&mockWorkspaceRepo{}, &mockAPIKeyRepo{})
+		invalidRoles := []string{"billing_admin", "superadmin", "guest", "random"}
+
+		for _, badRole := range invalidRoles {
+			body := `{"name":"Invalid Role User","email":"bad@example.com","role":"` + badRole + `"}`
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/master/workspaces/"+targetID.String()+"/members", bytes.NewBufferString(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+			c.SetPath("/api/v1/master/workspaces/:id/members")
+			c.SetPathValues(echo.PathValues{{Name: "id", Value: targetID.String()}})
+
+			_ = h.UpsertMember(c)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("for role %q: expected 400 Bad Request, got %d", badRole, rec.Code)
+			}
+		}
+	})
+
+	t.Run("valid roles accepted and normalized", func(t *testing.T) {
+		validRoles := []struct {
+			inputRole    string
+			expectedRole string
+		}{
+			{"owner", "owner"},
+			{"ADMIN", "admin"},
+			{"Operator", "operator"},
+			{"agent", "agent"},
+			{"", "operator"}, // default empty role
+		}
+
+		for _, tc := range validRoles {
+			var capturedMember *repository.WorkspaceMember
+			wsRepo := &mockWorkspaceRepo{
+				addMemberFunc: func(ctx context.Context, member *repository.WorkspaceMember) error {
+					capturedMember = member
+					member.ID = uuid.New()
+					return nil
+				},
+			}
+			h := apipkg.NewWorkspaceAPIHandler(wsRepo, &mockAPIKeyRepo{})
+
+			body := `{"name":"User","email":"valid@example.com","role":"` + tc.inputRole + `"}`
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/master/workspaces/"+targetID.String()+"/members", bytes.NewBufferString(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c := e.NewContext(req, rec)
+			c.SetPath("/api/v1/master/workspaces/:id/members")
+			c.SetPathValues(echo.PathValues{{Name: "id", Value: targetID.String()}})
+
+			if err := h.UpsertMember(c); err != nil {
+				t.Fatalf("unexpected error for role %q: %v", tc.inputRole, err)
+			}
+			if rec.Code != http.StatusOK {
+				t.Fatalf("for role %q: expected 200 OK, got %d", tc.inputRole, rec.Code)
+			}
+			if capturedMember.Role != tc.expectedRole {
+				t.Errorf("for input %q: expected normalized role %q, got %q", tc.inputRole, tc.expectedRole, capturedMember.Role)
+			}
+		}
+	})
 }
 
 func TestWorkspaceAPIHandler_RemoveMember(t *testing.T) {

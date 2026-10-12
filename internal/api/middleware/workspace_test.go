@@ -310,3 +310,29 @@ func TestActiveWorkspaceMiddleware_EmptyDatabase_AllowCreateRoutes(t *testing.T)
 		t.Errorf("expected POST /admin/workspaces to be 201, got %d", recPost.Code)
 	}
 }
+
+// TestActiveWorkspaceMiddleware_ProxyAuth_NotFound_Returns404 verifies that if proxy auth sets
+// a workspace_id that cannot be resolved in database, the middleware returns 404 Not Found
+// instead of creating a phantom workspace.
+func TestActiveWorkspaceMiddleware_ProxyAuth_NotFound_Returns404(t *testing.T) {
+	e := echo.New()
+	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			c.Set("workspace_id", uuid.Must(uuid.NewV7()))
+			c.Set("proxy_authenticated", true)
+			return next(c)
+		}
+	})
+	e.Use(middleware.ActiveWorkspaceMiddleware(nil))
+	e.GET("/admin/inbox", func(c *echo.Context) error {
+		return c.String(http.StatusOK, "should not reach here")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/inbox", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 Not Found, got %d", rec.Code)
+	}
+}

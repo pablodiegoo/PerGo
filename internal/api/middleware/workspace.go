@@ -93,10 +93,10 @@ func ActiveWorkspaceMiddleware(wsRepo *repository.WorkspaceRepository) echo.Midd
 						slog.WarnContext(ctx, "failed to get workspace by proxy ID", "workspace_id", wsID, "error", getErr)
 					}
 					if ws == nil {
-						ws = &repository.Workspace{
-							ID:   wsID,
-							Name: "Proxy Workspace",
-						}
+						return c.JSON(http.StatusNotFound, map[string]string{
+							"code":    "not_found",
+							"message": "workspace not found",
+						})
 					}
 				}
 
@@ -128,10 +128,10 @@ func ActiveWorkspaceMiddleware(wsRepo *repository.WorkspaceRepository) echo.Midd
 				}
 			} else {
 				if wsID, ok := c.Get("workspace_id").(uuid.UUID); ok && wsID != uuid.Nil {
-					ws = &repository.Workspace{
-						ID:   wsID,
-						Name: "Proxy Workspace",
-					}
+					return c.JSON(http.StatusNotFound, map[string]string{
+						"code":    "not_found",
+						"message": "workspace not found",
+					})
 				}
 			}
 

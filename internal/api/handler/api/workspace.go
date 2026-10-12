@@ -148,9 +148,18 @@ func (h *WorkspaceAPIHandler) Create(c *echo.Context) error {
 		if email == "" {
 			continue
 		}
-		role := strings.TrimSpace(mInput.Role)
+		role := strings.ToLower(strings.TrimSpace(mInput.Role))
 		if role == "" {
 			role = "operator"
+		}
+		switch role {
+		case "owner", "admin", "operator", "agent":
+			// valid
+		default:
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"code":    "bad_request",
+				"message": "invalid member role: must be one of owner, admin, operator, agent",
+			})
 		}
 		name := strings.TrimSpace(mInput.Name)
 		if name == "" {
@@ -352,9 +361,18 @@ func (h *WorkspaceAPIHandler) UpsertMember(c *echo.Context) error {
 		})
 	}
 
-	role := strings.TrimSpace(req.Role)
+	role := strings.ToLower(strings.TrimSpace(req.Role))
 	if role == "" {
 		role = "operator"
+	}
+	switch role {
+	case "owner", "admin", "operator", "agent":
+		// valid
+	default:
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "invalid role: must be one of owner, admin, operator, agent",
+		})
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
