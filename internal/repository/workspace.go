@@ -392,9 +392,4 @@ func (r *WorkspaceRepository) RemoveMemberByEmail(ctx context.Context, workspace
 	return err
 }
 
-// RemoveMember removes a team member from a workspace by email.
-func (r *WorkspaceRepository) RemoveMember(ctx context.Context, workspaceID uuid.UUID, email string) error {
-	return r.RemoveMemberByEmail(ctx, workspaceID, email)
-}
-
 

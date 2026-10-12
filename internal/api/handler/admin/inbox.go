@@ -215,11 +215,8 @@ func (h *InboxHandler) View(c *echo.Context) error {
 	isEmbedded := strings.EqualFold(strings.TrimSpace(c.Request().Header.Get("X-PerGo-Embedded")), "true") ||
 		strings.EqualFold(strings.TrimSpace(c.QueryParam("embedded")), "true")
 
-	if mw.IsHTMX(c) {
+	if mw.IsHTMX(c) || isEmbedded {
 		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter, assignedFilter))
-	}
-	if isEmbedded {
-		return mw.Render(c, http.StatusOK, pages.InboxFramelessPage(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter, assignedFilter))
 	}
 	inboxPage := pages.InboxPage(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter, assignedFilter)
 	return mw.Render(c, http.StatusOK, inboxPage)
@@ -419,7 +416,7 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 	isEmbedded := strings.EqualFold(strings.TrimSpace(c.Request().Header.Get("X-PerGo-Embedded")), "true") ||
 		strings.EqualFold(strings.TrimSpace(c.QueryParam("embedded")), "true")
 	if isEmbedded {
-		return mw.Render(c, http.StatusOK, pages.InboxFramelessPage(conversations, unreadMap, "", unreadCount, chatPanelComp, connections))
+		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, "", unreadCount, chatPanelComp, connections))
 	}
 	return mw.Render(c, http.StatusOK, pages.InboxPage(conversations, unreadMap, "", unreadCount, chatPanelComp, connections))
 }
@@ -962,6 +959,13 @@ func (h *InboxHandler) ToggleBot(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
 
+	if role, ok := c.Get("actor_role").(string); ok && strings.EqualFold(role, "operator") {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"code":    "forbidden",
+			"message": "admin role required to toggle bot automation",
+		})
+	}
+
 	contactIDStr, err := echo.PathParam[string](c, "id")
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid contact_id parameter")
@@ -1005,6 +1009,13 @@ func (h *InboxHandler) EnableChatAI(c *echo.Context) error {
 	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	if role, ok := c.Get("actor_role").(string); ok && strings.EqualFold(role, "operator") {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"code":    "forbidden",
+			"message": "admin role required to toggle AI automation",
+		})
 	}
 
 	chatIDStr := c.Param("id")

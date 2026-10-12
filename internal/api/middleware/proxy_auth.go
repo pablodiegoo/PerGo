@@ -174,10 +174,30 @@ func InternalProxyAuth(cfg *config.Config) echo.MiddlewareFunc {
 	return InternalProxyAuthMiddleware(cfg.MasterKey)
 }
 
-// SignProxyPayload computes the HMAC-SHA256 signature for proxy attestation headers.
-func SignProxyPayload(scope, actorID, actorEmail, actorRole, timestamp, masterKey string) string {
-	payload := fmt.Sprintf("%s\n%s\n%s\n%s\n%s", scope, actorID, actorEmail, actorRole, timestamp)
+// ProxyAttestation encapsulates the signed actor metadata from the streaming reverse proxy.
+type ProxyAttestation struct {
+	Scope      string
+	ActorID    string
+	ActorEmail string
+	ActorRole  string
+	Timestamp  string
+}
+
+// Sign computes the HMAC-SHA256 signature for this proxy attestation bundle.
+func (a ProxyAttestation) Sign(masterKey string) string {
+	payload := fmt.Sprintf("%s\n%s\n%s\n%s\n%s", a.Scope, a.ActorID, a.ActorEmail, a.ActorRole, a.Timestamp)
 	mac := hmac.New(sha256.New, []byte(masterKey))
 	mac.Write([]byte(payload))
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// SignProxyPayload computes the HMAC-SHA256 signature for proxy attestation headers.
+func SignProxyPayload(scope, actorID, actorEmail, actorRole, timestamp, masterKey string) string {
+	return ProxyAttestation{
+		Scope:      scope,
+		ActorID:    actorID,
+		ActorEmail: actorEmail,
+		ActorRole:  actorRole,
+		Timestamp:  timestamp,
+	}.Sign(masterKey)
 }

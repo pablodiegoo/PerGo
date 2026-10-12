@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -82,10 +83,48 @@ type ListWorkspacesResponse struct {
 
 // WorkspaceMemberInput defines the JSON payload for workspace member creation or upsert.
 type WorkspaceMemberInput struct {
+	ID                    *uuid.UUID  `json:"id,omitempty"`
 	Name                  string      `json:"name"`
 	Email                 string      `json:"email"`
 	Role                  string      `json:"role"`
 	AssignedConnectionIDs []uuid.UUID `json:"assigned_connection_ids,omitempty"`
+}
+
+func parseMemberInput(wsID uuid.UUID, input WorkspaceMemberInput) (*repository.WorkspaceMember, error) {
+	email := strings.TrimSpace(input.Email)
+	if email == "" {
+		return nil, errors.New("email is required")
+	}
+	role := strings.ToLower(strings.TrimSpace(input.Role))
+	if role == "" {
+		role = "operator"
+	}
+	switch role {
+	case "owner", "admin", "operator", "agent":
+		// valid
+	default:
+		return nil, errors.New("invalid role: must be one of owner, admin, operator, agent")
+	}
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		name = email
+	}
+	assignedConns := input.AssignedConnectionIDs
+	if assignedConns == nil {
+		assignedConns = []uuid.UUID{}
+	}
+	var memberID uuid.UUID
+	if input.ID != nil && *input.ID != uuid.Nil {
+		memberID = *input.ID
+	}
+	return &repository.WorkspaceMember{
+		ID:                    memberID,
+		WorkspaceID:           wsID,
+		Name:                  name,
+		Email:                 email,
+		Role:                  role,
+		AssignedConnectionIDs: assignedConns,
+	}, nil
 }
 
 // CreateWorkspaceRequest defines the JSON payload for workspace provisioning.
@@ -144,37 +183,15 @@ func (h *WorkspaceAPIHandler) Create(c *echo.Context) error {
 	}
 
 	for _, mInput := range req.Members {
-		email := strings.TrimSpace(mInput.Email)
-		if email == "" {
+		if strings.TrimSpace(mInput.Email) == "" {
 			continue
 		}
-		role := strings.ToLower(strings.TrimSpace(mInput.Role))
-		if role == "" {
-			role = "operator"
-		}
-		switch role {
-		case "owner", "admin", "operator", "agent":
-			// valid
-		default:
+		m, err := parseMemberInput(ws.ID, mInput)
+		if err != nil {
 			return c.JSON(http.StatusBadRequest, map[string]string{
 				"code":    "bad_request",
-				"message": "invalid member role: must be one of owner, admin, operator, agent",
+				"message": err.Error(),
 			})
-		}
-		name := strings.TrimSpace(mInput.Name)
-		if name == "" {
-			name = email
-		}
-		assignedConns := mInput.AssignedConnectionIDs
-		if assignedConns == nil {
-			assignedConns = []uuid.UUID{}
-		}
-		m := &repository.WorkspaceMember{
-			WorkspaceID:           ws.ID,
-			Name:                  name,
-			Email:                 email,
-			Role:                  role,
-			AssignedConnectionIDs: assignedConns,
 		}
 		if err := h.wsRepo.AddMember(ctx, m); err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -353,42 +370,12 @@ func (h *WorkspaceAPIHandler) UpsertMember(c *echo.Context) error {
 		})
 	}
 
-	email := strings.TrimSpace(req.Email)
-	if email == "" {
+	member, pErr := parseMemberInput(wsID, req)
+	if pErr != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{
 			"code":    "bad_request",
-			"message": "email is required",
+			"message": pErr.Error(),
 		})
-	}
-
-	role := strings.ToLower(strings.TrimSpace(req.Role))
-	if role == "" {
-		role = "operator"
-	}
-	switch role {
-	case "owner", "admin", "operator", "agent":
-		// valid
-	default:
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"code":    "bad_request",
-			"message": "invalid role: must be one of owner, admin, operator, agent",
-		})
-	}
-	name := strings.TrimSpace(req.Name)
-	if name == "" {
-		name = email
-	}
-	assignedConns := req.AssignedConnectionIDs
-	if assignedConns == nil {
-		assignedConns = []uuid.UUID{}
-	}
-
-	member := &repository.WorkspaceMember{
-		WorkspaceID:           wsID,
-		Name:                  name,
-		Email:                 email,
-		Role:                  role,
-		AssignedConnectionIDs: assignedConns,
 	}
 
 	ctx := c.Request().Context()

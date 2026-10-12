@@ -1298,15 +1298,8 @@ func TestInboxHandler_FramelessEmbeddedMode(t *testing.T) {
 		if strings.Contains(body, "<nav class=\"sidebar") || strings.Contains(body, "class=\"sidebar") {
 			t.Errorf("expected response NOT to contain sidebar in frameless mode, got: %s", body)
 		}
-		// Standalone assets must be present
-		if !strings.Contains(body, "htmx.org") {
-			t.Error("expected frameless layout to contain HTMX script")
-		}
-		if !strings.Contains(body, "alpinejs") {
-			t.Error("expected frameless layout to contain AlpineJS script")
-		}
-		if !strings.Contains(body, "tailwindcss") {
-			t.Error("expected frameless layout to contain Tailwind CSS script")
+		if strings.Contains(body, "<!DOCTYPE") || strings.Contains(body, "<html") {
+			t.Error("expected frameless embedded mode to return fragment without doctype or html wrapper")
 		}
 	})
 
@@ -1502,6 +1495,45 @@ func TestInboxHandler_ProxyAuth(t *testing.T) {
 		}
 		if rec.Header().Get("Location") != "/admin/login" {
 			t.Errorf("expected redirect to /admin/login, got: %s", rec.Header().Get("Location"))
+		}
+	})
+}
+
+func TestInboxHandler_OperatorRBAC_Blocked(t *testing.T) {
+	wsID := uuid.New()
+	h := &admin.InboxHandler{}
+
+	t.Run("operator cannot toggle bot", func(t *testing.T) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodPost, "/admin/contacts/11111111-1111-1111-1111-111111111111/toggle-bot", nil)
+		req = withWorkspaceContext(req, wsID)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.Set("actor_role", "operator")
+
+		err := h.ToggleBot(c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected 403 Forbidden for operator, got: %d", rec.Code)
+		}
+	})
+
+	t.Run("operator cannot enable AI", func(t *testing.T) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodPost, "/admin/inbox/chats/11111111-1111-1111-1111-111111111111/enable-ai", nil)
+		req = withWorkspaceContext(req, wsID)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.Set("actor_role", "operator")
+
+		err := h.EnableChatAI(c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("expected 403 Forbidden for operator, got: %d", rec.Code)
 		}
 	})
 }
