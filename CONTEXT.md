@@ -186,6 +186,18 @@ _Avoid_: Chat controller, inbox endpoint, bot API
 Creating a brand-new outbound conversation thread to a phone number using an approved Meta HSM Template via `waba_start_chat` before any inbound customer interaction has occurred.
 _Avoid_: Cold template blast, proactive WABA message, new WABA thread
 
+**Shared Team Inbox**:
+The native 3-column unified conversational interface (Conversation List, Thread View with Notes/Composer, and CRM Contact Sidebar) embedded into the CPaaS console under `/admin/inbox`, serving as the primary UI for human operators and AI agent interactions.
+_Avoid_: Helpdesk UI, chat widget, ticketing dashboard
+
+**Workspace Member**:
+A team member record within a Workspace (`workspace_members` table) representing an operator, agent, or administrator eligible for chat assignments, team triage, and role-based actions within PerGo.
+_Avoid_: User, account member, login profile
+
+**Frameless Embedded Mode**:
+A presentation mode of the Shared Team Inbox (`X-PerGo-Embedded: true` or `?embedded=true`) that suppresses PerGo's global CPaaS navigation chassis, rendering only the pure 3-column workspace inbox for seamless embedding within the PergoCloud Web Console shell.
+_Avoid_: Iframe mode, headless view, stripped page
+
 ### Localization & Presentation
 
 **Supported Locale**:

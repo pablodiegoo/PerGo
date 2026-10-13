@@ -22,6 +22,12 @@ templ InboxPage(conversations []repository.ConversationSummary, unreadMap map[st
 	@layout.Base(i18n.T(ctx, "inbox.title"), InboxContent(conversations, unreadMap, activeChannel, unreadCount, chatPanel, connections, filters...))
 }
 
+// InboxFramelessPage renders the split-pane inbox without the CPaaS sidebar for embedded mode.
+templ InboxFramelessPage(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection, filters ...string) {
+	@layout.Frameless(i18n.T(ctx, "inbox.title"), InboxContent(conversations, unreadMap, activeChannel, unreadCount, chatPanel, connections, filters...))
+}
+
+
 // InboxContent renders the split-pane layout (conversation list + chat panel).
 // Used both for full-page render and HTMX partial swap.
 templ InboxContent(conversations []repository.ConversationSummary, unreadMap map[string]bool, activeChannel string, unreadCount int, chatPanel templ.Component, connections []*repository.Connection, filters ...string) {

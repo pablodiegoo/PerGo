@@ -70,9 +70,13 @@ func (h *InboxHandler) resolveCurrentOperatorEmail(c *echo.Context, workspaceID 
 func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID, channelFilter string) ([]repository.ConversationSummary, map[string]bool, int, error) {
 	ctx := c.Request().Context()
 
-	conversations, err := h.Repo.ListConversations(ctx, workspaceID, channelFilter)
-	if err != nil {
-		return nil, nil, 0, err
+	var conversations []repository.ConversationSummary
+	if h.Repo != nil {
+		var err error
+		conversations, err = h.Repo.ListConversations(ctx, workspaceID, channelFilter)
+		if err != nil {
+			return nil, nil, 0, err
+		}
 	}
 
 	statusFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("status")))
@@ -208,11 +212,13 @@ func (h *InboxHandler) View(c *echo.Context) error {
 	}
 
 	assignedFilter := c.QueryParam("assigned")
-	inboxPage := pages.InboxPage(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter, assignedFilter)
+	isEmbedded := strings.EqualFold(strings.TrimSpace(c.Request().Header.Get("X-PerGo-Embedded")), "true") ||
+		strings.EqualFold(strings.TrimSpace(c.QueryParam("embedded")), "true")
 
-	if mw.IsHTMX(c) {
+	if mw.IsHTMX(c) || isEmbedded {
 		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter, assignedFilter))
 	}
+	inboxPage := pages.InboxPage(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter, assignedFilter)
 	return mw.Render(c, http.StatusOK, inboxPage)
 }
 
@@ -407,6 +413,11 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 	}
 
 	chatPanelComp := components.ChatPanel(contact, currentChat, replyOptions, messages, isWabaBlocked, members, windowExpiresAt)
+	isEmbedded := strings.EqualFold(strings.TrimSpace(c.Request().Header.Get("X-PerGo-Embedded")), "true") ||
+		strings.EqualFold(strings.TrimSpace(c.QueryParam("embedded")), "true")
+	if isEmbedded {
+		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, "", unreadCount, chatPanelComp, connections))
+	}
 	return mw.Render(c, http.StatusOK, pages.InboxPage(conversations, unreadMap, "", unreadCount, chatPanelComp, connections))
 }
 
@@ -948,6 +959,13 @@ func (h *InboxHandler) ToggleBot(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "workspace not selected")
 	}
 
+	if role, ok := c.Get("actor_role").(string); ok && strings.EqualFold(role, "operator") {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"code":    "forbidden",
+			"message": "admin role required to toggle bot automation",
+		})
+	}
+
 	contactIDStr, err := echo.PathParam[string](c, "id")
 	if err != nil {
 		return c.String(http.StatusBadRequest, "invalid contact_id parameter")
@@ -991,6 +1009,13 @@ func (h *InboxHandler) EnableChatAI(c *echo.Context) error {
 	}
 	if workspaceID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	if role, ok := c.Get("actor_role").(string); ok && strings.EqualFold(role, "operator") {
+		return c.JSON(http.StatusForbidden, map[string]string{
+			"code":    "forbidden",
+			"message": "admin role required to toggle AI automation",
+		})
 	}
 
 	chatIDStr := c.Param("id")

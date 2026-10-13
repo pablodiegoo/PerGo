@@ -85,14 +85,31 @@ func ActiveWorkspaceMiddleware(wsRepo *repository.WorkspaceRepository) echo.Midd
 			var ws *repository.Workspace
 
 			if wsRepo != nil {
+				// 0. Check if workspace was resolved by proxy authentication
+				if wsID, ok := c.Get("workspace_id").(uuid.UUID); ok && wsID != uuid.Nil {
+					var getErr error
+					ws, getErr = wsRepo.GetByID(ctx, wsID)
+					if getErr != nil && !errors.Is(getErr, repository.ErrWorkspaceNotFound) {
+						slog.WarnContext(ctx, "failed to get workspace by proxy ID", "workspace_id", wsID, "error", getErr)
+					}
+					if ws == nil {
+						return c.JSON(http.StatusNotFound, map[string]string{
+							"code":    "not_found",
+							"message": "workspace not found",
+						})
+					}
+				}
+
 				// 1. Check cookie
-				cookie, err := c.Cookie(ActiveWorkspaceCookieName)
-				if err == nil && cookie != nil && cookie.Value != "" {
-					if parsedID, parseErr := uuid.Parse(cookie.Value); parseErr == nil && parsedID != uuid.Nil {
-						var getErr error
-						ws, getErr = wsRepo.GetByID(ctx, parsedID)
-						if getErr != nil && !errors.Is(getErr, repository.ErrWorkspaceNotFound) {
-							slog.WarnContext(ctx, "failed to get workspace by cookie ID", "workspace_id", parsedID, "error", getErr)
+				if ws == nil {
+					cookie, err := c.Cookie(ActiveWorkspaceCookieName)
+					if err == nil && cookie != nil && cookie.Value != "" {
+						if parsedID, parseErr := uuid.Parse(cookie.Value); parseErr == nil && parsedID != uuid.Nil {
+							var getErr error
+							ws, getErr = wsRepo.GetByID(ctx, parsedID)
+							if getErr != nil && !errors.Is(getErr, repository.ErrWorkspaceNotFound) {
+								slog.WarnContext(ctx, "failed to get workspace by cookie ID", "workspace_id", parsedID, "error", getErr)
+							}
 						}
 					}
 				}
@@ -108,6 +125,13 @@ func ActiveWorkspaceMiddleware(wsRepo *repository.WorkspaceRepository) echo.Midd
 						// Issue updated cookie to the browser (auto-healing)
 						SetActiveWorkspaceCookie(c, ws.ID)
 					}
+				}
+			} else {
+				if wsID, ok := c.Get("workspace_id").(uuid.UUID); ok && wsID != uuid.Nil {
+					return c.JSON(http.StatusNotFound, map[string]string{
+						"code":    "not_found",
+						"message": "workspace not found",
+					})
 				}
 			}
 

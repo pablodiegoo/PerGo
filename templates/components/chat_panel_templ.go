@@ -498,9 +498,9 @@ func ChatPanel(contact *domain.Contact, chat *domain.Chat, replyOptions []ReplyO
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var25 string
-		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/contacts/search?exclude_id=%s", contact.ID.String()))
+		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/inbox/contacts/search?exclude_id=%s", contact.ID.String()))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 250, Col: 89}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 250, Col: 95}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 		if templ_7745c5c3_Err != nil {
@@ -973,9 +973,9 @@ func ContactSearchResults(results []domain.Contact, primaryID uuid.UUID) templ.C
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var50 string
-			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/contacts/merge?primary_id=%s&secondary_id=%s", primaryID.String(), c.ID.String()))
+			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/inbox/contacts/merge?primary_id=%s&secondary_id=%s", primaryID.String(), c.ID.String()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 571, Col: 114}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 571, Col: 120}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var50)
 			if templ_7745c5c3_Err != nil {
@@ -1091,9 +1091,9 @@ func BotStatusBadge(contact *domain.Contact) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var57 string
-		templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/contacts/%s/toggle-bot", contact.ID.String()))
+		templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/inbox/contacts/%s/toggle-bot", contact.ID.String()))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 594, Col: 77}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/components/chat_panel.templ`, Line: 594, Col: 83}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var57)
 		if templ_7745c5c3_Err != nil {

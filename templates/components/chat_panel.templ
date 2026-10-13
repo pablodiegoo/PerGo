@@ -247,7 +247,7 @@ templ ChatPanel(contact *domain.Contact, chat *domain.Chat, replyOptions []Reply
 								name="q" 
 								placeholder={ i18n.T(ctx, "inbox.search_name_or_phone") } 
 								class="w-full px-2 py-1.5 text-xs border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] focus:outline-none focus:ring-1 focus:ring-[#0284c7]"
-								hx-get={ fmt.Sprintf("/admin/contacts/search?exclude_id=%s", contact.ID.String()) }
+								hx-get={ fmt.Sprintf("/admin/inbox/contacts/search?exclude_id=%s", contact.ID.String()) }
 								hx-trigger="keyup changed delay:300ms"
 								hx-target="#merge-results"
 							/>
@@ -568,7 +568,7 @@ templ ContactSearchResults(results []domain.Contact, primaryID uuid.UUID) {
 	for _, c := range results {
 		<div 
 			class="p-2 hover:bg-[#fbfbfa] dark:hover:bg-[#191919] rounded-lg cursor-pointer text-xs flex justify-between items-center border-b border-[#e9e9e7] dark:border-[#2f2f2f] last:border-b-0"
-			hx-post={ fmt.Sprintf("/admin/contacts/merge?primary_id=%s&secondary_id=%s", primaryID.String(), c.ID.String()) }
+			hx-post={ fmt.Sprintf("/admin/inbox/contacts/merge?primary_id=%s&secondary_id=%s", primaryID.String(), c.ID.String()) }
 			hx-confirm={ fmt.Sprintf("Tem certeza que deseja mesclar %s com este contato? Todo o histórico de chats será unificado.", c.Name) }
 			hx-target="body"
 		>
@@ -591,7 +591,7 @@ templ ContactSearchResults(results []domain.Contact, primaryID uuid.UUID) {
 templ BotStatusBadge(contact *domain.Contact) {
 	<button
 		id="bot-status-badge"
-		hx-post={ fmt.Sprintf("/admin/contacts/%s/toggle-bot", contact.ID.String()) }
+		hx-post={ fmt.Sprintf("/admin/inbox/contacts/%s/toggle-bot", contact.ID.String()) }
 		hx-swap="outerHTML"
 		class={ "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors border select-none",
 			templ.KV("bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100", contact.BotActive),

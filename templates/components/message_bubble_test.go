@@ -262,7 +262,7 @@ func TestMessageBubble_InternalNote(t *testing.T) {
 		"Nota Interna",
 		"Claude Agent",
 		"Proposta de resposta gerada pela IA aguardando aprovação humana.",
-		"Approve & Send",
+		"Approve &amp; Send",
 		"btn-approve-send",
 		"data-draft=\"Proposta de resposta gerada pela IA aguardando aprovação humana.\"",
 	}

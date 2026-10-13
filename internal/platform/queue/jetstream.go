@@ -15,8 +15,8 @@ const (
 	// StreamName is the JetStream stream that holds outbound messages.
 	StreamName = "MESSAGES"
 
-	// StreamSubject is the wildcard subject the stream listens on.
-	StreamSubject = "messages.>"
+	// StreamSubject is the subject the stream listens on for outbound messages.
+	StreamSubject = "messages.outbound"
 
 	// MaxQueueDepth is the per-stream message limit that triggers backpressure.
 	MaxQueueDepth = 1000
@@ -33,7 +33,7 @@ func EnsureStream(ctx context.Context, nc *nats.Conn) (jetstream.Stream, error) 
 
 	stream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:      StreamName,
-		Subjects:  []string{StreamSubject},
+		Subjects:  []string{StreamSubject, StreamSubject + ".>"},
 		Retention: jetstream.WorkQueuePolicy,
 		MaxMsgs:   MaxQueueDepth,
 		Discard:   jetstream.DiscardNew,

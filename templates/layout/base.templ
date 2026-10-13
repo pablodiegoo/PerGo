@@ -53,3 +53,31 @@ templ LoginBase(title string, content templ.Component) {
 		</body>
 	</html>
 }
+
+// Frameless is a standalone layout without the CPaaS sidebar or outer navigation chassis.
+// Used for embedded mode (e.g. inside PergoCloud Web Console shell).
+templ Frameless(title string, content templ.Component) {
+	<!DOCTYPE html>
+	<html lang={ i18n.GetLocale(ctx) } data-theme="light">
+		<head>
+			<meta charset="UTF-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+			<title>{ title }</title>
+			<link rel="preconnect" href="https://fonts.googleapis.com"/>
+			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+			<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700&display=swap" rel="stylesheet"/>
+			<link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css"/>
+			<script src="https://cdn.tailwindcss.com"></script>
+			<link rel="stylesheet" href="/static/css/admin.css"/>
+			<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"></script>
+			<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+		</head>
+		<body class="bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] font-['Inter',sans-serif] h-screen overflow-hidden m-0 p-0">
+			<main class="w-full h-full">
+				@content
+			</main>
+			<div id="modal-container"></div>
+		</body>
+	</html>
+}
+

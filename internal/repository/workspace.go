@@ -297,7 +297,8 @@ func (r *WorkspaceRepository) AddMember(ctx context.Context, member *WorkspaceMe
 	if member.WorkspaceID == uuid.Nil {
 		return ErrInvalidWorkspaceID
 	}
-	if strings.TrimSpace(member.Email) == "" {
+	member.Email = strings.TrimSpace(member.Email)
+	if member.Email == "" {
 		return errors.New("email is required")
 	}
 	if member.ID == uuid.Nil {
@@ -319,7 +320,7 @@ func (r *WorkspaceRepository) AddMember(ctx context.Context, member *WorkspaceMe
 		ON CONFLICT (workspace_id, email)
 		DO UPDATE SET name = EXCLUDED.name, role = EXCLUDED.role, assigned_connection_ids = EXCLUDED.assigned_connection_ids, updated_at = NOW()
 		RETURNING id, created_at, updated_at
-	`, member.ID, member.WorkspaceID, member.Name, strings.TrimSpace(member.Email), member.Role, member.AssignedConnectionIDs).Scan(&member.ID, &member.CreatedAt, &member.UpdatedAt)
+	`, member.ID, member.WorkspaceID, member.Name, member.Email, member.Role, member.AssignedConnectionIDs).Scan(&member.ID, &member.CreatedAt, &member.UpdatedAt)
 }
 
 // ListMembers returns all team members for a workspace.
@@ -375,21 +376,20 @@ func (r *WorkspaceRepository) GetMemberByEmail(ctx context.Context, workspaceID 
 	return &m, nil
 }
 
-// RemoveMember removes a team member from a workspace by email.
-func (r *WorkspaceRepository) RemoveMember(ctx context.Context, workspaceID uuid.UUID, email string) error {
+// RemoveMemberByEmail removes a team member from a workspace by email.
+func (r *WorkspaceRepository) RemoveMemberByEmail(ctx context.Context, workspaceID uuid.UUID, email string) error {
 	if workspaceID == uuid.Nil {
 		return ErrInvalidWorkspaceID
 	}
-	res, err := r.pool.Exec(ctx, `
+	trimmedEmail := strings.TrimSpace(email)
+	if trimmedEmail == "" {
+		return errors.New("email cannot be empty")
+	}
+	_, err := r.pool.Exec(ctx, `
 		DELETE FROM workspace_members
-		WHERE workspace_id = $1 AND LOWER(email) = LOWER($2)
-	`, workspaceID, strings.TrimSpace(email))
-	if err != nil {
-		return err
-	}
-	if res.RowsAffected() == 0 {
-		return ErrMemberNotFound
-	}
-	return nil
+		WHERE workspace_id = $1 AND (email = $2 OR LOWER(email) = LOWER($2))
+	`, workspaceID, trimmedEmail)
+	return err
 }
+
 
