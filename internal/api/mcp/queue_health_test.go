@@ -11,6 +11,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"github.com/pablojhp.pergo/internal/platform/queue"
 )
 
 // mockJetStream implements jetstream.JetStream for unit tests.
@@ -598,7 +599,7 @@ func TestQueueHealth_LiveNATSIntegration(t *testing.T) {
 	_ = js.DeleteStream(ctx, "MESSAGES")
 	stream, err := js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
 		Name:      "MESSAGES",
-		Subjects:  []string{"messages.>"},
+		Subjects:  []string{queue.StreamSubject, queue.StreamSubject + ".>"},
 		Retention: jetstream.WorkQueuePolicy,
 		MaxMsgs:   1000,
 	})
