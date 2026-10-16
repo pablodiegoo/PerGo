@@ -120,6 +120,16 @@ func NewDebouncer(rdb redis.Cmdable, opts ...DebouncerOption) *Debouncer {
 	return deb
 }
 
+// SetPublisher configures the Publisher used to emit chat.inbound.coalesced events.
+func (d *Debouncer) SetPublisher(pub Publisher) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.publisher = pub
+}
+
 // Enqueue appends an incoming message to the Redis buffer and refreshes the sliding window timer.
 func (d *Debouncer) Enqueue(ctx context.Context, msg *DebouncedMessage) error {
 	if msg == nil {
@@ -175,11 +185,13 @@ func (d *Debouncer) checkAndFlush(ctx context.Context, wsID, contactID uuid.UUID
 
 	remTTL, err := d.rdb.TTL(ctx, timerKey).Result()
 	if err == nil && remTTL > 0 {
-		// New message arrived and refreshed the Redis sliding window; reschedule timer.
+		// New message arrived and refreshed the Redis sliding window; reschedule timer if still active.
 		d.mu.Lock()
-		d.timers[mapKey] = time.AfterFunc(remTTL, func() {
-			d.checkAndFlush(ctx, wsID, contactID)
-		})
+		if _, exists := d.timers[mapKey]; exists {
+			d.timers[mapKey] = time.AfterFunc(remTTL, func() {
+				d.checkAndFlush(ctx, wsID, contactID)
+			})
+		}
 		d.mu.Unlock()
 		return
 	}
@@ -192,6 +204,39 @@ func (d *Debouncer) checkAndFlush(ctx context.Context, wsID, contactID uuid.UUID
 	if _, err := d.Flush(ctx, wsID, contactID); err != nil {
 		slog.Error("debouncer: error flushing expired buffer", "error", err, "workspace_id", wsID, "contact_id", contactID)
 	}
+}
+
+// Cancel stops any active in-memory debounce timer for the given workspace and contact
+// and deletes the pending Redis buffer and timer keys so mid-window buffered messages
+// are never flushed after a Human Handoff Trigger.
+func (d *Debouncer) Cancel(ctx context.Context, wsID, contactID uuid.UUID) error {
+	if d == nil {
+		return nil
+	}
+	if wsID == uuid.Nil || contactID == uuid.Nil {
+		return fmt.Errorf("debouncer: workspace_id and contact_id are required")
+	}
+
+	mapKey := fmt.Sprintf("%s:%s", wsID, contactID)
+	d.mu.Lock()
+	if t, ok := d.timers[mapKey]; ok {
+		t.Stop()
+		delete(d.timers, mapKey)
+	}
+	d.mu.Unlock()
+
+	if d.rdb == nil {
+		return nil
+	}
+
+	bufferKey := fmt.Sprintf("debounce:%s:%s", wsID, contactID)
+	msgsKey := fmt.Sprintf("debounce:msgs:%s:%s", wsID, contactID)
+	timerKey := fmt.Sprintf("debounce:timer:%s:%s", wsID, contactID)
+
+	if err := d.rdb.Del(ctx, bufferKey, msgsKey, timerKey).Err(); err != nil {
+		return fmt.Errorf("debouncer: cancel redis del: %w", err)
+	}
+	return nil
 }
 
 // Flush atomically extracts all messages currently in the buffer, coalesces them chronologically,
@@ -270,11 +315,15 @@ func (d *Debouncer) Flush(ctx context.Context, wsID, contactID uuid.UUID) (*Coal
 		Metadata:     lastMsg.Metadata,
 	}
 
-	if d.publisher != nil {
+	d.mu.Lock()
+	pub := d.publisher
+	d.mu.Unlock()
+
+	if pub != nil {
 		eventData, mErr := json.Marshal(coalesced)
 		if mErr == nil {
-			_ = d.publisher.Publish(ctx, EventChatInboundCoalesced, eventData, lastMsg.TraceID)
-			_ = d.publisher.Publish(ctx, fmt.Sprintf("%s.%s", EventChatInboundCoalesced, wsID.String()), eventData, lastMsg.TraceID)
+			_ = pub.Publish(ctx, EventChatInboundCoalesced, eventData, lastMsg.TraceID)
+			_ = pub.Publish(ctx, fmt.Sprintf("%s.%s", EventChatInboundCoalesced, wsID.String()), eventData, lastMsg.TraceID)
 		}
 	}
 
@@ -289,6 +338,9 @@ func (d *Debouncer) Flush(ctx context.Context, wsID, contactID uuid.UUID) (*Coal
 
 // Close stops all active in-memory debounce timers.
 func (d *Debouncer) Close() {
+	if d == nil {
+		return
+	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	for k, t := range d.timers {
