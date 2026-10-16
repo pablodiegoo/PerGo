@@ -315,27 +315,6 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 			occurredAt = time.Now().UTC()
 		}
 
-		var updatedReactions []domain.Reaction
-		var chatID *uuid.UUID
-		if p.chatRepo != nil {
-			if msg, mErr := p.chatRepo.GetChatMessageByUID(ctx, ev.WorkspaceID, ev.Reaction.MessageUID); mErr == nil && msg != nil {
-				chatID = &msg.ChatID
-			}
-			var err error
-			if ev.Reaction.Action == "remove" || ev.Reaction.Emoji == "" {
-				updatedReactions, err = p.chatRepo.RemoveReaction(ctx, ev.WorkspaceID, ev.Reaction.MessageUID, ev.Reaction.Emoji, ev.From)
-			} else {
-				updatedReactions, err = p.chatRepo.AddReaction(ctx, ev.WorkspaceID, ev.Reaction.MessageUID, domain.Reaction{
-					Emoji:     ev.Reaction.Emoji,
-					Sender:    ev.From,
-					CreatedAt: occurredAt,
-				})
-			}
-			if err != nil {
-				slog.Error("inbound processor: failed to record reaction", "error", err, "message_uid", ev.Reaction.MessageUID, "trace_id", traceID)
-			}
-		}
-
 		action := ev.Reaction.Action
 		if action == "" {
 			if ev.Reaction.Emoji == "" {
@@ -345,9 +324,21 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 			}
 		}
 
+		var updatedReactions []domain.Reaction
 		var chatIDStr string
-		if chatID != nil {
-			chatIDStr = chatID.String()
+		if p.chatRepo != nil {
+			cID, resolvedAction, rxList, err := p.chatRepo.MutateReaction(ctx, ev.WorkspaceID, ev.Reaction.MessageUID, ev.Reaction.Emoji, ev.From, action)
+			if err != nil {
+				slog.Error("inbound processor: failed to record reaction", "error", err, "message_uid", ev.Reaction.MessageUID, "trace_id", traceID)
+			} else {
+				updatedReactions = rxList
+				if resolvedAction != "" {
+					action = resolvedAction
+				}
+				if cID != uuid.Nil {
+					chatIDStr = cID.String()
+				}
+			}
 		}
 
 		rxEvent := domain.ReactionUpdatedPayload{

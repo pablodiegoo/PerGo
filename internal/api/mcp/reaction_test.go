@@ -28,11 +28,51 @@ func (m *mockReactionPublisher) Publish(ctx context.Context, subject string, dat
 }
 
 type mockReactionDispatcher struct {
-	dispatchedTasks []webhook.WebhookDeliveryTask
+	subRepo             *repository.WebhookSubscriptionRepository
+	dispatchedTasks     []webhook.WebhookDeliveryTask
+	dispatchedReactions []struct {
+		WorkspaceID uuid.UUID
+		MessageUID  string
+		Payload     []byte
+		TraceID     string
+	}
 }
 
 func (m *mockReactionDispatcher) Dispatch(ctx context.Context, task webhook.WebhookDeliveryTask) error {
 	m.dispatchedTasks = append(m.dispatchedTasks, task)
+	return nil
+}
+
+func (m *mockReactionDispatcher) DispatchReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, payload []byte, traceID string) error {
+	m.dispatchedReactions = append(m.dispatchedReactions, struct {
+		WorkspaceID uuid.UUID
+		MessageUID  string
+		Payload     []byte
+		TraceID     string
+	}{workspaceID, messageUID, payload, traceID})
+	if m.subRepo != nil {
+		subs, err := m.subRepo.ListByWorkspace(ctx, workspaceID)
+		if err != nil {
+			return err
+		}
+		for _, sub := range subs {
+			if !sub.Active {
+				continue
+			}
+			if webhook.MatchesAny(sub.EventTypes, "message.reaction.updated") {
+				_ = m.Dispatch(ctx, webhook.WebhookDeliveryTask{
+					ID:             uuid.New(),
+					SubscriptionID: sub.ID,
+					WorkspaceID:    workspaceID,
+					Event:          "message.reaction.updated",
+					TraceID:        traceID,
+					MessageID:      messageUID,
+					Payload:        payload,
+					Mode:           "reaction",
+				})
+			}
+		}
+	}
 	return nil
 }
 
@@ -65,6 +105,7 @@ func TestMCPMessageReact(t *testing.T) {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
+	auditRepo := repository.NewAuditRepository(pool)
 	webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, enc)
 
 	ws, err := wsRepo.Create(ctx, "MCP Reaction Workspace")
@@ -113,13 +154,13 @@ func TestMCPMessageReact(t *testing.T) {
 	}
 
 	pub := &mockReactionPublisher{}
-	dispatcher := &mockReactionDispatcher{}
+	dispatcher := &mockReactionDispatcher{subRepo: webhookSubRepo}
 
 	server := NewServer(
 		wsRepo,
 		connRepo,
 		contactRepo,
-		nil,
+		auditRepo,
 		nil,
 		nil,
 		webhookSubRepo,
@@ -177,7 +218,10 @@ func TestMCPMessageReact(t *testing.T) {
 			t.Errorf("expected NATS subject messages.events.reaction_updated, got %s", pub.subject)
 		}
 
-		// Verify Webhook dispatched
+		// Verify Webhook dispatched via DispatchReaction
+		if len(dispatcher.dispatchedReactions) != 1 {
+			t.Fatalf("expected 1 DispatchReaction call, got %d", len(dispatcher.dispatchedReactions))
+		}
 		if len(dispatcher.dispatchedTasks) != 1 {
 			t.Fatalf("expected 1 webhook task dispatched, got %d", len(dispatcher.dispatchedTasks))
 		}
@@ -247,6 +291,40 @@ func TestMCPMessageReact(t *testing.T) {
 		}
 		if len(dbMsg.Reactions) != 0 {
 			t.Errorf("expected 0 reactions in DB after remove, got: %+v", dbMsg.Reactions)
+		}
+	})
+
+	t.Run("ToggleReaction_Success", func(t *testing.T) {
+		args := map[string]any{
+			"workspace_id": ws.ID.String(),
+			"message_uid":  msgUID,
+			"emoji":        "🎉",
+			"action":       "toggle",
+			"sender":       "ai_agent_1",
+		}
+
+		// First toggle adds
+		res, err := server.CallTool(ctx, "message_react", args)
+		if err != nil || res.IsError {
+			t.Fatalf("message_react toggle add failed: err=%v, res=%+v", err, res)
+		}
+		var parsed struct {
+			Action string `json:"action"`
+			Count  int    `json:"count"`
+		}
+		_ = json.Unmarshal([]byte(res.Content[0].(mcp.TextContent).Text), &parsed)
+		if parsed.Action != "add" || parsed.Count != 1 {
+			t.Fatalf("expected toggle to resolve to add with count=1, got action=%q count=%d", parsed.Action, parsed.Count)
+		}
+
+		// Second toggle removes
+		res2, err := server.CallTool(ctx, "message_react", args)
+		if err != nil || res2.IsError {
+			t.Fatalf("message_react toggle remove failed: err=%v, res=%+v", err, res2)
+		}
+		_ = json.Unmarshal([]byte(res2.Content[0].(mcp.TextContent).Text), &parsed)
+		if parsed.Action != "remove" || parsed.Count != 0 {
+			t.Fatalf("expected second toggle to resolve to remove with count=0, got action=%q count=%d", parsed.Action, parsed.Count)
 		}
 	})
 

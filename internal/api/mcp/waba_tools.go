@@ -361,7 +361,7 @@ func (s *Server) registerWABATools() {
 				},
 				"action": map[string]interface{}{
 					"type":        "string",
-					"description": "Action to perform: 'add' (default) or 'remove'.",
+					"description": "Action to perform: 'add' (default), 'remove', or 'toggle'.",
 				},
 				"sender": map[string]interface{}{
 					"type":        "string",

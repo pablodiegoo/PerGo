@@ -27,6 +27,7 @@ import (
 // SubscriptionStore defines the database abstraction for webhook subscription retrieval.
 type SubscriptionStore interface {
 	Get(ctx context.Context, id uuid.UUID) (*repository.WebhookSubscription, error)
+	ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]*repository.WebhookSubscription, error)
 }
 
 // DLQStore defines the database abstraction for DLQ persistence.
@@ -77,6 +78,7 @@ type WebhookDeliveryTask struct {
 // WebhookDispatcher defines the interface for webhook payload processing and delivery.
 type WebhookDispatcher interface {
 	Dispatch(ctx context.Context, task WebhookDeliveryTask) error
+	DispatchReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, payload []byte, traceID string) error
 	WriteToDLQ(ctx context.Context, workspaceID uuid.UUID, subscriptionID uuid.UUID, traceID, messageID, event string, rawEvent []byte, attempts int, failReason string) error
 }
 
@@ -107,14 +109,10 @@ func NewDefaultDispatcher(subStore SubscriptionStore, dlqStore DLQStore, wsStore
 
 // DispatchReaction dispatches a reaction update to all active workspace subscriptions listening to message.reaction.updated.
 func (d *DefaultDispatcher) DispatchReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, payload []byte, traceID string) error {
-	type subscriptionLister interface {
-		ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]*repository.WebhookSubscription, error)
-	}
-	lister, ok := d.subStore.(subscriptionLister)
-	if !ok || lister == nil {
+	if d.subStore == nil {
 		return nil
 	}
-	subs, err := lister.ListByWorkspace(ctx, workspaceID)
+	subs, err := d.subStore.ListByWorkspace(ctx, workspaceID)
 	if err != nil {
 		return err
 	}

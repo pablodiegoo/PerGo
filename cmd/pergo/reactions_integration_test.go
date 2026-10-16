@@ -202,7 +202,6 @@ func TestMessageReactionsIntegration(t *testing.T) {
 		Connections:       connRepo,
 		Workspaces:        wsRepo,
 		Publisher:         mockPub,
-		WebhookSubRepo:    webhookSubRepo,
 		WebhookDispatcher: webhookDispatcher,
 	}
 

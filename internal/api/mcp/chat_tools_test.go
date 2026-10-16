@@ -936,5 +936,42 @@ func TestMCPChatTools(t *testing.T) {
 			t.Errorf("expected chat_send_message reply_to_uid 'mcp-msg-1', got %+v", parsedSend.ReplyToUID)
 		}
 	})
+
+	t.Run("message_react_toggle", func(t *testing.T) {
+		res1, err := srv.CallTool(ctx, "message_react", map[string]any{
+			"workspace_id": ws.ID.String(),
+			"message_uid":  "mcp-msg-1",
+			"emoji":        "🔥",
+			"action":       "toggle",
+			"sender":       "ai_agent",
+		})
+		if err != nil || res1.IsError {
+			t.Fatalf("CallTool message_react toggle 1 failed: err=%v res=%+v", err, res1)
+		}
+		var parsed struct {
+			Action    string            `json:"action"`
+			Reactions []domain.Reaction `json:"reactions"`
+			Count     int               `json:"count"`
+		}
+		_ = json.Unmarshal([]byte(res1.Content[0].(mcp.TextContent).Text), &parsed)
+		if parsed.Action != "add" || parsed.Count != 1 {
+			t.Fatalf("expected toggle 1 to add reaction, got action=%q count=%d", parsed.Action, parsed.Count)
+		}
+
+		res2, err := srv.CallTool(ctx, "message_react", map[string]any{
+			"workspace_id": ws.ID.String(),
+			"message_uid":  "mcp-msg-1",
+			"emoji":        "🔥",
+			"action":       "toggle",
+			"sender":       "ai_agent",
+		})
+		if err != nil || res2.IsError {
+			t.Fatalf("CallTool message_react toggle 2 failed: err=%v res=%+v", err, res2)
+		}
+		_ = json.Unmarshal([]byte(res2.Content[0].(mcp.TextContent).Text), &parsed)
+		if parsed.Action != "remove" || parsed.Count != 0 {
+			t.Fatalf("expected toggle 2 to remove reaction, got action=%q count=%d", parsed.Action, parsed.Count)
+		}
+	})
 }
 

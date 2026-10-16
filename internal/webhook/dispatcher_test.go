@@ -22,6 +22,7 @@ import (
 
 type mockSubscriptionStore struct {
 	sub    *repository.WebhookSubscription
+	subs   []*repository.WebhookSubscription
 	getSub func(id uuid.UUID) (*repository.WebhookSubscription, error)
 }
 
@@ -29,10 +30,31 @@ func (m *mockSubscriptionStore) Get(ctx context.Context, id uuid.UUID) (*reposit
 	if m.getSub != nil {
 		return m.getSub(id)
 	}
+	for _, s := range m.subs {
+		if s.ID == id {
+			return s, nil
+		}
+	}
 	if m.sub != nil {
 		return m.sub, nil
 	}
 	return nil, repository.ErrWebhookSubscriptionNotFound
+}
+
+func (m *mockSubscriptionStore) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]*repository.WebhookSubscription, error) {
+	if len(m.subs) > 0 {
+		var out []*repository.WebhookSubscription
+		for _, s := range m.subs {
+			if s.WorkspaceID == workspaceID {
+				out = append(out, s)
+			}
+		}
+		return out, nil
+	}
+	if m.sub != nil && m.sub.WorkspaceID == workspaceID {
+		return []*repository.WebhookSubscription{m.sub}, nil
+	}
+	return nil, nil
 }
 
 type mockDLQStore struct {
@@ -966,3 +988,53 @@ func TestDefaultDispatcher_SSRFProtection_Contract(t *testing.T) {
 		}
 	})
 }
+
+func TestDefaultDispatcher_DispatchReaction(t *testing.T) {
+	wsID := uuid.New()
+	activeReactionSub := &repository.WebhookSubscription{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		URL:         "https://example.com/reactions",
+		EventTypes:  []string{"message.reaction.updated"},
+		Secret:      []byte("reaction-secret"),
+		Active:      true,
+	}
+	inactiveSub := &repository.WebhookSubscription{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		URL:         "https://example.com/inactive",
+		EventTypes:  []string{"message.reaction.updated"},
+		Active:      false,
+	}
+	unrelatedSub := &repository.WebhookSubscription{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		URL:         "https://example.com/messages-only",
+		EventTypes:  []string{"message.sent"},
+		Active:      true,
+	}
+
+	subStore := &mockSubscriptionStore{
+		subs: []*repository.WebhookSubscription{activeReactionSub, inactiveSub, unrelatedSub},
+	}
+	client := &mockHTTPClient{}
+
+	// Verify DispatchReaction is promoted onto the WebhookDispatcher interface
+	var dispatcher webhook.WebhookDispatcher = webhook.NewDefaultDispatcher(subStore, nil, nil, client, nil)
+
+	payload := []byte(`{"event":"message.reaction.updated","message_uid":"msg-1","emoji":"🔥","action":"add"}`)
+	if err := dispatcher.DispatchReaction(context.Background(), wsID, "msg-1", payload, "trace-rx-1"); err != nil {
+		t.Fatalf("DispatchReaction failed: %v", err)
+	}
+
+	if len(client.requests) != 1 {
+		t.Fatalf("expected 1 HTTP request to active matching subscription, got %d", len(client.requests))
+	}
+	if client.requests[0].URL.String() != "https://example.com/reactions" {
+		t.Errorf("expected request to https://example.com/reactions, got %s", client.requests[0].URL.String())
+	}
+	if sig := client.requests[0].Header.Get("X-PerGo-Signature"); sig == "" {
+		t.Errorf("expected X-PerGo-Signature header on reaction webhook")
+	}
+}
+
