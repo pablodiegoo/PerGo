@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -199,18 +200,70 @@ func (p *Processor) Ingest(
 		}
 	}
 
-	// 4.4 Smart Session Window Fallback (WABA freeform messages only)
-	if req.TemplateName == "" && conn.Channel == "whatsapp_cloud" && p.windowChecker != nil {
-		sessKey := domain.SessionKey{
-			WorkspaceID:       workspaceID,
-			RecipientPhone:    req.To,
-			Channel:           "whatsapp_cloud",
-			RecipientIdentity: conn.SenderIdentity,
+	// 4.4 Smart Session Window Fallback & Strict Service Window Enforcement (WABA freeform messages only)
+	var preloadedChat *domain.Chat
+	if p.chatRepo != nil {
+		if req.ChatID != nil && *req.ChatID != uuid.Nil {
+			if workspaceID != uuid.Nil {
+				preloadedChat, _ = p.chatRepo.GetChat(ctx, workspaceID, *req.ChatID)
+			} else {
+				preloadedChat, _ = p.chatRepo.GetChatByID(ctx, *req.ChatID)
+			}
+		} else if req.StrictServiceWindow && p.contactRepo != nil && req.To != "" {
+			if contact, cErr := p.contactRepo.ResolveContact(ctx, workspaceID, conn.Channel, req.To, "", "", req.To); cErr == nil && contact != nil {
+				preloadedChat, _ = p.chatRepo.FindOrCreateChat(ctx, workspaceID, &conn.ID, contact.ID)
+			}
 		}
-		status, err := p.windowChecker.IsWindowOpen(ctx, sessKey, 0)
-		if err != nil {
-			slog.Warn("outbound processor: window checker error", "error", err, "trace_id", traceID)
+	}
+
+	if req.TemplateName == "" && conn.Channel == "whatsapp_cloud" && (p.windowChecker != nil || (req.StrictServiceWindow && preloadedChat != nil)) {
+		var status *session.WindowStatus
+		if p.windowChecker != nil {
+			sessKey := domain.SessionKey{
+				WorkspaceID:       workspaceID,
+				RecipientPhone:    req.To,
+				Channel:           "whatsapp_cloud",
+				RecipientIdentity: conn.SenderIdentity,
+			}
+			s, wErr := p.windowChecker.IsWindowOpen(ctx, sessKey, 0)
+			if wErr != nil {
+				slog.Warn("outbound processor: window checker error", "error", wErr, "trace_id", traceID)
+			} else {
+				status = s
+			}
+		}
+
+		windowClosed := false
+		if preloadedChat != nil && preloadedChat.ServiceWindowExpiresAt != nil {
+			if !preloadedChat.IsServiceWindowOpen(time.Now().UTC()) {
+				windowClosed = true
+			} else if status != nil && !status.Open && !status.ExpiresAt.IsZero() {
+				windowClosed = true
+			}
+		} else if preloadedChat != nil && req.StrictServiceWindow {
+			if status != nil {
+				windowClosed = !status.Open
+			} else {
+				windowClosed = !preloadedChat.IsServiceWindowOpen(time.Now().UTC())
+			}
 		} else if status != nil && !status.Open {
+			windowClosed = true
+		}
+
+		if windowClosed {
+			if req.StrictServiceWindow {
+				return nil, &ValidationError{
+					Response: &domain.ErrorResponse{
+						Code:    "SESSION_WINDOW_EXPIRED",
+						Message: "free-form message blocked: 24h customer service window is closed; use an approved WABA template",
+					},
+					Err: &session.SessionWindowError{
+						Status: status,
+						Source: "ingestion",
+					},
+				}
+			}
+
 			var config struct {
 				DefaultTemplateName     string `json:"default_template_name"`
 				DefaultTemplateLanguage string `json:"default_template_language"`
@@ -374,69 +427,161 @@ func (p *Processor) Ingest(
 	}
 
 	// 5.5 Shared Team Inbox Tracking: Upsert Chat & Append Outbound ChatMessage
-	if p.chatRepo != nil && p.contactRepo != nil && conn != nil {
-		senderType := domain.SenderTypeHumanAgent
-		if req.Metadata != nil {
-			if st, ok := req.Metadata["sender_type"]; ok && st != "" {
-				senderType = domain.SenderType(st)
+	if p.chatRepo != nil && conn != nil {
+		var contact *domain.Contact
+		chat := preloadedChat
+
+		if p.contactRepo != nil {
+			if chat != nil && chat.ContactID != uuid.Nil {
+				contact, _ = p.contactRepo.GetByID(ctx, workspaceID, chat.ContactID)
+			}
+			if contact == nil && qMsg.To != "" {
+				contact, _ = p.contactRepo.ResolveContact(ctx, workspaceID, conn.Channel, qMsg.To, "", "", qMsg.To)
 			}
 		}
 
-		contact, cErr := p.contactRepo.ResolveContact(ctx, workspaceID, conn.Channel, req.To, "", "", req.To)
-		if cErr == nil && contact != nil {
-			chat, chatErr := p.chatRepo.FindOrCreateChat(ctx, workspaceID, &conn.ID, contact.ID)
-			if chatErr == nil && chat != nil {
-				if senderType == domain.SenderTypeHumanAgent {
-					_ = p.chatRepo.SetAIDisabled(ctx, workspaceID, chat.ID, true)
-					_ = p.contactRepo.UpdateBotState(ctx, workspaceID, contact.ID, false, &qMsg.QueuedAt)
+		if chat == nil && contact != nil {
+			chat, _ = p.chatRepo.FindOrCreateChat(ctx, workspaceID, &conn.ID, contact.ID)
+		}
 
-					if p.publisher != nil {
-						handoffPayload, _ := json.Marshal(map[string]interface{}{
-							"event":        "chat.handoff.human_takeover",
-							"workspace_id": workspaceID.String(),
-							"chat_id":      chat.ID.String(),
-							"contact_id":   contact.ID.String(),
-							"timestamp":    time.Now().UTC().Format(time.RFC3339),
-						})
-						_ = p.publisher.Publish(ctx, "chat.handoff.human_takeover", handoffPayload, traceID)
-						_ = p.publisher.Publish(ctx, fmt.Sprintf("chat.handoff.%s", workspaceID.String()), handoffPayload, traceID)
-					}
-				}
-				_ = p.chatRepo.TouchLastMessageAt(ctx, workspaceID, chat.ID, qMsg.QueuedAt)
-
-				bodyText := req.Body
-				if bodyText == "" && req.TemplateName != "" {
-					bodyText = fmt.Sprintf("[Template: %s]", req.TemplateName)
-				}
-
-				var mediaURL, mediaType *string
-				if req.Media != nil {
-					if req.Media.MediaURL != "" {
-						mediaURL = &req.Media.MediaURL
-					}
-					if req.Media.MediaType != "" {
-						mediaType = &req.Media.MediaType
-					}
-				}
-
-				chatMsg := &domain.ChatMessage{
-					ChatID:      chat.ID,
-					WorkspaceID: workspaceID,
-					UID:         traceID,
-					Direction:   domain.DirectionOutbound,
-					SenderType:  senderType,
-					SenderName:  req.Metadata["sender_name"],
-					SenderID:    conn.SenderIdentity,
-					Body:        bodyText,
-					MediaURL:    mediaURL,
-					MediaType:   mediaType,
-					IsPrivate:   false,
-					Reactions:   []domain.Reaction{},
-					Metadata:    map[string]interface{}{},
-					CreatedAt:   qMsg.QueuedAt,
-				}
-				_ = p.chatRepo.AddChatMessage(ctx, chatMsg)
+		if chat != nil {
+			senderName := strings.TrimSpace(req.SenderName)
+			if senderName == "" && req.Metadata != nil {
+				senderName = strings.TrimSpace(req.Metadata["sender_name"])
 			}
+
+			rawSenderType := strings.TrimSpace(req.SenderType)
+			if rawSenderType == "" && req.Metadata != nil {
+				rawSenderType = strings.TrimSpace(req.Metadata["sender_type"])
+			}
+
+			var senderType domain.SenderType
+			switch strings.ToLower(rawSenderType) {
+			case "human", "human_agent", "operator":
+				senderType = domain.SenderTypeHumanAgent
+			case "ai", "ai_agent", "bot":
+				senderType = domain.SenderTypeAIAgent
+			case "system":
+				senderType = domain.SenderTypeSystem
+			case "contact":
+				senderType = domain.SenderTypeContact
+			case "":
+				if req.DisableAI {
+					senderType = domain.SenderTypeHumanAgent
+				} else if senderName != "" {
+					senderType = domain.SenderTypeAIAgent
+				} else {
+					senderType = domain.SenderTypeHumanAgent
+				}
+			default:
+				senderType = domain.SenderType(rawSenderType)
+			}
+
+			var replyToUID *string
+			if req.ReplyToUID != nil && strings.TrimSpace(*req.ReplyToUID) != "" {
+				trimmed := strings.TrimSpace(*req.ReplyToUID)
+				replyToUID = &trimmed
+			} else if req.Metadata != nil {
+				if rUID := strings.TrimSpace(req.Metadata["reply_to_uid"]); rUID != "" {
+					replyToUID = &rUID
+				}
+			}
+
+			// Reopen snoozed or closed chat on outbound conversational activity
+			if chat.Status == domain.ChatStatusSnoozed || chat.Status == domain.ChatStatusClosed {
+				_ = p.chatRepo.UpdateChatStatus(ctx, workspaceID, chat.ID, string(domain.ChatStatusOpen))
+				chat.Status = domain.ChatStatusOpen
+				chat.SnoozedUntil = nil
+				if p.contactRepo != nil && contact != nil {
+					_ = p.contactRepo.ReopenThread(ctx, workspaceID, contact.ID)
+				}
+			}
+
+			shouldDisableAI := req.DisableAI || senderType == domain.SenderTypeHumanAgent
+			if shouldDisableAI {
+				_ = p.chatRepo.SetAIDisabled(ctx, workspaceID, chat.ID, true)
+				if p.contactRepo != nil {
+					targetContactID := chat.ContactID
+					if contact != nil && contact.ID != uuid.Nil {
+						targetContactID = contact.ID
+					}
+					if targetContactID != uuid.Nil {
+						now := qMsg.QueuedAt
+						_ = p.contactRepo.UpdateBotState(ctx, workspaceID, targetContactID, false, &now)
+					}
+				}
+
+				if p.publisher != nil {
+					targetContactID := chat.ContactID
+					if contact != nil && contact.ID != uuid.Nil {
+						targetContactID = contact.ID
+					}
+					handoffMap := map[string]interface{}{
+						"event":        "chat.handoff.human_takeover",
+						"workspace_id": workspaceID.String(),
+						"chat_id":      chat.ID.String(),
+						"contact_id":   targetContactID.String(),
+						"trace_id":     traceID,
+						"timestamp":    qMsg.QueuedAt.Format(time.RFC3339),
+					}
+					if senderName != "" {
+						handoffMap["sender_name"] = senderName
+					}
+					handoffPayload, _ := json.Marshal(handoffMap)
+					_ = p.publisher.Publish(ctx, "chat.handoff.human_takeover", handoffPayload, traceID)
+					_ = p.publisher.Publish(ctx, fmt.Sprintf("chat.handoff.%s", workspaceID.String()), handoffPayload, traceID)
+				}
+			}
+
+			_ = p.chatRepo.TouchLastMessageAt(ctx, workspaceID, chat.ID, qMsg.QueuedAt)
+
+			bodyText := qMsg.Body
+			if bodyText == "" && qMsg.TemplateName != "" {
+				if qMsg.Language != "" {
+					bodyText = fmt.Sprintf("[Template: %s (%s)]", qMsg.TemplateName, qMsg.Language)
+				} else {
+					bodyText = fmt.Sprintf("[Template: %s]", qMsg.TemplateName)
+				}
+			}
+
+			var mediaURL, mediaType *string
+			if qMsg.Media != nil {
+				if qMsg.Media.MediaURL != "" {
+					mediaURL = &qMsg.Media.MediaURL
+				}
+				if qMsg.Media.MediaType != "" {
+					mediaType = &qMsg.Media.MediaType
+				}
+			}
+
+			msgMetadata := make(map[string]interface{})
+			for k, v := range req.Metadata {
+				msgMetadata[k] = v
+			}
+			if qMsg.TemplateName != "" {
+				msgMetadata["template_name"] = qMsg.TemplateName
+				msgMetadata["language"] = qMsg.Language
+				msgMetadata["type"] = "template"
+			}
+
+			chatMsg := &domain.ChatMessage{
+				ChatID:      chat.ID,
+				WorkspaceID: workspaceID,
+				UID:         traceID,
+				Direction:   domain.DirectionOutbound,
+				SenderType:  senderType,
+				SenderName:  senderName,
+				SenderID:    conn.SenderIdentity,
+				Body:        bodyText,
+				MediaURL:    mediaURL,
+				MediaType:   mediaType,
+				IsPrivate:   false,
+				Reactions:   []domain.Reaction{},
+				ReplyToUID:  replyToUID,
+				Metadata:    msgMetadata,
+				CreatedAt:   qMsg.QueuedAt,
+			}
+			_ = p.chatRepo.AddChatMessage(ctx, chatMsg)
 		}
 	}
 

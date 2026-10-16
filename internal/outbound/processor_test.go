@@ -132,6 +132,7 @@ func (f *fakeRouteResolver) GetDefaultChannelConnection(ctx context.Context, wor
 // fakePublisher tracks NATS publishes.
 type fakePublisher struct {
 	published [][]byte
+	subjects  []string
 	err       error
 }
 
@@ -140,6 +141,7 @@ func (f *fakePublisher) Publish(ctx context.Context, subject string, data []byte
 		return f.err
 	}
 	f.published = append(f.published, data)
+	f.subjects = append(f.subjects, subject)
 	return nil
 }
 
@@ -848,6 +850,62 @@ func TestProcessor_WhatsAppCloudWindowIngestion(t *testing.T) {
 		}
 		if qMsg.Body != "Telegram message with no window check" {
 			t.Errorf("expected Body preserved, got %q", qMsg.Body)
+		}
+	})
+
+	t.Run("StrictServiceWindow blocks freeform WABA message when window is closed even if default template exists", func(t *testing.T) {
+		creds, _ := json.Marshal(map[string]string{
+			"default_template_name":     "reengagement_prompt",
+			"default_template_language": "pt_BR",
+		})
+		fallbackConn := &repository.Connection{
+			ID:             connID,
+			WorkspaceID:    wsID,
+			Name:           "WABA Fallback Conn",
+			Channel:        "whatsapp_cloud",
+			SenderIdentity: senderIdentity,
+			Credentials:    creds,
+			Status:         "connected",
+		}
+		sessionReader := &fakeSessionReader{
+			sess: &repository.RecipientSession{
+				SessionKey: domain.SessionKey{
+					WorkspaceID:       wsID,
+					RecipientPhone:    contactPhone,
+					Channel:           "whatsapp_cloud",
+					RecipientIdentity: senderIdentity,
+				},
+				LastInboundAt:  time.Now().Add(-30 * time.Hour),
+				EntryPointType: "standard",
+			},
+		}
+		strictPub := &fakePublisher{}
+		p := outbound.NewProcessor(nil, nil, &fakeRouteResolver{conn: fallbackConn}, strictPub)
+		p.SetWindowChecker(session.NewWindowChecker(sessionReader))
+
+		req := &domain.CreateMessageRequest{
+			ConversationalIngestFields: domain.ConversationalIngestFields{
+				StrictServiceWindow: true,
+			},
+			To:      contactPhone,
+			Channel: "whatsapp_cloud",
+			Body:    "Strict conversational reply outside 24h window",
+		}
+
+		_, err := p.Ingest(context.Background(), wsID, "trace-strict-window", req)
+		if err == nil {
+			t.Fatalf("expected error when StrictServiceWindow is true and window is closed, got nil")
+		}
+		var valErr *domain.ValidationError
+		if !errors.As(err, &valErr) {
+			t.Fatalf("expected *domain.ValidationError, got %T: %v", err, err)
+		}
+		expectedMsg := "free-form message blocked: 24h customer service window is closed; use an approved WABA template"
+		if valErr.Error() != expectedMsg {
+			t.Errorf("got error message %q, want %q", valErr.Error(), expectedMsg)
+		}
+		if len(strictPub.published) != 0 {
+			t.Errorf("expected 0 published messages when blocked by StrictServiceWindow, got %d", len(strictPub.published))
 		}
 	})
 }
