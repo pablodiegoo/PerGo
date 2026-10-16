@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/redis/go-redis/v9"
 )
 
 // getTestPool connects to a local test PostgreSQL database.
@@ -61,6 +63,7 @@ func getTestPool(t *testing.T) *pgxpool.Pool {
 
 // fakePublisher records published messages.
 type fakePublisher struct {
+	mu        sync.Mutex
 	published []struct {
 		subject string
 		data    []byte
@@ -70,6 +73,8 @@ type fakePublisher struct {
 }
 
 func (f *fakePublisher) Publish(ctx context.Context, subject string, data []byte, traceID string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.err != nil {
 		return f.err
 	}
@@ -938,12 +943,16 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 	pool := getTestPool(t)
 	defer pool.Close()
 
+	rdb := getTestRedisClient(t)
+	defer func() { _ = rdb.Close() }()
+
 	ctx := context.Background()
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	sessRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
 
 	ws, err := wsRepo.Create(ctx, "cooldown_test_ws_"+uuid.New().String())
 	if err != nil {
@@ -951,16 +960,41 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 	}
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
 
-	pub := &fakePublisher{}
-	me := &fakeMediaEngine{}
-	aud := &fakeAuditWriter{}
-	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
-
 	t.Run("Reset bot when paused for > 12 hours", func(t *testing.T) {
-		// 1. Resolve contact
+		pub := &fakePublisher{}
+		me := &fakeMediaEngine{}
+		aud := &fakeAuditWriter{}
+		syncer := &fakeChatwootSyncer{called: make(chan struct{})}
+		router := inbound.NewDefaultRouter(syncer)
+		coalescedChan := make(chan *inbound.CoalescedTurnEvent, 5)
+
+		// Create debouncer without explicit publisher to also verify SetDebouncer auto-binds pub
+		deb := inbound.NewDebouncer(
+			rdb,
+			inbound.WithDebounceTTL(60*time.Millisecond),
+			inbound.WithDebounceHandler(func(ctx context.Context, ev *inbound.CoalescedTurnEvent) error {
+				coalescedChan <- ev
+				return nil
+			}),
+		)
+		defer deb.Close()
+
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, router)
+		proc.SetChatRepository(chatRepo)
+		proc.SetDebouncer(deb)
+
+		// 1. Resolve contact & create chat with human takeover (bot_active=false, ai_disabled=true)
 		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "cooldown-gt-12", "Cooldown Greater", "", "")
 		if err != nil {
 			t.Fatalf("failed to resolve contact: %v", err)
+		}
+
+		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, nil, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to create chat: %v", err)
+		}
+		if err := chatRepo.SetAIDisabled(ctx, ws.ID, chat.ID, true); err != nil {
+			t.Fatalf("failed to set chat ai_disabled=true: %v", err)
 		}
 
 		// 2. Set bot paused state to 13 hours ago
@@ -997,13 +1031,80 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 		if updated.BotPausedAt != nil {
 			t.Errorf("expected bot_paused_at to be nil, got %v", updated.BotPausedAt)
 		}
+
+		// 5. Verify chat in DB also has ai_disabled = false
+		updatedChat, err := chatRepo.GetChat(ctx, ws.ID, chat.ID)
+		if err != nil {
+			t.Fatalf("failed to get chat: %v", err)
+		}
+		if updatedChat.AIDisabled {
+			t.Error("expected chat.ai_disabled to be reset to false after > 12h bot cooldown")
+		}
+
+		// 6. Verify InboundRouter proceeded
+		select {
+		case <-syncer.called:
+		case <-time.After(1 * time.Second):
+			t.Fatal("expected InboundRouter to route message after > 12h auto-reset")
+		}
+
+		// 7. Verify Debouncer enqueued and flushed coalesced turn via auto-bound publisher
+		select {
+		case ev := <-coalescedChan:
+			if ev.Body != "Hello, is bot active?" {
+				t.Errorf("unexpected coalesced body: %q", ev.Body)
+			}
+		case <-time.After(1 * time.Second):
+			t.Fatal("expected Debouncer to flush coalesced turn after > 12h auto-reset")
+		}
+
+		pub.mu.Lock()
+		var hasGlobalCoalesced, hasWsCoalesced bool
+		expectedWsSubject := inbound.EventChatInboundCoalesced + "." + ws.ID.String()
+		for _, p := range pub.published {
+			if p.subject == inbound.EventChatInboundCoalesced {
+				hasGlobalCoalesced = true
+			}
+			if p.subject == expectedWsSubject {
+				hasWsCoalesced = true
+			}
+		}
+		pub.mu.Unlock()
+		if !hasGlobalCoalesced || !hasWsCoalesced {
+			t.Errorf("expected both %s and %s to be published by auto-bound debouncer publisher", inbound.EventChatInboundCoalesced, expectedWsSubject)
+		}
 	})
 
 	t.Run("Do NOT reset bot when paused for < 12 hours", func(t *testing.T) {
-		// 1. Resolve contact
+		pub := &fakePublisher{}
+		me := &fakeMediaEngine{}
+		aud := &fakeAuditWriter{}
+		syncer := &fakeChatwootSyncer{called: make(chan struct{})}
+		router := inbound.NewDefaultRouter(syncer)
+		coalescedChan := make(chan *inbound.CoalescedTurnEvent, 5)
+
+		deb := inbound.NewDebouncer(
+			rdb,
+			inbound.WithDebounceTTL(60*time.Millisecond),
+			inbound.WithDebounceHandler(func(ctx context.Context, ev *inbound.CoalescedTurnEvent) error {
+				coalescedChan <- ev
+				return nil
+			}),
+		)
+		defer deb.Close()
+
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, router)
+		proc.SetChatRepository(chatRepo)
+		proc.SetDebouncer(deb)
+
+		// 1. Resolve contact & create chat (leave chat.AIDisabled = false to prove contact.BotActive=false alone also gates AI!)
 		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "cooldown-lt-12", "Cooldown Less", "", "")
 		if err != nil {
 			t.Fatalf("failed to resolve contact: %v", err)
+		}
+		_, err = chatRepo.FindOrCreateChat(ctx, ws.ID, nil, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to create chat: %v", err)
 		}
 
 		// 2. Set bot paused state to 1 hour ago
@@ -1039,6 +1140,17 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 		}
 		if updated.BotPausedAt == nil {
 			t.Error("expected bot_paused_at to remain set")
+		}
+
+		// 5. Verify both Debouncer and InboundRouter were gated off because contact.BotActive is false
+		time.Sleep(150 * time.Millisecond)
+		if len(coalescedChan) != 0 {
+			t.Errorf("expected Debouncer to be gated off when contact.BotActive is false, got %d events", len(coalescedChan))
+		}
+		select {
+		case <-syncer.called:
+			t.Error("expected InboundRouter to be gated off when contact.BotActive is false")
+		default:
 		}
 	})
 }
@@ -1698,3 +1810,83 @@ func TestParseUnixTimestamp_And_Millis(t *testing.T) {
 		}
 	})
 }
+
+func getTestRedisClient(t *testing.T) *redis.Client {
+	t.Helper()
+	redisAddr := os.Getenv("PERGO_TEST_REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "127.0.0.1:6379"
+	}
+	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		_ = rdb.Close()
+		t.Skipf("skipping: Redis not available at %s: %v", redisAddr, err)
+	}
+	return rdb
+}
+
+func TestInboundProcessor_Close_StopsDebounceTimers(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	rdb := getTestRedisClient(t)
+	defer func() { _ = rdb.Close() }()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "close_timer_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	pub := &fakePublisher{}
+	coalescedChan := make(chan *inbound.CoalescedTurnEvent, 5)
+
+	deb := inbound.NewDebouncer(
+		rdb,
+		inbound.WithDebounceTTL(120*time.Millisecond),
+		inbound.WithDebounceHandler(func(ctx context.Context, ev *inbound.CoalescedTurnEvent) error {
+			coalescedChan <- ev
+			return nil
+		}),
+	)
+
+	proc := inbound.NewInboundProcessor(nil, wsRepo, nil, pub, nil, nil, contactRepo, nil, nil)
+	proc.SetChatRepository(chatRepo)
+	proc.SetDebouncer(deb)
+
+	ev := &inbound.InboundEvent{
+		WorkspaceID: ws.ID,
+		MessageID:   "msg-close-timer-1",
+		Channel:     "telegram",
+		From:        "close-timer-user-1",
+		To:          "@test_bot",
+		Body:        "Should not flush after Close()",
+		OccurredAt:  time.Now().UTC(),
+	}
+
+	if err := proc.Process(ctx, ev); err != nil {
+		t.Fatalf("Process failed: %v", err)
+	}
+
+	// Stop active debounce timers via InboundProcessor.Close() before TTL expires
+	proc.Close()
+
+	// Wait past the 120ms debounce window
+	time.Sleep(220 * time.Millisecond)
+
+	if len(coalescedChan) != 0 {
+		t.Fatalf("expected 0 coalesced events after proc.Close(), got %d", len(coalescedChan))
+	}
+
+	// Also verify Close() on a processor without a debouncer is a safe no-op
+	procNoDeb := inbound.NewInboundProcessor(nil, wsRepo, nil, nil, nil, nil, nil, nil, nil)
+	procNoDeb.Close()
+}
+
