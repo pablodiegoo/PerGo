@@ -189,6 +189,7 @@ func TestInboxHandler_PollMessages_NoContent(t *testing.T) {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
 
 	ws, err := wsRepo.Create(ctx, "Inbox Test Workspace No Content")
 	if err != nil {
@@ -203,25 +204,31 @@ func TestInboxHandler_PollMessages_NoContent(t *testing.T) {
 		t.Fatalf("failed to resolve contact1: %v", err)
 	}
 
+	chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, nil, contact.ID)
+	if err != nil {
+		t.Fatalf("failed to create chat: %v", err)
+	}
+
 	insertInbound := func(id uuid.UUID, from, channel, to, body string, createdAt time.Time) uuid.UUID {
-		payload := map[string]any{
-			"event":        "inbound_message",
-			"trace_id":     uuid.New().String(),
-			"message_id":   uuid.New().String(),
-			"channel":      channel,
-			"timestamp":    createdAt.Format(time.RFC3339),
-			"workspace_id": ws.ID.String(),
-			"from":         from,
-			"to":           to,
-			"body":         body,
-		}
-		payloadBytes, _ := json.Marshal(payload)
-		_, err := pool.Exec(ctx, `
-			INSERT INTO audit_logs (id, workspace_id, trace_id, event_type, payload, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6)
-		`, id, ws.ID, payload["trace_id"], "inbound_message", payloadBytes, createdAt)
+		err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+			ID:          id,
+			ChatID:      chat.ID,
+			WorkspaceID: ws.ID,
+			UID:         uuid.New().String(),
+			Direction:   domain.DirectionInbound,
+			SenderType:  domain.SenderTypeContact,
+			SenderName:  "Contact One",
+			SenderID:    from,
+			Body:        body,
+			Metadata: map[string]interface{}{
+				"channel": channel,
+				"from":    from,
+				"to":      to,
+			},
+			CreatedAt: createdAt,
+		})
 		if err != nil {
-			t.Fatalf("failed to insert inbound log: %v", err)
+			t.Fatalf("failed to insert inbound chat message: %v", err)
 		}
 		return id
 	}
@@ -232,6 +239,7 @@ func TestInboxHandler_PollMessages_NoContent(t *testing.T) {
 
 	h := &admin.InboxHandler{
 		Repo:        auditRepo,
+		ChatRepo:    chatRepo,
 		ContactRepo: contactRepo,
 	}
 
@@ -286,6 +294,7 @@ func TestInboxHandler_PollMessages_NewMessages(t *testing.T) {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
 
 	ws, err := wsRepo.Create(ctx, "Inbox Test Workspace New Messages")
 	if err != nil {
@@ -300,25 +309,32 @@ func TestInboxHandler_PollMessages_NewMessages(t *testing.T) {
 		t.Fatalf("failed to resolve contact1: %v", err)
 	}
 
+	chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, nil, contact.ID)
+	if err != nil {
+		t.Fatalf("failed to create chat: %v", err)
+	}
+	_ = chatRepo.UpdateChatUnreadCount(ctx, ws.ID, chat.ID, 2)
+
 	insertInbound := func(id uuid.UUID, from, channel, to, body string, createdAt time.Time) uuid.UUID {
-		payload := map[string]any{
-			"event":        "inbound_message",
-			"trace_id":     uuid.New().String(),
-			"message_id":   uuid.New().String(),
-			"channel":      channel,
-			"timestamp":    createdAt.Format(time.RFC3339),
-			"workspace_id": ws.ID.String(),
-			"from":         from,
-			"to":           to,
-			"body":         body,
-		}
-		payloadBytes, _ := json.Marshal(payload)
-		_, err := pool.Exec(ctx, `
-			INSERT INTO audit_logs (id, workspace_id, trace_id, event_type, payload, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6)
-		`, id, ws.ID, payload["trace_id"], "inbound_message", payloadBytes, createdAt)
+		err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+			ID:          id,
+			ChatID:      chat.ID,
+			WorkspaceID: ws.ID,
+			UID:         uuid.New().String(),
+			Direction:   domain.DirectionInbound,
+			SenderType:  domain.SenderTypeContact,
+			SenderName:  "Contact One",
+			SenderID:    from,
+			Body:        body,
+			Metadata: map[string]interface{}{
+				"channel": channel,
+				"from":    from,
+				"to":      to,
+			},
+			CreatedAt: createdAt,
+		})
 		if err != nil {
-			t.Fatalf("failed to insert inbound log: %v", err)
+			t.Fatalf("failed to insert inbound chat message: %v", err)
 		}
 		return id
 	}
@@ -331,6 +347,7 @@ func TestInboxHandler_PollMessages_NewMessages(t *testing.T) {
 
 	h := &admin.InboxHandler{
 		Repo:        auditRepo,
+		ChatRepo:    chatRepo,
 		ContactRepo: contactRepo,
 	}
 
@@ -366,6 +383,15 @@ func TestInboxHandler_PollMessages_NewMessages(t *testing.T) {
 
 	if !strings.Contains(body, `hx-swap-oob="true"`) {
 		t.Errorf("expected body to contain 'hx-swap-oob=\"true\"', got: %s", body)
+	}
+
+	// Verify PollMessages reset unread_count on the chat
+	updatedChat, err := chatRepo.GetChat(ctx, ws.ID, chat.ID)
+	if err != nil {
+		t.Fatalf("GetChat failed: %v", err)
+	}
+	if updatedChat.UnreadCount != 0 {
+		t.Errorf("expected UnreadCount=0 after PollMessages, got %d", updatedChat.UnreadCount)
 	}
 }
 
@@ -975,6 +1001,7 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 	auditRepo := repository.NewAuditRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	sessionRepo := repository.NewRecipientSessionRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
 	encryptor, _ := crypto.NewEncryptor([]byte("dev-development-key-32-bytes-kek"))
 	connRepo := repository.NewConnectionRepository(pool, encryptor)
 
@@ -1008,8 +1035,14 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 		t.Fatalf("failed to resolve contact: %v", err)
 	}
 
+	chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &conn.ID, contact.ID)
+	if err != nil {
+		t.Fatalf("failed to find or create chat: %v", err)
+	}
+
 	h := &admin.InboxHandler{
 		Repo:        auditRepo,
+		ChatRepo:    chatRepo,
 		Sessions:    sessionRepo,
 		Workspaces:  wsRepo,
 		Connections: connRepo,
@@ -1019,10 +1052,10 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 	bannerText := "Janela de atendimento (24h) fechada para este contato"
 
 	t.Run("hides banner when active 24h standard session exists for contact and connection sender", func(t *testing.T) {
-		sessKey := domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", "+5511888880000")
-		err := sessionRepo.Upsert(ctx, sessKey, time.Now().UTC().Add(-2*time.Hour), "standard")
+		expiresAt := time.Now().UTC().Add(22 * time.Hour)
+		_, err := pool.Exec(ctx, `UPDATE chats SET service_window_expires_at = $1 WHERE workspace_id = $2 AND id = $3`, expiresAt, ws.ID, chat.ID)
 		if err != nil {
-			t.Fatalf("failed to upsert session: %v", err)
+			t.Fatalf("failed to update chat service window: %v", err)
 		}
 
 		e := echo.New()
@@ -1049,10 +1082,10 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 	})
 
 	t.Run("hides banner when active 72h CTWA session exists for contact and connection sender", func(t *testing.T) {
-		sessKey := domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", "+5511888880000")
-		err := sessionRepo.Upsert(ctx, sessKey, time.Now().UTC().Add(-30*time.Hour), "ctwa")
+		expiresAt := time.Now().UTC().Add(42 * time.Hour)
+		_, err := pool.Exec(ctx, `UPDATE chats SET service_window_expires_at = $1 WHERE workspace_id = $2 AND id = $3`, expiresAt, ws.ID, chat.ID)
 		if err != nil {
-			t.Fatalf("failed to upsert session: %v", err)
+			t.Fatalf("failed to update chat service window: %v", err)
 		}
 
 		e := echo.New()
@@ -1079,10 +1112,10 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 	})
 
 	t.Run("shows banner when session is expired (>24h for standard)", func(t *testing.T) {
-		sessKey := domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", "+5511888880000")
-		err := sessionRepo.Upsert(ctx, sessKey, time.Now().UTC().Add(-26*time.Hour), "standard")
+		expiresAt := time.Now().UTC().Add(-2 * time.Hour)
+		_, err := pool.Exec(ctx, `UPDATE chats SET service_window_expires_at = $1 WHERE workspace_id = $2 AND id = $3`, expiresAt, ws.ID, chat.ID)
 		if err != nil {
-			t.Fatalf("failed to upsert session: %v", err)
+			t.Fatalf("failed to update chat service window: %v", err)
 		}
 
 		e := echo.New()
@@ -1538,3 +1571,95 @@ func TestInboxHandler_OperatorRBAC_Blocked(t *testing.T) {
 	})
 }
 
+func TestInboxHandler_ViewAndChatPanel_UnreadSyncViaChatEngine(t *testing.T) {
+	pool := getTestPool(t)
+	if pool == nil {
+		t.Skip("skipping: PostgreSQL not available")
+	}
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "inbox-unread-sync-"+uuid.New().String()[:8])
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	contactRepo := repository.NewContactRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "+5511977776666", "Helena Unread", "", "+5511977776666")
+	if err != nil {
+		t.Fatalf("resolve contact: %v", err)
+	}
+
+	chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, nil, contact.ID)
+	if err != nil {
+		t.Fatalf("find or create chat: %v", err)
+	}
+	if err := chatRepo.UpdateChatUnreadCount(ctx, ws.ID, chat.ID, 3); err != nil {
+		t.Fatalf("set unread count: %v", err)
+	}
+
+	if err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+		ChatID:      chat.ID,
+		WorkspaceID: ws.ID,
+		UID:         "unread-msg-1",
+		Direction:   domain.DirectionInbound,
+		SenderType:  domain.SenderTypeContact,
+		Body:        "Mensagem nao lida sincronizada",
+		Metadata: map[string]any{
+			"channel": "whatsapp",
+			"from":    "+5511977776666",
+		},
+	}); err != nil {
+		t.Fatalf("add chat message: %v", err)
+	}
+
+	h := &admin.InboxHandler{
+		ChatRepo:    chatRepo,
+		ContactRepo: contactRepo,
+		Workspaces:  wsRepo,
+	}
+
+	// 1. View renders conversation from chats + chat_messages
+	e := echo.New()
+	viewReq := httptest.NewRequest(http.MethodGet, "/admin/inbox", nil)
+	viewReq = withWorkspaceContext(viewReq, ws.ID)
+	viewRec := httptest.NewRecorder()
+	viewCtx := e.NewContext(viewReq, viewRec)
+
+	if err := h.View(viewCtx); err != nil {
+		t.Fatalf("View error: %v", err)
+	}
+	if viewRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK from View, got %d", viewRec.Code)
+	}
+	if !strings.Contains(viewRec.Body.String(), "Helena Unread") {
+		t.Errorf("expected View to render contact Helena Unread")
+	}
+
+	// 2. ChatPanel renders thread and resets chats.unread_count to 0
+	panelReq := httptest.NewRequest(http.MethodGet, "/admin/inbox/chat?contact_id="+contact.ID.String(), nil)
+	panelReq.Header.Set("HX-Request", "true")
+	panelReq = withWorkspaceContext(panelReq, ws.ID)
+	panelRec := httptest.NewRecorder()
+	panelCtx := e.NewContext(panelReq, panelRec)
+
+	if err := h.ChatPanel(panelCtx); err != nil {
+		t.Fatalf("ChatPanel error: %v", err)
+	}
+	if panelRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK from ChatPanel, got %d", panelRec.Code)
+	}
+	if !strings.Contains(panelRec.Body.String(), "Mensagem nao lida sincronizada") {
+		t.Errorf("expected ChatPanel to render message body")
+	}
+
+	updatedChat, err := chatRepo.GetChat(ctx, ws.ID, chat.ID)
+	if err != nil {
+		t.Fatalf("get chat: %v", err)
+	}
+	if updatedChat.UnreadCount != 0 {
+		t.Errorf("expected chats.unread_count to be reset to 0 after ChatPanel, got %d", updatedChat.UnreadCount)
+	}
+}

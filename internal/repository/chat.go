@@ -49,7 +49,10 @@ func (r *ChatRepository) FindOrCreateChat(
 		       tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
 		       created_at, updated_at
 		FROM chats
-		WHERE workspace_id = $1 AND contact_id = $2 AND (connection_id = $3 OR (connection_id IS NULL AND $3 IS NULL))
+		WHERE workspace_id = $1 AND contact_id = $2
+		  AND ($3::uuid IS NULL OR connection_id = $3 OR connection_id IS NULL)
+		ORDER BY (connection_id = $3) DESC NULLS LAST, (connection_id IS NOT NULL) DESC, last_message_at DESC
+		LIMIT 1
 	`, workspaceID, contactID, connectionID).Scan(
 		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
 		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &chat.AIDisabled,
@@ -57,6 +60,16 @@ func (r *ChatRepository) FindOrCreateChat(
 	)
 
 	if err == nil {
+		if connectionID != nil && *connectionID != uuid.Nil && chat.ConnectionID == nil {
+			_, _ = r.pool.Exec(ctx, `
+				UPDATE chats SET connection_id = $3, updated_at = NOW()
+				WHERE id = $1 AND workspace_id = $2
+				  AND NOT EXISTS (
+				      SELECT 1 FROM chats WHERE workspace_id = $2 AND connection_id = $3 AND contact_id = $4
+				  )
+			`, chat.ID, workspaceID, connectionID, contactID)
+			chat.ConnectionID = connectionID
+		}
 		if len(metaBytes) > 0 {
 			_ = json.Unmarshal(metaBytes, &chat.Metadata)
 		}
@@ -157,7 +170,7 @@ func (r *ChatRepository) GetChatByContact(ctx context.Context, workspaceID, cont
 		       created_at, updated_at
 		FROM chats
 		WHERE workspace_id = $1 AND contact_id = $2
-		ORDER BY last_message_at DESC
+		ORDER BY (connection_id IS NOT NULL) DESC, last_message_at DESC
 		LIMIT 1
 	`, workspaceID, contactID).Scan(
 		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
@@ -178,6 +191,7 @@ func (r *ChatRepository) GetChatByContact(ctx context.Context, workspaceID, cont
 	if chat.Metadata == nil {
 		chat.Metadata = make(map[string]interface{})
 	}
+	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen()
 
 	return &chat, nil
 }
@@ -216,6 +230,7 @@ func (r *ChatRepository) GetChatByID(ctx context.Context, chatID uuid.UUID) (*do
 	if chat.Metadata == nil {
 		chat.Metadata = make(map[string]interface{})
 	}
+	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen()
 
 	return &chat, nil
 }
@@ -1000,3 +1015,276 @@ func (r *ChatRepository) RemoveReaction(ctx context.Context, workspaceID uuid.UU
 	_, _, reactions, err := r.MutateReaction(ctx, workspaceID, uid, emoji, sender, "remove")
 	return reactions, err
 }
+
+// ResetUnreadByContact resets unread_count = 0 across all chats belonging to a contact in a workspace.
+func (r *ChatRepository) ResetUnreadByContact(ctx context.Context, workspaceID, contactID uuid.UUID) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
+	if contactID == uuid.Nil {
+		return errors.New("contact_id is required")
+	}
+	_, err := r.pool.Exec(ctx, `
+		UPDATE chats
+		SET unread_count = 0, updated_at = NOW()
+		WHERE workspace_id = $1 AND contact_id = $2 AND unread_count > 0
+	`, workspaceID, contactID)
+	return err
+}
+
+// ConversationSummary represents a contact-level conversation card.
+type ConversationSummary struct {
+	ChatID            uuid.UUID  `json:"chat_id,omitempty"`
+	ContactID         uuid.UUID  `json:"contact_id"`
+	ContactName       string     `json:"contact_name"`
+	LastMessageBody   string     `json:"last_message_body"`
+	LastMessageTime   time.Time  `json:"last_message_time"`
+	TotalMessageCount int64      `json:"total_message_count"`
+	Channel           string     `json:"channel"`            // channel of last message
+	RecipientIdentity string     `json:"recipient_identity"` // recipient identity of last message
+	Status            string     `json:"status,omitempty"`
+	SnoozedUntil      *time.Time `json:"snoozed_until,omitempty"`
+	AssignedEmail     *string    `json:"assigned_email,omitempty"`
+	Tags              []string   `json:"tags,omitempty"`
+	UnreadCount       int        `json:"unread_count,omitempty"`
+	Unread            bool       `json:"unread,omitempty"`
+}
+
+// ThreadMessage represents a single message in a chronological conversation thread.
+type ThreadMessage struct {
+	ID        uuid.UUID         `json:"id"`
+	UID       string            `json:"uid,omitempty"`
+	TraceID   string            `json:"trace_id"`
+	Direction string            `json:"direction"` // "inbound", "outbound", or "internal_note"
+	Body      string            `json:"body"`
+	CreatedAt time.Time         `json:"created_at"`
+	Status    *string           `json:"status"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
+	Reactions []domain.Reaction `json:"reactions,omitempty"`
+}
+
+// ListConversations lists unified conversations grouped by contact_id in a single query from chats and chat_messages.
+func (r *ChatRepository) ListConversations(ctx context.Context, workspaceID uuid.UUID, channelFilter string) ([]ConversationSummary, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
+
+	query := `
+		WITH ContactChats AS (
+			SELECT
+				c.id AS chat_id,
+				c.workspace_id,
+				c.contact_id,
+				c.connection_id,
+				c.status,
+				c.snoozed_until,
+				c.assigned_email,
+				c.tags,
+				c.unread_count,
+				c.last_message_at,
+				ROW_NUMBER() OVER (
+					PARTITION BY c.contact_id
+					ORDER BY (c.connection_id IS NOT NULL) DESC, c.last_message_at DESC, c.updated_at DESC
+				) AS chat_rn,
+				SUM(c.unread_count) OVER (PARTITION BY c.contact_id) AS total_unread_count
+			FROM chats c
+			WHERE c.workspace_id = $1
+		),
+		AllMessages AS (
+			SELECT
+				cm.id,
+				cm.created_at,
+				COALESCE(cm.body, '') AS body,
+				c.contact_id,
+				COALESCE(ct.name, '') AS contact_name,
+				COALESCE(
+					NULLIF(cm.metadata->>'channel', ''),
+					conn.channel,
+					(SELECT ci.channel FROM contact_identities ci WHERE ci.workspace_id = cm.workspace_id AND ci.contact_id = c.contact_id LIMIT 1),
+					''
+				) AS channel,
+				CASE
+					WHEN cm.direction = 'outbound' THEN COALESCE(
+						NULLIF(cm.metadata->>'sender_identity', ''),
+						NULLIF(cm.sender_id, ''),
+						conn.sender_identity,
+						''
+					)
+					ELSE COALESCE(
+						NULLIF(cm.metadata->>'to', ''),
+						NULLIF(cm.metadata->>'sender_identity', ''),
+						conn.sender_identity,
+						''
+					)
+				END AS recipient_identity
+			FROM chat_messages cm
+			JOIN chats c ON c.id = cm.chat_id AND c.workspace_id = cm.workspace_id
+			JOIN contacts ct ON ct.id = c.contact_id AND ct.workspace_id = cm.workspace_id
+			LEFT JOIN connections conn ON conn.id = c.connection_id AND conn.workspace_id = cm.workspace_id
+			WHERE cm.workspace_id = $1
+			  AND NOT cm.is_private
+			  AND cm.direction IN ('inbound', 'outbound')
+		),
+		FilteredMessages AS (
+			SELECT * FROM AllMessages
+			WHERE ($2 = '' OR recipient_identity = $2 OR channel = $2)
+		),
+		RankedConversations AS (
+			SELECT
+				fm.contact_id,
+				fm.contact_name,
+				fm.channel,
+				fm.recipient_identity,
+				fm.body,
+				fm.created_at,
+				ROW_NUMBER() OVER (PARTITION BY fm.contact_id ORDER BY fm.created_at DESC, fm.id DESC) AS rn,
+				COUNT(*) OVER (PARTITION BY fm.contact_id) AS total_count
+			FROM FilteredMessages fm
+		)
+		SELECT
+			cc.chat_id,
+			rc.contact_id,
+			COALESCE(rc.contact_name, ''),
+			COALESCE(rc.channel, ''),
+			COALESCE(rc.recipient_identity, ''),
+			COALESCE(rc.body, ''),
+			rc.created_at,
+			rc.total_count,
+			COALESCE(cc.status, 'open'),
+			cc.snoozed_until,
+			cc.assigned_email,
+			COALESCE(cc.tags, '{}'),
+			COALESCE(cc.total_unread_count, 0)::int
+		FROM RankedConversations rc
+		JOIN ContactChats cc ON cc.contact_id = rc.contact_id AND cc.chat_rn = 1
+		WHERE rc.rn = 1
+		ORDER BY rc.created_at DESC, rc.contact_id ASC
+	`
+
+	rows, err := r.pool.Query(ctx, query, workspaceID, channelFilter)
+	if err != nil {
+		return nil, fmt.Errorf("query conversations list: %w", err)
+	}
+	defer rows.Close()
+
+	var summaries []ConversationSummary
+	for rows.Next() {
+		var s ConversationSummary
+		if err := rows.Scan(
+			&s.ChatID,
+			&s.ContactID,
+			&s.ContactName,
+			&s.Channel,
+			&s.RecipientIdentity,
+			&s.LastMessageBody,
+			&s.LastMessageTime,
+			&s.TotalMessageCount,
+			&s.Status,
+			&s.SnoozedUntil,
+			&s.AssignedEmail,
+			&s.Tags,
+			&s.UnreadCount,
+		); err != nil {
+			return nil, fmt.Errorf("scan conversation summary: %w", err)
+		}
+		s.Unread = s.UnreadCount > 0
+		summaries = append(summaries, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate conversations: %w", err)
+	}
+
+	return summaries, nil
+}
+
+// ListThreadByContact returns chronological thread messages for a contact in a workspace from chat_messages and message_dispatches.
+func (r *ChatRepository) ListThreadByContact(ctx context.Context, workspaceID uuid.UUID, contactID uuid.UUID, afterID *uuid.UUID) ([]ThreadMessage, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
+
+	query := `
+		SELECT
+			cm.id,
+			cm.uid AS trace_id,
+			cm.direction,
+			COALESCE(cm.body, '') AS body,
+			cm.created_at,
+			CASE WHEN cm.direction = 'outbound' THEN md.status ELSE NULL END AS status,
+			jsonb_strip_nulls(
+				jsonb_build_object(
+					'sender_name', NULLIF(cm.sender_name, ''),
+					'sender_type', NULLIF(cm.sender_type, ''),
+					'author_name', CASE WHEN cm.is_private OR cm.direction = 'internal_note' THEN COALESCE(NULLIF(cm.sender_name, ''), 'AI Assistant') ELSE NULLIF(cm.sender_name, '') END,
+					'is_private', CASE WHEN cm.is_private THEN 'true' ELSE NULL END,
+					'reply_to_uid', cm.reply_to_uid,
+					'media_url', cm.media_url,
+					'media_type', cm.media_type
+				)
+			) || COALESCE(cm.metadata, '{}'::jsonb) AS metadata,
+			cm.uid AS uid,
+			COALESCE(cm.reactions, '[]'::jsonb) AS reactions
+		FROM chat_messages cm
+		JOIN chats c ON c.id = cm.chat_id AND c.workspace_id = cm.workspace_id
+		LEFT JOIN LATERAL (
+			SELECT d.status
+			FROM message_dispatches d
+			WHERE d.workspace_id = cm.workspace_id AND d.trace_id = cm.uid
+			ORDER BY d.updated_at DESC
+			LIMIT 1
+		) md ON cm.direction = 'outbound'
+		WHERE cm.workspace_id = $1
+		  AND c.contact_id = $2
+		  AND (
+			  $3::uuid IS NULL
+			  OR (cm.created_at, cm.id) > (
+				  SELECT m2.created_at, m2.id
+				  FROM chat_messages m2
+				  WHERE m2.workspace_id = $1 AND m2.id = $3::uuid
+			  )
+		  )
+		ORDER BY cm.created_at ASC, cm.id ASC
+	`
+
+	rows, err := r.pool.Query(ctx, query, workspaceID, contactID, afterID)
+	if err != nil {
+		return nil, fmt.Errorf("query thread messages: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []ThreadMessage
+	for rows.Next() {
+		var m ThreadMessage
+		var metaBytes []byte
+		var reactionsBytes []byte
+		if err := rows.Scan(&m.ID, &m.TraceID, &m.Direction, &m.Body, &m.CreatedAt, &m.Status, &metaBytes, &m.UID, &reactionsBytes); err != nil {
+			return nil, fmt.Errorf("scan thread message: %w", err)
+		}
+		if len(reactionsBytes) > 0 {
+			_ = json.Unmarshal(reactionsBytes, &m.Reactions)
+		}
+		if len(metaBytes) > 0 {
+			var metaAny map[string]any
+			if err := json.Unmarshal(metaBytes, &metaAny); err == nil && len(metaAny) > 0 {
+				m.Metadata = make(map[string]string)
+				for k, v := range metaAny {
+					switch val := v.(type) {
+					case string:
+						m.Metadata[k] = val
+					default:
+						if b, err := json.Marshal(val); err == nil {
+							m.Metadata[k] = string(b)
+						}
+					}
+				}
+			}
+		}
+		messages = append(messages, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate thread messages: %w", err)
+	}
+
+	return messages, nil
+}
+

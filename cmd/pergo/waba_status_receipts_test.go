@@ -7,13 +7,14 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/pablojhp.pergo/internal/api/handler"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
@@ -41,6 +42,15 @@ func TestWABAStatusReceiptsEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to ensure INBOUND stream: %v", err)
 	}
+	if js, jsErr := jetstream.New(nc); jsErr == nil {
+		_, _ = js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
+			Name:      "INBOUND",
+			Subjects:  []string{"inbound.events.>", "messages.events.>", "messages.status_updated"},
+			Retention: jetstream.LimitsPolicy,
+			MaxMsgs:   10000,
+			Storage:   jetstream.FileStorage,
+		})
+	}
 	_, err = queue.EnsureStream(ctx, nc)
 	if err != nil {
 		t.Fatalf("failed to ensure MESSAGES stream: %v", err)
@@ -55,7 +65,7 @@ func TestWABAStatusReceiptsEndToEnd(t *testing.T) {
 	publisher := queue.NewJetStreamPublisher(nc)
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
-	auditRepo := repository.NewAuditRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
 
 	// 1. Setup a Workspace
 	ws, err := wsRepo.Create(ctx, "waba_status_integration_ws_"+uuid.New().String())
@@ -102,23 +112,26 @@ func TestWABAStatusReceiptsEndToEnd(t *testing.T) {
 		t.Fatalf("failed to update provider message id: %v", err)
 	}
 
-	// Insert outbound log with the same trace ID so ListThreadByContact lists it
-	payloadOut := map[string]any{
-		"request": map[string]any{
-			"to":              "5511999990000",
-			"channel":         "whatsapp_cloud",
-			"sender_identity": "123456789",
-			"body":            "End-To-End Status Test Outbound Message",
-		},
-		"status": "queued",
-	}
-	payloadBytesOut, _ := json.Marshal(payloadOut)
-	_, err = pool.Exec(ctx, `
-		INSERT INTO audit_logs (id, workspace_id, trace_id, event_type, payload, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
-	`, uuid.New(), ws.ID, traceID, "outbound_message", payloadBytesOut, time.Now().UTC())
+	// Insert outbound chat message with the same trace ID so ListThreadByContact lists it
+	chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &conn.ID, contact.ID)
 	if err != nil {
-		t.Fatalf("failed to insert outbound audit log: %v", err)
+		t.Fatalf("failed to find or create chat: %v", err)
+	}
+	err = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+		ChatID:      chat.ID,
+		WorkspaceID: ws.ID,
+		UID:         traceID,
+		Direction:   "outbound",
+		SenderType:  domain.SenderTypeHumanAgent,
+		Body:        "End-To-End Status Test Outbound Message",
+		Metadata: map[string]any{
+			"channel":         "whatsapp_cloud",
+			"to":              "5511999990000",
+			"sender_identity": "123456789",
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to insert outbound chat message: %v", err)
 	}
 
 	// 5. Setup handler
@@ -126,6 +139,7 @@ func TestWABAStatusReceiptsEndToEnd(t *testing.T) {
 	defer auditWriter.Close()
 
 	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, publisher, auditWriter, sessRepo, contactRepo, dispatchRepo, nil)
+	inboundProcessor.SetChatRepository(chatRepo)
 	h := handler.NewWABAWebhookHandler(connRepo, inboundProcessor, nil)
 	h.SetVerifySignature(false)
 
@@ -242,7 +256,7 @@ func TestWABAStatusReceiptsEndToEnd(t *testing.T) {
 	}
 
 	// 8. Call ListThreadByContact and verify dispatch status is returned
-	thread, err := auditRepo.ListThreadByContact(ctx, ws.ID, contact.ID, nil)
+	thread, err := chatRepo.ListThreadByContact(ctx, ws.ID, contact.ID, nil)
 	if err != nil {
 		t.Fatalf("ListThreadByContact failed: %v", err)
 	}

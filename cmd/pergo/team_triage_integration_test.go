@@ -119,7 +119,23 @@ func TestTeamTriageIntegration(t *testing.T) {
 		t.Fatalf("failed to find or create chat: %v", err)
 	}
 
-	// Insert audit message so ListConversations finds the thread
+	// Insert chat message and audit message so ListConversations finds the thread
+	err = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+		ChatID:      chat.ID,
+		WorkspaceID: ws.ID,
+		UID:         "trace-triage-1001",
+		Direction:   "inbound",
+		SenderType:  domain.SenderTypeContact,
+		Body:        "Preciso de atendimento urgente",
+		Metadata: map[string]any{
+			"channel": "whatsapp",
+			"from":    customerPhone,
+			"to":      conn.SenderIdentity,
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create chat message: %v", err)
+	}
 	auditPayload, _ := json.Marshal(map[string]any{
 		"channel": "whatsapp",
 		"from":    customerPhone,

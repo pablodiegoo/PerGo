@@ -805,6 +805,8 @@ func main() {
 		UserActionLogs:    userActionLogRepo,
 		Presence:          presenceTracker,
 		WebhookDispatcher: webhookDispatcher,
+		ChatEngine:        chatEngine,
+		Ingestor:          outboundProcessor,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
 	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)

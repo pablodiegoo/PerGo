@@ -317,7 +317,8 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 		}
 	}
 
-	// 8. Conversations, Audit Logs, Dispatches, Sessions
+	// 8. Conversations, Chats, Chat Messages, Audit Logs, Dispatches, Sessions
+	chatRepo := repository.NewChatRepository(pool)
 	now := time.Now().UTC()
 	conversationCount := 0
 	messageCount := 0
@@ -338,18 +339,50 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 			contactPhone = contact.Identities[0].SenderIdentity
 		}
 
+		var connID *uuid.UUID
+		for _, c := range connections {
+			if c.Channel == conv.Channel && (conv.RecipientIdentity == "" || c.SenderIdentity == conv.RecipientIdentity) {
+				id := c.ID
+				connID = &id
+				break
+			}
+		}
+		if connID == nil {
+			for _, c := range connections {
+				if c.Channel == conv.Channel {
+					id := c.ID
+					connID = &id
+					break
+				}
+			}
+		}
+
+		seededChat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, connID, contact.ID)
+		if err != nil {
+			return nil, fmt.Errorf("find or create chat for %s: %w", conv.ContactName, err)
+		}
+		if len(contact.Tags) > 0 {
+			_ = chatRepo.SetChatTags(ctx, ws.ID, seededChat.ID, contact.Tags)
+		}
+
 		conversationCount++
-		var lastInboundAt, lastOutboundAt time.Time
+		var lastInboundAt, lastOutboundAt, lastMsgAt time.Time
 		contactSlug := slug.Generate(conv.ContactName)
 
 		for msgIdx, msg := range conv.Messages {
 			msgTime := now.Add(-time.Duration(msg.OffsetMinutes) * time.Minute)
+			if msgTime.After(lastMsgAt) {
+				lastMsgAt = msgTime
+			}
 			traceID := fmt.Sprintf("trace-seed-%s-%s-%d", ws.ID.String()[:8], contactSlug, msgIdx)
 			messageID := fmt.Sprintf("wamid.seed.%s.%d", contactSlug, msgIdx)
 			messageCount++
 
 			var alreadyExists bool
 			_ = pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM audit_logs WHERE workspace_id = $1 AND trace_id = $2)`, ws.ID, traceID).Scan(&alreadyExists)
+
+			var chatMsgExists bool
+			_ = pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM chat_messages WHERE workspace_id = $1 AND uid = $2)`, ws.ID, traceID).Scan(&chatMsgExists)
 
 			if msg.Direction == "inbound" {
 				if msgTime.After(lastInboundAt) {
@@ -373,6 +406,26 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 					if err != nil {
 						return nil, fmt.Errorf("insert inbound audit log: %w", err)
 					}
+				}
+				if !chatMsgExists {
+					_ = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+						ChatID:      seededChat.ID,
+						WorkspaceID: ws.ID,
+						UID:         traceID,
+						Direction:   domain.DirectionInbound,
+						SenderType:  domain.SenderTypeContact,
+						SenderName:  contact.Name,
+						SenderID:    contactPhone,
+						Body:        msg.Body,
+						Metadata: map[string]interface{}{
+							"channel":         conv.Channel,
+							"from":            contactPhone,
+							"to":              conv.RecipientIdentity,
+							"sender_identity": conv.RecipientIdentity,
+							"message_id":      messageID,
+						},
+						CreatedAt: msgTime,
+					})
 				}
 			} else {
 				if msgTime.After(lastOutboundAt) {
@@ -409,7 +462,35 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 						return nil, fmt.Errorf("insert message dispatch: %w", err)
 					}
 				}
+				if !chatMsgExists {
+					_ = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+						ChatID:      seededChat.ID,
+						WorkspaceID: ws.ID,
+						UID:         traceID,
+						Direction:   domain.DirectionOutbound,
+						SenderType:  domain.SenderTypeHumanAgent,
+						SenderName:  "Agent",
+						SenderID:    conv.RecipientIdentity,
+						Body:        msg.Body,
+						Metadata: map[string]interface{}{
+							"channel":         conv.Channel,
+							"to":              contactPhone,
+							"sender_identity": conv.RecipientIdentity,
+						},
+						CreatedAt: msgTime,
+					})
+				}
 			}
+		}
+
+		if !lastMsgAt.IsZero() {
+			_ = chatRepo.TouchLastMessageAt(ctx, ws.ID, seededChat.ID, lastMsgAt)
+		}
+		if !lastInboundAt.IsZero() {
+			expiresAt := lastInboundAt.Add(24 * time.Hour)
+			_, _ = pool.Exec(ctx, `
+				UPDATE chats SET service_window_expires_at = $1 WHERE workspace_id = $2 AND id = $3
+			`, expiresAt, ws.ID, seededChat.ID)
 		}
 
 		// Upsert recipient session

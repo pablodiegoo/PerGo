@@ -227,9 +227,9 @@ func TestSeedDatabase_Integration(t *testing.T) {
 		t.Errorf("expected at least 2 campaigns seeded, got %d (err: %v)", len(campaigns), err)
 	}
 
-	// Verify audit conversations
-	auditRepo := repository.NewAuditRepository(pool)
-	conversations, err := auditRepo.ListConversations(ctx, result.Workspace.ID, "")
+	// Verify chat conversations
+	chatRepo := repository.NewChatRepository(pool)
+	conversations, err := chatRepo.ListConversations(ctx, result.Workspace.ID, "")
 	if err != nil {
 		t.Fatalf("ListConversations failed: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestSeedDatabase_Integration(t *testing.T) {
 	// Verify conversation thread for first contact
 	var initialThreadCount int
 	if len(conversations) > 0 {
-		thread, err := auditRepo.ListThreadByContact(ctx, result.Workspace.ID, conversations[0].ContactID, nil)
+		thread, err := chatRepo.ListThreadByContact(ctx, result.Workspace.ID, conversations[0].ContactID, nil)
 		if err != nil {
 			t.Fatalf("ListThreadByContact failed: %v", err)
 		}
@@ -255,7 +255,7 @@ func TestSeedDatabase_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Seed run failed: %v", err)
 	}
-	secondConversations, err := auditRepo.ListConversations(ctx, secondResult.Workspace.ID, "")
+	secondConversations, err := chatRepo.ListConversations(ctx, secondResult.Workspace.ID, "")
 	if err != nil {
 		t.Fatalf("ListConversations on second run failed: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestSeedDatabase_Integration(t *testing.T) {
 		t.Errorf("expected conversation count to remain %d, got %d", len(conversations), len(secondConversations))
 	}
 	if len(secondConversations) > 0 {
-		secondThread, err := auditRepo.ListThreadByContact(ctx, secondResult.Workspace.ID, secondConversations[0].ContactID, nil)
+		secondThread, err := chatRepo.ListThreadByContact(ctx, secondResult.Workspace.ID, secondConversations[0].ContactID, nil)
 		if err != nil {
 			t.Fatalf("ListThreadByContact on second run failed: %v", err)
 		}

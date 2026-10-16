@@ -558,10 +558,34 @@ func (p *Processor) Ingest(
 			for k, v := range req.Metadata {
 				msgMetadata[k] = v
 			}
+			if conn.Channel != "" {
+				if _, ok := msgMetadata["channel"]; !ok {
+					msgMetadata["channel"] = conn.Channel
+				}
+			}
+			if conn.SenderIdentity != "" {
+				if _, ok := msgMetadata["sender_identity"]; !ok {
+					msgMetadata["sender_identity"] = conn.SenderIdentity
+				}
+			}
+			if qMsg.To != "" {
+				if _, ok := msgMetadata["to"]; !ok {
+					msgMetadata["to"] = qMsg.To
+				}
+			}
 			if qMsg.TemplateName != "" {
 				msgMetadata["template_name"] = qMsg.TemplateName
 				msgMetadata["language"] = qMsg.Language
 				msgMetadata["type"] = "template"
+			} else if qMsg.Type != "" {
+				if _, ok := msgMetadata["type"]; !ok {
+					msgMetadata["type"] = qMsg.Type
+				}
+			}
+			if qMsg.Product != nil {
+				if prodBytes, pErr := json.Marshal(qMsg.Product); pErr == nil {
+					msgMetadata["product_json"] = string(prodBytes)
+				}
 			}
 
 			chatMsg := &domain.ChatMessage{
