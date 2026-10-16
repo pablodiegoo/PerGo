@@ -154,6 +154,10 @@ _Avoid_: NATS monitor, queue stats, stream checker
 An active conversational thread between a Contact and a Connection within a Workspace, tracking read status, assignment, and tags.
 _Avoid_: Conversation, ticket, thread, session
 
+**Chat Engine**:
+The consolidated module that orchestrates Chat lifecycle, triage, Internal Notes, Message Reactions, Chat Snooze expiration, Human Handoff Trigger, and conversational message dispatch across all transport adapters.
+_Avoid_: Inbox service, conversation manager, chat helper
+
 **Internal Note**:
 A workspace-scoped private commentary attached to a Chat thread, invisible to external contacts, utilized for teammate collaboration and AI agent draft proposals.
 _Avoid_: Private message, secret note, staff comment
