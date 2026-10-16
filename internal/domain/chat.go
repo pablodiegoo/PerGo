@@ -78,11 +78,15 @@ type Chat struct {
 }
 
 // IsServiceWindowOpen reports whether the customer service window is active.
-func (c *Chat) IsServiceWindowOpen() bool {
+func (c *Chat) IsServiceWindowOpen(now ...time.Time) bool {
 	if c == nil || c.ServiceWindowExpiresAt == nil {
 		return false
 	}
-	return time.Now().UTC().Before(*c.ServiceWindowExpiresAt)
+	t := time.Now().UTC()
+	if len(now) > 0 && !now[0].IsZero() {
+		t = now[0].UTC()
+	}
+	return t.Before(*c.ServiceWindowExpiresAt)
 }
 
 // ChatMessage represents a single message, dispatch, or internal note within a Chat.

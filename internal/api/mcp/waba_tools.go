@@ -958,6 +958,12 @@ func (s *Server) handleWABAChatSendMessage(ctx context.Context, request mcp.Call
 			"sender_type": string(domain.SenderTypeAIAgent),
 			"sender_name": senderName,
 		},
+		ConversationalIngestFields: domain.ConversationalIngestFields{
+			ChatID:              &chat.ID,
+			SenderType:          string(domain.SenderTypeAIAgent),
+			SenderName:          senderName,
+			StrictServiceWindow: true,
+		},
 	}
 
 	qMsg, err := s.ingestor.Ingest(ctx, wsID, traceID, req)
@@ -1115,6 +1121,11 @@ func (s *Server) handleWABAChatSendTemplate(ctx context.Context, request mcp.Cal
 			"source":      "mcp_gateway",
 			"sender_type": string(domain.SenderTypeAIAgent),
 			"sender_name": senderName,
+		},
+		ConversationalIngestFields: domain.ConversationalIngestFields{
+			ChatID:     &chat.ID,
+			SenderType: string(domain.SenderTypeAIAgent),
+			SenderName: senderName,
 		},
 	}
 
@@ -1445,6 +1456,11 @@ func (s *Server) handleWABAStartChat(ctx context.Context, request mcp.CallToolRe
 			"sender_name":   senderName,
 			"chat_id":       chat.ID.String(),
 		},
+		ConversationalIngestFields: domain.ConversationalIngestFields{
+			ChatID:     &chat.ID,
+			SenderType: string(domain.SenderTypeAIAgent),
+			SenderName: senderName,
+		},
 	}
 
 	qMsg, err := s.ingestor.Ingest(ctx, wsID, traceID, req)
@@ -1453,25 +1469,9 @@ func (s *Server) handleWABAStartChat(ctx context.Context, request mcp.CallToolRe
 	}
 
 	now := time.Now().UTC()
-	chatMsg := &domain.ChatMessage{
-		ID:          uuid.New(),
-		ChatID:      chat.ID,
-		WorkspaceID: wsID,
-		UID:         traceID,
-		Direction:   domain.DirectionOutbound,
-		SenderType:  domain.SenderTypeAIAgent,
-		SenderName:  senderName,
-		SenderID:    conn.SenderIdentity,
-		Body:        fmt.Sprintf("[Template: %s (%s)]", templateName, language),
-		Metadata: map[string]interface{}{
-			"template_name": templateName,
-			"language":      language,
-			"type":          "template",
-		},
-		CreatedAt: now,
+	if qMsg != nil && !qMsg.QueuedAt.IsZero() {
+		now = qMsg.QueuedAt
 	}
-	_ = s.chatRepo.AddChatMessage(ctx, chatMsg)
-	_ = s.chatRepo.TouchLastMessageAt(ctx, wsID, chat.ID, now)
 
 	if s.auditRepo != nil {
 		auditPayload, _ := json.Marshal(map[string]interface{}{

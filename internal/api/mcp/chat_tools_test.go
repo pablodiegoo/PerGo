@@ -10,9 +10,20 @@ import (
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
 )
+
+type testQueueDepthTracker struct {
+	exceeds bool
+}
+
+func (t *testQueueDepthTracker) Exceeds(workspaceID uuid.UUID, limit int64) bool {
+	return t.exceeds
+}
+
+func (t *testQueueDepthTracker) Increment(workspaceID uuid.UUID) {}
 
 func TestMCPChatTools(t *testing.T) {
 	pool := getTestPool(t)
@@ -971,6 +982,82 @@ func TestMCPChatTools(t *testing.T) {
 		_ = json.Unmarshal([]byte(res2.Content[0].(mcp.TextContent).Text), &parsed)
 		if parsed.Action != "remove" || parsed.Count != 0 {
 			t.Fatalf("expected toggle 2 to remove reaction, got action=%q count=%d", parsed.Action, parsed.Count)
+		}
+	})
+
+	t.Run("single_writer_outbound_processor_and_backpressure", func(t *testing.T) {
+		tracker := &testQueueDepthTracker{}
+		realProc := outbound.NewProcessor(tracker, nil, connRepo, nil)
+		realProc.SetChatRepository(chatRepo)
+		realProc.SetContactRepository(contactRepo)
+
+		srvWithProc := NewServer(
+			wsRepo,
+			connRepo,
+			contactRepo,
+			auditRepo,
+			realProc,
+			nil,
+			nil,
+			nil,
+			nil,
+			[]byte("secret"),
+			"http://localhost:8080",
+			WithChatRepo(chatRepo),
+		)
+
+		// 1. Send reply with real OutboundProcessor -> ReplyToUID must be persisted by OutboundProcessor in a single write
+		replyRes, err := srvWithProc.CallTool(ctx, "message_reply", map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"reply_to_uid": "mcp-msg-1",
+			"message":      "Single-writer reply via OutboundProcessor.",
+			"sender_name":  "SingleWriter Bot",
+		})
+		if err != nil {
+			t.Fatalf("CallTool message_reply error: %v", err)
+		}
+		if replyRes.IsError {
+			t.Fatalf("CallTool message_reply returned tool error: %+v", replyRes.Content)
+		}
+		var parsedReply struct {
+			Success    bool    `json:"success"`
+			TraceID    string  `json:"trace_id"`
+			ReplyToUID *string `json:"reply_to_uid"`
+		}
+		if err := json.Unmarshal([]byte(replyRes.Content[0].(mcp.TextContent).Text), &parsedReply); err != nil {
+			t.Fatalf("failed to unmarshal reply result: %v", err)
+		}
+		storedReply, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, parsedReply.TraceID)
+		if err != nil {
+			t.Fatalf("GetChatMessageByUID failed: %v", err)
+		}
+		if storedReply.ReplyToUID == nil || *storedReply.ReplyToUID != "mcp-msg-1" {
+			t.Errorf("expected storedReply.ReplyToUID == 'mcp-msg-1', got %+v", storedReply.ReplyToUID)
+		}
+		if storedReply.SenderName != "SingleWriter Bot" {
+			t.Errorf("expected storedReply.SenderName == 'SingleWriter Bot', got %q", storedReply.SenderName)
+		}
+
+		// 2. Enable queue-depth backpressure (exceeds 1000) -> tools must fail and NOT insert into chat_messages
+		tracker.exceeds = true
+		beforeMsgs, _ := chatRepo.ListChatMessages(ctx, ws.ID, chat.ID, "", "", 100)
+
+		bpRes, err := srvWithProc.CallTool(ctx, "chat_send_message", map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"message":      "Should be rejected by queue backpressure",
+		})
+		if err != nil {
+			t.Fatalf("CallTool chat_send_message error: %v", err)
+		}
+		if !bpRes.IsError {
+			t.Fatalf("expected chat_send_message to return tool error when queue is full, got success")
+		}
+
+		afterMsgs, _ := chatRepo.ListChatMessages(ctx, ws.ID, chat.ID, "", "", 100)
+		if len(afterMsgs) != len(beforeMsgs) {
+			t.Errorf("expected no chat_messages inserted when queue is full; had %d, now %d", len(beforeMsgs), len(afterMsgs))
 		}
 	})
 }

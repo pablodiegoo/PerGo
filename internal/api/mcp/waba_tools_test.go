@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -415,6 +416,12 @@ func TestMCPWABATools(t *testing.T) {
 		if mockIng.lastReq == nil || mockIng.lastReq.Body != "Valid message inside window!" {
 			t.Errorf("expected message dispatched to ingestor, got %+v", mockIng.lastReq)
 		}
+		if !mockIng.lastReq.StrictServiceWindow {
+			t.Errorf("expected StrictServiceWindow to be true on waba_chat_send_message")
+		}
+		if mockIng.lastReq.ChatID == nil || *mockIng.lastReq.ChatID != chatActive.ID {
+			t.Errorf("expected ChatID %s on waba_chat_send_message request, got %v", chatActive.ID, mockIng.lastReq.ChatID)
+		}
 	})
 
 	// =========================================================================
@@ -456,6 +463,88 @@ func TestMCPWABATools(t *testing.T) {
 		}
 		if len(mockIng.lastReq.Components) != 2 {
 			t.Errorf("expected 2 components (header & body), got %d", len(mockIng.lastReq.Components))
+		}
+	})
+
+	// =========================================================================
+	// Tool 7: waba_start_chat with real OutboundProcessor (Single-Writer)
+	// =========================================================================
+	t.Run("waba_start_chat persists template metadata in single write via OutboundProcessor", func(t *testing.T) {
+		realProc := outbound.NewProcessor(nil, nil, connRepo, nil)
+		realProc.SetChatRepository(chatRepo)
+		realProc.SetContactRepository(contactRepo)
+		realProc.SetTemplateRepository(tmplRepo)
+
+		srvReal := NewServer(
+			wsRepo,
+			connRepo,
+			contactRepo,
+			nil,
+			realProc,
+			nil,
+			nil,
+			nil,
+			nil,
+			[]byte("secret"),
+			"http://localhost:8080",
+			WithChatRepo(chatRepo),
+			WithWABATemplateRepo(tmplRepo),
+		)
+
+		startReq := mcp.CallToolRequest{}
+		startReq.Params.Arguments = map[string]any{
+			"workspace_id":  ws.ID.String(),
+			"connection_id": wabaConnID.String(),
+			"phone":         "+5511999993333",
+			"template_name": "order_status_update",
+			"language":      "pt_BR",
+			"parameters": map[string]any{
+				"header": []any{"Carlos"},
+				"body":   []any{"Carlos", "ORD-777"},
+			},
+			"sender_name": "WABA Initiator",
+		}
+
+		res, err := srvReal.handleWABAStartChat(ctx, startReq)
+		if err != nil {
+			t.Fatalf("unexpected handler error: %v", err)
+		}
+		if res.IsError {
+			t.Fatalf("unexpected tool error: %+v", res.Content)
+		}
+
+		var parsed struct {
+			Success      bool      `json:"success"`
+			ChatID       uuid.UUID `json:"chat_id"`
+			TraceID      string    `json:"trace_id"`
+			TemplateName string    `json:"template_name"`
+			Language     string    `json:"language"`
+		}
+		if err := json.Unmarshal([]byte(res.Content[0].(mcp.TextContent).Text), &parsed); err != nil {
+			t.Fatalf("failed to unmarshal output: %v", err)
+		}
+		if !parsed.Success {
+			t.Fatalf("expected success true")
+		}
+
+		storedMsg, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, parsed.TraceID)
+		if err != nil {
+			t.Fatalf("GetChatMessageByUID failed: %v", err)
+		}
+		if storedMsg.Body != "[Template: order_status_update (pt_BR)]" {
+			t.Errorf("got Body %q, want '[Template: order_status_update (pt_BR)]'", storedMsg.Body)
+		}
+		if storedMsg.Metadata["template_name"] != "order_status_update" {
+			t.Errorf("got metadata template_name %v, want 'order_status_update'", storedMsg.Metadata["template_name"])
+		}
+		if storedMsg.Metadata["language"] != "pt_BR" {
+			t.Errorf("got metadata language %v, want 'pt_BR'", storedMsg.Metadata["language"])
+		}
+		if storedMsg.Metadata["type"] != "template" {
+			t.Errorf("got metadata type %v, want 'template'", storedMsg.Metadata["type"])
+		}
+		if storedMsg.SenderName != "WABA Initiator" {
+			t.Errorf("got SenderName %q, want 'WABA Initiator'", storedMsg.SenderName)
 		}
 	})
 }

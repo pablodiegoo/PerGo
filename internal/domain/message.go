@@ -185,8 +185,19 @@ type ProductPayload struct {
 	Sections          []ProductSection `json:"sections,omitempty"`
 }
 
+// ConversationalIngestFields carries optional conversational context for outbound message ingestion.
+type ConversationalIngestFields struct {
+	ChatID              *uuid.UUID `json:"chat_id,omitempty"`
+	ReplyToUID          *string    `json:"reply_to_uid,omitempty"`
+	SenderType          string     `json:"sender_type,omitempty"`
+	SenderName          string     `json:"sender_name,omitempty"`
+	DisableAI           bool       `json:"disable_ai,omitempty"`
+	StrictServiceWindow bool       `json:"strict_service_window,omitempty"`
+}
+
 // CreateMessageRequest is the JSON payload for POST /messages.
 type CreateMessageRequest struct {
+	ConversationalIngestFields
 	To               string                     `json:"to"`
 	From             string                     `json:"from,omitempty"`
 	Channel          string                     `json:"channel"`
@@ -262,6 +273,35 @@ type ErrorResponse struct {
 type FieldError struct {
 	Field   string `json:"field"`
 	Message string `json:"message"`
+}
+
+// ErrInvalidProductPayload is returned when a product message fails structural bounds checks.
+var ErrInvalidProductPayload = fmt.Errorf("invalid product payload parameters")
+
+// ValidationError wraps a payload validation error from the domain package.
+type ValidationError struct {
+	Response *ErrorResponse
+	Err      error
+}
+
+func (e *ValidationError) Error() string {
+	if e.Response != nil && e.Response.Message != "" {
+		return e.Response.Message
+	}
+	if e.Err != nil {
+		return e.Err.Error()
+	}
+	return "validation failed"
+}
+
+func (e *ValidationError) Unwrap() error {
+	if e.Err != nil {
+		return e.Err
+	}
+	if e.Response != nil && e.Response.Code == "invalid_product_payload" {
+		return ErrInvalidProductPayload
+	}
+	return nil
 }
 
 // ValidateMessage checks a CreateMessageRequest for correctness and returns

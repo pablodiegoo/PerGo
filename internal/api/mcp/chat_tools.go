@@ -1650,22 +1650,6 @@ func (s *Server) handleChatSendMessage(ctx context.Context, request mcp.CallTool
 	traceID := fmt.Sprintf("mcp-chat-%s", uuid.New().String())
 	now := time.Now().UTC()
 
-	chatMsg := &domain.ChatMessage{
-		ID:          uuid.New(),
-		ChatID:      chat.ID,
-		WorkspaceID: wsID,
-		UID:         traceID,
-		Direction:   domain.DirectionOutbound,
-		SenderType:  domain.SenderTypeAIAgent,
-		SenderName:  senderName,
-		SenderID:    senderIdentity,
-		Body:        messageText,
-		ReplyToUID:  replyToUID,
-		CreatedAt:   now,
-	}
-	_ = s.chatRepo.AddChatMessage(ctx, chatMsg)
-	_ = s.chatRepo.TouchLastMessageAt(ctx, wsID, chat.ID, now)
-
 	if s.ingestor != nil && recipientPhone != "" {
 		reqMeta := map[string]string{
 			"source":      "mcp_gateway",
@@ -1682,8 +1666,36 @@ func (s *Server) handleChatSendMessage(ctx context.Context, request mcp.CallTool
 			Body:     messageText,
 			Type:     "text",
 			Metadata: reqMeta,
+			ConversationalIngestFields: domain.ConversationalIngestFields{
+				ChatID:     &chat.ID,
+				ReplyToUID: replyToUID,
+				SenderType: string(domain.SenderTypeAIAgent),
+				SenderName: senderName,
+			},
 		}
-		_, _ = s.ingestor.Ingest(ctx, wsID, traceID, req)
+		qMsg, err := s.ingestor.Ingest(ctx, wsID, traceID, req)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to dispatch message: %v", err)), nil
+		}
+		if qMsg != nil && !qMsg.QueuedAt.IsZero() {
+			now = qMsg.QueuedAt
+		}
+	} else {
+		chatMsg := &domain.ChatMessage{
+			ID:          uuid.New(),
+			ChatID:      chat.ID,
+			WorkspaceID: wsID,
+			UID:         traceID,
+			Direction:   domain.DirectionOutbound,
+			SenderType:  domain.SenderTypeAIAgent,
+			SenderName:  senderName,
+			SenderID:    senderIdentity,
+			Body:        messageText,
+			ReplyToUID:  replyToUID,
+			CreatedAt:   now,
+		}
+		_ = s.chatRepo.AddChatMessage(ctx, chatMsg)
+		_ = s.chatRepo.TouchLastMessageAt(ctx, wsID, chat.ID, now)
 	}
 
 	if s.auditRepo != nil {
@@ -1991,7 +2003,33 @@ func (s *Server) handleWhatsAppAccountSendMessage(ctx context.Context, request m
 	traceID := fmt.Sprintf("mcp-wa-%s", uuid.New().String())
 	now := time.Now().UTC()
 
-	if chatID != nil && s.chatRepo != nil {
+	if s.ingestor != nil {
+		req := &domain.CreateMessageRequest{
+			To:       to,
+			Channel:  conn.Channel,
+			From:     conn.SenderIdentity,
+			Body:     messageText,
+			Type:     "text",
+			Metadata: map[string]string{
+				"source":        "mcp_gateway",
+				"connection_id": conn.ID.String(),
+				"sender_type":   string(domain.SenderTypeAIAgent),
+				"sender_name":   senderName,
+			},
+			ConversationalIngestFields: domain.ConversationalIngestFields{
+				ChatID:     chatID,
+				SenderType: string(domain.SenderTypeAIAgent),
+				SenderName: senderName,
+			},
+		}
+		qMsg, err := s.ingestor.Ingest(ctx, wsID, traceID, req)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to dispatch message: %v", err)), nil
+		}
+		if qMsg != nil && !qMsg.QueuedAt.IsZero() {
+			now = qMsg.QueuedAt
+		}
+	} else if chatID != nil && s.chatRepo != nil {
 		chatMsg := &domain.ChatMessage{
 			ID:          uuid.New(),
 			ChatID:      *chatID,
@@ -2006,23 +2044,6 @@ func (s *Server) handleWhatsAppAccountSendMessage(ctx context.Context, request m
 		}
 		_ = s.chatRepo.AddChatMessage(ctx, chatMsg)
 		_ = s.chatRepo.TouchLastMessageAt(ctx, wsID, *chatID, now)
-	}
-
-	if s.ingestor != nil {
-		req := &domain.CreateMessageRequest{
-			To:       to,
-			Channel:  conn.Channel,
-			From:     conn.SenderIdentity,
-			Body:     messageText,
-			Type:     "text",
-			Metadata: map[string]string{
-				"source":        "mcp_gateway",
-				"connection_id": conn.ID.String(),
-				"sender_type":   string(domain.SenderTypeAIAgent),
-				"sender_name":   senderName,
-			},
-		}
-		_, _ = s.ingestor.Ingest(ctx, wsID, traceID, req)
 	}
 
 	if s.auditRepo != nil {
@@ -2150,22 +2171,6 @@ func (s *Server) handleMessageReply(ctx context.Context, request mcp.CallToolReq
 	traceID := fmt.Sprintf("mcp-reply-%s", uuid.New().String())
 	now := time.Now().UTC()
 
-	chatMsg := &domain.ChatMessage{
-		ID:          uuid.New(),
-		ChatID:      chat.ID,
-		WorkspaceID: wsID,
-		UID:         traceID,
-		Direction:   domain.DirectionOutbound,
-		SenderType:  domain.SenderTypeAIAgent,
-		SenderName:  senderName,
-		SenderID:    senderIdentity,
-		Body:        messageText,
-		ReplyToUID:  &replyToUID,
-		CreatedAt:   now,
-	}
-	_ = s.chatRepo.AddChatMessage(ctx, chatMsg)
-	_ = s.chatRepo.TouchLastMessageAt(ctx, wsID, chat.ID, now)
-
 	if s.ingestor != nil && recipientPhone != "" {
 		req := &domain.CreateMessageRequest{
 			To:       recipientPhone,
@@ -2179,8 +2184,36 @@ func (s *Server) handleMessageReply(ctx context.Context, request mcp.CallToolReq
 				"sender_name":  senderName,
 				"reply_to_uid": replyToUID,
 			},
+			ConversationalIngestFields: domain.ConversationalIngestFields{
+				ChatID:     &chat.ID,
+				ReplyToUID: &replyToUID,
+				SenderType: string(domain.SenderTypeAIAgent),
+				SenderName: senderName,
+			},
 		}
-		_, _ = s.ingestor.Ingest(ctx, wsID, traceID, req)
+		qMsg, err := s.ingestor.Ingest(ctx, wsID, traceID, req)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to dispatch message: %v", err)), nil
+		}
+		if qMsg != nil && !qMsg.QueuedAt.IsZero() {
+			now = qMsg.QueuedAt
+		}
+	} else {
+		chatMsg := &domain.ChatMessage{
+			ID:          uuid.New(),
+			ChatID:      chat.ID,
+			WorkspaceID: wsID,
+			UID:         traceID,
+			Direction:   domain.DirectionOutbound,
+			SenderType:  domain.SenderTypeAIAgent,
+			SenderName:  senderName,
+			SenderID:    senderIdentity,
+			Body:        messageText,
+			ReplyToUID:  &replyToUID,
+			CreatedAt:   now,
+		}
+		_ = s.chatRepo.AddChatMessage(ctx, chatMsg)
+		_ = s.chatRepo.TouchLastMessageAt(ctx, wsID, chat.ID, now)
 	}
 
 	if s.auditRepo != nil {
