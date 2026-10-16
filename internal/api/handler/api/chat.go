@@ -34,6 +34,7 @@ type ChatRepo interface {
 	TouchLastMessageAt(ctx context.Context, workspaceID, chatID uuid.UUID, t time.Time) error
 	GetChatMessageByUID(ctx context.Context, workspaceID uuid.UUID, uid string) (*domain.ChatMessage, error)
 	GetReactions(ctx context.Context, workspaceID uuid.UUID, messageUID string) ([]domain.Reaction, error)
+	MutateReaction(ctx context.Context, workspaceID uuid.UUID, messageUID, emoji, sender, action string) (uuid.UUID, string, []domain.Reaction, error)
 	AddReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, reaction domain.Reaction) ([]domain.Reaction, error)
 	RemoveReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, emoji, sender string) ([]domain.Reaction, error)
 }
@@ -70,14 +71,20 @@ type ChatMessagePublisher interface {
 	Publish(ctx context.Context, subject string, data []byte, traceID string) error
 }
 
+// ChatReactionWebhookDispatcher defines reaction webhook dispatch operations.
+type ChatReactionWebhookDispatcher interface {
+	DispatchReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, payload []byte, traceID string) error
+}
+
 // ChatAPIHandler exposes the public REST API for conversation management.
 type ChatAPIHandler struct {
-	chatRepo    ChatRepo
-	contactRepo ChatContactRepo
-	connRepo    ChatConnectionRepo
-	wsRepo      ChatWorkspaceRepo
-	auditRepo   ChatAuditRepo
-	publisher   ChatMessagePublisher
+	chatRepo          ChatRepo
+	contactRepo       ChatContactRepo
+	connRepo          ChatConnectionRepo
+	wsRepo            ChatWorkspaceRepo
+	auditRepo         ChatAuditRepo
+	publisher         ChatMessagePublisher
+	webhookDispatcher ChatReactionWebhookDispatcher
 }
 
 // ChatAPIOption configures optional dependencies for ChatAPIHandler.
@@ -106,6 +113,17 @@ func WithChatAuditRepo(r ChatAuditRepo) ChatAPIOption {
 // WithChatMessagePublisher sets the message publisher.
 func WithChatMessagePublisher(p ChatMessagePublisher) ChatAPIOption {
 	return func(h *ChatAPIHandler) { h.publisher = p }
+}
+
+// WithChatWebhookDispatcher sets the reaction webhook dispatcher.
+func WithChatWebhookDispatcher(d ChatReactionWebhookDispatcher) ChatAPIOption {
+	return func(h *ChatAPIHandler) { h.webhookDispatcher = d }
+}
+
+// SetWebhookDispatcher configures the reaction webhook dispatcher on ChatAPIHandler.
+func (h *ChatAPIHandler) SetWebhookDispatcher(d ChatReactionWebhookDispatcher) *ChatAPIHandler {
+	h.webhookDispatcher = d
+	return h
 }
 
 // NewChatAPIHandler creates a new ChatAPIHandler.
@@ -877,37 +895,15 @@ func (h *ChatAPIHandler) React(c *echo.Context) error {
 		sender = "operator"
 	}
 
-	existingReactions, err := h.chatRepo.GetReactions(ctx, wsID, messageUID)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"code":    "INTERNAL_ERROR",
-			"message": "failed to get reactions: " + err.Error(),
-		})
-	}
-
-	hasReacted := false
-	for _, r := range existingReactions {
-		if r.Emoji == emoji && (r.Sender == sender || r.Sender == "operator") {
-			hasReacted = true
-			break
-		}
-	}
-
 	action := strings.ToLower(strings.TrimSpace(req.Action))
-	var updatedReactions []domain.Reaction
-
-	if action == "remove" || (action == "" && hasReacted) {
-		updatedReactions, err = h.chatRepo.RemoveReaction(ctx, wsID, messageUID, emoji, sender)
-		action = "remove"
-	} else {
-		updatedReactions, err = h.chatRepo.AddReaction(ctx, wsID, messageUID, domain.Reaction{
-			Emoji:     emoji,
-			Sender:    sender,
-			CreatedAt: time.Now().UTC(),
+	if action != "" && action != "add" && action != "remove" && action != "toggle" {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "BAD_REQUEST",
+			"message": "action must be 'add', 'remove', or 'toggle'",
 		})
-		action = "add"
 	}
 
+	_, resolvedAction, updatedReactions, err := h.chatRepo.MutateReaction(ctx, wsID, messageUID, emoji, sender, action)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"code":    "INTERNAL_ERROR",
@@ -915,9 +911,42 @@ func (h *ChatAPIHandler) React(c *echo.Context) error {
 		})
 	}
 
+	now := time.Now().UTC()
+	traceID := uuid.New().String()
+	rxEvent := domain.ReactionUpdatedPayload{
+		Event:       "message.reaction.updated",
+		WorkspaceID: wsID.String(),
+		ChatID:      chatID.String(),
+		MessageUID:  messageUID,
+		Emoji:       emoji,
+		Sender:      sender,
+		Action:      resolvedAction,
+		Reactions:   updatedReactions,
+		Timestamp:   now.Format(time.RFC3339),
+	}
+
+	if payloadBytes, mErr := json.Marshal(rxEvent); mErr == nil {
+		if h.publisher != nil {
+			_ = h.publisher.Publish(ctx, "messages.events.reaction_updated", payloadBytes, traceID)
+		}
+		if h.webhookDispatcher != nil {
+			_ = h.webhookDispatcher.DispatchReaction(ctx, wsID, messageUID, payloadBytes, traceID)
+		}
+		if h.auditRepo != nil {
+			_ = h.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+				ID:          uuid.New(),
+				WorkspaceID: wsID,
+				TraceID:     traceID,
+				EventType:   "reaction_updated",
+				Payload:     payloadBytes,
+				CreatedAt:   now,
+			})
+		}
+	}
+
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"status":      "success",
-		"action":      action,
+		"action":      resolvedAction,
 		"message_uid": messageUID,
 		"reactions":   updatedReactions,
 	})

@@ -205,25 +205,96 @@ func (m *mockChatRepo) GetReactions(ctx context.Context, workspaceID uuid.UUID, 
 	return m.reactions[messageUID], nil
 }
 
-func (m *mockChatRepo) AddReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, reaction domain.Reaction) ([]domain.Reaction, error) {
+func (m *mockChatRepo) MutateReaction(ctx context.Context, workspaceID uuid.UUID, messageUID, emoji, sender, action string) (uuid.UUID, string, []domain.Reaction, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.reactions[messageUID] = append(m.reactions[messageUID], reaction)
-	return m.reactions[messageUID], nil
+
+	var foundMsg *domain.ChatMessage
+	for _, msgs := range m.messages {
+		for _, msg := range msgs {
+			if msg.UID == messageUID && msg.WorkspaceID == workspaceID {
+				foundMsg = msg
+				break
+			}
+		}
+	}
+	if foundMsg == nil {
+		return uuid.Nil, "", nil, repository.ErrChatMessageNotFound
+	}
+
+	if sender == "" {
+		sender = "operator"
+	}
+	normAction := action
+	if emoji == "" {
+		normAction = "remove"
+	}
+
+	reactions := m.reactions[messageUID]
+	var resolvedAction string
+	switch normAction {
+	case "", "toggle":
+		hasReacted := false
+		for _, r := range reactions {
+			if r.Emoji == emoji && (r.Sender == sender || r.Sender == "operator") {
+				hasReacted = true
+				break
+			}
+		}
+		if hasReacted {
+			resolvedAction = "remove"
+			var filtered []domain.Reaction
+			for _, r := range reactions {
+				if r.Emoji == emoji && (r.Sender == sender || r.Sender == "operator") {
+					continue
+				}
+				filtered = append(filtered, r)
+			}
+			reactions = filtered
+		} else {
+			resolvedAction = "add"
+			reactions = append(reactions, domain.Reaction{Emoji: emoji, Sender: sender, CreatedAt: time.Now().UTC()})
+		}
+	case "add":
+		resolvedAction = "add"
+		exists := false
+		for _, r := range reactions {
+			if r.Emoji == emoji && r.Sender == sender {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			reactions = append(reactions, domain.Reaction{Emoji: emoji, Sender: sender, CreatedAt: time.Now().UTC()})
+		}
+	case "remove":
+		resolvedAction = "remove"
+		var filtered []domain.Reaction
+		for _, r := range reactions {
+			if r.Emoji == emoji && (r.Sender == sender || sender == "operator" || r.Sender == "operator") {
+				continue
+			}
+			filtered = append(filtered, r)
+		}
+		reactions = filtered
+	default:
+		return uuid.Nil, "", nil, fmt.Errorf("invalid reaction action %q", action)
+	}
+	if reactions == nil {
+		reactions = []domain.Reaction{}
+	}
+	m.reactions[messageUID] = reactions
+	return foundMsg.ChatID, resolvedAction, reactions, nil
+}
+
+func (m *mockChatRepo) AddReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, reaction domain.Reaction) ([]domain.Reaction, error) {
+	_, _, rxs, err := m.MutateReaction(ctx, workspaceID, messageUID, reaction.Emoji, reaction.Sender, "add")
+	return rxs, err
 }
 
 func (m *mockChatRepo) RemoveReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, emoji, sender string) ([]domain.Reaction, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	var filtered []domain.Reaction
-	for _, r := range m.reactions[messageUID] {
-		if r.Emoji == emoji && (r.Sender == sender || sender == "operator") {
-			continue
-		}
-		filtered = append(filtered, r)
-	}
-	m.reactions[messageUID] = filtered
-	return filtered, nil
+	_, _, rxs, err := m.MutateReaction(ctx, workspaceID, messageUID, emoji, sender, "remove")
+	return rxs, err
 }
 
 type mockContactRepo struct {
@@ -298,11 +369,41 @@ func (m *mockChatConnectionRepo) ListByWorkspace(ctx context.Context, workspaceI
 }
 
 type mockPublisher struct {
+	subjects  []string
 	published [][]byte
 }
 
 func (p *mockPublisher) Publish(ctx context.Context, subject string, data []byte, traceID string) error {
+	p.subjects = append(p.subjects, subject)
 	p.published = append(p.published, data)
+	return nil
+}
+
+type mockChatAuditRepo struct {
+	entries []*repository.AuditEntry
+}
+
+func (m *mockChatAuditRepo) InsertAuditLog(ctx context.Context, entry *repository.AuditEntry) error {
+	m.entries = append(m.entries, entry)
+	return nil
+}
+
+type mockChatWebhookDispatcher struct {
+	reactions []struct {
+		WorkspaceID uuid.UUID
+		MessageUID  string
+		Payload     []byte
+		TraceID     string
+	}
+}
+
+func (m *mockChatWebhookDispatcher) DispatchReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, payload []byte, traceID string) error {
+	m.reactions = append(m.reactions, struct {
+		WorkspaceID uuid.UUID
+		MessageUID  string
+		Payload     []byte
+		TraceID     string
+	}{workspaceID, messageUID, payload, traceID})
 	return nil
 }
 
@@ -339,6 +440,8 @@ func TestChatAPIHandler(t *testing.T) {
 		},
 	}
 	publisher := &mockPublisher{}
+	auditRepo := &mockChatAuditRepo{}
+	webhookDispatcher := &mockChatWebhookDispatcher{}
 
 	chat := &domain.Chat{
 		ID:           chatID,
@@ -370,8 +473,10 @@ func TestChatAPIHandler(t *testing.T) {
 		chatRepo,
 		api.WithChatContactRepo(contactRepo),
 		api.WithChatConnectionRepo(connRepo),
+		api.WithChatAuditRepo(auditRepo),
 		api.WithChatMessagePublisher(publisher),
 	)
+	handler.SetWebhookDispatcher(webhookDispatcher)
 
 	e := echo.New()
 	authMiddleware := func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -489,6 +594,9 @@ func TestChatAPIHandler(t *testing.T) {
 	})
 
 	t.Run("POST /api/v1/chats/:id/react", func(t *testing.T) {
+		prevPubCount := len(publisher.published)
+		prevAuditCount := len(auditRepo.entries)
+
 		payload := `{"message_uid": "msg-001", "emoji": "👍", "action": "add"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/chats/"+chatID.String()+"/react", bytes.NewBufferString(payload))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
@@ -501,13 +609,49 @@ func TestChatAPIHandler(t *testing.T) {
 
 		var resp struct {
 			Status    string            `json:"status"`
+			Action    string            `json:"action"`
 			Reactions []domain.Reaction `json:"reactions"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 			t.Fatalf("failed to unmarshal reaction response: %v", err)
 		}
-		if len(resp.Reactions) != 1 || resp.Reactions[0].Emoji != "👍" {
-			t.Fatalf("expected reaction 👍, got: %v", resp.Reactions)
+		if resp.Action != "add" || len(resp.Reactions) != 1 || resp.Reactions[0].Emoji != "👍" {
+			t.Fatalf("expected add reaction 👍, got action=%q reactions=%v", resp.Action, resp.Reactions)
+		}
+
+		// Verify NATS reaction_updated event published
+		if len(publisher.published) != prevPubCount+1 {
+			t.Fatalf("expected NATS event published on REST react, got %d new events", len(publisher.published)-prevPubCount)
+		}
+		if publisher.subjects[len(publisher.subjects)-1] != "messages.events.reaction_updated" {
+			t.Errorf("expected subject messages.events.reaction_updated, got %s", publisher.subjects[len(publisher.subjects)-1])
+		}
+
+		// Verify webhookDispatcher.DispatchReaction called
+		if len(webhookDispatcher.reactions) != 1 || webhookDispatcher.reactions[0].MessageUID != "msg-001" {
+			t.Fatalf("expected 1 webhook reaction dispatch for msg-001, got %+v", webhookDispatcher.reactions)
+		}
+
+		// Verify reaction_updated audit entry written
+		if len(auditRepo.entries) != prevAuditCount+1 || auditRepo.entries[len(auditRepo.entries)-1].EventType != "reaction_updated" {
+			t.Fatalf("expected reaction_updated audit entry on REST react, got %+v", auditRepo.entries)
+		}
+
+		// Toggle existing reaction off
+		togglePayload := `{"message_uid": "msg-001", "emoji": "👍", "action": "toggle"}`
+		reqToggle := httptest.NewRequest(http.MethodPost, "/api/v1/chats/"+chatID.String()+"/react", bytes.NewBufferString(togglePayload))
+		reqToggle.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		recToggle := httptest.NewRecorder()
+		e.ServeHTTP(recToggle, reqToggle)
+
+		if recToggle.Code != http.StatusOK {
+			t.Fatalf("expected status 200 on toggle, got %d: %s", recToggle.Code, recToggle.Body.String())
+		}
+		if err := json.Unmarshal(recToggle.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("failed to unmarshal toggle response: %v", err)
+		}
+		if resp.Action != "remove" || len(resp.Reactions) != 0 {
+			t.Fatalf("expected toggle to remove reaction 👍, got action=%q reactions=%v", resp.Action, resp.Reactions)
 		}
 	})
 

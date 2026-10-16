@@ -295,6 +295,131 @@ func TestChatRepository(t *testing.T) {
 				t.Errorf("expected reaction 👍 from user_a to be removed")
 			}
 		}
+
+		// Test MutateReaction: add, toggle-remove, toggle-add, empty-emoji remove
+		retChatID, resolvedAction, rxMut, err := chatRepo.MutateReaction(ctx, ws.ID, msgUID, "🎉", "user_b", "add")
+		if err != nil {
+			t.Fatalf("MutateReaction add failed: %v", err)
+		}
+		if retChatID != chat.ID {
+			t.Errorf("expected chatID %s, got %s", chat.ID, retChatID)
+		}
+		if resolvedAction != "add" {
+			t.Errorf("expected resolvedAction 'add', got %q", resolvedAction)
+		}
+		if len(rxMut) != 3 {
+			t.Fatalf("expected 3 reactions after MutateReaction add, got %d", len(rxMut))
+		}
+
+		// Toggle existing reaction -> should resolve to "remove"
+		_, resolvedAction, rxMut, err = chatRepo.MutateReaction(ctx, ws.ID, msgUID, "🎉", "user_b", "toggle")
+		if err != nil {
+			t.Fatalf("MutateReaction toggle (remove) failed: %v", err)
+		}
+		if resolvedAction != "remove" {
+			t.Errorf("expected resolvedAction 'remove' on toggle of existing reaction, got %q", resolvedAction)
+		}
+		if len(rxMut) != 2 {
+			t.Fatalf("expected 2 reactions after toggle remove, got %d", len(rxMut))
+		}
+
+		// Toggle missing reaction -> should resolve to "add"
+		_, resolvedAction, rxMut, err = chatRepo.MutateReaction(ctx, ws.ID, msgUID, "🎉", "user_b", "toggle")
+		if err != nil {
+			t.Fatalf("MutateReaction toggle (add) failed: %v", err)
+		}
+		if resolvedAction != "add" {
+			t.Errorf("expected resolvedAction 'add' on toggle of missing reaction, got %q", resolvedAction)
+		}
+		if len(rxMut) != 3 {
+			t.Fatalf("expected 3 reactions after toggle add, got %d", len(rxMut))
+		}
+
+		// Empty emoji inbound removal -> clears user_b's reaction
+		_, resolvedAction, rxMut, err = chatRepo.MutateReaction(ctx, ws.ID, msgUID, "", "user_b", "add")
+		if err != nil {
+			t.Fatalf("MutateReaction empty-emoji remove failed: %v", err)
+		}
+		if resolvedAction != "remove" {
+			t.Errorf("expected resolvedAction 'remove' on empty emoji, got %q", resolvedAction)
+		}
+		if len(rxMut) != 2 {
+			t.Fatalf("expected 2 reactions after empty emoji removal, got %d", len(rxMut))
+		}
+
+		// Invalid action returns error
+		if _, _, _, err := chatRepo.MutateReaction(ctx, ws.ID, msgUID, "🎉", "user_b", "invalid"); err == nil {
+			t.Errorf("expected error for invalid reaction action")
+		}
+	})
+
+	t.Run("MutateReaction_ConcurrentToggleSerialization", func(t *testing.T) {
+		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to get chat: %v", err)
+		}
+
+		msgUID := "msg-rx-concurrent-" + uuid.New().String()
+		msg := &domain.ChatMessage{
+			ChatID:      chat.ID,
+			WorkspaceID: ws.ID,
+			UID:         msgUID,
+			Direction:   domain.DirectionInbound,
+			SenderType:  domain.SenderTypeContact,
+			Body:        "Concurrent toggle target",
+			CreatedAt:   time.Now().UTC(),
+		}
+		if err := chatRepo.AddChatMessage(ctx, msg); err != nil {
+			t.Fatalf("failed to add message: %v", err)
+		}
+
+		// Run 11 concurrent toggles on the same (messageUID, emoji, sender).
+		// Under SELECT ... FOR UPDATE serialization, 6 must resolve to "add" and 5 to "remove",
+		// leaving the reaction present at the end.
+		const workers = 11
+		type result struct {
+			action string
+			err    error
+		}
+		results := make(chan result, workers)
+		start := make(chan struct{})
+
+		for i := 0; i < workers; i++ {
+			go func() {
+				<-start
+				_, act, _, mErr := chatRepo.MutateReaction(ctx, ws.ID, msgUID, "🚀", "operator", "toggle")
+				results <- result{action: act, err: mErr}
+			}()
+		}
+		close(start)
+
+		adds, removes := 0, 0
+		for i := 0; i < workers; i++ {
+			r := <-results
+			if r.err != nil {
+				t.Fatalf("concurrent MutateReaction failed: %v", r.err)
+			}
+			switch r.action {
+			case "add":
+				adds++
+			case "remove":
+				removes++
+			default:
+				t.Fatalf("unexpected resolved action: %q", r.action)
+			}
+		}
+
+		if adds != 6 || removes != 5 {
+			t.Errorf("expected 6 adds and 5 removes under serialized row lock, got %d adds and %d removes", adds, removes)
+		}
+
+		finalReactions, err := chatRepo.GetReactions(ctx, ws.ID, msgUID)
+		if err != nil {
+			t.Fatalf("GetReactions failed: %v", err)
+		}
+		if len(finalReactions) != 1 || finalReactions[0].Emoji != "🚀" {
+			t.Errorf("expected 1 final reaction 🚀, got %+v", finalReactions)
+		}
 	})
 
 	t.Run("ListChats_Filters", func(t *testing.T) {

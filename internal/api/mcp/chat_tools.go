@@ -13,7 +13,6 @@ import (
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
-	"github.com/pablojhp.pergo/internal/webhook"
 )
 
 func (s *Server) registerChatTools() {
@@ -335,8 +334,8 @@ func (s *Server) registerChatTools() {
 				},
 				"action": map[string]interface{}{
 					"type":        "string",
-					"description": "Reaction action: 'add' or 'remove' (default: 'add').",
-					"enum":        []string{"add", "remove"},
+					"description": "Reaction action: 'add', 'remove', or 'toggle' (default: 'add').",
+					"enum":        []string{"add", "remove", "toggle"},
 				},
 				"workspace_id": map[string]interface{}{
 					"type":        "string",
@@ -1440,8 +1439,8 @@ func (s *Server) handleMessageReact(ctx context.Context, request mcp.CallToolReq
 	if action == "" {
 		action = "add"
 	}
-	if action != "add" && action != "remove" {
-		return mcp.NewToolResultError("invalid action: must be 'add' or 'remove'"), nil
+	if action != "add" && action != "remove" && action != "toggle" {
+		return mcp.NewToolResultError("invalid action: must be 'add', 'remove', or 'toggle'"), nil
 	}
 
 	sender := strings.TrimSpace(request.GetString("sender", "ai_agent"))
@@ -1454,17 +1453,8 @@ func (s *Server) handleMessageReact(ctx context.Context, request mcp.CallToolReq
 		return resErr, nil
 	}
 
-	var chatIDStr string
-	var msg *domain.ChatMessage
-	if wsID != uuid.Nil {
-		var mErr error
-		msg, mErr = s.chatRepo.GetChatMessageByUID(ctx, wsID, messageUID)
-		if mErr != nil || msg == nil {
-			return mcp.NewToolResultError(fmt.Sprintf("message not found: %s", messageUID)), nil
-		}
-	} else {
-		var mErr error
-		msg, mErr = s.chatRepo.FindMessageByUID(ctx, messageUID)
+	if wsID == uuid.Nil {
+		msg, mErr := s.chatRepo.FindMessageByUID(ctx, messageUID)
 		if mErr != nil || msg == nil {
 			return mcp.NewToolResultError(fmt.Sprintf("message not found: %s", messageUID)), nil
 		}
@@ -1474,33 +1464,27 @@ func (s *Server) handleMessageReact(ctx context.Context, request mcp.CallToolReq
 	if authWS, ok := tenant.WorkspaceIDFrom(ctx); ok && authWS != uuid.Nil && wsID != authWS {
 		return mcp.NewToolResultError("workspace_id does not match authenticated context"), nil
 	}
-	chatIDStr = msg.ChatID.String()
 
-	var updatedReactions []domain.Reaction
-	if action == "add" {
-		updatedReactions, err = s.chatRepo.AddReaction(ctx, wsID, messageUID, domain.Reaction{
-			Emoji:     emoji,
-			Sender:    sender,
-			CreatedAt: time.Now().UTC(),
-		})
-	} else {
-		updatedReactions, err = s.chatRepo.RemoveReaction(ctx, wsID, messageUID, emoji, sender)
-	}
+	chatID, resolvedAction, updatedReactions, err := s.chatRepo.MutateReaction(ctx, wsID, messageUID, emoji, sender, action)
 	if err != nil {
+		if errors.Is(err, repository.ErrChatMessageNotFound) {
+			return mcp.NewToolResultError(fmt.Sprintf("message not found: %s", messageUID)), nil
+		}
 		return mcp.NewToolResultError(fmt.Sprintf("failed to update message reaction: %v", err)), nil
 	}
 
+	now := time.Now().UTC()
 	traceID := uuid.New().String()
 	rxEvent := domain.ReactionUpdatedPayload{
 		Event:       "message.reaction.updated",
 		WorkspaceID: wsID.String(),
-		ChatID:      chatIDStr,
+		ChatID:      chatID.String(),
 		MessageUID:  messageUID,
 		Emoji:       emoji,
 		Sender:      sender,
-		Action:      action,
+		Action:      resolvedAction,
 		Reactions:   updatedReactions,
-		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+		Timestamp:   now.Format(time.RFC3339),
 	}
 
 	payloadBytes, err := json.Marshal(rxEvent)
@@ -1508,34 +1492,24 @@ func (s *Server) handleMessageReact(ctx context.Context, request mcp.CallToolReq
 		if s.publisher != nil {
 			_ = s.publisher.Publish(ctx, "messages.events.reaction_updated", payloadBytes, traceID)
 		}
-		if s.webhookDispatcher != nil && s.webhookSubRepo != nil {
-			subs, sErr := s.webhookSubRepo.ListByWorkspace(ctx, wsID)
-			if sErr == nil {
-				for _, sub := range subs {
-					if !sub.Active {
-						continue
-					}
-					if webhook.MatchesAny(sub.EventTypes, "message.reaction.updated") {
-						task := webhook.WebhookDeliveryTask{
-							ID:             uuid.New(),
-							SubscriptionID: sub.ID,
-							WorkspaceID:    wsID,
-							Event:          "message.reaction.updated",
-							TraceID:        traceID,
-							MessageID:      messageUID,
-							Payload:        payloadBytes,
-							Mode:           "outbound",
-						}
-						_ = s.webhookDispatcher.Dispatch(ctx, task)
-					}
-				}
-			}
+		if s.webhookDispatcher != nil {
+			_ = s.webhookDispatcher.DispatchReaction(ctx, wsID, messageUID, payloadBytes, traceID)
+		}
+		if s.auditRepo != nil {
+			_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
+				ID:          uuid.New(),
+				WorkspaceID: wsID,
+				TraceID:     traceID,
+				EventType:   "reaction_updated",
+				Payload:     payloadBytes,
+				CreatedAt:   now,
+			})
 		}
 	}
 
 	response := map[string]interface{}{
 		"message_uid": messageUID,
-		"action":      action,
+		"action":      resolvedAction,
 		"emoji":       emoji,
 		"sender":      sender,
 		"reactions":   updatedReactions,

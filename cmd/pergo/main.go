@@ -631,6 +631,7 @@ func main() {
 		apipkg.WithChatWorkspaceRepo(wsRepo),
 		apipkg.WithChatAuditRepo(auditRepo),
 		apipkg.WithChatMessagePublisher(publisher),
+		apipkg.WithChatWebhookDispatcher(webhookDispatcher),
 	)
 	chatAPIHandler.RegisterRoutes(e, middleware.EnforceWorkspaceScope())
 
@@ -784,7 +785,6 @@ func main() {
 		ContactRepo:       contactRepo,
 		UserActionLogs:    userActionLogRepo,
 		Presence:          presenceTracker,
-		WebhookSubRepo:    webhookSubRepo,
 		WebhookDispatcher: webhookDispatcher,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)

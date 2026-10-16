@@ -838,36 +838,49 @@ func (r *ChatRepository) UpdateMessageReactions(ctx context.Context, workspaceID
 	return nil
 }
 
-// AddReaction appends a reaction to the message idempotently and returns the updated reactions.
-func (r *ChatRepository) AddReaction(ctx context.Context, workspaceID uuid.UUID, uid string, reaction domain.Reaction) ([]domain.Reaction, error) {
+// MutateReaction atomically adds, removes, or toggles a reaction on a message under a row lock
+// and returns (chatID, resolvedAction, updatedReactions, error).
+func (r *ChatRepository) MutateReaction(ctx context.Context, workspaceID uuid.UUID, messageUID, emoji, sender, action string) (uuid.UUID, string, []domain.Reaction, error) {
 	if workspaceID == uuid.Nil {
-		return nil, ErrInvalidWorkspaceID
+		return uuid.Nil, "", nil, ErrInvalidWorkspaceID
 	}
-	if uid == "" {
-		return nil, errors.New("message uid is required")
+	messageUID = strings.TrimSpace(messageUID)
+	if messageUID == "" {
+		return uuid.Nil, "", nil, errors.New("message uid is required")
 	}
-	if reaction.CreatedAt.IsZero() {
-		reaction.CreatedAt = time.Now().UTC()
+
+	sender = strings.TrimSpace(sender)
+	if sender == "" {
+		sender = "operator"
+	}
+
+	normAction := strings.ToLower(strings.TrimSpace(action))
+	if normAction != "" && normAction != "add" && normAction != "remove" && normAction != "toggle" {
+		return uuid.Nil, "", nil, fmt.Errorf("invalid reaction action %q: must be add, remove, or toggle", action)
+	}
+	if emoji == "" {
+		normAction = "remove"
 	}
 
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
+		return uuid.Nil, "", nil, fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
+	var chatID uuid.UUID
 	var rxBytes []byte
 	err = tx.QueryRow(ctx, `
-		SELECT reactions
+		SELECT chat_id, reactions
 		FROM chat_messages
 		WHERE workspace_id = $1 AND uid = $2
 		FOR UPDATE
-	`, workspaceID, uid).Scan(&rxBytes)
+	`, workspaceID, messageUID).Scan(&chatID, &rxBytes)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrChatMessageNotFound
+			return uuid.Nil, "", nil, ErrChatMessageNotFound
 		}
-		return nil, fmt.Errorf("get message reactions: %w", err)
+		return uuid.Nil, "", nil, fmt.Errorf("get message reactions: %w", err)
 	}
 
 	var reactions []domain.Reaction
@@ -878,109 +891,112 @@ func (r *ChatRepository) AddReaction(ctx context.Context, workspaceID uuid.UUID,
 		reactions = []domain.Reaction{}
 	}
 
-	// Idempotency: if already exists with same emoji and sender, return without duplicating
-	found := false
-	for _, ex := range reactions {
-		if ex.Emoji == reaction.Emoji && ex.Sender == reaction.Sender {
-			found = true
-			break
+	var resolvedAction string
+	mutated := false
+
+	switch normAction {
+	case "", "toggle":
+		hasReacted := false
+		for _, rx := range reactions {
+			if rx.Emoji == emoji && (rx.Sender == sender || rx.Sender == "operator") {
+				hasReacted = true
+				break
+			}
 		}
+		if hasReacted {
+			resolvedAction = "remove"
+			filtered := make([]domain.Reaction, 0, len(reactions))
+			for _, rx := range reactions {
+				if rx.Emoji == emoji && (rx.Sender == sender || rx.Sender == "operator") {
+					mutated = true
+					continue
+				}
+				filtered = append(filtered, rx)
+			}
+			reactions = filtered
+		} else {
+			resolvedAction = "add"
+			reactions = append(reactions, domain.Reaction{
+				Emoji:     emoji,
+				Sender:    sender,
+				CreatedAt: time.Now().UTC(),
+			})
+			mutated = true
+		}
+
+	case "add":
+		resolvedAction = "add"
+		found := false
+		for _, rx := range reactions {
+			if rx.Emoji == emoji && rx.Sender == sender {
+				found = true
+				break
+			}
+		}
+		if !found {
+			reactions = append(reactions, domain.Reaction{
+				Emoji:     emoji,
+				Sender:    sender,
+				CreatedAt: time.Now().UTC(),
+			})
+			mutated = true
+		}
+
+	case "remove":
+		resolvedAction = "remove"
+		filtered := make([]domain.Reaction, 0, len(reactions))
+		for _, rx := range reactions {
+			remove := false
+			if emoji == "" {
+				if rx.Sender == sender || sender == "operator" {
+					remove = true
+				}
+			} else if rx.Emoji == emoji && (rx.Sender == sender || sender == "operator" || rx.Sender == "operator") {
+				remove = true
+			}
+			if remove {
+				mutated = true
+				continue
+			}
+			filtered = append(filtered, rx)
+		}
+		reactions = filtered
 	}
-	if !found {
-		reactions = append(reactions, reaction)
+
+	if reactions == nil {
+		reactions = []domain.Reaction{}
+	}
+
+	if mutated {
 		newRxJSON, err := json.Marshal(reactions)
 		if err != nil {
-			return nil, fmt.Errorf("marshal reactions: %w", err)
+			return uuid.Nil, "", nil, fmt.Errorf("marshal reactions: %w", err)
 		}
 		_, err = tx.Exec(ctx, `
 			UPDATE chat_messages
-			SET reactions = $3
+			SET reactions = $3::jsonb
 			WHERE workspace_id = $1 AND uid = $2
-		`, workspaceID, uid, newRxJSON)
+		`, workspaceID, messageUID, newRxJSON)
 		if err != nil {
-			return nil, fmt.Errorf("update reactions: %w", err)
+			return uuid.Nil, "", nil, fmt.Errorf("update reactions: %w", err)
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit tx: %w", err)
+		return uuid.Nil, "", nil, fmt.Errorf("commit tx: %w", err)
 	}
 
-	return reactions, nil
+	return chatID, resolvedAction, reactions, nil
+}
+
+// AddReaction appends a reaction to the message idempotently and returns the updated reactions.
+func (r *ChatRepository) AddReaction(ctx context.Context, workspaceID uuid.UUID, uid string, reaction domain.Reaction) ([]domain.Reaction, error) {
+	_, _, reactions, err := r.MutateReaction(ctx, workspaceID, uid, reaction.Emoji, reaction.Sender, "add")
+	return reactions, err
 }
 
 // RemoveReaction removes a reaction from the message and returns the updated reactions.
 func (r *ChatRepository) RemoveReaction(ctx context.Context, workspaceID uuid.UUID, uid string, emoji string, sender string) ([]domain.Reaction, error) {
-	if workspaceID == uuid.Nil {
-		return nil, ErrInvalidWorkspaceID
-	}
-	if uid == "" {
-		return nil, errors.New("message uid is required")
-	}
-
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	var rxBytes []byte
-	err = tx.QueryRow(ctx, `
-		SELECT reactions
-		FROM chat_messages
-		WHERE workspace_id = $1 AND uid = $2
-		FOR UPDATE
-	`, workspaceID, uid).Scan(&rxBytes)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrChatMessageNotFound
-		}
-		return nil, fmt.Errorf("get message reactions: %w", err)
-	}
-
-	var reactions []domain.Reaction
-	if len(rxBytes) > 0 {
-		_ = json.Unmarshal(rxBytes, &reactions)
-	}
-	if reactions == nil {
-		reactions = []domain.Reaction{}
-	}
-
-	updated := make([]domain.Reaction, 0, len(reactions))
-	removed := false
-	for _, ex := range reactions {
-		match := true
-		if emoji != "" && ex.Emoji != emoji {
-			match = false
-		}
-		if sender != "" && ex.Sender != sender {
-			match = false
-		}
-		if match {
-			removed = true
-		} else {
-			updated = append(updated, ex)
-		}
-	}
-
-	if removed {
-		newRxJSON, err := json.Marshal(updated)
-		if err != nil {
-			return nil, fmt.Errorf("marshal reactions: %w", err)
-		}
-		_, err = tx.Exec(ctx, `
-			UPDATE chat_messages
-			SET reactions = $3
-			WHERE workspace_id = $1 AND uid = $2
-		`, workspaceID, uid, newRxJSON)
-		if err != nil {
-			return nil, fmt.Errorf("update reactions: %w", err)
-		}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit tx: %w", err)
-	}
-
-	return updated, nil
+	_, _, reactions, err := r.MutateReaction(ctx, workspaceID, uid, emoji, sender, "remove")
+	return reactions, err
 }

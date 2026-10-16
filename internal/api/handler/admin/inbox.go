@@ -40,7 +40,6 @@ type InboxHandler struct {
 	UserActionLogs    *repository.UserActionLogRepository
 	ChatRepo          *repository.ChatRepository
 	Presence          *presence.Tracker
-	WebhookSubRepo    *repository.WebhookSubscriptionRepository
 	WebhookDispatcher webhook.WebhookDispatcher
 }
 
@@ -1583,86 +1582,49 @@ func (h *InboxHandler) ToggleReaction(c *echo.Context) error {
 		return c.String(http.StatusUnauthorized, "workspace context required")
 	}
 
-	var chatIDStr string
-	msg, err := h.ChatRepo.GetChatMessageByUID(ctx, workspaceID, messageUID)
-	if err != nil || msg == nil {
-		return c.String(http.StatusNotFound, "message not found")
-	}
-	chatIDStr = msg.ChatID.String()
-
 	sender := "operator"
 	if opEmail := h.resolveCurrentOperatorEmail(c, workspaceID); opEmail != "" {
 		sender = opEmail
 	}
 
-	existingReactions, err := h.ChatRepo.GetReactions(ctx, workspaceID, messageUID)
+	chatID, resolvedAction, updatedReactions, err := h.ChatRepo.MutateReaction(ctx, workspaceID, messageUID, emoji, sender, "toggle")
 	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to get reactions: "+err.Error())
-	}
-
-	hasReacted := false
-	for _, r := range existingReactions {
-		if r.Emoji == emoji && (r.Sender == sender || r.Sender == "operator") {
-			hasReacted = true
-			break
+		if errors.Is(err, repository.ErrChatMessageNotFound) {
+			return c.String(http.StatusNotFound, "message not found")
 		}
-	}
-
-	var updatedReactions []domain.Reaction
-	action := "add"
-	if hasReacted {
-		action = "remove"
-		updatedReactions, err = h.ChatRepo.RemoveReaction(ctx, workspaceID, messageUID, emoji, sender)
-	} else {
-		updatedReactions, err = h.ChatRepo.AddReaction(ctx, workspaceID, messageUID, domain.Reaction{
-			Emoji:     emoji,
-			Sender:    sender,
-			CreatedAt: time.Now().UTC(),
-		})
-	}
-	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to mutate reaction: "+err.Error())
 	}
 
+	now := time.Now().UTC()
 	traceID := uuid.New().String()
 	rxEvent := domain.ReactionUpdatedPayload{
 		Event:       "message.reaction.updated",
 		WorkspaceID: workspaceID.String(),
-		ChatID:      chatIDStr,
+		ChatID:      chatID.String(),
 		MessageUID:  messageUID,
 		Emoji:       emoji,
 		Sender:      sender,
-		Action:      action,
+		Action:      resolvedAction,
 		Reactions:   updatedReactions,
-		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+		Timestamp:   now.Format(time.RFC3339),
 	}
 
 	if payloadBytes, mErr := json.Marshal(rxEvent); mErr == nil {
 		if h.Publisher != nil {
 			_ = h.Publisher.Publish(ctx, "messages.events.reaction_updated", payloadBytes, traceID)
 		}
-		if h.WebhookDispatcher != nil && h.WebhookSubRepo != nil {
-			subs, sErr := h.WebhookSubRepo.ListByWorkspace(ctx, workspaceID)
-			if sErr == nil {
-				for _, sub := range subs {
-					if !sub.Active {
-						continue
-					}
-					if webhook.MatchesAny(sub.EventTypes, "message.reaction.updated") {
-						task := webhook.WebhookDeliveryTask{
-							ID:             uuid.New(),
-							SubscriptionID: sub.ID,
-							WorkspaceID:    workspaceID,
-							Event:          "message.reaction.updated",
-							TraceID:        traceID,
-							MessageID:      messageUID,
-							Payload:        payloadBytes,
-							Mode:           "outbound",
-						}
-						_ = h.WebhookDispatcher.Dispatch(ctx, task)
-					}
-				}
-			}
+		if h.WebhookDispatcher != nil {
+			_ = h.WebhookDispatcher.DispatchReaction(ctx, workspaceID, messageUID, payloadBytes, traceID)
+		}
+		if h.Repo != nil {
+			_ = h.Repo.InsertAuditLog(ctx, &repository.AuditEntry{
+				ID:          uuid.New(),
+				WorkspaceID: workspaceID,
+				TraceID:     traceID,
+				EventType:   "reaction_updated",
+				Payload:     payloadBytes,
+				CreatedAt:   now,
+			})
 		}
 	}
 

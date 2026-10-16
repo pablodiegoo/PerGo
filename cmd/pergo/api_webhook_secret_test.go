@@ -50,6 +50,13 @@ func (m *mockSubscriptionStore) Get(ctx context.Context, id uuid.UUID) (*reposit
 	return nil, repository.ErrWebhookSubscriptionNotFound
 }
 
+func (m *mockSubscriptionStore) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]*repository.WebhookSubscription, error) {
+	if m.sub != nil && m.sub.WorkspaceID == workspaceID {
+		return []*repository.WebhookSubscription{m.sub}, nil
+	}
+	return nil, nil
+}
+
 func setupWebhookSecretAPIRoutes(t *testing.T) (*echo.Echo, *repository.WorkspaceRepository, *repository.APIKeyRepository) {
 	t.Helper()
 	pool := getTestPool(t)
