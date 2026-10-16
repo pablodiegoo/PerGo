@@ -557,6 +557,20 @@ func TestMCPChatTools(t *testing.T) {
 			t.Errorf("expected exactly 1 instance of 'urgent' tag, got %d in %+v", urgentCount, chatAfterSet.Tags)
 		}
 
+		contactAfterSet, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("contactRepo.GetByID failed: %v", err)
+		}
+		hasUrgentInContact := false
+		for _, tag := range contactAfterSet.Tags {
+			if tag == "urgent" {
+				hasUrgentInContact = true
+			}
+		}
+		if !hasUrgentInContact {
+			t.Errorf("expected contact tags to be synchronized with 'urgent', got %+v", contactAfterSet.Tags)
+		}
+
 		// Remove label 'urgent'
 		reqRemove := mcp.CallToolRequest{}
 		reqRemove.Params.Arguments = map[string]any{
@@ -574,6 +588,16 @@ func TestMCPChatTools(t *testing.T) {
 		for _, tag := range chatAfterRemove.Tags {
 			if tag == "urgent" {
 				t.Errorf("expected 'urgent' tag to be removed, but still present in %+v", chatAfterRemove.Tags)
+			}
+		}
+
+		contactAfterRemove, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("contactRepo.GetByID failed: %v", err)
+		}
+		for _, tag := range contactAfterRemove.Tags {
+			if tag == "urgent" {
+				t.Errorf("expected 'urgent' tag to be removed from contact, got %+v", contactAfterRemove.Tags)
 			}
 		}
 	})
@@ -595,6 +619,13 @@ func TestMCPChatTools(t *testing.T) {
 		if chatClosed.Status != "closed" {
 			t.Errorf("expected closed status, got %s", chatClosed.Status)
 		}
+		contactClosed, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("contactRepo.GetByID failed: %v", err)
+		}
+		if contactClosed.ClosedAt == nil {
+			t.Errorf("expected contact.ClosedAt to be set after chat_close")
+		}
 
 		// Reopen
 		reqOpen := mcp.CallToolRequest{}
@@ -611,6 +642,13 @@ func TestMCPChatTools(t *testing.T) {
 		chatOpened, _ := chatRepo.GetChat(ctx, ws.ID, chat.ID)
 		if chatOpened.Status != "open" {
 			t.Errorf("expected open status, got %s", chatOpened.Status)
+		}
+		contactOpened, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("contactRepo.GetByID failed: %v", err)
+		}
+		if contactOpened.ClosedAt != nil {
+			t.Errorf("expected contact.ClosedAt to be nil after chat_open, got %v", contactOpened.ClosedAt)
 		}
 	})
 
@@ -1060,5 +1098,119 @@ func TestMCPChatTools(t *testing.T) {
 			t.Errorf("expected no chat_messages inserted when queue is full; had %d, now %d", len(beforeMsgs), len(afterMsgs))
 		}
 	})
+
+	t.Run("lazy_snooze_reopen_and_ai_handoff", func(t *testing.T) {
+		past := time.Now().Add(-15 * time.Minute)
+		if err := chatRepo.SnoozeChat(ctx, ws.ID, chat.ID, &past); err != nil {
+			t.Fatalf("SnoozeChat failed: %v", err)
+		}
+		if err := contactRepo.CloseThread(ctx, ws.ID, contact.ID); err != nil {
+			t.Fatalf("CloseThread failed: %v", err)
+		}
+
+		// 1. chat_details should lazily reopen the expired snooze and contact thread
+		resDetails, err := srv.CallTool(ctx, "chat_details", map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+		})
+		if err != nil || resDetails.IsError {
+			t.Fatalf("chat_details failed: %v, %+v", err, resDetails)
+		}
+
+		reopenedChat, err := chatRepo.GetChat(ctx, ws.ID, chat.ID)
+		if err != nil {
+			t.Fatalf("GetChat failed: %v", err)
+		}
+		if reopenedChat.Status != "open" || reopenedChat.SnoozedUntil != nil {
+			t.Errorf("expected chat status=open and snoozed_until=nil after expired snooze, got status=%q snoozed_until=%v", reopenedChat.Status, reopenedChat.SnoozedUntil)
+		}
+		reopenedContact, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("contactRepo.GetByID failed: %v", err)
+		}
+		if reopenedContact.ClosedAt != nil {
+			t.Errorf("expected contact.ClosedAt to be nil after lazy snooze reopen, got %v", reopenedContact.ClosedAt)
+		}
+
+		// 2. Snooze again in the past and verify list_chats lazily reopens
+		if err := chatRepo.SnoozeChat(ctx, ws.ID, chat.ID, &past); err != nil {
+			t.Fatalf("SnoozeChat 2 failed: %v", err)
+		}
+		if err := contactRepo.CloseThread(ctx, ws.ID, contact.ID); err != nil {
+			t.Fatalf("CloseThread 2 failed: %v", err)
+		}
+
+		resList, err := srv.CallTool(ctx, "list_chats", map[string]any{
+			"workspace_id": ws.ID.String(),
+		})
+		if err != nil || resList.IsError {
+			t.Fatalf("list_chats failed: %v, %+v", err, resList)
+		}
+		reopenedChat2, _ := chatRepo.GetChat(ctx, ws.ID, chat.ID)
+		if reopenedChat2.Status != "open" || reopenedChat2.SnoozedUntil != nil {
+			t.Errorf("expected list_chats to lazily reopen expired snooze, got status=%q snoozed_until=%v", reopenedChat2.Status, reopenedChat2.SnoozedUntil)
+		}
+		reopenedContact2, _ := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+		if reopenedContact2.ClosedAt != nil {
+			t.Errorf("expected contact.ClosedAt to be nil after list_chats lazy snooze reopen, got %v", reopenedContact2.ClosedAt)
+		}
+
+		// 3. Verify chat_enable_ai(false) cancels debounce and publishes handoff events
+		debouncer := &testMCPDebounceCanceller{}
+		pub := &testMCPBrokerPublisher{}
+		srvHandoff := NewServer(
+			wsRepo,
+			connRepo,
+			contactRepo,
+			auditRepo,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			[]byte("secret"),
+			"http://localhost:8080",
+			WithChatRepo(chatRepo),
+			WithDebounceCanceller(debouncer),
+			WithPublisher(pub),
+		)
+
+		resDisableAI, err := srvHandoff.CallTool(ctx, "chat_enable_ai", map[string]any{
+			"workspace_id": ws.ID.String(),
+			"chat_id":      chat.ID.String(),
+			"enabled":      false,
+		})
+		if err != nil || resDisableAI.IsError {
+			t.Fatalf("chat_enable_ai(false) failed: %v, %+v", err, resDisableAI)
+		}
+		if len(debouncer.cancelled) != 1 || debouncer.cancelled[0] != contact.ID {
+			t.Errorf("expected debouncer.Cancel to be called for contact %s, got %+v", contact.ID, debouncer.cancelled)
+		}
+		if len(pub.subjects) != 2 {
+			t.Fatalf("expected 2 handoff events published on chat_enable_ai(false), got %d: %+v", len(pub.subjects), pub.subjects)
+		}
+		if pub.subjects[0] != "chat.handoff.human_takeover" || pub.subjects[1] != "chat.handoff."+ws.ID.String() {
+			t.Errorf("unexpected handoff subjects: %+v", pub.subjects)
+		}
+	})
 }
+
+type testMCPDebounceCanceller struct {
+	cancelled []uuid.UUID
+}
+
+func (d *testMCPDebounceCanceller) Cancel(_ context.Context, _ uuid.UUID, contactID uuid.UUID) error {
+	d.cancelled = append(d.cancelled, contactID)
+	return nil
+}
+
+type testMCPBrokerPublisher struct {
+	subjects []string
+}
+
+func (p *testMCPBrokerPublisher) Publish(_ context.Context, subject string, _ []byte, _ string) error {
+	p.subjects = append(p.subjects, subject)
+	return nil
+}
+
 

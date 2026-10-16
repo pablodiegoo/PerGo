@@ -317,14 +317,25 @@ func (m *mockContactRepo) SetTags(ctx context.Context, workspaceID, contactID uu
 }
 
 func (m *mockContactRepo) CloseThread(ctx context.Context, workspaceID, contactID uuid.UUID) error {
+	if c, ok := m.contacts[contactID]; ok {
+		now := time.Now().UTC()
+		c.ClosedAt = &now
+	}
 	return nil
 }
 
 func (m *mockContactRepo) ReopenThread(ctx context.Context, workspaceID, contactID uuid.UUID) error {
+	if c, ok := m.contacts[contactID]; ok {
+		c.ClosedAt = nil
+	}
 	return nil
 }
 
 func (m *mockContactRepo) UpdateBotState(ctx context.Context, workspaceID, contactID uuid.UUID, botActive bool, pausedAt *time.Time) error {
+	if c, ok := m.contacts[contactID]; ok {
+		c.BotActive = botActive
+		c.BotPausedAt = pausedAt
+	}
 	return nil
 }
 
@@ -774,6 +785,48 @@ func TestChatAPIHandler(t *testing.T) {
 		lastMsg := msgs[len(msgs)-1]
 		if lastMsg.Body != "📋 [Template: order_update]" {
 			t.Fatalf("expected display body '📋 [Template: order_update]', got %q", lastMsg.Body)
+		}
+	})
+
+	t.Run("GET and POST /api/v1/chats/:id/summarize", func(t *testing.T) {
+		for _, method := range []string{http.MethodGet, http.MethodPost} {
+			req := httptest.NewRequest(method, "/api/v1/chats/"+chatID.String()+"/summarize", nil)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected status 200 for %s summarize, got %d: %s", method, rec.Code, rec.Body.String())
+			}
+
+			var synopsis domain.ChatSynopsis
+			if err := json.Unmarshal(rec.Body.Bytes(), &synopsis); err != nil {
+				t.Fatalf("failed to unmarshal synopsis: %v", err)
+			}
+			if synopsis.CurrentStatus == "" {
+				t.Fatalf("expected non-empty current_status in synopsis: %+v", synopsis)
+			}
+		}
+	})
+
+	t.Run("Lazy snooze reopen on GET /api/v1/chats/:id syncs contact ReopenThread", func(t *testing.T) {
+		past := time.Now().UTC().Add(-5 * time.Minute)
+		chatRepo.chats[chatID].Status = domain.ChatStatusSnoozed
+		chatRepo.chats[chatID].SnoozedUntil = &past
+		closedNow := time.Now().UTC()
+		contactRepo.contacts[contactID].ClosedAt = &closedNow
+
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/chats/"+chatID.String(), nil)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		if chatRepo.chats[chatID].Status != domain.ChatStatusOpen || chatRepo.chats[chatID].SnoozedUntil != nil {
+			t.Fatalf("expected chat to be lazily reopened, got status=%s", chatRepo.chats[chatID].Status)
+		}
+		if contactRepo.contacts[contactID].ClosedAt != nil {
+			t.Fatalf("expected contact ClosedAt to be cleared via ReopenThread")
 		}
 	})
 }

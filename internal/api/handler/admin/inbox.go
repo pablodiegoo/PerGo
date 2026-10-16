@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
+	chatpkg "github.com/pablojhp.pergo/internal/chat"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/presence"
@@ -1492,72 +1493,6 @@ func (h *InboxHandler) CreateNote(c *echo.Context) error {
 	return c.JSON(http.StatusCreated, note)
 }
 
-// APICreateNote handles POST /api/v1/chats/:chat_id/notes
-func (h *InboxHandler) APICreateNote(c *echo.Context) error {
-	ctx := c.Request().Context()
-	var workspaceID uuid.UUID
-	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
-		workspaceID = scope.WorkspaceID()
-	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
-		workspaceID = id
-	}
-
-	chatIDStr := c.Param("chat_id")
-	chatID, err := uuid.Parse(chatIDStr)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid chat_id"})
-	}
-
-	var req struct {
-		Body       string `json:"body"`
-		AuthorName string `json:"author_name"`
-	}
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-	}
-
-	req.Body = strings.TrimSpace(req.Body)
-	if req.Body == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "body cannot be empty"})
-	}
-	if req.AuthorName == "" {
-		req.AuthorName = "AI Assistant"
-	}
-
-	if h.ChatRepo == nil {
-		return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "chat repository not configured"})
-	}
-
-	note, err := h.ChatRepo.CreateInternalNote(ctx, workspaceID, chatID, req.AuthorName, "ai_agent", req.Body)
-	if err != nil {
-		if errors.Is(err, repository.ErrChatNotFound) || strings.Contains(err.Error(), "not found") {
-			return c.JSON(http.StatusNotFound, map[string]string{"error": "chat not found"})
-		}
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-
-	if h.Repo != nil {
-		auditPayload, _ := json.Marshal(map[string]interface{}{
-			"chat_id":     chatID.String(),
-			"note_id":     note.ID.String(),
-			"author_name": req.AuthorName,
-			"body":        req.Body,
-			"sender_type": "ai_agent",
-			"is_private":  true,
-		})
-		_ = h.Repo.InsertAuditLog(ctx, &repository.AuditEntry{
-			ID:          uuid.New(),
-			WorkspaceID: workspaceID,
-			TraceID:     note.UID,
-			EventType:   "chat.note.created",
-			Payload:     auditPayload,
-			CreatedAt:   note.CreatedAt,
-		})
-	}
-
-	return c.JSON(http.StatusCreated, note)
-}
-
 // ToggleReaction handles POST /admin/inbox/reactions — toggles an emoji reaction on a message.
 func (h *InboxHandler) ToggleReaction(c *echo.Context) error {
 	ctx := c.Request().Context()
@@ -1707,7 +1642,7 @@ func (h *InboxHandler) SummarizeChat(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "failed to list chat messages: "+err.Error())
 	}
 
-	synopsis := domain.SummarizeMessages(messages, chat)
+	synopsis := chatpkg.SummarizeMessages(messages, chat)
 
 	// If API caller requested JSON or non-HTMX request
 	if !mw.IsHTMX(c) || strings.Contains(c.Request().Header.Get("Accept"), "application/json") {

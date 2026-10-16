@@ -21,6 +21,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
+	"github.com/pablojhp.pergo/internal/chat"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/pkg/slug"
@@ -120,6 +121,58 @@ type Server struct {
 	telegramBaseURL   string
 	httpClient        *http.Client
 	wabaTemplateRepo  *repository.WABATemplateRepository
+	debouncer         chat.DebounceCanceller
+	chatEngine        *chat.Engine
+}
+
+// WithChatEngine configures a shared chat.Engine instance on the MCP Server.
+func WithChatEngine(eng *chat.Engine) ServerOption {
+	return func(s *Server) {
+		s.chatEngine = eng
+	}
+}
+
+// WithDebounceCanceller configures the inbound debounce buffer canceller on the MCP Server.
+func WithDebounceCanceller(d chat.DebounceCanceller) ServerOption {
+	return func(s *Server) {
+		s.debouncer = d
+	}
+}
+
+func (s *Server) engine() *chat.Engine {
+	if s.chatEngine != nil {
+		return s.chatEngine
+	}
+	if s.chatRepo == nil {
+		return nil
+	}
+	var opts []chat.Option
+	if s.contactRepo != nil {
+		opts = append(opts, chat.WithContactRepo(s.contactRepo))
+	}
+	if s.connectionRepo != nil {
+		opts = append(opts, chat.WithConnectionRepo(s.connectionRepo))
+	}
+	if s.wsRepo != nil {
+		opts = append(opts, chat.WithWorkspaceRepo(s.wsRepo))
+	}
+	if s.auditRepo != nil {
+		opts = append(opts, chat.WithAuditRepo(s.auditRepo))
+	}
+	if s.publisher != nil {
+		opts = append(opts, chat.WithMessagePublisher(s.publisher))
+	}
+	if s.webhookDispatcher != nil {
+		opts = append(opts, chat.WithReactionWebhookDispatcher(s.webhookDispatcher))
+	}
+	if s.ingestor != nil {
+		opts = append(opts, chat.WithMessageIngestor(s.ingestor))
+	}
+	if s.debouncer != nil {
+		opts = append(opts, chat.WithDebounceCanceller(s.debouncer))
+	}
+	s.chatEngine = chat.NewEngine(s.chatRepo, opts...)
+	return s.chatEngine
 }
 
 // WithWABATemplateRepo configures the WABATemplateRepository for WABA template MCP tools.

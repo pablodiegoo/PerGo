@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/pablojhp.pergo/internal/chat"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -587,7 +588,8 @@ type WABAChatSummaryDTO struct {
 }
 
 func (s *Server) handleWABAListChats(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if s.chatRepo == nil {
+	eng := s.engine()
+	if eng == nil {
 		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
 	}
 
@@ -629,7 +631,7 @@ func (s *Server) handleWABAListChats(ctx context.Context, request mcp.CallToolRe
 		Phone:  phone,
 	}
 
-	chats, err := s.chatRepo.ListChats(ctx, wsID, filter, limit, offset)
+	chats, err := eng.List(ctx, wsID, filter, limit, offset)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to list chats: %v", err)), nil
 	}
@@ -687,23 +689,11 @@ func (s *Server) handleWABAListChats(ctx context.Context, request mcp.CallToolRe
 		}
 
 		dto := WABAChatSummaryDTO{
-			ChatSummaryDTO:            ChatSummaryDTO{Chat: c},
+			ChatSummaryDTO:            c,
 			ServiceWindowIsOpen:       isOpen,
 			ServiceWindowExpiresAt:    c.ServiceWindowExpiresAt,
 			ServiceWindowRemainingSec: remSec,
 			ServiceWindowStatusBadge:  badge,
-		}
-
-		if s.contactRepo != nil {
-			if contact, cErr := s.contactRepo.GetByID(ctx, wsID, c.ContactID); cErr == nil && contact != nil {
-				dto.ContactName = contact.Name
-				for _, id := range contact.Identities {
-					dto.Identities = append(dto.Identities, fmt.Sprintf("%s:%s", id.Channel, id.SenderIdentity))
-					if dto.ContactPhone == "" && (id.Channel == "whatsapp" || id.Channel == "whatsapp_cloud") {
-						dto.ContactPhone = id.SenderIdentity
-					}
-				}
-			}
 		}
 
 		results = append(results, dto)
@@ -1230,7 +1220,8 @@ func parseTemplateComponents(args map[string]any) ([]domain.TemplateComponent, e
 }
 
 func (s *Server) handleWABAChatDetails(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if s.chatRepo == nil {
+	eng := s.engine()
+	if eng == nil {
 		return mcp.NewToolResultError("chat repository is not configured on this server"), nil
 	}
 
@@ -1248,20 +1239,21 @@ func (s *Server) handleWABAChatDetails(ctx context.Context, request mcp.CallTool
 		return mcp.NewToolResultError("invalid chat_id: must be a valid UUID"), nil
 	}
 
-	chat, err := s.chatRepo.GetChat(ctx, wsID, chatID)
+	detail, err := eng.Get(ctx, wsID, chat.ChatRef{ChatID: chatID}, 0, false)
 	if err != nil {
-		if errors.Is(err, repository.ErrChatNotFound) {
+		if errors.Is(err, chat.ErrChatNotFound) || errors.Is(err, repository.ErrChatNotFound) {
 			return mcp.NewToolResultError(fmt.Sprintf("waba chat not found: %s", chatID)), nil
 		}
 		return mcp.NewToolResultError(fmt.Sprintf("failed to get waba chat: %v", err)), nil
 	}
 
-	isOpen := chat.IsServiceWindowOpen()
+	c := detail.Chat
+	isOpen := c.IsServiceWindowOpen()
 	var remSec int64
 	var badge string
 	now := time.Now().UTC()
-	if isOpen && chat.ServiceWindowExpiresAt != nil {
-		remSec = int64(chat.ServiceWindowExpiresAt.Sub(now).Seconds())
+	if isOpen && c.ServiceWindowExpiresAt != nil {
+		remSec = int64(c.ServiceWindowExpiresAt.Sub(now).Seconds())
 		hours := remSec / 3600
 		mins := (remSec % 3600) / 60
 		if hours < 4 {
@@ -1274,29 +1266,25 @@ func (s *Server) handleWABAChatDetails(ctx context.Context, request mcp.CallTool
 	}
 
 	response := map[string]interface{}{
-		"chat":                         chat,
+		"chat":                         c,
 		"service_window_is_open":       isOpen,
-		"service_window_expires_at":    chat.ServiceWindowExpiresAt,
+		"service_window_expires_at":    c.ServiceWindowExpiresAt,
 		"service_window_remaining_sec": remSec,
 		"service_window_status_badge":  badge,
 	}
 
-	if s.contactRepo != nil {
-		if contact, cErr := s.contactRepo.GetByID(ctx, wsID, chat.ContactID); cErr == nil && contact != nil {
-			response["contact"] = contact
-			response["phone"] = resolveContactPhone(contact)
-		}
+	if detail.Contact != nil {
+		response["contact"] = detail.Contact
+		response["phone"] = resolveContactPhone(detail.Contact)
 	}
 
-	if s.connectionRepo != nil && chat.ConnectionID != nil {
-		if conn, connErr := s.connectionRepo.GetByID(ctx, *chat.ConnectionID); connErr == nil && conn != nil {
-			response["connection"] = map[string]interface{}{
-				"id":              conn.ID,
-				"name":            conn.Name,
-				"channel":         conn.Channel,
-				"sender_identity": conn.SenderIdentity,
-				"status":          conn.Status,
-			}
+	if detail.Connection != nil {
+		response["connection"] = map[string]interface{}{
+			"id":              detail.Connection.ID,
+			"name":            detail.Connection.Name,
+			"channel":         detail.Connection.Channel,
+			"sender_identity": detail.Connection.SenderIdentity,
+			"status":          detail.Connection.Status,
 		}
 	}
 

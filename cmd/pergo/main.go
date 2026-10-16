@@ -33,6 +33,7 @@ import (
 	"github.com/pablojhp.pergo/internal/channel/instagram"
 	"github.com/pablojhp.pergo/internal/channel/telegram"
 	"github.com/pablojhp.pergo/internal/channel/whatsapp"
+	"github.com/pablojhp.pergo/internal/chat"
 	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/config"
 	"github.com/pablojhp.pergo/internal/inbound"
@@ -330,6 +331,7 @@ func main() {
 	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo, contactRepo, dispatchRepo, inboundRouter)
 	inboundProcessor.SetChatRepository(chatRepo)
 
+	var debouncer *inbound.Debouncer
 	if cfg.RedisURL != "" {
 		redisOpts, err := redis.ParseURL(cfg.RedisURL)
 		if err != nil {
@@ -338,7 +340,7 @@ func main() {
 		rdb := redis.NewClient(redisOpts)
 		ctxPing, cancelPing := context.WithTimeout(ctx, 2*time.Second)
 		if err := rdb.Ping(ctxPing).Err(); err == nil {
-			debouncer := inbound.NewDebouncer(rdb)
+			debouncer = inbound.NewDebouncer(rdb)
 			inboundProcessor.SetDebouncer(debouncer)
 			slog.Info("inbound debounce buffer connected", "addr", redisOpts.Addr)
 		} else {
@@ -542,6 +544,20 @@ func main() {
 	outboundProcessor.SetChatRepository(chatRepo)
 	outboundProcessor.SetContactRepository(contactRepo)
 
+	chatEngineOpts := []chat.Option{
+		chat.WithContactRepo(contactRepo),
+		chat.WithConnectionRepo(connectionRepo),
+		chat.WithWorkspaceRepo(wsRepo),
+		chat.WithAuditRepo(auditRepo),
+		chat.WithMessagePublisher(publisher),
+		chat.WithReactionWebhookDispatcher(webhookDispatcher),
+		chat.WithMessageIngestor(outboundProcessor),
+	}
+	if debouncer != nil {
+		chatEngineOpts = append(chatEngineOpts, chat.WithDebounceCanceller(debouncer))
+	}
+	chatEngine := chat.NewEngine(chatRepo, chatEngineOpts...)
+
 	messageHandler := &handler.MessageHandler{
 		Ingestor: outboundProcessor,
 	}
@@ -562,6 +578,7 @@ func main() {
 		cfg.ExternalURL,
 		mcp.WithWebhookDLQRepo(webhookDLQRepo),
 		mcp.WithChatRepo(chatRepo),
+		mcp.WithChatEngine(chatEngine),
 		mcp.WithWABATemplateRepo(wabaTemplateRepo),
 		mcp.WithJetStreamPublisher(publisher),
 		mcp.WithJetStream(js),
@@ -626,12 +643,14 @@ func main() {
 	// --- Public Chat REST API handler ---
 	chatAPIHandler := apipkg.NewChatAPIHandler(
 		chatRepo,
+		apipkg.WithChatEngine(chatEngine),
 		apipkg.WithChatContactRepo(contactRepo),
 		apipkg.WithChatConnectionRepo(connectionRepo),
 		apipkg.WithChatWorkspaceRepo(wsRepo),
 		apipkg.WithChatAuditRepo(auditRepo),
 		apipkg.WithChatMessagePublisher(publisher),
 		apipkg.WithChatWebhookDispatcher(webhookDispatcher),
+		apipkg.WithChatMessageIngestor(outboundProcessor),
 	)
 	chatAPIHandler.RegisterRoutes(e, middleware.EnforceWorkspaceScope())
 
@@ -1094,12 +1113,6 @@ func main() {
 	v1Group.GET("/workspaces/:workspace_id/webhook-secret", workspaceHandler.GetWebhookSecret)
 	v1Group.POST("/workspaces/flow-webhook-url", workspaceHandler.SetFlowWebhookURL)
 	v1Group.POST("/workspaces/:workspace_id/flow-webhook-url", workspaceHandler.SetFlowWebhookURL)
-
-	// Chat Internal Notes API routes (v1)
-	v1Group.POST("/chats/:chat_id/notes", inboxHandler.APICreateNote)
-	v1Group.POST("/workspaces/:workspace_id/chats/:chat_id/notes", inboxHandler.APICreateNote)
-	v1Group.POST("/chats/:chat_id/summarize", inboxHandler.SummarizeChat)
-	v1Group.POST("/workspaces/:workspace_id/chats/:chat_id/summarize", inboxHandler.SummarizeChat)
 
 	// Static files
 	e.Static("/static", "static")
