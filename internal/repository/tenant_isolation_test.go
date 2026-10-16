@@ -140,9 +140,6 @@ func TestRepository_StrictTenantIsolation_RejectsNilUUID(t *testing.T) {
 		if _, err := repo.ResolveTelegramChatID(ctx, nilID, "@user"); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("ResolveTelegramChatID: expected ErrInvalidWorkspaceID, got %v", err)
 		}
-		if _, err := repo.HasUnread(ctx, nilID, uuid.New()); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
-			t.Errorf("HasUnread: expected ErrInvalidWorkspaceID, got %v", err)
-		}
 		if err := repo.AddTags(ctx, nilID, uuid.New(), []string{"tag"}); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("AddTags: expected ErrInvalidWorkspaceID, got %v", err)
 		}
@@ -217,9 +214,6 @@ func TestRepository_StrictTenantIsolation_RejectsNilUUID(t *testing.T) {
 		if err := repo.UpdateLastReadAt(ctx, key, now); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("UpdateLastReadAt: expected ErrInvalidWorkspaceID, got %v", err)
 		}
-		if err := repo.UpdateLastReadAtByContact(ctx, nilID, uuid.New(), now); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
-			t.Errorf("UpdateLastReadAtByContact: expected ErrInvalidWorkspaceID, got %v", err)
-		}
 	})
 
 	t.Run("APIKeyRepository", func(t *testing.T) {
@@ -245,11 +239,19 @@ func TestRepository_StrictTenantIsolation_RejectsNilUUID(t *testing.T) {
 		if _, err := repo.ListAll(ctx, repository.AuditFilters{WorkspaceID: &nilID}); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("ListAll: expected ErrInvalidWorkspaceID, got %v", err)
 		}
+	})
+
+	t.Run("ChatRepository", func(t *testing.T) {
+		repo := repository.NewChatRepository(nil)
+
 		if _, err := repo.ListConversations(ctx, nilID, ""); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("ListConversations: expected ErrInvalidWorkspaceID, got %v", err)
 		}
 		if _, err := repo.ListThreadByContact(ctx, nilID, uuid.New(), nil); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("ListThreadByContact: expected ErrInvalidWorkspaceID, got %v", err)
+		}
+		if err := repo.ResetUnreadByContact(ctx, nilID, uuid.New()); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
+			t.Errorf("ResetUnreadByContact: expected ErrInvalidWorkspaceID, got %v", err)
 		}
 	})
 

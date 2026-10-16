@@ -77,6 +77,18 @@ type messageByUIDFinder interface {
 	FindMessageByUID(ctx context.Context, uid string) (*domain.ChatMessage, error)
 }
 
+type conversationLister interface {
+	ListConversations(ctx context.Context, workspaceID uuid.UUID, channelFilter string) ([]repository.ConversationSummary, error)
+}
+
+type threadLister interface {
+	ListThreadByContact(ctx context.Context, workspaceID, contactID uuid.UUID, afterID *uuid.UUID) ([]repository.ThreadMessage, error)
+}
+
+type contactUnreadResetter interface {
+	ResetUnreadByContact(ctx context.Context, workspaceID, contactID uuid.UUID) error
+}
+
 // ContactRepository defines contact operations required by Engine.
 type ContactRepository interface {
 	GetByID(ctx context.Context, workspaceID, contactID uuid.UUID) (*domain.Contact, error)
@@ -308,6 +320,11 @@ func (e *Engine) SetWebhookDispatcher(d ReactionWebhookDispatcher) {
 	e.webhookDispatcher = d
 }
 
+// SetMessagePublisher updates the NATS message publisher on the Engine.
+func (e *Engine) SetMessagePublisher(p MessagePublisher) {
+	e.publisher = p
+}
+
 // SetMessageIngestor updates the outbound processor on the Engine.
 func (e *Engine) SetMessageIngestor(i outbound.OutboundProcessor) {
 	e.ingestor = i
@@ -496,6 +513,187 @@ func (e *Engine) findOrCreateChatByPhone(ctx context.Context, workspaceID uuid.U
 	return c, nil
 }
 
+// EnsureChatForContact resolves or creates the chat thread for a contact within workspaceID,
+// lazily reopens expired snoozes, and optionally resets unread count.
+func (e *Engine) EnsureChatForContact(ctx context.Context, workspaceID, contactID uuid.UUID, markRead bool) (*domain.Chat, error) {
+	if contactID == uuid.Nil {
+		return nil, ErrChatNotFound
+	}
+	wsID, err := EnforceWorkspaceScope(ctx, workspaceID)
+	if err != nil || wsID == uuid.Nil {
+		return nil, ErrChatNotFound
+	}
+
+	c, err := e.ResolveChat(ctx, wsID, ChatRef{ContactID: contactID})
+	if err != nil {
+		if e.contactRepo != nil {
+			contact, cErr := e.contactRepo.GetByID(ctx, wsID, contactID)
+			if cErr != nil || contact == nil {
+				return nil, ErrChatNotFound
+			}
+		}
+		creator, ok := e.chatRepo.(chatFinderCreator)
+		if !ok {
+			return nil, ErrChatNotFound
+		}
+		var connID *uuid.UUID
+		if e.contactRepo != nil && e.connRepo != nil {
+			if contact, cErr := e.contactRepo.GetByID(ctx, wsID, contactID); cErr == nil && contact != nil {
+				for _, id := range contact.Identities {
+					if conn, connErr := e.connRepo.GetDefaultChannelConnection(ctx, wsID, id.Channel); connErr == nil && conn != nil {
+						connID = &conn.ID
+						break
+					}
+				}
+			}
+		}
+		c, err = creator.FindOrCreateChat(ctx, wsID, connID, contactID)
+		if err != nil || c == nil {
+			return nil, ErrChatNotFound
+		}
+	}
+
+	e.reopenIfSnoozeExpired(ctx, c.WorkspaceID, c)
+
+	if markRead {
+		_ = e.ResetUnreadByContact(ctx, c.WorkspaceID, contactID)
+		c.UnreadCount = 0
+	}
+
+	return c, nil
+}
+
+// ResetUnreadByContact resets unread_count = 0 across all chat threads for a contact in a workspace.
+func (e *Engine) ResetUnreadByContact(ctx context.Context, workspaceID, contactID uuid.UUID) error {
+	if e.chatRepo == nil || contactID == uuid.Nil {
+		return nil
+	}
+	wsID, err := EnforceWorkspaceScope(ctx, workspaceID)
+	if err != nil || wsID == uuid.Nil {
+		return err
+	}
+	if resetter, ok := e.chatRepo.(contactUnreadResetter); ok {
+		return resetter.ResetUnreadByContact(ctx, wsID, contactID)
+	}
+	if c, rErr := e.ResolveChat(ctx, wsID, ChatRef{ContactID: contactID}); rErr == nil && c != nil && c.UnreadCount > 0 {
+		if updater, ok := e.chatRepo.(chatUnreadUpdater); ok {
+			return updater.UpdateChatUnreadCount(ctx, wsID, c.ID, 0)
+		}
+	}
+	return nil
+}
+
+// ListConversations returns all active conversation summaries for a workspace in a single SQL query
+// against chats and chat_messages, lazily reopening any expired snoozed chats.
+func (e *Engine) ListConversations(ctx context.Context, workspaceID uuid.UUID, channelFilter string) ([]repository.ConversationSummary, error) {
+	if e.chatRepo == nil {
+		return nil, nil
+	}
+	wsID, err := EnforceWorkspaceScope(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if wsID == uuid.Nil {
+		return nil, nil
+	}
+	lister, ok := e.chatRepo.(conversationLister)
+	if !ok {
+		return nil, nil
+	}
+	convs, err := lister.ListConversations(ctx, wsID, channelFilter)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	for i := range convs {
+		if convs[i].Status == string(domain.ChatStatusSnoozed) && convs[i].SnoozedUntil != nil && !convs[i].SnoozedUntil.After(now) {
+			if convs[i].ChatID != uuid.Nil {
+				_ = e.chatRepo.UpdateChatStatus(ctx, wsID, convs[i].ChatID, string(domain.ChatStatusOpen))
+			}
+			convs[i].Status = string(domain.ChatStatusOpen)
+			convs[i].SnoozedUntil = nil
+			if e.contactRepo != nil && convs[i].ContactID != uuid.Nil {
+				_ = e.contactRepo.ReopenThread(ctx, wsID, convs[i].ContactID)
+			}
+		}
+	}
+	return convs, nil
+}
+
+// ListThread returns chronological ThreadMessage rows for a contact in a workspace,
+// optionally resetting unread_count = 0 when markRead is true.
+func (e *Engine) ListThread(ctx context.Context, workspaceID, contactID uuid.UUID, afterID *uuid.UUID, markRead bool) ([]repository.ThreadMessage, error) {
+	if e.chatRepo == nil || contactID == uuid.Nil {
+		return nil, nil
+	}
+	wsID, err := EnforceWorkspaceScope(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	if wsID == uuid.Nil {
+		return nil, nil
+	}
+	lister, ok := e.chatRepo.(threadLister)
+	if !ok {
+		return nil, nil
+	}
+	msgs, err := lister.ListThreadByContact(ctx, wsID, contactID, afterID)
+	if err != nil {
+		return nil, err
+	}
+	if markRead {
+		_ = e.ResetUnreadByContact(ctx, wsID, contactID)
+	}
+	return msgs, nil
+}
+
+// ToggleContactBot toggles the AI bot state for a contact, synchronizing chats.ai_disabled,
+// cancelling any pending inbound debounce buffer, and publishing handoff events when pausing.
+func (e *Engine) ToggleContactBot(ctx context.Context, workspaceID, contactID uuid.UUID) (*domain.Contact, error) {
+	if e.contactRepo == nil {
+		return nil, errors.New("contact repository not configured")
+	}
+	wsID, err := EnforceWorkspaceScope(ctx, workspaceID)
+	if err != nil || wsID == uuid.Nil {
+		return nil, ErrContactNotFound
+	}
+	contact, err := e.contactRepo.GetByID(ctx, wsID, contactID)
+	if err != nil || contact == nil {
+		return nil, ErrContactNotFound
+	}
+
+	newState := !contact.BotActive
+	now := time.Now().UTC()
+	var pausedAt *time.Time
+	if !newState {
+		pausedAt = &now
+	}
+
+	if err := e.contactRepo.UpdateBotState(ctx, wsID, contactID, newState, pausedAt); err != nil {
+		return nil, err
+	}
+	contact.BotActive = newState
+	contact.BotPausedAt = pausedAt
+
+	var chatID uuid.UUID
+	if e.chatRepo != nil {
+		if c, rErr := e.ResolveChat(ctx, wsID, ChatRef{ContactID: contactID}); rErr == nil && c != nil {
+			chatID = c.ID
+			_ = e.chatRepo.SetAIDisabled(ctx, wsID, c.ID, !newState)
+		}
+	}
+
+	if !newState {
+		if e.debouncer != nil {
+			_ = e.debouncer.Cancel(ctx, wsID, contactID)
+		}
+		traceID := fmt.Sprintf("handoff-%s", uuid.New().String())
+		e.publishHandoffEvents(ctx, wsID, chatID, contactID, "", traceID, now)
+	}
+
+	return contact, nil
+}
+
 // reopenIfSnoozeExpired lazily reopens a snoozed chat whose snooze timer has elapsed
 // and synchronizes the contact's thread status via ReopenThread.
 func (e *Engine) reopenIfSnoozeExpired(ctx context.Context, workspaceID uuid.UUID, c *domain.Chat) {
@@ -556,6 +754,9 @@ func (e *Engine) List(ctx context.Context, workspaceID uuid.UUID, filter domain.
 // and returns the chat along with its contact, connection, and optional message history.
 func (e *Engine) Get(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, messageLimit int, markRead bool) (*GetChatResult, error) {
 	c, err := e.ResolveChat(ctx, workspaceID, ref)
+	if errors.Is(err, ErrChatNotFound) && ref.ContactID != uuid.Nil {
+		c, err = e.EnsureChatForContact(ctx, workspaceID, ref.ContactID, false)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -566,7 +767,12 @@ func (e *Engine) Get(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, me
 		if updater, ok := e.chatRepo.(chatUnreadUpdater); ok {
 			_ = updater.UpdateChatUnreadCount(ctx, c.WorkspaceID, c.ID, 0)
 		}
+		if c.ContactID != uuid.Nil {
+			_ = e.ResetUnreadByContact(ctx, c.WorkspaceID, c.ContactID)
+		}
 		c.UnreadCount = 0
+	} else if markRead && c.ContactID != uuid.Nil {
+		_ = e.ResetUnreadByContact(ctx, c.WorkspaceID, c.ContactID)
 	}
 
 	res := &GetChatResult{
@@ -619,6 +825,9 @@ func (e *Engine) ListMessages(ctx context.Context, workspaceID uuid.UUID, ref Ch
 // synchronizing the contact's thread status and writing an audit log.
 func (e *Engine) UpdateStatus(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, upd StatusUpdate) (*domain.Chat, *time.Time, error) {
 	c, err := e.ResolveChat(ctx, workspaceID, ref)
+	if errors.Is(err, ErrChatNotFound) && ref.ContactID != uuid.Nil {
+		c, err = e.EnsureChatForContact(ctx, workspaceID, ref.ContactID, false)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -692,6 +901,9 @@ func (e *Engine) UpdateStatus(ctx context.Context, workspaceID uuid.UUID, ref Ch
 // synchronizing the resulting tag set onto the contact and writing an audit log.
 func (e *Engine) UpdateTags(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, mut TagMutation) ([]string, error) {
 	c, err := e.ResolveChat(ctx, workspaceID, ref)
+	if errors.Is(err, ErrChatNotFound) && ref.ContactID != uuid.Nil {
+		c, err = e.EnsureChatForContact(ctx, workspaceID, ref.ContactID, false)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -767,6 +979,9 @@ func (e *Engine) UpdateTags(ctx context.Context, workspaceID uuid.UUID, ref Chat
 // and records an audit entry.
 func (e *Engine) Assign(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, email string) (*domain.Chat, *repository.WorkspaceMember, error) {
 	c, err := e.ResolveChat(ctx, workspaceID, ref)
+	if errors.Is(err, ErrChatNotFound) && ref.ContactID != uuid.Nil {
+		c, err = e.EnsureChatForContact(ctx, workspaceID, ref.ContactID, false)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -855,6 +1070,9 @@ func (e *Engine) Assign(ctx context.Context, workspaceID uuid.UUID, ref ChatRef,
 // publishes handoff NATS events, and writes an audit log.
 func (e *Engine) SetAIEnabled(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, enabled bool) (*domain.Chat, error) {
 	c, err := e.ResolveChat(ctx, workspaceID, ref)
+	if errors.Is(err, ErrChatNotFound) && ref.ContactID != uuid.Nil {
+		c, err = e.EnsureChatForContact(ctx, workspaceID, ref.ContactID, false)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -952,6 +1170,9 @@ func (e *Engine) CreateNote(ctx context.Context, workspaceID uuid.UUID, req Note
 		chatID = req.Ref.ChatID
 	} else {
 		c, rErr := e.ResolveChat(ctx, wsID, req.Ref)
+		if errors.Is(rErr, ErrChatNotFound) && req.Ref.ContactID != uuid.Nil {
+			c, rErr = e.EnsureChatForContact(ctx, wsID, req.Ref.ContactID, false)
+		}
 		if rErr != nil {
 			return nil, rErr
 		}
@@ -1141,17 +1362,48 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 		return nil, ErrEmptyBody
 	}
 
+	var contact *domain.Contact
 	c, err := e.ResolveChat(ctx, workspaceID, req.Ref)
+	if errors.Is(err, ErrChatNotFound) && req.Ref.ContactID != uuid.Nil {
+		c, err = e.EnsureChatForContact(ctx, workspaceID, req.Ref.ContactID, false)
+	}
 	if errors.Is(err, ErrChatNotFound) && strings.TrimSpace(req.Ref.Phone) != "" {
 		c, err = e.findOrCreateChatByPhone(ctx, workspaceID, req.Ref, req.ConnectionID)
+	}
+	if err != nil && (e.chatRepo == nil || (e.contactRepo == nil && strings.TrimSpace(req.Ref.Phone) != "")) {
+		wsID, sErr := EnforceWorkspaceScope(ctx, workspaceID)
+		if sErr != nil || wsID == uuid.Nil {
+			return nil, ErrChatNotFound
+		}
+		if e.contactRepo != nil {
+			if req.Ref.ContactID != uuid.Nil {
+				contact, _ = e.contactRepo.GetByID(ctx, wsID, req.Ref.ContactID)
+			} else if phone := strings.TrimSpace(req.Ref.Phone); phone != "" {
+				if resolver, ok := e.contactRepo.(contactResolver); ok {
+					ch := strings.ToLower(strings.TrimSpace(req.Ref.Channel))
+					if ch == "" {
+						ch = "whatsapp"
+					}
+					contact, _ = resolver.ResolveContact(ctx, wsID, ch, phone, phone, "", "")
+				}
+			}
+		}
+		c = &domain.Chat{
+			ID:          uuid.New(),
+			WorkspaceID: wsID,
+			Status:      domain.ChatStatusOpen,
+		}
+		if contact != nil {
+			c.ContactID = contact.ID
+		}
+		err = nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	wsID := c.WorkspaceID
 
-	var contact *domain.Contact
-	if e.contactRepo != nil && c.ContactID != uuid.Nil {
+	if contact == nil && e.contactRepo != nil && c.ContactID != uuid.Nil {
 		contact, _ = e.contactRepo.GetByID(ctx, wsID, c.ContactID)
 	}
 
@@ -1205,6 +1457,15 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 		}
 	}
 
+	if connID == uuid.Nil && e.connRepo != nil && strings.TrimSpace(req.SenderIdentity) != "" {
+		if conn, cErr := e.connRepo.GetBySenderIdentity(ctx, wsID, strings.TrimSpace(req.SenderIdentity)); cErr == nil && conn != nil {
+			connID = conn.ID
+			senderIdentity = conn.SenderIdentity
+			if channel == "" {
+				channel = conn.Channel
+			}
+		}
+	}
 	if connID == uuid.Nil && e.connRepo != nil && channel != "" {
 		if defaultConn, cErr := e.connRepo.GetDefaultChannelConnection(ctx, wsID, channel); cErr == nil && defaultConn != nil {
 			connID = defaultConn.ID
@@ -1320,8 +1581,13 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 		}
 
 		// Check if OutboundProcessor already persisted the ChatMessage (when its chatRepo is wired)
-		persistedMsg, _ = e.chatRepo.GetChatMessageByUID(ctx, wsID, traceID)
+		if e.chatRepo != nil {
+			persistedMsg, _ = e.chatRepo.GetChatMessageByUID(ctx, wsID, traceID)
+		}
 	} else if e.publisher != nil {
+		if disableAI {
+			e.publishHandoffEvents(ctx, wsID, c.ID, c.ContactID, senderName, traceID, now)
+		}
 		qMsg := domain.QueueMessage{
 			WorkspaceID:      wsID,
 			ConnectionID:     connID,
@@ -1354,11 +1620,35 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 	if persistedMsg == nil {
 		// Reopen snoozed or closed chat on outbound conversational activity
 		if c.Status == domain.ChatStatusSnoozed || c.Status == domain.ChatStatusClosed {
-			_ = e.chatRepo.UpdateChatStatus(ctx, wsID, c.ID, string(domain.ChatStatusOpen))
+			if e.chatRepo != nil {
+				_ = e.chatRepo.UpdateChatStatus(ctx, wsID, c.ID, string(domain.ChatStatusOpen))
+			}
 			c.Status = domain.ChatStatusOpen
 			c.SnoozedUntil = nil
 			if e.contactRepo != nil && c.ContactID != uuid.Nil {
 				_ = e.contactRepo.ReopenThread(ctx, wsID, c.ContactID)
+			}
+		}
+
+		msgMeta := make(map[string]interface{})
+		for k, v := range req.Metadata {
+			msgMeta[k] = v
+		}
+		if channel != "" {
+			msgMeta["channel"] = channel
+		}
+		if to != "" {
+			msgMeta["to"] = to
+		}
+		if senderIdentity != "" {
+			msgMeta["sender_identity"] = senderIdentity
+		}
+		if req.Type != "" {
+			msgMeta["type"] = req.Type
+		}
+		if req.Product != nil {
+			if prodBytes, pErr := json.Marshal(req.Product); pErr == nil {
+				msgMeta["product_json"] = string(prodBytes)
 			}
 		}
 
@@ -1373,21 +1663,30 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 			SenderID:    senderIdentity,
 			Body:        displayBody,
 			ReplyToUID:  req.ReplyToUID,
+			Metadata:    msgMeta,
 			CreatedAt:   now,
 		}
-		if err := e.chatRepo.AddChatMessage(ctx, chatMsg); err != nil {
-			slog.ErrorContext(ctx, "failed to persist outbound chat message", "error", err, "chat_id", c.ID, "trace_id", traceID)
+		if e.chatRepo != nil {
+			if err := e.chatRepo.AddChatMessage(ctx, chatMsg); err != nil {
+				slog.ErrorContext(ctx, "failed to persist outbound chat message", "error", err, "chat_id", c.ID, "trace_id", traceID)
+			}
 		}
 		persistedMsg = chatMsg
 
 		if disableAI {
-			_ = e.chatRepo.SetAIDisabled(ctx, wsID, c.ID, true)
+			if e.chatRepo != nil {
+				_ = e.chatRepo.SetAIDisabled(ctx, wsID, c.ID, true)
+			}
 			if e.contactRepo != nil && c.ContactID != uuid.Nil {
 				_ = e.contactRepo.UpdateBotState(ctx, wsID, c.ContactID, false, &now)
 			}
-			e.publishHandoffEvents(ctx, wsID, c.ID, c.ContactID, senderName, traceID, now)
+			if e.ingestor != nil {
+				e.publishHandoffEvents(ctx, wsID, c.ID, c.ContactID, senderName, traceID, now)
+			}
 		}
-		_ = e.chatRepo.TouchLastMessageAt(ctx, wsID, c.ID, now)
+		if e.chatRepo != nil {
+			_ = e.chatRepo.TouchLastMessageAt(ctx, wsID, c.ID, now)
+		}
 	}
 
 	if disableAI && e.debouncer != nil && c.ContactID != uuid.Nil {

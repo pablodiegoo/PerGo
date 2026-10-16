@@ -16,6 +16,7 @@ import (
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	chatpkg "github.com/pablojhp.pergo/internal/chat"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/presence"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -42,6 +43,58 @@ type InboxHandler struct {
 	ChatRepo          *repository.ChatRepository
 	Presence          *presence.Tracker
 	WebhookDispatcher webhook.WebhookDispatcher
+	ChatEngine        *chatpkg.Engine
+	Ingestor          outbound.OutboundProcessor
+	Debouncer         chatpkg.DebounceCanceller
+}
+
+// engine returns the configured ChatEngine or lazily builds one from the handler's repositories.
+func (h *InboxHandler) engine() *chatpkg.Engine {
+	if h.ChatEngine != nil {
+		if h.Publisher != nil {
+			h.ChatEngine.SetMessagePublisher(h.Publisher)
+		}
+		if h.Ingestor != nil {
+			h.ChatEngine.SetMessageIngestor(h.Ingestor)
+		}
+		if h.WebhookDispatcher != nil {
+			h.ChatEngine.SetWebhookDispatcher(h.WebhookDispatcher)
+		}
+		if h.Debouncer != nil {
+			h.ChatEngine.SetDebounceCanceller(h.Debouncer)
+		}
+		return h.ChatEngine
+	}
+	var opts []chatpkg.Option
+	if h.ContactRepo != nil {
+		opts = append(opts, chatpkg.WithContactRepo(h.ContactRepo))
+	}
+	if h.Connections != nil {
+		opts = append(opts, chatpkg.WithConnectionRepo(h.Connections))
+	}
+	if h.Workspaces != nil {
+		opts = append(opts, chatpkg.WithWorkspaceRepo(h.Workspaces))
+	}
+	if h.Repo != nil {
+		opts = append(opts, chatpkg.WithAuditRepo(h.Repo))
+	}
+	if h.Publisher != nil {
+		opts = append(opts, chatpkg.WithMessagePublisher(h.Publisher))
+	}
+	if h.Ingestor != nil {
+		opts = append(opts, chatpkg.WithMessageIngestor(h.Ingestor))
+	}
+	if h.Debouncer != nil {
+		opts = append(opts, chatpkg.WithDebounceCanceller(h.Debouncer))
+	}
+	if h.WebhookDispatcher != nil {
+		opts = append(opts, chatpkg.WithReactionWebhookDispatcher(h.WebhookDispatcher))
+	}
+	var chatRepo chatpkg.ChatRepository
+	if h.ChatRepo != nil {
+		chatRepo = h.ChatRepo
+	}
+	return chatpkg.NewEngine(chatRepo, opts...)
 }
 
 // resolveCurrentOperatorEmail resolves the authenticated operator's email from context,
@@ -65,18 +118,14 @@ func (h *InboxHandler) resolveCurrentOperatorEmail(c *echo.Context, workspaceID 
 	return ""
 }
 
-// loadConversations fetches conversations and computes unread state.
+// loadConversations fetches conversations in a single SQL query against chats and chat_messages.
 // Returns conversations, unreadMap keyed by contact ID, and total unread count.
 func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID, channelFilter string) ([]repository.ConversationSummary, map[string]bool, int, error) {
 	ctx := c.Request().Context()
 
-	var conversations []repository.ConversationSummary
-	if h.Repo != nil {
-		var err error
-		conversations, err = h.Repo.ListConversations(ctx, workspaceID, channelFilter)
-		if err != nil {
-			return nil, nil, 0, err
-		}
+	conversations, err := h.engine().ListConversations(ctx, workspaceID, channelFilter)
+	if err != nil {
+		return nil, nil, 0, err
 	}
 
 	statusFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("status")))
@@ -95,21 +144,6 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 
 	for i := range conversations {
 		conv := &conversations[i]
-
-		if h.ChatRepo != nil && workspaceID != uuid.Nil {
-			if chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, conv.ContactID); cErr == nil && chat != nil {
-				if chat.Status == domain.ChatStatusSnoozed && chat.SnoozedUntil != nil && chat.SnoozedUntil.Before(time.Now().UTC()) {
-					if uErr := h.ChatRepo.UpdateChatStatus(ctx, workspaceID, chat.ID, string(domain.ChatStatusOpen)); uErr != nil {
-						slog.WarnContext(ctx, "failed to auto un-snooze chat in inbox", "error", uErr, "chat_id", chat.ID)
-					}
-					chat.Status = domain.ChatStatusOpen
-					chat.SnoozedUntil = nil
-				}
-				conv.Status = string(chat.Status)
-				conv.AssignedEmail = chat.AssignedEmail
-				conv.Tags = chat.Tags
-			}
-		}
 		if conv.Status == "" {
 			conv.Status = "open"
 		}
@@ -175,10 +209,7 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 			}
 		}
 
-		isUnread := false
-		if h.ContactRepo != nil {
-			isUnread, _ = h.ContactRepo.HasUnread(ctx, workspaceID, conv.ContactID)
-		}
+		isUnread := conv.Unread || conv.UnreadCount > 0
 		key := conv.ContactID.String()
 		unreadMap[key] = isUnread
 		if isUnread {
@@ -274,25 +305,11 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		return c.HTML(http.StatusNotFound, `<div class="p-4 text-red-500">Contato não encontrado.</div>`)
 	}
 
-	// Mark all conversation sessions for this contact as read
-	if h.Sessions != nil && workspaceID != uuid.Nil {
-		_ = h.Sessions.UpdateLastReadAtByContact(ctx, workspaceID, contactID, time.Now().UTC())
-	}
+	eng := h.engine()
+	currentChat, _ := eng.EnsureChatForContact(ctx, workspaceID, contactID, true)
 
-	// Reset unread count on the parent Chat if ChatRepo is present
-	var currentChat *domain.Chat
-	if h.ChatRepo != nil && workspaceID != uuid.Nil {
-		if chat, err := h.ChatRepo.GetChatByContact(ctx, workspaceID, contactID); err == nil && chat != nil {
-			_ = h.ChatRepo.UpdateChatUnreadCount(ctx, workspaceID, chat.ID, 0)
-			currentChat = chat
-		} else if chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID); cErr == nil && chat != nil {
-			_ = h.ChatRepo.UpdateChatUnreadCount(ctx, workspaceID, chat.ID, 0)
-			currentChat = chat
-		}
-	}
-
-	// Load the thread messages (full history — no cursor)
-	messages, err := h.Repo.ListThreadByContact(ctx, workspaceID, contactID, nil)
+	// Load the thread messages (full history — no cursor) from chat_messages and reset unread count
+	messages, err := eng.ListThread(ctx, workspaceID, contactID, nil, true)
 	if err != nil {
 		return c.HTML(http.StatusInternalServerError, `<div class="p-4 text-red-500">Erro ao carregar chat.</div>`)
 	}
@@ -326,80 +343,27 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		}
 	}
 
-	isWabaBlocked := false
-	var wabaIdentity *domain.ContactIdentity
-	for _, identity := range contact.Identities {
-		if identity.Channel == "whatsapp_cloud" {
-			wabaIdentity = &identity
-			break
-		}
-	}
-	if wabaIdentity != nil && h.Sessions != nil && workspaceID != uuid.Nil {
-		var hasOpenWindow bool
-		var checkedAny bool
-		for _, conn := range connections {
-			if conn.Channel == "whatsapp_cloud" && (conn.Status == "connected" || conn.Status == "active" || conn.Status == "") {
-				checkedAny = true
-				sessKey := domain.SessionKey{
-					WorkspaceID:       workspaceID,
-					RecipientPhone:    wabaIdentity.SenderIdentity,
-					Channel:           "whatsapp_cloud",
-					RecipientIdentity: conn.SenderIdentity,
-				}
-				session, sErr := h.Sessions.Get(ctx, sessKey)
-				if sErr == nil && session != nil {
-					windowDuration := 24 * time.Hour
-					if session.EntryPointType == "ctwa" {
-						windowDuration = 72 * time.Hour
-					}
-					if !session.LastInboundAt.IsZero() && time.Since(session.LastInboundAt) <= windowDuration {
-						hasOpenWindow = true
-						break
-					}
-				}
-			}
-		}
-		if !checkedAny {
-			wabaSender := defaultSenders["whatsapp_cloud"]
-			if wabaSender != "" {
-				sessKey := domain.SessionKey{
-					WorkspaceID:       workspaceID,
-					RecipientPhone:    wabaIdentity.SenderIdentity,
-					Channel:           "whatsapp_cloud",
-					RecipientIdentity: wabaSender,
-				}
-				session, sErr := h.Sessions.Get(ctx, sessKey)
-				if sErr == nil && session != nil {
-					windowDuration := 24 * time.Hour
-					if session.EntryPointType == "ctwa" {
-						windowDuration = 72 * time.Hour
-					}
-					if !session.LastInboundAt.IsZero() && time.Since(session.LastInboundAt) <= windowDuration {
-						hasOpenWindow = true
-					}
-				}
-			}
-		}
-		isWabaBlocked = !hasOpenWindow
-	}
-
-	var chat *domain.Chat
-	if h.ChatRepo != nil && workspaceID != uuid.Nil {
-		chat, _ = h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID)
-	}
 	var members []repository.WorkspaceMember
 	if h.Workspaces != nil && workspaceID != uuid.Nil {
 		members, _ = h.Workspaces.ListMembers(ctx, workspaceID)
 	}
 
-	if currentChat == nil {
-		currentChat = chat
+	var hasWabaIdentity bool
+	for _, identity := range contact.Identities {
+		if identity.Channel == "whatsapp_cloud" {
+			hasWabaIdentity = true
+			break
+		}
 	}
 
 	var windowExpiresAt *time.Time
 	if currentChat != nil && currentChat.ServiceWindowExpiresAt != nil {
 		windowExpiresAt = currentChat.ServiceWindowExpiresAt
-		isWabaBlocked = !currentChat.IsServiceWindowOpen()
+	}
+
+	isWabaBlocked := false
+	if hasWabaIdentity {
+		isWabaBlocked = currentChat == nil || !currentChat.IsServiceWindowOpen()
 	}
 
 	if mw.IsHTMX(c) {
@@ -464,7 +428,7 @@ func (h *InboxHandler) PollMessages(c *echo.Context) error {
 		}
 	}
 
-	messages, err := h.Repo.ListThreadByContact(ctx, workspaceID, contactID, afterID)
+	messages, err := h.engine().ListThread(ctx, workspaceID, contactID, afterID, true)
 	if err != nil {
 		return c.HTML(http.StatusInternalServerError, `<div class="p-2 text-red-500 text-xs">Erro ao buscar mensagens.</div>`)
 	}
@@ -476,11 +440,6 @@ func (h *InboxHandler) PollMessages(c *echo.Context) error {
 		return c.NoContent(http.StatusNoContent)
 	}
 
-	// Update last_read_at since operator is actively viewing this conversation
-	if h.Sessions != nil && workspaceID != uuid.Nil {
-		_ = h.Sessions.UpdateLastReadAtByContact(ctx, workspaceID, contactID, time.Now().UTC())
-	}
-
 	newLastID := messages[len(messages)-1].ID.String()
 
 	// Render new message bubbles and updated OOB poll anchor
@@ -490,10 +449,7 @@ func (h *InboxHandler) PollMessages(c *echo.Context) error {
 // checkBackgroundMessages checks if any OTHER conversation has new unread messages
 // and, if so, fires a showToast HX-Trigger header on the response.
 func (h *InboxHandler) checkBackgroundMessages(c *echo.Context, ctx context.Context, workspaceID uuid.UUID, openContactID uuid.UUID) {
-	if h.Repo == nil {
-		return
-	}
-	conversations, err := h.Repo.ListConversations(ctx, workspaceID, "")
+	conversations, err := h.engine().ListConversations(ctx, workspaceID, "")
 	if err != nil {
 		return
 	}
@@ -503,12 +459,7 @@ func (h *InboxHandler) checkBackgroundMessages(c *echo.Context, ctx context.Cont
 		if conv.ContactID == openContactID {
 			continue
 		}
-		// Check unread state for this background conversation
-		if h.ContactRepo == nil {
-			continue
-		}
-		isUnread, _ := h.ContactRepo.HasUnread(ctx, workspaceID, conv.ContactID)
-		if isUnread {
+		if conv.Unread || conv.UnreadCount > 0 {
 			// Fire toast for this background contact
 			trigger := fmt.Sprintf(`{"showToast":{"text":"Nova mensagem de %s"}}`, jsonEscape(conv.ContactName))
 			c.Response().Header().Set("HX-Trigger", trigger)
@@ -517,7 +468,7 @@ func (h *InboxHandler) checkBackgroundMessages(c *echo.Context, ctx context.Cont
 	}
 }
 
-// SendMessage handles POST /admin/inbox/send — enqueues an outbound reply via NATS JetStream.
+// SendMessage handles POST /admin/inbox/send — enqueues an outbound reply via ChatEngine.
 // Form params: contact (maps to to), channel, recipient_identity (maps to sender_identity), body.
 func (h *InboxHandler) SendMessage(c *echo.Context) error {
 	ctx := c.Request().Context()
@@ -545,104 +496,26 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 		return c.HTML(http.StatusBadRequest, `<span class="text-red-400">Workspace não selecionado.</span>`)
 	}
 
-	// Resolve connection via sender identity
-	var connectionID uuid.UUID
-	if h.Connections != nil && recipientIdentity != "" {
-		conn, err := h.Connections.GetBySenderIdentity(ctx, workspaceID, recipientIdentity)
-		if err == nil {
-			connectionID = conn.ID
-		}
-	}
-
-	// Build and publish QueueMessage
-	traceID := "inbox-" + uuid.New().String()
-	qMsg := domain.QueueMessage{
-		WorkspaceID:    workspaceID,
-		ConnectionID:   connectionID,
-		SenderIdentity: recipientIdentity,
-		TraceID:        traceID,
-		To:             contact,
-		Channel:        channel,
-		Body:           body,
-		QueuedAt:       time.Now().UTC(),
-	}
-
-	if h.Publisher == nil {
+	if h.Publisher == nil && h.Ingestor == nil {
 		return c.HTML(http.StatusServiceUnavailable, `<span class="text-red-400">Publisher não disponível.</span>`)
 	}
 
-	data, err := json.Marshal(qMsg)
+	disableAI := true
+	_, err := h.engine().SendMessage(ctx, workspaceID, chatpkg.SendRequest{
+		Ref: chatpkg.ChatRef{
+			Channel: channel,
+			Phone:   contact,
+		},
+		Body:           body,
+		SenderName:     "Agent",
+		SenderType:     string(domain.SenderTypeHumanAgent),
+		DisableAI:      &disableAI,
+		SenderIdentity: recipientIdentity,
+		TraceIDPrefix:  "inbox",
+		AuditEventType: "chat.message.sent",
+	})
 	if err != nil {
-		return c.HTML(http.StatusInternalServerError, `<span class="text-red-400">Erro interno ao serializar mensagem.</span>`)
-	}
-
-	if err := h.Publisher.Publish(ctx, "messages.outbound", data, traceID); err != nil {
 		return c.HTML(http.StatusInternalServerError, `<span class="text-red-400">Erro ao enviar mensagem: `+escapeHTML(err.Error())+`</span>`)
-	}
-
-	if h.ContactRepo != nil {
-		cProfile, err := h.ContactRepo.ResolveContact(ctx, workspaceID, channel, contact, "", "", "")
-		if err == nil && cProfile != nil {
-			now := time.Now().UTC()
-			_ = h.ContactRepo.UpdateBotState(ctx, workspaceID, cProfile.ID, false, &now)
-
-			if h.ChatRepo != nil {
-				var connID *uuid.UUID
-				if connectionID != uuid.Nil {
-					connID = &connectionID
-				}
-				chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, connID, cProfile.ID)
-				if cErr == nil && chat != nil {
-					_ = h.ChatRepo.SetAIDisabled(ctx, workspaceID, chat.ID, true)
-					_ = h.ChatRepo.TouchLastMessageAt(ctx, workspaceID, chat.ID, now)
-
-					if h.Publisher != nil {
-						handoffPayload, _ := json.Marshal(map[string]interface{}{
-							"event":        "chat.handoff.human_takeover",
-							"workspace_id": workspaceID.String(),
-							"chat_id":      chat.ID.String(),
-							"contact_id":   cProfile.ID.String(),
-							"timestamp":    now.Format(time.RFC3339),
-						})
-						_ = h.Publisher.Publish(ctx, "chat.handoff.human_takeover", handoffPayload, traceID)
-						_ = h.Publisher.Publish(ctx, fmt.Sprintf("chat.handoff.%s", workspaceID.String()), handoffPayload, traceID)
-					}
-
-					chatMsg := &domain.ChatMessage{
-						ChatID:      chat.ID,
-						WorkspaceID: workspaceID,
-						UID:         traceID,
-						Direction:   domain.DirectionOutbound,
-						SenderType:  domain.SenderTypeHumanAgent,
-						SenderName:  "Agent",
-						SenderID:    recipientIdentity,
-						Body:        body,
-						CreatedAt:   now,
-					}
-					_ = h.ChatRepo.AddChatMessage(ctx, chatMsg)
-
-					if h.Repo != nil {
-						auditPayload, _ := json.Marshal(map[string]interface{}{
-							"chat_id":         chat.ID.String(),
-							"contact_id":      cProfile.ID.String(),
-							"to":              contact,
-							"channel":         channel,
-							"sender_identity": recipientIdentity,
-							"body":            body,
-							"sender_type":     "human_agent",
-						})
-						_ = h.Repo.InsertAuditLog(ctx, &repository.AuditEntry{
-							ID:          uuid.New(),
-							WorkspaceID: workspaceID,
-							TraceID:     traceID,
-							EventType:   "chat.message.sent",
-							Payload:     auditPayload,
-							CreatedAt:   now,
-						})
-					}
-				}
-			}
-		}
 	}
 
 	// Return 204 so HTMX clears the status and re-polls naturally
@@ -778,41 +651,33 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 		}
 	}
 
-	// Upsert contact profile immediately
-	if h.ContactRepo != nil {
-		_, _ = h.ContactRepo.ResolveContact(ctx, workspaceID, channel, to, to, "", "")
-	}
-
-	traceID := "new-chat-" + uuid.New().String()
-
-	// Create NATS outbound QueueMessage
-	qMsg := domain.QueueMessage{
-		WorkspaceID:    workspaceID,
-		ConnectionID:   connectionID,
-		SenderIdentity: senderIdentity,
-		TraceID:        traceID,
-		To:             to,
-		Channel:        channel,
-		Body:           body,
-		QueuedAt:       time.Now().UTC(),
-	}
-
-	if isTemplate {
-		qMsg.TemplateName = templateName
-		qMsg.Language = language
-		qMsg.Components = componentsList
-	}
-
-	if h.Publisher == nil {
+	if h.Publisher == nil && h.Ingestor == nil {
 		return c.String(http.StatusServiceUnavailable, "NATS publisher unavailable")
 	}
 
-	data, err := json.Marshal(qMsg)
-	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to serialize message")
+	var connIDPtr *uuid.UUID
+	if connectionID != uuid.Nil {
+		connIDPtr = &connectionID
 	}
-
-	if err := h.Publisher.Publish(ctx, "messages.outbound", data, traceID); err != nil {
+	disableAI := false
+	_, err := h.engine().SendMessage(ctx, workspaceID, chatpkg.SendRequest{
+		Ref: chatpkg.ChatRef{
+			Channel: channel,
+			Phone:   to,
+		},
+		Body:           body,
+		SenderName:     "Agent",
+		SenderType:     string(domain.SenderTypeHumanAgent),
+		DisableAI:      &disableAI,
+		TemplateName:   templateName,
+		Language:       language,
+		Components:     componentsList,
+		ConnectionID:   connIDPtr,
+		SenderIdentity: senderIdentity,
+		TraceIDPrefix:  "new-chat",
+		AuditEventType: "chat.message.sent",
+	})
+	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to enqueue message: "+err.Error())
 	}
 
@@ -975,25 +840,14 @@ func (h *InboxHandler) ToggleBot(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "invalid contact_id")
 	}
 
-	contact, err := h.ContactRepo.GetByID(ctx, workspaceID, contactID)
+	contact, err := h.engine().ToggleContactBot(ctx, workspaceID, contactID)
 	if err != nil {
-		return c.String(http.StatusNotFound, "contact not found")
-	}
-
-	newActive := !contact.BotActive
-	var pausedAt *time.Time
-	if !newActive {
-		now := time.Now().UTC()
-		pausedAt = &now
-	}
-
-	err = h.ContactRepo.UpdateBotState(ctx, workspaceID, contactID, newActive, pausedAt)
-	if err != nil {
+		if errors.Is(err, chatpkg.ErrContactNotFound) {
+			return c.String(http.StatusNotFound, "contact not found")
+		}
 		return c.String(http.StatusInternalServerError, "failed to update bot state: "+err.Error())
 	}
 
-	contact.BotActive = newActive
-	contact.BotPausedAt = pausedAt
 	return mw.Render(c, http.StatusOK, components.BotStatusBadge(contact))
 }
 
@@ -1042,23 +896,13 @@ func (h *InboxHandler) EnableChatAI(c *echo.Context) error {
 		enabled = enabledStr == "true" || enabledStr == "1"
 	}
 
-	if h.ChatRepo != nil {
-		if err := h.ChatRepo.SetAIDisabled(ctx, workspaceID, chatID, !enabled); err != nil {
-			return c.String(http.StatusInternalServerError, "failed to update chat AI status: "+err.Error())
-		}
-
-		chat, err := h.ChatRepo.GetChat(ctx, workspaceID, chatID)
+	if h.ChatRepo != nil || h.ChatEngine != nil {
+		chat, err := h.engine().SetAIEnabled(ctx, workspaceID, chatpkg.ChatRef{ChatID: chatID}, enabled)
 		if err != nil {
-			return c.String(http.StatusNotFound, "chat not found")
-		}
-
-		if h.ContactRepo != nil {
-			var pausedAt *time.Time
-			if !enabled {
-				now := time.Now().UTC()
-				pausedAt = &now
+			if errors.Is(err, chatpkg.ErrChatNotFound) {
+				return c.String(http.StatusNotFound, "chat not found")
 			}
-			_ = h.ContactRepo.UpdateBotState(ctx, workspaceID, chat.ContactID, enabled, pausedAt)
+			return c.String(http.StatusInternalServerError, "failed to update chat AI status: "+err.Error())
 		}
 
 		if mw.IsHTMX(c) {
@@ -1106,53 +950,12 @@ func (h *InboxHandler) AssignChat(c *echo.Context) error {
 		email = strings.TrimSpace(c.QueryParam("email"))
 	}
 
-	if h.ChatRepo != nil {
-		chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID)
-		if cErr != nil {
-			return c.String(http.StatusInternalServerError, "failed to find or create chat: "+cErr.Error())
-		}
-
-		if email == "" {
-			if err := h.ChatRepo.AssignChat(ctx, workspaceID, chat.ID, nil, nil); err != nil {
-				return c.String(http.StatusInternalServerError, "failed to unassign chat: "+err.Error())
+	if h.ChatRepo != nil || h.ChatEngine != nil {
+		if _, _, err := h.engine().Assign(ctx, workspaceID, chatpkg.ChatRef{ContactID: contactID}, email); err != nil {
+			if errors.Is(err, chatpkg.ErrInvalidMember) {
+				return c.String(http.StatusBadRequest, fmt.Sprintf("teammate with email %q not found in workspace", email))
 			}
-		} else {
-			var memberID *uuid.UUID
-			var memberEmail *string
-			if h.Workspaces != nil {
-				member, mErr := h.Workspaces.GetMemberByEmail(ctx, workspaceID, email)
-				if mErr != nil || member == nil {
-					return c.String(http.StatusBadRequest, fmt.Sprintf("teammate with email %q not found in workspace", email))
-				}
-				memberID = &member.ID
-				memberEmail = &member.Email
-			} else {
-				memberEmail = &email
-			}
-			if err := h.ChatRepo.AssignChat(ctx, workspaceID, chat.ID, memberID, memberEmail); err != nil {
-				return c.String(http.StatusInternalServerError, "failed to assign chat: "+err.Error())
-			}
-		}
-
-		if h.Repo != nil {
-			action := "assign"
-			if email == "" {
-				action = "unassign"
-			}
-			auditPayload, _ := json.Marshal(map[string]interface{}{
-				"chat_id":        chat.ID.String(),
-				"contact_id":     contactID.String(),
-				"assigned_email": email,
-				"action":         action,
-			})
-			_ = h.Repo.InsertAuditLog(ctx, &repository.AuditEntry{
-				ID:          uuid.New(),
-				WorkspaceID: workspaceID,
-				TraceID:     fmt.Sprintf("assign-%s", uuid.New().String()),
-				EventType:   "chat.assigned",
-				Payload:     auditPayload,
-				CreatedAt:   time.Now().UTC(),
-			})
+			return c.String(http.StatusInternalServerError, "failed to assign chat: "+err.Error())
 		}
 	}
 
@@ -1191,39 +994,9 @@ func (h *InboxHandler) AddChatTag(c *echo.Context) error {
 	}
 
 	if tag != "" {
-		if h.ChatRepo != nil {
-			chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID)
-			if cErr == nil && chat != nil {
-				alreadyExists := false
-				for _, t := range chat.Tags {
-					if strings.EqualFold(t, tag) {
-						alreadyExists = true
-						break
-					}
-				}
-				if !alreadyExists {
-					newTags := append(chat.Tags, tag)
-					_ = h.ChatRepo.SetChatTags(ctx, workspaceID, chat.ID, newTags)
-				}
-				if h.Repo != nil {
-					auditPayload, _ := json.Marshal(map[string]interface{}{
-						"chat_id":    chat.ID.String(),
-						"contact_id": contactID.String(),
-						"tag":        tag,
-						"action":     "add",
-					})
-					_ = h.Repo.InsertAuditLog(ctx, &repository.AuditEntry{
-						ID:          uuid.New(),
-						WorkspaceID: workspaceID,
-						TraceID:     fmt.Sprintf("tag-add-%s", uuid.New().String()),
-						EventType:   "chat.tag.updated",
-						Payload:     auditPayload,
-						CreatedAt:   time.Now().UTC(),
-					})
-				}
-			}
-		}
-		if h.ContactRepo != nil {
+		if h.ChatRepo != nil || h.ChatEngine != nil {
+			_, _ = h.engine().UpdateTags(ctx, workspaceID, chatpkg.ChatRef{ContactID: contactID}, chatpkg.TagMutation{Add: []string{tag}})
+		} else if h.ContactRepo != nil {
 			_ = h.ContactRepo.AddTags(ctx, workspaceID, contactID, []string{tag})
 		}
 	}
@@ -1263,35 +1036,9 @@ func (h *InboxHandler) RemoveChatTag(c *echo.Context) error {
 	}
 
 	if tag != "" {
-		if h.ChatRepo != nil {
-			chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID)
-			if cErr == nil && chat != nil {
-				var newTags []string
-				for _, t := range chat.Tags {
-					if !strings.EqualFold(t, tag) {
-						newTags = append(newTags, t)
-					}
-				}
-				_ = h.ChatRepo.SetChatTags(ctx, workspaceID, chat.ID, newTags)
-				if h.Repo != nil {
-					auditPayload, _ := json.Marshal(map[string]interface{}{
-						"chat_id":    chat.ID.String(),
-						"contact_id": contactID.String(),
-						"tag":        tag,
-						"action":     "remove",
-					})
-					_ = h.Repo.InsertAuditLog(ctx, &repository.AuditEntry{
-						ID:          uuid.New(),
-						WorkspaceID: workspaceID,
-						TraceID:     fmt.Sprintf("tag-remove-%s", uuid.New().String()),
-						EventType:   "chat.tag.updated",
-						Payload:     auditPayload,
-						CreatedAt:   time.Now().UTC(),
-					})
-				}
-			}
-		}
-		if h.ContactRepo != nil {
+		if h.ChatRepo != nil || h.ChatEngine != nil {
+			_, _ = h.engine().UpdateTags(ctx, workspaceID, chatpkg.ChatRef{ContactID: contactID}, chatpkg.TagMutation{Remove: []string{tag}})
+		} else if h.ContactRepo != nil {
 			if contact, cErr := h.ContactRepo.GetByID(ctx, workspaceID, contactID); cErr == nil && contact != nil {
 				var newTags []string
 				for _, t := range contact.Tags {
@@ -1356,38 +1103,14 @@ func (h *InboxHandler) UpdateChatStatus(c *echo.Context) error {
 		status = "open"
 	}
 
-	if h.ChatRepo != nil {
-		chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID)
-		if cErr != nil {
-			return c.String(http.StatusInternalServerError, "failed to find or create chat: "+cErr.Error())
+	if h.ChatRepo != nil || h.ChatEngine != nil {
+		if _, _, err := h.engine().UpdateStatus(ctx, workspaceID, chatpkg.ChatRef{ContactID: contactID}, chatpkg.StatusUpdate{
+			Status:       status,
+			SnoozedUntil: snoozedUntil,
+		}); err != nil {
+			return c.String(http.StatusInternalServerError, "failed to update chat status: "+err.Error())
 		}
-		if status == "snoozed" {
-			if err := h.ChatRepo.SnoozeChat(ctx, workspaceID, chat.ID, snoozedUntil); err != nil {
-				return c.String(http.StatusInternalServerError, "failed to snooze chat: "+err.Error())
-			}
-		} else {
-			if err := h.ChatRepo.UpdateChatStatus(ctx, workspaceID, chat.ID, status); err != nil {
-				return c.String(http.StatusInternalServerError, "failed to update chat status: "+err.Error())
-			}
-		}
-		if h.Repo != nil {
-			auditPayload, _ := json.Marshal(map[string]interface{}{
-				"chat_id":    chat.ID.String(),
-				"contact_id": contactID.String(),
-				"status":     status,
-			})
-			_ = h.Repo.InsertAuditLog(ctx, &repository.AuditEntry{
-				ID:          uuid.New(),
-				WorkspaceID: workspaceID,
-				TraceID:     fmt.Sprintf("status-%s", uuid.New().String()),
-				EventType:   "chat.status.updated",
-				Payload:     auditPayload,
-				CreatedAt:   time.Now().UTC(),
-			})
-		}
-	}
-
-	if h.ContactRepo != nil {
+	} else if h.ContactRepo != nil {
 		if status == "closed" {
 			_ = h.ContactRepo.CloseThread(ctx, workspaceID, contactID)
 		} else {
@@ -1424,6 +1147,7 @@ func (h *InboxHandler) CreateNote(c *echo.Context) error {
 	}
 
 	var chatID uuid.UUID
+	var contactID uuid.UUID
 	chatIDStr := c.FormValue("chat_id")
 	if chatIDStr != "" {
 		var err error
@@ -1437,45 +1161,28 @@ func (h *InboxHandler) CreateNote(c *echo.Context) error {
 		if contactIDStr == "" {
 			return c.HTML(http.StatusBadRequest, `<span class="text-red-400">chat_id ou contact_id obrigatório.</span>`)
 		}
-		contactID, err := uuid.Parse(contactIDStr)
+		var err error
+		contactID, err = uuid.Parse(contactIDStr)
 		if err != nil {
 			return c.HTML(http.StatusBadRequest, `<span class="text-red-400">ID de contato inválido.</span>`)
 		}
-		if h.ChatRepo != nil {
-			chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID)
-			if cErr != nil {
-				return c.HTML(http.StatusInternalServerError, `<span class="text-red-400">Erro ao localizar chat.</span>`)
-			}
-			chatID = chat.ID
-		}
 	}
 
-	if h.ChatRepo == nil {
+	if h.ChatRepo == nil && h.ChatEngine == nil {
 		return c.HTML(http.StatusServiceUnavailable, `<span class="text-red-400">ChatRepo não configurado.</span>`)
 	}
 
-	note, err := h.ChatRepo.CreateInternalNote(ctx, workspaceID, chatID, authorName, "human_agent", body)
+	note, err := h.engine().CreateNote(ctx, workspaceID, chatpkg.NoteRequest{
+		Ref: chatpkg.ChatRef{
+			ChatID:    chatID,
+			ContactID: contactID,
+		},
+		Body:       body,
+		AuthorName: authorName,
+		SenderType: "human_agent",
+	})
 	if err != nil {
 		return c.HTML(http.StatusInternalServerError, `<span class="text-red-400">Erro ao criar nota: `+escapeHTML(err.Error())+`</span>`)
-	}
-
-	if h.Repo != nil {
-		auditPayload, _ := json.Marshal(map[string]interface{}{
-			"chat_id":     chatID.String(),
-			"note_id":     note.ID.String(),
-			"author_name": authorName,
-			"body":        body,
-			"sender_type": "human_agent",
-			"is_private":  true,
-		})
-		_ = h.Repo.InsertAuditLog(ctx, &repository.AuditEntry{
-			ID:          uuid.New(),
-			WorkspaceID: workspaceID,
-			TraceID:     note.UID,
-			EventType:   "chat.note.created",
-			Payload:     auditPayload,
-			CreatedAt:   note.CreatedAt,
-		})
 	}
 
 	if mw.IsHTMX(c) {
@@ -1509,7 +1216,7 @@ func (h *InboxHandler) ToggleReaction(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "message_uid and emoji are required")
 	}
 
-	if h.ChatRepo == nil {
+	if h.ChatRepo == nil && h.ChatEngine == nil {
 		return c.String(http.StatusInternalServerError, "chat repository not configured")
 	}
 
@@ -1522,48 +1229,20 @@ func (h *InboxHandler) ToggleReaction(c *echo.Context) error {
 		sender = opEmail
 	}
 
-	chatID, resolvedAction, updatedReactions, err := h.ChatRepo.MutateReaction(ctx, workspaceID, messageUID, emoji, sender, "toggle")
+	res, err := h.engine().React(ctx, workspaceID, chatpkg.ReactRequest{
+		MessageUID: messageUID,
+		Emoji:      emoji,
+		Action:     "toggle",
+		Sender:     sender,
+	})
 	if err != nil {
-		if errors.Is(err, repository.ErrChatMessageNotFound) {
+		if errors.Is(err, chatpkg.ErrMessageNotFound) {
 			return c.String(http.StatusNotFound, "message not found")
 		}
 		return c.String(http.StatusInternalServerError, "failed to mutate reaction: "+err.Error())
 	}
 
-	now := time.Now().UTC()
-	traceID := uuid.New().String()
-	rxEvent := domain.ReactionUpdatedPayload{
-		Event:       "message.reaction.updated",
-		WorkspaceID: workspaceID.String(),
-		ChatID:      chatID.String(),
-		MessageUID:  messageUID,
-		Emoji:       emoji,
-		Sender:      sender,
-		Action:      resolvedAction,
-		Reactions:   updatedReactions,
-		Timestamp:   now.Format(time.RFC3339),
-	}
-
-	if payloadBytes, mErr := json.Marshal(rxEvent); mErr == nil {
-		if h.Publisher != nil {
-			_ = h.Publisher.Publish(ctx, "messages.events.reaction_updated", payloadBytes, traceID)
-		}
-		if h.WebhookDispatcher != nil {
-			_ = h.WebhookDispatcher.DispatchReaction(ctx, workspaceID, messageUID, payloadBytes, traceID)
-		}
-		if h.Repo != nil {
-			_ = h.Repo.InsertAuditLog(ctx, &repository.AuditEntry{
-				ID:          uuid.New(),
-				WorkspaceID: workspaceID,
-				TraceID:     traceID,
-				EventType:   "reaction_updated",
-				Payload:     payloadBytes,
-				CreatedAt:   now,
-			})
-		}
-	}
-
-	return mw.Render(c, http.StatusOK, components.ReactionBadgeList(messageUID, updatedReactions))
+	return mw.Render(c, http.StatusOK, components.ReactionBadgeList(messageUID, res.Reactions))
 }
 
 // SummarizeChat handles POST /admin/inbox/summarize and POST /admin/inbox/chat/summarize
@@ -1590,6 +1269,7 @@ func (h *InboxHandler) SummarizeChat(c *echo.Context) error {
 	}
 
 	var chatID uuid.UUID
+	var contactID uuid.UUID
 	chatIDStr := strings.TrimSpace(c.QueryParam("chat_id"))
 	if chatIDStr == "" {
 		chatIDStr = strings.TrimSpace(c.FormValue("chat_id"))
@@ -1611,38 +1291,28 @@ func (h *InboxHandler) SummarizeChat(c *echo.Context) error {
 			contactIDStr = strings.TrimSpace(c.FormValue("contact_id"))
 		}
 		if contactIDStr != "" {
-			contactID, err := uuid.Parse(contactIDStr)
-			if err == nil && h.ChatRepo != nil {
-				chat, cErr := h.ChatRepo.FindOrCreateChat(ctx, workspaceID, nil, contactID)
-				if cErr == nil && chat != nil {
-					chatID = chat.ID
-				}
-			}
+			contactID, _ = uuid.Parse(contactIDStr)
 		}
 	}
 
-	if chatID == uuid.Nil {
+	if chatID == uuid.Nil && contactID == uuid.Nil {
 		return c.String(http.StatusBadRequest, "chat_id is required")
 	}
 
-	if h.ChatRepo == nil {
+	if h.ChatRepo == nil && h.ChatEngine == nil {
 		return c.String(http.StatusServiceUnavailable, "chat repository not configured")
 	}
 
-	chat, err := h.ChatRepo.GetChat(ctx, workspaceID, chatID)
+	synopsis, err := h.engine().Summarize(ctx, workspaceID, chatpkg.ChatRef{
+		ChatID:    chatID,
+		ContactID: contactID,
+	}, 50)
 	if err != nil {
-		if errors.Is(err, repository.ErrChatNotFound) {
+		if errors.Is(err, chatpkg.ErrChatNotFound) {
 			return c.String(http.StatusNotFound, "chat not found")
 		}
-		return c.String(http.StatusInternalServerError, "failed to get chat: "+err.Error())
+		return c.String(http.StatusInternalServerError, "failed to summarize chat: "+err.Error())
 	}
-
-	messages, err := h.ChatRepo.ListChatMessages(ctx, workspaceID, chatID, "", "", 50)
-	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to list chat messages: "+err.Error())
-	}
-
-	synopsis := chatpkg.SummarizeMessages(messages, chat)
 
 	// If API caller requested JSON or non-HTMX request
 	if !mw.IsHTMX(c) || strings.Contains(c.Request().Header.Get("Accept"), "application/json") {

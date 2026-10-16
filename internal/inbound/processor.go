@@ -714,6 +714,21 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 				}
 			}
 
+			msgMetadata := make(map[string]interface{})
+			for k, v := range ev.Metadata {
+				msgMetadata[k] = v
+			}
+			if ev.Channel != "" {
+				if _, ok := msgMetadata["channel"]; !ok {
+					msgMetadata["channel"] = ev.Channel
+				}
+			}
+			if ev.To != "" {
+				if _, ok := msgMetadata["to"]; !ok {
+					msgMetadata["to"] = ev.To
+				}
+			}
+
 			chatMsg := &domain.ChatMessage{
 				ChatID:      chat.ID,
 				WorkspaceID: ev.WorkspaceID,
@@ -727,7 +742,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 				MediaType:   mediaType,
 				IsPrivate:   false,
 				Reactions:   []domain.Reaction{},
-				Metadata:    map[string]interface{}{},
+				Metadata:    msgMetadata,
 				CreatedAt:   occurredAt,
 			}
 			if err := p.chatRepo.AddChatMessage(ctx, chatMsg); err != nil {

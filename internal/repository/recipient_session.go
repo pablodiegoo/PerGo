@@ -202,22 +202,3 @@ func (r *RecipientSessionRepository) UpdateLastReadAt(ctx context.Context, key S
 	)
 	return err
 }
-
-// UpdateLastReadAtByContact updates the last_read_at timestamp for all recipient sessions belonging to a contact.
-func (r *RecipientSessionRepository) UpdateLastReadAtByContact(ctx context.Context, workspaceID uuid.UUID, contactID uuid.UUID, lastReadAt time.Time) error {
-	if workspaceID == uuid.Nil {
-		return ErrInvalidWorkspaceID
-	}
-	_, err := r.pool.Exec(ctx,
-		`UPDATE recipient_sessions rs
-		 SET last_read_at = $3
-		 FROM contact_identities ci
-		 WHERE rs.workspace_id = $1
-		   AND ci.workspace_id = $1
-		   AND ci.contact_id = $2
-		   AND rs.recipient_phone = ci.sender_identity
-		   AND rs.channel = ci.channel`,
-		workspaceID, contactID, lastReadAt,
-	)
-	return err
-}

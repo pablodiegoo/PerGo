@@ -515,3 +515,451 @@ func TestChatRepository(t *testing.T) {
 	})
 }
 
+func TestChatRepository_ConversationsAndThread(t *testing.T) {
+	pool := getTestPoolWithMigrations(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "chat_conv_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() {
+		_ = wsRepo.Delete(ctx, ws.ID)
+	}()
+
+	identity1 := "+5511999990001"
+	identity2 := "+5511999990002"
+	identity3 := "+5511999990003"
+
+	c1, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "contact1", "Contact One", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact1: %v", err)
+	}
+
+	c2, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "contact2", "Contact Two", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact2: %v", err)
+	}
+
+	chat1, err := chatRepo.FindOrCreateChat(ctx, ws.ID, nil, c1.ID)
+	if err != nil {
+		t.Fatalf("failed to create chat1: %v", err)
+	}
+	_ = chatRepo.UpdateChatUnreadCount(ctx, ws.ID, chat1.ID, 3)
+
+	chat2, err := chatRepo.FindOrCreateChat(ctx, ws.ID, nil, c2.ID)
+	if err != nil {
+		t.Fatalf("failed to create chat2: %v", err)
+	}
+
+	insertInbound := func(chatID uuid.UUID, from, channel, to, body string, createdAt time.Time) *domain.ChatMessage {
+		msg := &domain.ChatMessage{
+			ID:          uuid.New(),
+			ChatID:      chatID,
+			WorkspaceID: ws.ID,
+			UID:         uuid.New().String(),
+			Direction:   domain.DirectionInbound,
+			SenderType:  domain.SenderTypeContact,
+			SenderName:  from,
+			SenderID:    from,
+			Body:        body,
+			Metadata: map[string]interface{}{
+				"channel": channel,
+				"to":      to,
+			},
+			CreatedAt: createdAt,
+		}
+		if err := chatRepo.AddChatMessage(ctx, msg); err != nil {
+			t.Fatalf("failed to insert inbound chat message: %v", err)
+		}
+		return msg
+	}
+
+	insertOutbound := func(chatID uuid.UUID, to, channel, senderIdentity, body string, createdAt time.Time) *domain.ChatMessage {
+		msg := &domain.ChatMessage{
+			ID:          uuid.New(),
+			ChatID:      chatID,
+			WorkspaceID: ws.ID,
+			UID:         uuid.New().String(),
+			Direction:   domain.DirectionOutbound,
+			SenderType:  domain.SenderTypeHumanAgent,
+			SenderName:  "Agent",
+			SenderID:    senderIdentity,
+			Body:        body,
+			Metadata: map[string]interface{}{
+				"channel":         channel,
+				"sender_identity": senderIdentity,
+				"to":              to,
+			},
+			CreatedAt: createdAt,
+		}
+		if err := chatRepo.AddChatMessage(ctx, msg); err != nil {
+			t.Fatalf("failed to insert outbound chat message: %v", err)
+		}
+		return msg
+	}
+
+	now := time.Now().UTC()
+
+	m1 := insertInbound(chat1.ID, "contact1", "telegram", identity1, "Hello 1", now.Add(-10*time.Minute))
+	insertInbound(chat1.ID, "contact1", "telegram", identity1, "Hello 2", now.Add(-8*time.Minute))
+	insertOutbound(chat1.ID, "contact1", "telegram", identity1, "Reply 1", now.Add(-5*time.Minute))
+	insertInbound(chat1.ID, "contact1", "telegram", identity2, "Hello bot 2", now.Add(-2*time.Minute))
+	insertInbound(chat2.ID, "contact2", "whatsapp", identity3, "Hello from Contact Two", now.Add(-1*time.Minute))
+
+	t.Run("ListConversations grouping, unread state, and filters", func(t *testing.T) {
+		conversations, err := chatRepo.ListConversations(ctx, ws.ID, "")
+		if err != nil {
+			t.Fatalf("ListConversations failed: %v", err)
+		}
+
+		if len(conversations) != 2 {
+			t.Fatalf("expected 2 conversations, got %d", len(conversations))
+		}
+
+		if conversations[0].ContactID != c2.ID {
+			t.Errorf("expected first conversation to be contact2, got: %s", conversations[0].ContactID)
+		}
+		if conversations[0].ContactName != "Contact Two" {
+			t.Errorf("expected name Contact Two, got: %s", conversations[0].ContactName)
+		}
+		if conversations[0].LastMessageBody != "Hello from Contact Two" {
+			t.Errorf("expected last body 'Hello from Contact Two', got: %s", conversations[0].LastMessageBody)
+		}
+		if conversations[0].TotalMessageCount != 1 {
+			t.Errorf("expected count 1, got: %d", conversations[0].TotalMessageCount)
+		}
+		if conversations[0].Unread || conversations[0].UnreadCount != 0 {
+			t.Errorf("expected contact2 unread=false (0), got unread=%v count=%d", conversations[0].Unread, conversations[0].UnreadCount)
+		}
+
+		if conversations[1].ContactID != c1.ID {
+			t.Errorf("expected second conversation to be contact1, got: %s", conversations[1].ContactID)
+		}
+		if conversations[1].ContactName != "Contact One" {
+			t.Errorf("expected name Contact One, got: %s", conversations[1].ContactName)
+		}
+		if conversations[1].LastMessageBody != "Hello bot 2" {
+			t.Errorf("expected last body 'Hello bot 2', got: %s", conversations[1].LastMessageBody)
+		}
+		if conversations[1].TotalMessageCount != 4 {
+			t.Errorf("expected count 4 (3 inbound + 1 outbound), got: %d", conversations[1].TotalMessageCount)
+		}
+		if !conversations[1].Unread || conversations[1].UnreadCount != 3 {
+			t.Errorf("expected contact1 unread=true (3), got unread=%v count=%d", conversations[1].Unread, conversations[1].UnreadCount)
+		}
+
+		// Reset unread by contact and verify
+		if err := chatRepo.ResetUnreadByContact(ctx, ws.ID, c1.ID); err != nil {
+			t.Fatalf("ResetUnreadByContact failed: %v", err)
+		}
+		conversationsAfter, err := chatRepo.ListConversations(ctx, ws.ID, "")
+		if err != nil {
+			t.Fatalf("ListConversations failed: %v", err)
+		}
+		if conversationsAfter[1].Unread || conversationsAfter[1].UnreadCount != 0 {
+			t.Errorf("expected contact1 unread=false after ResetUnreadByContact, got unread=%v count=%d", conversationsAfter[1].Unread, conversationsAfter[1].UnreadCount)
+		}
+	})
+
+	t.Run("ListThreadByContact chronological order, cursor, and isolation", func(t *testing.T) {
+		thread, err := chatRepo.ListThreadByContact(ctx, ws.ID, c1.ID, nil)
+		if err != nil {
+			t.Fatalf("ListThreadByContact failed: %v", err)
+		}
+
+		if len(thread) != 4 {
+			t.Fatalf("expected 4 thread messages, got %d", len(thread))
+		}
+
+		if thread[0].Body != "Hello 1" || thread[0].Direction != "inbound" {
+			t.Errorf("expected first msg to be inbound 'Hello 1', got: %s (%s)", thread[0].Body, thread[0].Direction)
+		}
+		if thread[1].Body != "Hello 2" || thread[1].Direction != "inbound" {
+			t.Errorf("expected second msg to be inbound 'Hello 2', got: %s (%s)", thread[1].Body, thread[1].Direction)
+		}
+		if thread[2].Body != "Reply 1" || thread[2].Direction != "outbound" {
+			t.Errorf("expected third msg to be outbound 'Reply 1', got: %s (%s)", thread[2].Body, thread[2].Direction)
+		}
+		if thread[3].Body != "Hello bot 2" || thread[3].Direction != "inbound" {
+			t.Errorf("expected fourth msg to be inbound 'Hello bot 2', got: %s (%s)", thread[3].Body, thread[3].Direction)
+		}
+
+		// Test afterID cursor (after m1 -> should return 3 messages)
+		afterThread, err := chatRepo.ListThreadByContact(ctx, ws.ID, c1.ID, &m1.ID)
+		if err != nil {
+			t.Fatalf("ListThreadByContact with afterID failed: %v", err)
+		}
+		if len(afterThread) != 3 {
+			t.Fatalf("expected 3 messages after m1, got %d", len(afterThread))
+		}
+		if afterThread[0].Body != "Hello 2" {
+			t.Errorf("expected first msg after m1 to be 'Hello 2', got %s", afterThread[0].Body)
+		}
+
+		thread2, err := chatRepo.ListThreadByContact(ctx, ws.ID, c2.ID, nil)
+		if err != nil {
+			t.Fatalf("ListThreadByContact failed: %v", err)
+		}
+		if len(thread2) != 1 {
+			t.Fatalf("expected 1 thread message, got %d", len(thread2))
+		}
+		if thread2[0].Body != "Hello from Contact Two" {
+			t.Errorf("expected body 'Hello from Contact Two', got: %s", thread2[0].Body)
+		}
+	})
+
+	t.Run("ListThreadByContact includes internal notes from chat_messages", func(t *testing.T) {
+		noteBody := "Private teammate note about VIP status."
+		author := "Agent Mulder"
+		note, err := chatRepo.CreateInternalNote(ctx, ws.ID, chat1.ID, author, "human", noteBody)
+		if err != nil {
+			t.Fatalf("failed to create internal note: %v", err)
+		}
+
+		thread, err := chatRepo.ListThreadByContact(ctx, ws.ID, c1.ID, nil)
+		if err != nil {
+			t.Fatalf("ListThreadByContact failed: %v", err)
+		}
+
+		var foundNote *repository.ThreadMessage
+		for _, m := range thread {
+			if m.ID == note.ID {
+				foundNote = &m
+				break
+			}
+		}
+
+		if foundNote == nil {
+			t.Fatalf("expected internal note %s in thread, not found", note.ID)
+		}
+		if foundNote.Direction != "internal_note" {
+			t.Errorf("expected direction 'internal_note', got %s", foundNote.Direction)
+		}
+		if foundNote.Body != noteBody {
+			t.Errorf("expected body %q, got %q", noteBody, foundNote.Body)
+		}
+		if foundNote.Metadata["author_name"] != author {
+			t.Errorf("expected author_name %q, got %q", author, foundNote.Metadata["author_name"])
+		}
+		if foundNote.Metadata["is_private"] != "true" {
+			t.Errorf("expected is_private 'true', got %q", foundNote.Metadata["is_private"])
+		}
+	})
+
+	t.Run("ListThreadByContact returns dispatch status for outbound messages", func(t *testing.T) {
+		dispatchRepo := repository.NewMessageDispatchRepository(pool)
+		outboundTraceID := uuid.New().String()
+
+		d, err := dispatchRepo.GetOrCreateDispatch(ctx, ws.ID, outboundTraceID, "telegram", nil, nil, nil)
+		if err != nil {
+			t.Fatalf("failed to create dispatch: %v", err)
+		}
+
+		err = dispatchRepo.UpdateDispatchStatus(ctx, d.ID, "read", "telegram", 0, nil)
+		if err != nil {
+			t.Fatalf("failed to update dispatch status: %v", err)
+		}
+
+		err = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+			ID:          uuid.New(),
+			ChatID:      chat1.ID,
+			WorkspaceID: ws.ID,
+			UID:         outboundTraceID,
+			Direction:   domain.DirectionOutbound,
+			SenderType:  domain.SenderTypeHumanAgent,
+			SenderName:  "Agent",
+			SenderID:    identity1,
+			Body:        "Status Checked Reply",
+			Metadata: map[string]interface{}{
+				"channel":         "telegram",
+				"sender_identity": identity1,
+			},
+			CreatedAt: now.Add(-3 * time.Minute),
+		})
+		if err != nil {
+			t.Fatalf("failed to insert outbound chat message: %v", err)
+		}
+
+		thread, err := chatRepo.ListThreadByContact(ctx, ws.ID, c1.ID, nil)
+		if err != nil {
+			t.Fatalf("ListThreadByContact failed: %v", err)
+		}
+
+		var found bool
+		for _, m := range thread {
+			if m.TraceID == outboundTraceID {
+				found = true
+				if m.Direction != "outbound" {
+					t.Errorf("expected direction 'outbound', got %q", m.Direction)
+				}
+				if m.Status == nil {
+					t.Errorf("expected Status not to be nil")
+				} else if *m.Status != "read" {
+					t.Errorf("expected Status 'read', got %q", *m.Status)
+				}
+			} else if m.Direction == "inbound" {
+				if m.Status != nil {
+					t.Errorf("expected Status to be nil for inbound message, got %q", *m.Status)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("did not find outbound status checked message in thread")
+		}
+	})
+}
+
+func TestChatRepository_OutboundMessagesInConversationsList(t *testing.T) {
+	pool := getTestPoolWithMigrations(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "outbound_inbox_test_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create test workspace: %v", err)
+	}
+	defer func() {
+		_ = wsRepo.Delete(ctx, ws.ID)
+	}()
+
+	senderIdentity1 := "+5511999990001"
+	senderIdentity2 := "+5511999990002"
+
+	now := time.Now().UTC()
+
+	contactA, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "+5511888880001", "Contact A OutboundOnly", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact A: %v", err)
+	}
+	chatA, err := chatRepo.FindOrCreateChat(ctx, ws.ID, nil, contactA.ID)
+	if err != nil {
+		t.Fatalf("failed to create chat A: %v", err)
+	}
+	if err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+		ChatID:      chatA.ID,
+		WorkspaceID: ws.ID,
+		UID:         uuid.New().String(),
+		Direction:   domain.DirectionOutbound,
+		SenderType:  domain.SenderTypeHumanAgent,
+		SenderName:  "Agent",
+		SenderID:    senderIdentity1,
+		Body:        "Test outgoing msg A",
+		Metadata: map[string]interface{}{
+			"channel":         "whatsapp",
+			"sender_identity": senderIdentity1,
+		},
+		CreatedAt: now.Add(-5 * time.Minute),
+	}); err != nil {
+		t.Fatalf("failed to add outbound message A: %v", err)
+	}
+
+	contactB, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "contact_b_tg", "Contact B Mixed", "", "")
+	if err != nil {
+		t.Fatalf("failed to resolve contact B: %v", err)
+	}
+	chatB, err := chatRepo.FindOrCreateChat(ctx, ws.ID, nil, contactB.ID)
+	if err != nil {
+		t.Fatalf("failed to create chat B: %v", err)
+	}
+	if err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+		ChatID:      chatB.ID,
+		WorkspaceID: ws.ID,
+		UID:         uuid.New().String(),
+		Direction:   domain.DirectionInbound,
+		SenderType:  domain.SenderTypeContact,
+		SenderName:  "Contact B Mixed",
+		SenderID:    "contact_b_tg",
+		Body:        "Inbound msg B",
+		Metadata: map[string]interface{}{
+			"channel": "telegram",
+			"to":      senderIdentity2,
+		},
+		CreatedAt: now.Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("failed to add inbound message B: %v", err)
+	}
+	if err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+		ChatID:      chatB.ID,
+		WorkspaceID: ws.ID,
+		UID:         uuid.New().String(),
+		Direction:   domain.DirectionOutbound,
+		SenderType:  domain.SenderTypeHumanAgent,
+		SenderName:  "Agent",
+		SenderID:    senderIdentity2,
+		Body:        "Latest Outbound reply B",
+		Metadata: map[string]interface{}{
+			"channel":         "telegram",
+			"sender_identity": senderIdentity2,
+		},
+		CreatedAt: now.Add(-2 * time.Minute),
+	}); err != nil {
+		t.Fatalf("failed to add outbound message B: %v", err)
+	}
+
+	t.Run("ListConversations includes outbound-only and outbound-latest conversations", func(t *testing.T) {
+		conversations, err := chatRepo.ListConversations(ctx, ws.ID, "")
+		if err != nil {
+			t.Fatalf("ListConversations failed: %v", err)
+		}
+
+		if len(conversations) != 2 {
+			t.Fatalf("expected 2 conversations (including outbound-only), got %d", len(conversations))
+		}
+
+		if conversations[0].ContactID != contactB.ID {
+			t.Errorf("expected first conversation to be Contact B, got %s", conversations[0].ContactID)
+		}
+		if conversations[0].LastMessageBody != "Latest Outbound reply B" {
+			t.Errorf("expected last message body to be latest outbound 'Latest Outbound reply B', got %q", conversations[0].LastMessageBody)
+		}
+		if conversations[0].TotalMessageCount != 2 {
+			t.Errorf("expected total message count 2 (1 inbound + 1 outbound), got %d", conversations[0].TotalMessageCount)
+		}
+
+		if conversations[1].ContactID != contactA.ID {
+			t.Errorf("expected second conversation to be Contact A, got %s", conversations[1].ContactID)
+		}
+		if conversations[1].LastMessageBody != "Test outgoing msg A" {
+			t.Errorf("expected last message body 'Test outgoing msg A', got %q", conversations[1].LastMessageBody)
+		}
+		if conversations[1].TotalMessageCount != 1 {
+			t.Errorf("expected total message count 1, got %d", conversations[1].TotalMessageCount)
+		}
+	})
+
+	t.Run("ListConversations filters correctly by sender identity for outbound messages", func(t *testing.T) {
+		convsSender1, err := chatRepo.ListConversations(ctx, ws.ID, senderIdentity1)
+		if err != nil {
+			t.Fatalf("ListConversations with filter senderIdentity1 failed: %v", err)
+		}
+		if len(convsSender1) != 1 {
+			t.Fatalf("expected 1 conversation for senderIdentity1, got %d", len(convsSender1))
+		}
+		if convsSender1[0].ContactID != contactA.ID {
+			t.Errorf("expected Contact A, got %s", convsSender1[0].ContactID)
+		}
+
+		convsSender2, err := chatRepo.ListConversations(ctx, ws.ID, senderIdentity2)
+		if err != nil {
+			t.Fatalf("ListConversations with filter senderIdentity2 failed: %v", err)
+		}
+		if len(convsSender2) != 1 {
+			t.Fatalf("expected 1 conversation for senderIdentity2, got %d", len(convsSender2))
+		}
+		if convsSender2[0].ContactID != contactB.ID {
+			t.Errorf("expected Contact B, got %s", convsSender2[0].ContactID)
+		}
+	})
+}
+
+

@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 
@@ -18,6 +19,9 @@ func SummarizeMessages(messages []domain.ChatMessage, chat *domain.Chat) domain.
 // and produces a deterministic ChatSynopsis.
 func (e *Engine) Summarize(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, maxMessages int) (domain.ChatSynopsis, error) {
 	c, err := e.ResolveChat(ctx, workspaceID, ref)
+	if errors.Is(err, ErrChatNotFound) && ref.ContactID != uuid.Nil {
+		c, err = e.EnsureChatForContact(ctx, workspaceID, ref.ContactID, false)
+	}
 	if err != nil {
 		return domain.ChatSynopsis{}, err
 	}

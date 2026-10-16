@@ -354,6 +354,82 @@ func (r *fakeChatRepo) MutateReaction(_ context.Context, workspaceID uuid.UUID, 
 	return uuid.Nil, "", nil, repository.ErrChatMessageNotFound
 }
 
+func (r *fakeChatRepo) ResetUnreadByContact(_ context.Context, workspaceID, contactID uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, c := range r.chats {
+		if c.WorkspaceID == workspaceID && c.ContactID == contactID {
+			c.UnreadCount = 0
+		}
+	}
+	return nil
+}
+
+func (r *fakeChatRepo) ListConversations(_ context.Context, workspaceID uuid.UUID, channelFilter string) ([]repository.ConversationSummary, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []repository.ConversationSummary
+	for _, c := range r.chats {
+		if c.WorkspaceID != workspaceID {
+			continue
+		}
+		msgs := r.messages[c.ID]
+		if len(msgs) == 0 {
+			continue
+		}
+		last := msgs[len(msgs)-1]
+		ch := "whatsapp"
+		if last.Metadata != nil {
+			if mc, ok := last.Metadata["channel"].(string); ok && mc != "" {
+				ch = mc
+			}
+		}
+		if channelFilter != "" && channelFilter != ch {
+			continue
+		}
+		out = append(out, repository.ConversationSummary{
+			ChatID:          c.ID,
+			ContactID:       c.ContactID,
+			Channel:         ch,
+			LastMessageBody: last.Body,
+			LastMessageTime: c.LastMessageAt,
+			Unread:          c.UnreadCount > 0,
+			UnreadCount:     c.UnreadCount,
+			Status:          string(c.Status),
+		})
+	}
+	return out, nil
+}
+
+func (r *fakeChatRepo) ListThreadByContact(_ context.Context, workspaceID, contactID uuid.UUID, afterID *uuid.UUID) ([]repository.ThreadMessage, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []repository.ThreadMessage
+	for _, c := range r.chats {
+		if c.WorkspaceID != workspaceID || c.ContactID != contactID {
+			continue
+		}
+		msgs := r.messages[c.ID]
+		seenAfter := afterID == nil
+		for _, m := range msgs {
+			if !seenAfter {
+				if m.ID == *afterID {
+					seenAfter = true
+				}
+				continue
+			}
+			out = append(out, repository.ThreadMessage{
+				ID:        m.ID,
+				TraceID:   m.UID,
+				Direction: string(m.Direction),
+				Body:      m.Body,
+				CreatedAt: m.CreatedAt,
+			})
+		}
+	}
+	return out, nil
+}
+
 type fakeContactRepo struct {
 	mu       sync.Mutex
 	contacts map[uuid.UUID]*domain.Contact
@@ -944,3 +1020,76 @@ func TestEngine_SendMessage_PromoteDraft_SetAIEnabled_TakeoverAndBackpressure(t 
 		t.Fatalf("expected non-empty synopsis, got %s", string(raw))
 	}
 }
+
+func TestEngine_InboxConversationAndThreadMethods(t *testing.T) {
+	ctx := context.Background()
+	wsID := uuid.New()
+	chatRepo := newFakeChatRepo()
+	contactRepo := newFakeContactRepo()
+
+	contact := &domain.Contact{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		Name:        "Inbox Contact",
+		BotActive:   true,
+	}
+	contactRepo.contacts[contact.ID] = contact
+
+	eng := chat.NewEngine(
+		chatRepo,
+		chat.WithContactRepo(contactRepo),
+	)
+
+	// 1. EnsureChatForContact creates or resolves a chat for the contact
+	c, err := eng.EnsureChatForContact(ctx, wsID, contact.ID, false)
+	if err != nil || c == nil {
+		t.Fatalf("EnsureChatForContact failed: %v", err)
+	}
+	chatRepo.chats[c.ID].UnreadCount = 4
+
+	msgID := uuid.New()
+	_ = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+		ID:          msgID,
+		ChatID:      c.ID,
+		WorkspaceID: wsID,
+		UID:         "inbox-uid-1",
+		Direction:   domain.DirectionInbound,
+		SenderType:  domain.SenderTypeContact,
+		Body:        "New message in inbox",
+		Metadata:    map[string]any{"channel": "whatsapp"},
+	})
+
+	// 2. ListConversations returns single-query summary with unread=true
+	convs, err := eng.ListConversations(ctx, wsID, "")
+	if err != nil {
+		t.Fatalf("ListConversations failed: %v", err)
+	}
+	if len(convs) != 1 || !convs[0].Unread || convs[0].UnreadCount != 4 {
+		t.Fatalf("expected 1 unread conversation with count 4, got %+v", convs)
+	}
+
+	// 3. ListThread with markRead=true returns thread and resets unread_count to 0
+	thread, err := eng.ListThread(ctx, wsID, contact.ID, nil, true)
+	if err != nil {
+		t.Fatalf("ListThread failed: %v", err)
+	}
+	if len(thread) != 1 || thread[0].Body != "New message in inbox" {
+		t.Fatalf("unexpected thread: %+v", thread)
+	}
+	if chatRepo.chats[c.ID].UnreadCount != 0 {
+		t.Fatalf("expected unread_count reset to 0 after ListThread(markRead=true), got %d", chatRepo.chats[c.ID].UnreadCount)
+	}
+
+	// 4. ToggleContactBot toggles BotActive and syncs chat.AIDisabled
+	updatedContact, err := eng.ToggleContactBot(ctx, wsID, contact.ID)
+	if err != nil {
+		t.Fatalf("ToggleContactBot failed: %v", err)
+	}
+	if updatedContact.BotActive {
+		t.Fatalf("expected BotActive=false after toggle")
+	}
+	if !chatRepo.chats[c.ID].AIDisabled {
+		t.Fatalf("expected chat.AIDisabled=true when BotActive toggled to false")
+	}
+}
+

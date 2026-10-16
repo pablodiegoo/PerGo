@@ -49,6 +49,7 @@ func setupBootstrapE2EServer(t *testing.T, pool *pgxpool.Pool, adminPassword str
 	auditQuerier := audit.NewQuerier(pool)
 	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
 	userActionLogRepo := repository.NewUserActionLogRepository(pool)
 
 	e := echosrv.New()
@@ -110,6 +111,7 @@ func setupBootstrapE2EServer(t *testing.T, pool *pgxpool.Pool, adminPassword str
 		Connections:    connRepo,
 		Templates:      tmplRepo,
 		ContactRepo:    contactRepo,
+		ChatRepo:       chatRepo,
 		UserActionLogs: userActionLogRepo,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
