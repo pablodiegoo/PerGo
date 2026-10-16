@@ -287,8 +287,18 @@ func (p *InboundProcessor) SetChatRepository(r *repository.ChatRepository) *Inbo
 }
 
 // SetDebouncer configures the Debouncer for inbound AI sliding-window coalescing.
+// If the Debouncer does not already have a Publisher configured and the processor has one,
+// the processor's Publisher is automatically bound to the Debouncer.
 func (p *InboundProcessor) SetDebouncer(d *Debouncer) *InboundProcessor {
 	p.debouncer = d
+	if d != nil && p.publisher != nil {
+		d.mu.Lock()
+		hasPub := d.publisher != nil
+		d.mu.Unlock()
+		if !hasPub {
+			d.SetPublisher(p.publisher)
+		}
+	}
 	return p
 }
 
@@ -296,6 +306,14 @@ func (p *InboundProcessor) SetDebouncer(d *Debouncer) *InboundProcessor {
 func (p *InboundProcessor) SetReactionWebhookDispatcher(d ReactionWebhookDispatcher) *InboundProcessor {
 	p.reactionWebhookDispatcher = d
 	return p
+}
+
+// Close stops any active in-memory debounce timers owned by the processor.
+func (p *InboundProcessor) Close() {
+	if p == nil || p.debouncer == nil {
+		return
+	}
+	p.debouncer.Close()
 }
 
 // Process executes the ingestion pipeline for an inbound event.
@@ -425,6 +443,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 
 	// Resolve/Create Contact Profile
 	var contact *domain.Contact
+	var botAutoReset bool
 	if p.contactRepo != nil {
 		var username, phone string
 		if ev.Metadata != nil {
@@ -449,6 +468,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 				} else {
 					contact.BotActive = true
 					contact.BotPausedAt = nil
+					botAutoReset = true
 				}
 			}
 		}
@@ -650,6 +670,14 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		if cErr != nil {
 			slog.Error("inbound processor: failed to find or create chat", "error", cErr, "contact_id", contact.ID, "trace_id", traceID)
 		} else if chat != nil {
+			if botAutoReset && chat.AIDisabled {
+				if err := p.chatRepo.SetAIDisabled(ctx, ev.WorkspaceID, chat.ID, false); err != nil {
+					slog.Error("inbound processor: failed to reset chat AI disabled flag after 12h bot cooldown", "error", err, "chat_id", chat.ID, "trace_id", traceID)
+				} else {
+					chat.AIDisabled = false
+				}
+			}
+
 			if chat.Status == domain.ChatStatusSnoozed || chat.Status == domain.ChatStatusClosed {
 				_ = p.chatRepo.UpdateChatStatus(ctx, ev.WorkspaceID, chat.ID, string(domain.ChatStatusOpen))
 			}
@@ -717,7 +745,8 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 
 			// 8.6 Inbound Debounce Buffer & AI Handoff Gate
 			if p.debouncer != nil {
-				if chat.AIDisabled {
+				aiActive := contact.BotActive && (chat == nil || !chat.AIDisabled)
+				if !aiActive {
 					slog.Info("inbound processor: chat AI disabled by human takeover, bypassing automated AI dispatch",
 						"workspace_id", ev.WorkspaceID,
 						"chat_id", chat.ID,
@@ -750,8 +779,13 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 
 	// 9. Route inbound event via InboundRouter
 	if p.router != nil && contact != nil {
-		if chat != nil && chat.AIDisabled {
-			slog.Info("inbound processor: chat AI is disabled (human takeover), bypassing InboundRouter dispatch", "chat_id", chat.ID, "contact_id", contact.ID)
+		aiActive := contact.BotActive && (chat == nil || !chat.AIDisabled)
+		if !aiActive {
+			var chatID uuid.UUID
+			if chat != nil {
+				chatID = chat.ID
+			}
+			slog.Info("inbound processor: chat AI is disabled (human takeover), bypassing InboundRouter dispatch", "chat_id", chatID, "contact_id", contact.ID)
 		} else {
 			if err := p.router.Route(ctx, contact, ev); err != nil {
 				slog.Error("inbound processor: router failed to route event", "error", err, "contact_id", contact.ID, "trace_id", traceID)
