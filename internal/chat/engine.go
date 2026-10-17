@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"strings"
 	"time"
 
@@ -87,6 +88,10 @@ type threadLister interface {
 
 type contactUnreadResetter interface {
 	ResetUnreadByContact(ctx context.Context, workspaceID, contactID uuid.UUID) error
+}
+
+type messageMetadataUpdater interface {
+	UpdateMessageMetadata(ctx context.Context, workspaceID uuid.UUID, uid string, metadata map[string]interface{}) error
 }
 
 // ContactRepository defines contact operations required by Engine.
@@ -250,47 +255,120 @@ type ReactResult struct {
 	Reactions  []domain.Reaction `json:"reactions"`
 }
 
+func isNilInterface(v any) bool {
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		return rv.IsNil()
+	default:
+		return false
+	}
+}
+
 // Option configures optional dependencies on Engine.
 type Option func(*Engine)
 
 // WithContactRepo configures the contact repository.
 func WithContactRepo(r ContactRepository) Option {
-	return func(e *Engine) { e.contactRepo = r }
+	return func(e *Engine) {
+		if !isNilInterface(r) {
+			e.contactRepo = r
+		}
+	}
 }
 
 // WithConnectionRepo configures the connection repository.
 func WithConnectionRepo(r ConnectionRepository) Option {
-	return func(e *Engine) { e.connRepo = r }
+	return func(e *Engine) {
+		if !isNilInterface(r) {
+			e.connRepo = r
+		}
+	}
 }
 
 // WithWorkspaceRepo configures the workspace repository.
 func WithWorkspaceRepo(r WorkspaceRepository) Option {
-	return func(e *Engine) { e.wsRepo = r }
+	return func(e *Engine) {
+		if !isNilInterface(r) {
+			e.wsRepo = r
+		}
+	}
 }
 
 // WithAuditRepo configures the audit repository.
 func WithAuditRepo(r AuditRepository) Option {
-	return func(e *Engine) { e.auditRepo = r }
+	return func(e *Engine) {
+		if !isNilInterface(r) {
+			e.auditRepo = r
+		}
+	}
 }
 
 // WithMessagePublisher configures the NATS message publisher.
 func WithMessagePublisher(p MessagePublisher) Option {
-	return func(e *Engine) { e.publisher = p }
+	return func(e *Engine) {
+		if !isNilInterface(p) {
+			e.publisher = p
+		}
+	}
 }
 
 // WithReactionWebhookDispatcher configures the reaction webhook dispatcher.
 func WithReactionWebhookDispatcher(d ReactionWebhookDispatcher) Option {
-	return func(e *Engine) { e.webhookDispatcher = d }
+	return func(e *Engine) {
+		if !isNilInterface(d) {
+			e.webhookDispatcher = d
+		}
+	}
 }
 
 // WithMessageIngestor configures the unified outbound message ingestor.
 func WithMessageIngestor(i outbound.OutboundProcessor) Option {
-	return func(e *Engine) { e.ingestor = i }
+	return func(e *Engine) {
+		if !isNilInterface(i) {
+			e.ingestor = i
+		}
+	}
 }
 
 // WithDebounceCanceller configures the inbound debounce buffer canceller.
 func WithDebounceCanceller(d DebounceCanceller) Option {
-	return func(e *Engine) { e.debouncer = d }
+	return func(e *Engine) {
+		if !isNilInterface(d) {
+			e.debouncer = d
+		}
+	}
+}
+
+// Config groups dependencies used to construct a Chat Engine.
+type Config struct {
+	ChatRepo          ChatRepository
+	ContactRepo       ContactRepository
+	ConnRepo          ConnectionRepository
+	WorkspaceRepo     WorkspaceRepository
+	AuditRepo         AuditRepository
+	Publisher         MessagePublisher
+	WebhookDispatcher ReactionWebhookDispatcher
+	Ingestor          outbound.OutboundProcessor
+	Debouncer         DebounceCanceller
+}
+
+// NewEngineFromConfig constructs a Chat Engine from a Config struct, safely ignoring nil or typed-nil fields.
+func NewEngineFromConfig(cfg Config) *Engine {
+	return NewEngine(
+		cfg.ChatRepo,
+		WithContactRepo(cfg.ContactRepo),
+		WithConnectionRepo(cfg.ConnRepo),
+		WithWorkspaceRepo(cfg.WorkspaceRepo),
+		WithAuditRepo(cfg.AuditRepo),
+		WithMessagePublisher(cfg.Publisher),
+		WithReactionWebhookDispatcher(cfg.WebhookDispatcher),
+		WithMessageIngestor(cfg.Ingestor),
+		WithDebounceCanceller(cfg.Debouncer),
+	)
 }
 
 // Engine is the deep domain module owning chat resolution, lazy snooze reopen,
@@ -310,8 +388,12 @@ type Engine struct {
 
 // NewEngine creates a new Chat Engine with the given ChatRepository and options.
 func NewEngine(chatRepo ChatRepository, opts ...Option) *Engine {
+	var repo ChatRepository
+	if !isNilInterface(chatRepo) {
+		repo = chatRepo
+	}
 	e := &Engine{
-		chatRepo: chatRepo,
+		chatRepo: repo,
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -323,11 +405,19 @@ func NewEngine(chatRepo ChatRepository, opts ...Option) *Engine {
 
 // SetWebhookDispatcher updates the reaction webhook dispatcher on the Engine.
 func (e *Engine) SetWebhookDispatcher(d ReactionWebhookDispatcher) {
+	if isNilInterface(d) {
+		e.webhookDispatcher = nil
+		return
+	}
 	e.webhookDispatcher = d
 }
 
 // SetMessagePublisher updates the NATS message publisher on the Engine.
 func (e *Engine) SetMessagePublisher(p MessagePublisher) {
+	if isNilInterface(p) {
+		e.publisher = nil
+		return
+	}
 	e.publisher = p
 }
 
@@ -677,6 +767,9 @@ func (e *Engine) ListThread(ctx context.Context, workspaceID, contactID uuid.UUI
 	if wsID == uuid.Nil {
 		return nil, nil
 	}
+	if c, cErr := e.ResolveChat(ctx, wsID, ChatRef{ContactID: contactID}); cErr == nil && c != nil {
+		e.reopenIfSnoozeExpired(ctx, wsID, c)
+	}
 	lister, ok := e.chatRepo.(threadLister)
 	if !ok {
 		return nil, nil
@@ -948,6 +1041,8 @@ func (e *Engine) ListMessages(ctx context.Context, workspaceID uuid.UUID, ref Ch
 	if err != nil {
 		return nil, nil, err
 	}
+
+	e.reopenIfSnoozeExpired(ctx, c.WorkspaceID, c)
 
 	if limit <= 0 {
 		limit = 50
@@ -1468,6 +1563,9 @@ func (e *Engine) React(ctx context.Context, workspaceID uuid.UUID, req ReactRequ
 // or replaced by editedBody) into an outbound customer message via SendMessage.
 func (e *Engine) PromoteDraft(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, draftUID, editedBody string) (*SendResult, error) {
 	c, err := e.ResolveChat(ctx, workspaceID, ref)
+	if errors.Is(err, ErrChatNotFound) && strings.TrimSpace(draftUID) != "" {
+		c, err = e.ResolveChat(ctx, workspaceID, ChatRef{MessageUID: strings.TrimSpace(draftUID)})
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1483,21 +1581,41 @@ func (e *Engine) PromoteDraft(ctx context.Context, workspaceID uuid.UUID, ref Ch
 
 	finalBody := strings.TrimSpace(editedBody)
 	if finalBody == "" && draftMsg != nil {
-		finalBody = strings.TrimSpace(strings.TrimPrefix(draftMsg.Body, "[AI Draft]: "))
-		finalBody = strings.TrimSpace(strings.TrimPrefix(finalBody, "[AI Draft]:"))
+		finalBody = strings.TrimSpace(draftMsg.Body)
 	}
+	finalBody = strings.TrimSpace(strings.TrimPrefix(finalBody, "[AI Draft]: "))
+	finalBody = strings.TrimSpace(strings.TrimPrefix(finalBody, "[AI Draft]:"))
 	if finalBody == "" {
 		return nil, ErrEmptyBody
 	}
 
 	disableAI := true
-	return e.SendMessage(ctx, c.WorkspaceID, SendRequest{
+	res, err := e.SendMessage(ctx, c.WorkspaceID, SendRequest{
 		Ref:        ChatRef{ChatID: c.ID},
 		Body:       finalBody,
 		SenderType: string(domain.SenderTypeHumanAgent),
 		SenderName: "Operator (Approved AI Draft)",
 		DisableAI:  &disableAI,
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	if draftMsg != nil && e.chatRepo != nil {
+		if draftMsg.Metadata == nil {
+			draftMsg.Metadata = make(map[string]interface{})
+		}
+		draftMsg.Metadata["draft_promoted"] = true
+		draftMsg.Metadata["draft_status"] = "promoted"
+		if res != nil && res.TraceID != "" {
+			draftMsg.Metadata["promoted_message_uid"] = res.TraceID
+		}
+		if updater, ok := e.chatRepo.(messageMetadataUpdater); ok {
+			_ = updater.UpdateMessageMetadata(ctx, c.WorkspaceID, draftMsg.UID, draftMsg.Metadata)
+		}
+	}
+
+	return res, nil
 }
 
 // SendMessage dispatches an outbound message on a chat thread, delegating to
@@ -1784,81 +1902,7 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 	}
 
 	if persistedMsg == nil {
-		// Reopen snoozed or closed chat on outbound conversational activity
-		if c.Status == domain.ChatStatusSnoozed || c.Status == domain.ChatStatusClosed {
-			if e.chatRepo != nil {
-				_ = e.chatRepo.UpdateChatStatus(ctx, wsID, c.ID, string(domain.ChatStatusOpen))
-			}
-			c.Status = domain.ChatStatusOpen
-			c.SnoozedUntil = nil
-			if e.contactRepo != nil && c.ContactID != uuid.Nil {
-				_ = e.contactRepo.ReopenThread(ctx, wsID, c.ContactID)
-			}
-		}
-
-		msgMeta := make(map[string]interface{})
-		for k, v := range req.Metadata {
-			msgMeta[k] = v
-		}
-		if channel != "" {
-			msgMeta["channel"] = channel
-		}
-		if to != "" {
-			msgMeta["to"] = to
-		}
-		if senderIdentity != "" {
-			msgMeta["sender_identity"] = senderIdentity
-		}
-		if req.Type != "" {
-			msgMeta["type"] = req.Type
-		}
-		if req.TemplateName != "" {
-			msgMeta["template_name"] = req.TemplateName
-		}
-		if req.Language != "" {
-			msgMeta["language"] = req.Language
-		}
-		if req.Product != nil {
-			if prodBytes, pErr := json.Marshal(req.Product); pErr == nil {
-				msgMeta["product_json"] = string(prodBytes)
-			}
-		}
-
-		chatMsg := &domain.ChatMessage{
-			ID:          uuid.New(),
-			ChatID:      c.ID,
-			WorkspaceID: wsID,
-			UID:         traceID,
-			Direction:   domain.DirectionOutbound,
-			SenderType:  senderType,
-			SenderName:  senderName,
-			SenderID:    senderIdentity,
-			Body:        displayBody,
-			ReplyToUID:  req.ReplyToUID,
-			Metadata:    msgMeta,
-			CreatedAt:   now,
-		}
-		if e.chatRepo != nil {
-			if err := e.chatRepo.AddChatMessage(ctx, chatMsg); err != nil {
-				slog.ErrorContext(ctx, "failed to persist outbound chat message", "error", err, "chat_id", c.ID, "trace_id", traceID)
-			}
-		}
-		persistedMsg = chatMsg
-
-		if disableAI {
-			if e.chatRepo != nil {
-				_ = e.chatRepo.SetAIDisabled(ctx, wsID, c.ID, true)
-			}
-			if e.contactRepo != nil && c.ContactID != uuid.Nil {
-				_ = e.contactRepo.UpdateBotState(ctx, wsID, c.ContactID, false, &now)
-			}
-			if e.ingestor != nil {
-				e.publishHandoffEvents(ctx, wsID, c.ID, c.ContactID, senderName, traceID, now)
-			}
-		}
-		if e.chatRepo != nil {
-			_ = e.chatRepo.TouchLastMessageAt(ctx, wsID, c.ID, now)
-		}
+		persistedMsg = e.persistOutboundChatMessage(ctx, wsID, c, traceID, senderType, senderName, senderIdentity, to, channel, displayBody, disableAI, now, req)
 	}
 
 	if disableAI && e.debouncer != nil && c.ContactID != uuid.Nil {
@@ -1924,4 +1968,68 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 		MessageID:    msgID,
 		Message:      persistedMsg,
 	}, nil
+}
+
+func (e *Engine) persistOutboundChatMessage(
+	ctx context.Context,
+	wsID uuid.UUID,
+	c *domain.Chat,
+	traceID string,
+	senderType domain.SenderType,
+	senderName, senderIdentity, to, channel, displayBody string,
+	disableAI bool,
+	now time.Time,
+	req SendRequest,
+) *domain.ChatMessage {
+	if c.Status == domain.ChatStatusSnoozed || c.Status == domain.ChatStatusClosed {
+		if e.chatRepo != nil {
+			_ = e.chatRepo.UpdateChatStatus(ctx, wsID, c.ID, string(domain.ChatStatusOpen))
+		}
+		c.Status = domain.ChatStatusOpen
+		c.SnoozedUntil = nil
+		if e.contactRepo != nil && c.ContactID != uuid.Nil {
+			_ = e.contactRepo.ReopenThread(ctx, wsID, c.ContactID)
+		}
+	}
+
+	chatMsg := domain.BuildOutboundChatMessage(domain.OutboundChatMessageParams{
+		ChatID:         c.ID,
+		WorkspaceID:    wsID,
+		UID:            traceID,
+		SenderType:     senderType,
+		SenderName:     senderName,
+		SenderIdentity: senderIdentity,
+		To:             to,
+		Channel:        channel,
+		Body:           displayBody,
+		TemplateName:   req.TemplateName,
+		Language:       req.Language,
+		Type:           req.Type,
+		Media:          req.Media,
+		Product:        req.Product,
+		ReplyToUID:     req.ReplyToUID,
+		Metadata:       req.Metadata,
+		CreatedAt:      now,
+	})
+	if e.chatRepo != nil {
+		if err := e.chatRepo.AddChatMessage(ctx, chatMsg); err != nil {
+			slog.ErrorContext(ctx, "failed to persist outbound chat message", "error", err, "chat_id", c.ID, "trace_id", traceID)
+		}
+	}
+
+	if disableAI {
+		if e.chatRepo != nil {
+			_ = e.chatRepo.SetAIDisabled(ctx, wsID, c.ID, true)
+		}
+		if e.contactRepo != nil && c.ContactID != uuid.Nil {
+			_ = e.contactRepo.UpdateBotState(ctx, wsID, c.ContactID, false, &now)
+		}
+		if e.ingestor != nil {
+			e.publishHandoffEvents(ctx, wsID, c.ID, c.ContactID, senderName, traceID, now)
+		}
+	}
+	if e.chatRepo != nil {
+		_ = e.chatRepo.TouchLastMessageAt(ctx, wsID, c.ID, now)
+	}
+	return chatMsg
 }

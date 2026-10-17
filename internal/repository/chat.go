@@ -859,6 +859,33 @@ func (r *ChatRepository) UpdateMessageReactions(ctx context.Context, workspaceID
 	return nil
 }
 
+// UpdateMessageMetadata merges the given metadata fields into the JSONB metadata column of a message.
+func (r *ChatRepository) UpdateMessageMetadata(ctx context.Context, workspaceID uuid.UUID, uid string, metadata map[string]interface{}) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
+	if metadata == nil {
+		metadata = make(map[string]interface{})
+	}
+	metaJSON, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("marshal metadata: %w", err)
+	}
+
+	res, err := r.pool.Exec(ctx, `
+		UPDATE chat_messages
+		SET metadata = COALESCE(metadata, '{}'::jsonb) || $3::jsonb
+		WHERE workspace_id = $1 AND uid = $2
+	`, workspaceID, uid, metaJSON)
+	if err != nil {
+		return err
+	}
+	if res.RowsAffected() == 0 {
+		return ErrChatMessageNotFound
+	}
+	return nil
+}
+
 // MutateReaction atomically adds, removes, or toggles a reaction on a message under a row lock
 // and returns (chatID, resolvedAction, updatedReactions, error).
 func (r *ChatRepository) MutateReaction(ctx context.Context, workspaceID uuid.UUID, messageUID, emoji, sender, action string) (uuid.UUID, string, []domain.Reaction, error) {

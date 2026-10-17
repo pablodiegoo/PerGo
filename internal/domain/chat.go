@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -251,3 +252,112 @@ func SummarizeMessages(messages []ChatMessage, chat *Chat) ChatSynopsis {
 		CurrentStatus:  currentStatus,
 	}
 }
+
+// OutboundChatMessageParams holds the inputs needed to construct a persisted outbound ChatMessage.
+type OutboundChatMessageParams struct {
+	ID             uuid.UUID
+	ChatID         uuid.UUID
+	WorkspaceID    uuid.UUID
+	UID            string
+	SenderType     SenderType
+	SenderName     string
+	SenderIdentity string
+	To             string
+	Channel        string
+	Body           string
+	TemplateName   string
+	Language       string
+	Type           string
+	Media          *Media
+	Product        *ProductPayload
+	ReplyToUID     *string
+	Metadata       map[string]string
+	CreatedAt      time.Time
+}
+
+// BuildOutboundChatMessage constructs a canonical outbound ChatMessage with populated metadata and template display body.
+func BuildOutboundChatMessage(p OutboundChatMessageParams) *ChatMessage {
+	id := p.ID
+	if id == uuid.Nil {
+		id = uuid.New()
+	}
+
+	bodyText := p.Body
+	if bodyText == "" && p.TemplateName != "" {
+		if p.Language != "" {
+			bodyText = fmt.Sprintf("[Template: %s (%s)]", p.TemplateName, p.Language)
+		} else {
+			bodyText = fmt.Sprintf("[Template: %s]", p.TemplateName)
+		}
+	}
+
+	var mediaURL, mediaType *string
+	if p.Media != nil {
+		if p.Media.MediaURL != "" {
+			u := p.Media.MediaURL
+			mediaURL = &u
+		}
+		if p.Media.MediaType != "" {
+			t := p.Media.MediaType
+			mediaType = &t
+		}
+	}
+
+	msgMeta := make(map[string]interface{})
+	for k, v := range p.Metadata {
+		msgMeta[k] = v
+	}
+	if p.Channel != "" {
+		if _, ok := msgMeta["channel"]; !ok {
+			msgMeta["channel"] = p.Channel
+		}
+	}
+	if p.SenderIdentity != "" {
+		if _, ok := msgMeta["sender_identity"]; !ok {
+			msgMeta["sender_identity"] = p.SenderIdentity
+		}
+	}
+	if p.To != "" {
+		if _, ok := msgMeta["to"]; !ok {
+			msgMeta["to"] = p.To
+		}
+	}
+	if p.TemplateName != "" {
+		msgMeta["template_name"] = p.TemplateName
+		if p.Language != "" || msgMeta["language"] == nil {
+			msgMeta["language"] = p.Language
+		}
+		if _, ok := msgMeta["type"]; !ok {
+			msgMeta["type"] = "template"
+		}
+	} else if p.Type != "" {
+		if _, ok := msgMeta["type"]; !ok {
+			msgMeta["type"] = p.Type
+		}
+	}
+	if p.Product != nil {
+		if prodBytes, err := json.Marshal(p.Product); err == nil {
+			msgMeta["product_json"] = string(prodBytes)
+		}
+	}
+
+	return &ChatMessage{
+		ID:          id,
+		ChatID:      p.ChatID,
+		WorkspaceID: p.WorkspaceID,
+		UID:         p.UID,
+		Direction:   DirectionOutbound,
+		SenderType:  p.SenderType,
+		SenderName:  p.SenderName,
+		SenderID:    p.SenderIdentity,
+		Body:        bodyText,
+		MediaURL:    mediaURL,
+		MediaType:   mediaType,
+		IsPrivate:   false,
+		Reactions:   []Reaction{},
+		ReplyToUID:  p.ReplyToUID,
+		Metadata:    msgMeta,
+		CreatedAt:   p.CreatedAt,
+	}
+}
+

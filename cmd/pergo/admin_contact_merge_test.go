@@ -200,7 +200,9 @@ func TestAdminContactMerge(t *testing.T) {
 
 	publisher := queue.NewJetStreamPublisher(nc)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
 	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, publisher, auditWriter, recipientSessionRepo, contactRepo, dispatchRepo, nil)
+	proc.SetChatRepository(chatRepo)
 
 	// 1. Simulate inbound events to create distinct contacts
 	// Message from Telegram contact
@@ -261,6 +263,7 @@ func TestAdminContactMerge(t *testing.T) {
 	e := echo.New()
 	inboxHandler := &admin.InboxHandler{
 		Repo:           auditRepo,
+		ChatRepo:       chatRepo,
 		Sessions:       recipientSessionRepo,
 		Workspaces:     wsRepo,
 		Connections:    nil,

@@ -123,34 +123,24 @@ func NewChatAPIHandler(chatRepo ChatRepo, opts ...ChatAPIOption) *ChatAPIHandler
 			opt(h)
 		}
 	}
-	if h.eng == nil && h.chatRepo != nil {
-		h.eng = h.buildEngine()
-	}
+	_ = h.engine()
 	return h
 }
 
-func (h *ChatAPIHandler) buildEngine() *chat.Engine {
-	return chat.NewEngine(
-		h.chatRepo,
-		chat.WithContactRepo(h.contactRepo),
-		chat.WithConnectionRepo(h.connRepo),
-		chat.WithWorkspaceRepo(h.wsRepo),
-		chat.WithAuditRepo(h.auditRepo),
-		chat.WithMessagePublisher(h.publisher),
-		chat.WithReactionWebhookDispatcher(h.webhookDispatcher),
-		chat.WithMessageIngestor(h.ingestor),
-		chat.WithDebounceCanceller(h.debouncer),
-	)
-}
-
 func (h *ChatAPIHandler) engine() *chat.Engine {
-	if h.eng != nil {
-		return h.eng
+	if h.eng == nil && h.chatRepo != nil {
+		h.eng = chat.NewEngineFromConfig(chat.Config{
+			ChatRepo:          h.chatRepo,
+			ContactRepo:       h.contactRepo,
+			ConnRepo:          h.connRepo,
+			WorkspaceRepo:     h.wsRepo,
+			AuditRepo:         h.auditRepo,
+			Publisher:         h.publisher,
+			WebhookDispatcher: h.webhookDispatcher,
+			Ingestor:          h.ingestor,
+			Debouncer:         h.debouncer,
+		})
 	}
-	if h.chatRepo == nil {
-		return nil
-	}
-	h.eng = h.buildEngine()
 	return h.eng
 }
 

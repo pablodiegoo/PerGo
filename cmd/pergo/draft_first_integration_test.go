@@ -304,20 +304,27 @@ func TestDraftFirstInternalNotesIntegration(t *testing.T) {
 	if !strings.Contains(htmlBody, "Nota Interna") {
 		t.Errorf("expected Web Console HTML to contain 'Nota Interna' label with lock icon")
 	}
-	// 5. Verify "Approve & Send" button with data-draft attribute
-	if !strings.Contains(htmlBody, "Approve & Send") || !strings.Contains(htmlBody, "btn-approve-send") {
-		t.Errorf("expected Web Console HTML to contain 'Approve & Send' button")
+	// 5. Verify "Approve & Send" button with data-draft and data-draft-uid attributes
+	if (!strings.Contains(htmlBody, "Aprovar &amp; Enviar") && !strings.Contains(htmlBody, "Approve &amp; Send") && !strings.Contains(htmlBody, "Approve & Send")) || !strings.Contains(htmlBody, "btn-approve-send") {
+		t.Errorf("expected Web Console HTML to contain 'Approve & Send' / 'Aprovar & Enviar' button")
 	}
 	if !strings.Contains(htmlBody, "data-draft=") {
 		t.Errorf("expected 'Approve & Send' button to contain data-draft attribute for composer copying")
 	}
+	if !strings.Contains(htmlBody, `data-draft-uid="`+createdNote.UID+`"`) {
+		t.Errorf("expected 'Approve & Send' button to contain data-draft-uid=%q", createdNote.UID)
+	}
+	if !strings.Contains(htmlBody, `name="draft_uid"`) {
+		t.Errorf("expected #chat-send-form to contain hidden input name=\"draft_uid\"")
+	}
 
-	// Step F: Human Operator clicks "Approve & Send" -> Outbound dispatch occurs
+	// Step F: Human Operator clicks "Approve & Send" -> Outbound dispatch occurs via PromoteDraft
 	formVals := url.Values{}
 	formVals.Set("contact", customerPhone)
 	formVals.Set("channel", "whatsapp_cloud")
 	formVals.Set("recipient_identity", "+551140001000")
 	formVals.Set("body", aiDraftText)
+	formVals.Set("draft_uid", createdNote.UID)
 
 	sendReq := httptest.NewRequest(http.MethodPost, "/admin/inbox/send", strings.NewReader(formVals.Encode()))
 	sendReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -329,12 +336,27 @@ func TestDraftFirstInternalNotesIntegration(t *testing.T) {
 		t.Fatalf("SendMessage failed: %v", err)
 	}
 	if sendRec.Code != http.StatusNoContent {
-		t.Fatalf("expected HTTP 204 from SendMessage, got %d", sendRec.Code)
+		t.Fatalf("expected HTTP 204 from SendMessage, got %d: %s", sendRec.Code, sendRec.Body.String())
 	}
 
 	// Outbound message was now dispatched via NATS JetStream
 	if pub.CountBySubject("messages.outbound") != 1 {
 		t.Errorf("expected exactly 1 outbound dispatch after human approval, got %d", pub.CountBySubject("messages.outbound"))
+	}
+
+	// Original draft note metadata updated as promoted
+	promotedNote, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, createdNote.UID)
+	if err != nil {
+		t.Fatalf("failed to fetch promoted note by UID: %v", err)
+	}
+	if promotedNote.Metadata["draft_promoted"] != true {
+		t.Errorf("expected draft note metadata draft_promoted=true, got %+v", promotedNote.Metadata)
+	}
+	if promotedNote.Metadata["draft_status"] != "promoted" {
+		t.Errorf("expected draft note metadata draft_status='promoted', got %+v", promotedNote.Metadata)
+	}
+	if promotedNote.Metadata["promoted_message_uid"] == nil || promotedNote.Metadata["promoted_message_uid"] == "" {
+		t.Errorf("expected draft note metadata promoted_message_uid to be set, got %+v", promotedNote.Metadata)
 	}
 
 	// Human handoff triggered: AI disabled

@@ -443,7 +443,50 @@ func (r *ContactRepository) MergeContacts(ctx context.Context, workspaceID uuid.
 		return fmt.Errorf("merge contact attributes: %w", err)
 	}
 
-	// 4. Delete secondary contact profile
+	// 4. Reassign chat_messages from duplicate secondary chats to primary chats
+	_, err = tx.Exec(ctx, `
+		UPDATE chat_messages cm
+		SET chat_id = c_prim.id
+		FROM chats c_sec
+		JOIN chats c_prim
+		  ON c_prim.workspace_id = c_sec.workspace_id
+		 AND c_prim.connection_id IS NOT DISTINCT FROM c_sec.connection_id
+		 AND c_prim.contact_id = $1
+		WHERE cm.chat_id = c_sec.id
+		  AND c_sec.contact_id = $2
+		  AND c_sec.workspace_id = $3
+	`, primaryID, secondaryID, workspaceID)
+	if err != nil {
+		return fmt.Errorf("reassign duplicate chat messages: %w", err)
+	}
+
+	// 5. Delete duplicate secondary chats that already have a matching primary chat
+	_, err = tx.Exec(ctx, `
+		DELETE FROM chats c_sec
+		WHERE c_sec.contact_id = $2
+		  AND c_sec.workspace_id = $3
+		  AND EXISTS (
+		      SELECT 1 FROM chats c_prim
+		      WHERE c_prim.contact_id = $1
+		        AND c_prim.workspace_id = $3
+		        AND c_prim.connection_id IS NOT DISTINCT FROM c_sec.connection_id
+		  )
+	`, primaryID, secondaryID, workspaceID)
+	if err != nil {
+		return fmt.Errorf("delete duplicate secondary chats: %w", err)
+	}
+
+	// 6. Reassign remaining secondary chats to primary contact
+	_, err = tx.Exec(ctx, `
+		UPDATE chats
+		SET contact_id = $1, updated_at = NOW()
+		WHERE contact_id = $2 AND workspace_id = $3
+	`, primaryID, secondaryID, workspaceID)
+	if err != nil {
+		return fmt.Errorf("reassign secondary chats: %w", err)
+	}
+
+	// 7. Delete secondary contact profile
 	_, err = tx.Exec(ctx, "DELETE FROM contacts WHERE id = $1 AND workspace_id = $2", secondaryID, workspaceID)
 	if err != nil {
 		return fmt.Errorf("delete secondary contact profile: %w", err)

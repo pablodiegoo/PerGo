@@ -304,6 +304,25 @@ func (r *fakeChatRepo) FindMessageByUID(_ context.Context, uid string) (*domain.
 	return nil, repository.ErrChatMessageNotFound
 }
 
+func (r *fakeChatRepo) UpdateMessageMetadata(_ context.Context, workspaceID uuid.UUID, uid string, metadata map[string]interface{}) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, msgs := range r.messages {
+		for _, m := range msgs {
+			if m.WorkspaceID == workspaceID && m.UID == uid {
+				if m.Metadata == nil {
+					m.Metadata = make(map[string]interface{})
+				}
+				for k, v := range metadata {
+					m.Metadata[k] = v
+				}
+				return nil
+			}
+		}
+	}
+	return repository.ErrChatMessageNotFound
+}
+
 func (r *fakeChatRepo) GetReactions(_ context.Context, workspaceID uuid.UUID, messageUID string) ([]domain.Reaction, error) {
 	msg, err := r.GetChatMessageByUID(context.Background(), workspaceID, messageUID)
 	if err != nil || msg == nil {
@@ -748,8 +767,22 @@ func TestEngine_LazySnoozeReopen_OnListAndGet(t *testing.T) {
 		Name:        "Snoozed Contact 2",
 		ClosedAt:    &closedNow,
 	}
+	contact3 := &domain.Contact{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		Name:        "Snoozed Contact 3",
+		ClosedAt:    &closedNow,
+	}
+	contact4 := &domain.Contact{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		Name:        "Snoozed Contact 4",
+		ClosedAt:    &closedNow,
+	}
 	contactRepo.contacts[contact1.ID] = contact1
 	contactRepo.contacts[contact2.ID] = contact2
+	contactRepo.contacts[contact3.ID] = contact3
+	contactRepo.contacts[contact4.ID] = contact4
 
 	past := time.Now().UTC().Add(-10 * time.Minute)
 	chat1 := &domain.Chat{
@@ -764,6 +797,20 @@ func TestEngine_LazySnoozeReopen_OnListAndGet(t *testing.T) {
 		ID:           uuid.New(),
 		WorkspaceID:  wsID,
 		ContactID:    contact2.ID,
+		Status:       domain.ChatStatusSnoozed,
+		SnoozedUntil: &past,
+	}
+	chat3 := &domain.Chat{
+		ID:           uuid.New(),
+		WorkspaceID:  wsID,
+		ContactID:    contact3.ID,
+		Status:       domain.ChatStatusSnoozed,
+		SnoozedUntil: &past,
+	}
+	chat4 := &domain.Chat{
+		ID:           uuid.New(),
+		WorkspaceID:  wsID,
+		ContactID:    contact4.ID,
 		Status:       domain.ChatStatusSnoozed,
 		SnoozedUntil: &past,
 	}
@@ -807,6 +854,31 @@ func TestEngine_LazySnoozeReopen_OnListAndGet(t *testing.T) {
 	}
 	if contactRepo.contacts[contact2.ID].ClosedAt != nil {
 		t.Fatalf("expected contact2 ClosedAt to be nil (reopened) on List, got %v", contactRepo.contacts[contact2.ID].ClosedAt)
+	}
+
+	// ListMessages lazily reopens expired snooze on chat3 and syncs contact3.ReopenThread
+	chatRepo.chats[chat3.ID] = chat3
+	reopenedChat3, _, err := eng.ListMessages(ctx, wsID, chat.ChatRef{ChatID: chat3.ID}, "", "", 20)
+	if err != nil {
+		t.Fatalf("ListMessages failed: %v", err)
+	}
+	if reopenedChat3.Status != domain.ChatStatusOpen || reopenedChat3.SnoozedUntil != nil {
+		t.Fatalf("expected chat3 on ListMessages to be reopened with nil SnoozedUntil, got status=%s snoozedUntil=%v", reopenedChat3.Status, reopenedChat3.SnoozedUntil)
+	}
+	if contactRepo.contacts[contact3.ID].ClosedAt != nil {
+		t.Fatalf("expected contact3 ClosedAt to be nil (reopened) on ListMessages, got %v", contactRepo.contacts[contact3.ID].ClosedAt)
+	}
+
+	// Summarize lazily reopens expired snooze on chat4 and syncs contact4.ReopenThread
+	chatRepo.chats[chat4.ID] = chat4
+	if _, err := eng.Summarize(ctx, wsID, chat.ChatRef{ChatID: chat4.ID}, 50); err != nil {
+		t.Fatalf("Summarize failed: %v", err)
+	}
+	if chatRepo.chats[chat4.ID].Status != domain.ChatStatusOpen || chatRepo.chats[chat4.ID].SnoozedUntil != nil {
+		t.Fatalf("expected chat4 on Summarize to be reopened with nil SnoozedUntil, got status=%s snoozedUntil=%v", chatRepo.chats[chat4.ID].Status, chatRepo.chats[chat4.ID].SnoozedUntil)
+	}
+	if contactRepo.contacts[contact4.ID].ClosedAt != nil {
+		t.Fatalf("expected contact4 ClosedAt to be nil (reopened) on Summarize, got %v", contactRepo.contacts[contact4.ID].ClosedAt)
 	}
 }
 
@@ -1020,7 +1092,7 @@ func TestEngine_SendMessage_PromoteDraft_SetAIEnabled_TakeoverAndBackpressure(t 
 		t.Fatalf("expected debouncer.Cancel on SetAIEnabled(false)")
 	}
 
-	// 4. PromoteDraft promotes a whisper note and dispatches via SendMessage
+	// 4. PromoteDraft promotes a whisper note, dispatches via SendMessage, and marks original note metadata as promoted
 	note, err := eng.CreateNote(ctx, wsID, chat.NoteRequest{
 		Ref:        chat.ChatRef{ChatID: c.ID},
 		Body:       "[AI Draft]: Here is your invoice",
@@ -1035,6 +1107,19 @@ func TestEngine_SendMessage_PromoteDraft_SetAIEnabled_TakeoverAndBackpressure(t 
 	}
 	if promoteRes.Message == nil || promoteRes.Message.Body != "Here is your updated invoice" {
 		t.Fatalf("expected promoted message with edited body, got %+v", promoteRes.Message)
+	}
+	updatedNote, err := chatRepo.GetChatMessageByUID(ctx, wsID, note.UID)
+	if err != nil || updatedNote == nil {
+		t.Fatalf("failed to fetch original draft note after promotion: %v", err)
+	}
+	if updatedNote.Metadata["draft_promoted"] != true {
+		t.Fatalf("expected original draft note metadata draft_promoted=true, got %+v", updatedNote.Metadata)
+	}
+	if updatedNote.Metadata["draft_status"] != "promoted" {
+		t.Fatalf("expected original draft note metadata draft_status='promoted', got %+v", updatedNote.Metadata)
+	}
+	if updatedNote.Metadata["promoted_message_uid"] != promoteRes.TraceID {
+		t.Fatalf("expected original draft note metadata promoted_message_uid=%q, got %+v", promoteRes.TraceID, updatedNote.Metadata["promoted_message_uid"])
 	}
 
 	// 5. Summarize produces structured ChatSynopsis
