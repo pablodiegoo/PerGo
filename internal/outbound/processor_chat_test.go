@@ -146,16 +146,22 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 
 	resolver := &fakeRouteResolver{conn: conn}
 	pub := &fakePublisher{}
+	debouncer := &fakeDebounceCanceller{}
 
 	proc := outbound.NewProcessor(nil, nil, resolver, pub)
 	proc.SetChatRepository(chatRepo)
 	proc.SetContactRepository(contactRepo)
+	proc.SetDebounceCanceller(debouncer)
 
 	t.Run("Human agent outbound message triggers handoff and persists message", func(t *testing.T) {
 		pub.published = nil
 		pub.subjects = nil
+		debouncer.cancelled = nil
 
 		req := &domain.CreateMessageRequest{
+			ConversationalIngestFields: domain.ConversationalIngestFields{
+				DisableAI: true,
+			},
 			To:      "+5511999991111",
 			Channel: "whatsapp_cloud",
 			From:    "+551100000000",
@@ -185,6 +191,11 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		}
 		if contact.BotPausedAt == nil {
 			t.Errorf("expected contact.BotPausedAt to be non-nil after human takeover")
+		}
+
+		// Verify debounce buffer cancelled on handoff
+		if len(debouncer.cancelled) != 1 || debouncer.cancelled[0] != contact.ID {
+			t.Errorf("expected debouncer.Cancel called for contact %s, got %v", contact.ID, debouncer.cancelled)
 		}
 
 		// Verify chat exists and has ai_disabled = true
@@ -227,6 +238,51 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		}
 		if msgs[0].Body != "Hello from human agent!" {
 			t.Errorf("expected body 'Hello from human agent!', got %s", msgs[0].Body)
+		}
+	})
+
+	t.Run("Human agent outbound message with DisableAI false does NOT trigger handoff", func(t *testing.T) {
+		pub.published = nil
+		pub.subjects = nil
+		debouncer.cancelled = nil
+
+		req := &domain.CreateMessageRequest{
+			ConversationalIngestFields: domain.ConversationalIngestFields{
+				SenderType: string(domain.SenderTypeHumanAgent),
+				SenderName: "Support Agent",
+				DisableAI:  false,
+			},
+			To:      "+5511999993333",
+			Channel: "whatsapp_cloud",
+			From:    "+551100000000",
+			Body:    "Quick check-in without disabling AI",
+		}
+
+		if _, err := proc.Ingest(ctx, ws.ID, "outbound-trace-no-handoff", req); err != nil {
+			t.Fatalf("failed to ingest outbound message: %v", err)
+		}
+
+		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999993333", "", "", "")
+		if err != nil {
+			t.Fatalf("failed to resolve contact: %v", err)
+		}
+		if !contact.BotActive {
+			t.Errorf("expected contact.BotActive to remain true when DisableAI is false")
+		}
+		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to get chat: %v", err)
+		}
+		if chat.AIDisabled {
+			t.Errorf("expected chat.AIDisabled to remain false when DisableAI is false")
+		}
+		if len(debouncer.cancelled) != 0 {
+			t.Errorf("expected debouncer NOT to be called when DisableAI is false, got %v", debouncer.cancelled)
+		}
+		for _, subj := range pub.subjects {
+			if subj == "chat.handoff.human_takeover" || subj == "chat.handoff."+ws.ID.String() {
+				t.Errorf("unexpected handoff event published when DisableAI is false: %s", subj)
+			}
 		}
 	})
 

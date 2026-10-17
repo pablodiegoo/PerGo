@@ -39,6 +39,11 @@ type Publisher interface {
 	Publish(ctx context.Context, subject string, data []byte, traceID string) error
 }
 
+// DebounceCanceller cancels active inbound debounce buffers on human takeover.
+type DebounceCanceller interface {
+	Cancel(ctx context.Context, workspaceID, contactID uuid.UUID) error
+}
+
 // Processor is the concrete implementation of outbound message ingestion.
 type Processor struct {
 	tracker       QueueDepthChecker
@@ -49,6 +54,7 @@ type Processor struct {
 	templateRepo  *repository.WABATemplateRepository
 	chatRepo      *repository.ChatRepository
 	contactRepo   *repository.ContactRepository
+	debouncer     DebounceCanceller
 }
 
 // NewProcessor creates a new OutboundProcessor implementation.
@@ -87,6 +93,12 @@ func (p *Processor) SetChatRepository(r *repository.ChatRepository) *Processor {
 // SetContactRepository configures the ContactRepository for recipient profile resolution.
 func (p *Processor) SetContactRepository(r *repository.ContactRepository) *Processor {
 	p.contactRepo = r
+	return p
+}
+
+// SetDebounceCanceller configures the DebounceCanceller for human takeover debounce cancellation.
+func (p *Processor) SetDebounceCanceller(dc DebounceCanceller) *Processor {
+	p.debouncer = dc
 	return p
 }
 
@@ -455,17 +467,8 @@ func (p *Processor) Ingest(
 				rawSenderType = strings.TrimSpace(req.Metadata["sender_type"])
 			}
 
-			var senderType domain.SenderType
-			switch strings.ToLower(rawSenderType) {
-			case "human", "human_agent", "operator":
-				senderType = domain.SenderTypeHumanAgent
-			case "ai", "ai_agent", "bot":
-				senderType = domain.SenderTypeAIAgent
-			case "system":
-				senderType = domain.SenderTypeSystem
-			case "contact":
-				senderType = domain.SenderTypeContact
-			case "":
+			senderType := domain.NormalizeSenderType(rawSenderType)
+			if senderType == "" {
 				if req.DisableAI {
 					senderType = domain.SenderTypeHumanAgent
 				} else if senderName != "" {
@@ -473,8 +476,6 @@ func (p *Processor) Ingest(
 				} else {
 					senderType = domain.SenderTypeHumanAgent
 				}
-			default:
-				senderType = domain.SenderType(rawSenderType)
 			}
 
 			var replyToUID *string
@@ -497,25 +498,22 @@ func (p *Processor) Ingest(
 				}
 			}
 
-			shouldDisableAI := req.DisableAI || senderType == domain.SenderTypeHumanAgent
+			shouldDisableAI := req.DisableAI || (req.Metadata != nil && req.Metadata["disable_ai"] == "true")
 			if shouldDisableAI {
 				_ = p.chatRepo.SetAIDisabled(ctx, workspaceID, chat.ID, true)
-				if p.contactRepo != nil {
-					targetContactID := chat.ContactID
-					if contact != nil && contact.ID != uuid.Nil {
-						targetContactID = contact.ID
-					}
-					if targetContactID != uuid.Nil {
-						now := qMsg.QueuedAt
-						_ = p.contactRepo.UpdateBotState(ctx, workspaceID, targetContactID, false, &now)
-					}
+				targetContactID := chat.ContactID
+				if contact != nil && contact.ID != uuid.Nil {
+					targetContactID = contact.ID
+				}
+				if p.contactRepo != nil && targetContactID != uuid.Nil {
+					now := qMsg.QueuedAt
+					_ = p.contactRepo.UpdateBotState(ctx, workspaceID, targetContactID, false, &now)
+				}
+				if p.debouncer != nil && targetContactID != uuid.Nil {
+					_ = p.debouncer.Cancel(ctx, workspaceID, targetContactID)
 				}
 
 				if p.publisher != nil {
-					targetContactID := chat.ContactID
-					if contact != nil && contact.ID != uuid.Nil {
-						targetContactID = contact.ID
-					}
 					handoffMap := map[string]interface{}{
 						"event":        "chat.handoff.human_takeover",
 						"workspace_id": workspaceID.String(),

@@ -431,23 +431,50 @@ func (r *fakeChatRepo) ListThreadByContact(_ context.Context, workspaceID, conta
 }
 
 type fakeContactRepo struct {
-	mu       sync.Mutex
-	contacts map[uuid.UUID]*domain.Contact
+	mu            sync.Mutex
+	contacts      map[uuid.UUID]*domain.Contact
+	markedRead    []uuid.UUID
+	getByIDCalls  int
+	getByIDsCalls int
 }
 
 func newFakeContactRepo() *fakeContactRepo {
 	return &fakeContactRepo{contacts: make(map[uuid.UUID]*domain.Contact)}
 }
 
+func (r *fakeContactRepo) MarkAsRead(_ context.Context, workspaceID, contactID uuid.UUID) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if c, ok := r.contacts[contactID]; ok && c.WorkspaceID == workspaceID {
+		r.markedRead = append(r.markedRead, contactID)
+	}
+	return nil
+}
+
 func (r *fakeContactRepo) GetByID(_ context.Context, workspaceID, contactID uuid.UUID) (*domain.Contact, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.getByIDCalls++
 	c, ok := r.contacts[contactID]
 	if !ok || c.WorkspaceID != workspaceID {
 		return nil, nil
 	}
 	cp := *c
 	return &cp, nil
+}
+
+func (r *fakeContactRepo) GetByIDs(_ context.Context, workspaceID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]*domain.Contact, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.getByIDsCalls++
+	res := make(map[uuid.UUID]*domain.Contact, len(ids))
+	for _, id := range ids {
+		if c, ok := r.contacts[id]; ok && c.WorkspaceID == workspaceID {
+			cp := *c
+			res[id] = &cp
+		}
+	}
+	return res, nil
 }
 
 func (r *fakeContactRepo) SetTags(_ context.Context, workspaceID, contactID uuid.UUID, tags []string) error {
@@ -1090,6 +1117,413 @@ func TestEngine_InboxConversationAndThreadMethods(t *testing.T) {
 	}
 	if !chatRepo.chats[c.ID].AIDisabled {
 		t.Fatalf("expected chat.AIDisabled=true when BotActive toggled to false")
+	}
+}
+
+func TestEngine_ResolveChat_WithConnectionID(t *testing.T) {
+	ctx := context.Background()
+	wsID := uuid.New()
+	connA := uuid.New()
+	connB := uuid.New()
+
+	chatRepo := newFakeChatRepo()
+	contactRepo := newFakeContactRepo()
+
+	contact := &domain.Contact{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		Name:        "Multi-Conn Contact",
+		Identities: []domain.ContactIdentity{
+			{
+				WorkspaceID:    wsID,
+				ContactID:      uuid.Nil,
+				Channel:        "whatsapp_cloud",
+				SenderIdentity: "+5511999998888",
+			},
+		},
+	}
+	contact.Identities[0].ContactID = contact.ID
+	contactRepo.contacts[contact.ID] = contact
+
+	chatA := &domain.Chat{
+		ID:           uuid.New(),
+		WorkspaceID:  wsID,
+		ConnectionID: &connA,
+		ContactID:    contact.ID,
+		Status:       domain.ChatStatusOpen,
+	}
+	chatB := &domain.Chat{
+		ID:           uuid.New(),
+		WorkspaceID:  wsID,
+		ConnectionID: &connB,
+		ContactID:    contact.ID,
+		Status:       domain.ChatStatusOpen,
+	}
+	chatRepo.chats[chatA.ID] = chatA
+	chatRepo.chats[chatB.ID] = chatB
+
+	eng := chat.NewEngine(
+		chatRepo,
+		chat.WithContactRepo(contactRepo),
+	)
+
+	// 1. Resolve by ContactID + ConnectionID should return chatB when connB is specified
+	resolvedByContactB, err := eng.ResolveChat(ctx, wsID, chat.ChatRef{
+		ContactID:    contact.ID,
+		ConnectionID: &connB,
+	})
+	if err != nil {
+		t.Fatalf("ResolveChat by ContactID+ConnectionID(B) failed: %v", err)
+	}
+	if resolvedByContactB.ID != chatB.ID {
+		t.Fatalf("expected chatB (%s), got %s", chatB.ID, resolvedByContactB.ID)
+	}
+
+	resolvedByContactA, err := eng.ResolveChat(ctx, wsID, chat.ChatRef{
+		ContactID:    contact.ID,
+		ConnectionID: &connA,
+	})
+	if err != nil {
+		t.Fatalf("ResolveChat by ContactID+ConnectionID(A) failed: %v", err)
+	}
+	if resolvedByContactA.ID != chatA.ID {
+		t.Fatalf("expected chatA (%s), got %s", chatA.ID, resolvedByContactA.ID)
+	}
+
+	// 2. Resolve by Channel + Phone + ConnectionID should return chatB when connB is specified
+	resolvedByPhoneB, err := eng.ResolveChat(ctx, wsID, chat.ChatRef{
+		Channel:      "whatsapp_cloud",
+		Phone:        "+5511999998888",
+		ConnectionID: &connB,
+	})
+	if err != nil {
+		t.Fatalf("ResolveChat by Channel+Phone+ConnectionID(B) failed: %v", err)
+	}
+	if resolvedByPhoneB.ID != chatB.ID {
+		t.Fatalf("expected chatB (%s), got %s", chatB.ID, resolvedByPhoneB.ID)
+	}
+
+	resolvedByPhoneA, err := eng.ResolveChat(ctx, wsID, chat.ChatRef{
+		Channel:      "whatsapp_cloud",
+		Phone:        "+5511999998888",
+		ConnectionID: &connA,
+	})
+	if err != nil {
+		t.Fatalf("ResolveChat by Channel+Phone+ConnectionID(A) failed: %v", err)
+	}
+	if resolvedByPhoneA.ID != chatA.ID {
+		t.Fatalf("expected chatA (%s), got %s", chatA.ID, resolvedByPhoneA.ID)
+	}
+}
+
+func TestEngine_GetMessage(t *testing.T) {
+	ctx := context.Background()
+	wsID := uuid.New()
+	otherWS := uuid.New()
+
+	chatRepo := newFakeChatRepo()
+	contactRepo := newFakeContactRepo()
+
+	contact := &domain.Contact{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		Name:        "Message Details Contact",
+	}
+	contactRepo.contacts[contact.ID] = contact
+
+	pastSnooze := time.Now().UTC().Add(-15 * time.Minute)
+	c := &domain.Chat{
+		ID:           uuid.New(),
+		WorkspaceID:  wsID,
+		ContactID:    contact.ID,
+		Status:       domain.ChatStatusSnoozed,
+		SnoozedUntil: &pastSnooze,
+	}
+	chatRepo.chats[c.ID] = c
+
+	msg := &domain.ChatMessage{
+		ID:          uuid.New(),
+		ChatID:      c.ID,
+		WorkspaceID: wsID,
+		UID:         "wamid.details.123",
+		Direction:   domain.DirectionInbound,
+		SenderType:  domain.SenderTypeContact,
+		Body:        "Checking message details",
+	}
+	_ = chatRepo.AddChatMessage(ctx, msg)
+	// Restore snoozed status after AddChatMessage
+	c.Status = domain.ChatStatusSnoozed
+	c.SnoozedUntil = &pastSnooze
+
+	eng := chat.NewEngine(
+		chatRepo,
+		chat.WithContactRepo(contactRepo),
+	)
+
+	// 1. Cross-workspace context must be rejected with ErrMessageNotFound / ErrChatNotFound
+	scopedOtherCtx := tenant.WithWorkspaceID(ctx, otherWS)
+	if _, _, _, err := eng.GetMessage(scopedOtherCtx, wsID, "wamid.details.123"); err == nil {
+		t.Fatalf("expected error on cross-workspace context, got nil")
+	}
+
+	// 2. Non-existent message UID returns ErrMessageNotFound
+	if _, _, _, err := eng.GetMessage(ctx, wsID, "wamid.missing.999"); !errors.Is(err, chat.ErrMessageNotFound) {
+		t.Fatalf("expected ErrMessageNotFound for missing UID, got %v", err)
+	}
+
+	// 3. Valid lookup returns message, lazily reopened parent chat, and contact
+	gotMsg, gotChat, gotContact, err := eng.GetMessage(ctx, wsID, "wamid.details.123")
+	if err != nil {
+		t.Fatalf("GetMessage failed: %v", err)
+	}
+	if gotMsg == nil || gotMsg.UID != "wamid.details.123" {
+		t.Fatalf("unexpected message: %+v", gotMsg)
+	}
+	if gotChat == nil || gotChat.ID != c.ID {
+		t.Fatalf("unexpected chat: %+v", gotChat)
+	}
+	if gotChat.Status != domain.ChatStatusOpen {
+		t.Fatalf("expected expired snooze on parent chat to lazily reopen to 'open', got %q", gotChat.Status)
+	}
+	if gotContact == nil || gotContact.ID != contact.ID {
+		t.Fatalf("unexpected contact: %+v", gotContact)
+	}
+}
+
+func TestEngine_UpdateStatus_PendingAndSnoozedValidation(t *testing.T) {
+	ctx := context.Background()
+	wsID := uuid.New()
+
+	chatRepo := newFakeChatRepo()
+	contactRepo := newFakeContactRepo()
+
+	contact := &domain.Contact{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		Name:        "Status Validation Contact",
+	}
+	contactRepo.contacts[contact.ID] = contact
+
+	c := &domain.Chat{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		ContactID:   contact.ID,
+		Status:      domain.ChatStatusOpen,
+	}
+	chatRepo.chats[c.ID] = c
+
+	eng := chat.NewEngine(
+		chatRepo,
+		chat.WithContactRepo(contactRepo),
+	)
+
+	// 1. Transition to "pending" succeeds
+	updated, _, err := eng.UpdateStatus(ctx, wsID, chat.ChatRef{ChatID: c.ID}, chat.StatusUpdate{
+		Status: string(domain.ChatStatusPending),
+	})
+	if err != nil {
+		t.Fatalf("UpdateStatus to pending failed: %v", err)
+	}
+	if updated.Status != domain.ChatStatusPending {
+		t.Fatalf("expected status %q, got %q", domain.ChatStatusPending, updated.Status)
+	}
+
+	// 2. Transition to "snoozed" with nil SnoozedUntil fails with ErrInvalidStatus
+	if _, _, err := eng.UpdateStatus(ctx, wsID, chat.ChatRef{ChatID: c.ID}, chat.StatusUpdate{
+		Status: string(domain.ChatStatusSnoozed),
+	}); !errors.Is(err, chat.ErrInvalidStatus) {
+		t.Fatalf("expected ErrInvalidStatus when SnoozedUntil is nil, got %v", err)
+	}
+
+	// 3. Transition to "snoozed" with past SnoozedUntil fails with ErrInvalidStatus
+	past := time.Now().UTC().Add(-10 * time.Minute)
+	if _, _, err := eng.UpdateStatus(ctx, wsID, chat.ChatRef{ChatID: c.ID}, chat.StatusUpdate{
+		Status:       string(domain.ChatStatusSnoozed),
+		SnoozedUntil: &past,
+	}); !errors.Is(err, chat.ErrInvalidStatus) {
+		t.Fatalf("expected ErrInvalidStatus when SnoozedUntil is in the past, got %v", err)
+	}
+
+	// 4. Transition to "snoozed" with future SnoozedUntil succeeds
+	future := time.Now().UTC().Add(2 * time.Hour)
+	snoozedChat, snoozedUntil, err := eng.UpdateStatus(ctx, wsID, chat.ChatRef{ChatID: c.ID}, chat.StatusUpdate{
+		Status:       string(domain.ChatStatusSnoozed),
+		SnoozedUntil: &future,
+	})
+	if err != nil {
+		t.Fatalf("UpdateStatus to snoozed with future timestamp failed: %v", err)
+	}
+	if snoozedChat.Status != domain.ChatStatusSnoozed || snoozedUntil == nil || !snoozedUntil.Equal(future) {
+		t.Fatalf("expected snoozed chat with future SnoozedUntil, got status=%q, snoozedUntil=%v", snoozedChat.Status, snoozedUntil)
+	}
+}
+
+func TestEngine_MarkAsRead_SynchronizedOnGetAndListThread(t *testing.T) {
+	ctx := context.Background()
+	wsID := uuid.New()
+
+	chatRepo := newFakeChatRepo()
+	contactRepo := newFakeContactRepo()
+
+	contact := &domain.Contact{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		Name:        "MarkAsRead Contact",
+	}
+	contactRepo.contacts[contact.ID] = contact
+
+	c := &domain.Chat{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		ContactID:   contact.ID,
+		Status:      domain.ChatStatusOpen,
+		UnreadCount: 3,
+	}
+	chatRepo.chats[c.ID] = c
+
+	eng := chat.NewEngine(
+		chatRepo,
+		chat.WithContactRepo(contactRepo),
+	)
+
+	// 1. Engine.Get(..., markRead=true) resets UnreadCount AND calls contactRepo.MarkAsRead
+	if _, err := eng.Get(ctx, wsID, chat.ChatRef{ChatID: c.ID}, 50, true); err != nil {
+		t.Fatalf("Engine.Get(markRead=true) failed: %v", err)
+	}
+	if chatRepo.chats[c.ID].UnreadCount != 0 {
+		t.Fatalf("expected UnreadCount=0 after Get(markRead=true), got %d", chatRepo.chats[c.ID].UnreadCount)
+	}
+	if len(contactRepo.markedRead) != 1 || contactRepo.markedRead[0] != contact.ID {
+		t.Fatalf("expected contactRepo.MarkAsRead called on Get(markRead=true), got %v", contactRepo.markedRead)
+	}
+
+	// 2. Engine.ListThread(..., markRead=true) resets UnreadCount AND calls contactRepo.MarkAsRead
+	chatRepo.chats[c.ID].UnreadCount = 2
+	if _, err := eng.ListThread(ctx, wsID, contact.ID, nil, true); err != nil {
+		t.Fatalf("Engine.ListThread(markRead=true) failed: %v", err)
+	}
+	if chatRepo.chats[c.ID].UnreadCount != 0 {
+		t.Fatalf("expected UnreadCount=0 after ListThread(markRead=true), got %d", chatRepo.chats[c.ID].UnreadCount)
+	}
+	if len(contactRepo.markedRead) != 2 || contactRepo.markedRead[1] != contact.ID {
+		t.Fatalf("expected contactRepo.MarkAsRead called on ListThread(markRead=true), got %v", contactRepo.markedRead)
+	}
+}
+
+func TestEngine_SendMessage_QueueDepthPrecedenceOverServiceWindow(t *testing.T) {
+	ctx := context.Background()
+	wsID := uuid.New()
+
+	chatRepo := newFakeChatRepo()
+	contactRepo := newFakeContactRepo()
+	ingestor := &fakeIngestor{}
+
+	connID := uuid.New()
+	connRepo := &fakeConnRepo{
+		conns: map[uuid.UUID]*repository.Connection{
+			connID: {ID: connID, WorkspaceID: wsID, Channel: "whatsapp_cloud", Status: "connected", SenderIdentity: "15550001111"},
+		},
+	}
+
+	contact := &domain.Contact{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		Identities: []domain.ContactIdentity{
+			{Channel: "whatsapp_cloud", SenderIdentity: "+5511777777777"},
+		},
+	}
+	contactRepo.contacts[contact.ID] = contact
+
+	past := time.Now().UTC().Add(-2 * time.Hour)
+	c := &domain.Chat{
+		ID:                     uuid.New(),
+		WorkspaceID:            wsID,
+		ConnectionID:           &connID,
+		ContactID:              contact.ID,
+		Status:                 domain.ChatStatusOpen,
+		ServiceWindowExpiresAt: &past, // Expired WABA window
+	}
+	chatRepo.chats[c.ID] = c
+
+	eng := chat.NewEngine(
+		chatRepo,
+		chat.WithContactRepo(contactRepo),
+		chat.WithConnectionRepo(connRepo),
+		chat.WithMessageIngestor(ingestor),
+	)
+
+	// 1. When queue is full AND service window is expired, ErrQueueFull takes precedence over ErrServiceWindowExpired
+	ingestor.err = outbound.ErrQueueFull
+	_, err := eng.SendMessage(ctx, wsID, chat.SendRequest{
+		Ref:                 chat.ChatRef{ChatID: c.ID},
+		Body:                "Freeform message on expired chat when queue is full",
+		StrictServiceWindow: true,
+	})
+	if !errors.Is(err, outbound.ErrQueueFull) {
+		t.Fatalf("expected ErrQueueFull to take precedence over ErrServiceWindowExpired, got %v", err)
+	}
+
+	// 2. When queue has capacity, expired service window returns ErrServiceWindowExpired
+	ingestor.err = &outbound.ValidationError{
+		Response: &domain.ErrorResponse{
+			Code:    "SESSION_WINDOW_EXPIRED",
+			Message: "free-form message blocked: 24h customer service window is closed",
+		},
+	}
+	_, err = eng.SendMessage(ctx, wsID, chat.SendRequest{
+		Ref:                 chat.ChatRef{ChatID: c.ID},
+		Body:                "Freeform message on expired chat",
+		StrictServiceWindow: true,
+	})
+	if !errors.Is(err, chat.ErrServiceWindowExpired) {
+		t.Fatalf("expected ErrServiceWindowExpired when window is closed, got %v", err)
+	}
+}
+
+func TestEngine_List_BatchContactLoading(t *testing.T) {
+	ctx := context.Background()
+	wsID := uuid.New()
+
+	chatRepo := newFakeChatRepo()
+	contactRepo := newFakeContactRepo()
+
+	for i := 0; i < 5; i++ {
+		ct := &domain.Contact{
+			ID:          uuid.New(),
+			WorkspaceID: wsID,
+			Name:        "Batch Contact",
+			Identities: []domain.ContactIdentity{
+				{Channel: "whatsapp", SenderIdentity: "+5511999990000"},
+			},
+		}
+		contactRepo.contacts[ct.ID] = ct
+
+		ch := &domain.Chat{
+			ID:          uuid.New(),
+			WorkspaceID: wsID,
+			ContactID:   ct.ID,
+			Status:      domain.ChatStatusOpen,
+		}
+		chatRepo.chats[ch.ID] = ch
+	}
+
+	eng := chat.NewEngine(
+		chatRepo,
+		chat.WithContactRepo(contactRepo),
+	)
+
+	summaries, err := eng.List(ctx, wsID, domain.ChatFilter{}, 50, 0)
+	if err != nil {
+		t.Fatalf("Engine.List failed: %v", err)
+	}
+	if len(summaries) != 5 {
+		t.Fatalf("expected 5 chat summaries, got %d", len(summaries))
+	}
+	if contactRepo.getByIDsCalls != 1 {
+		t.Fatalf("expected 1 batch GetByIDs call, got %d", contactRepo.getByIDsCalls)
+	}
+	if contactRepo.getByIDCalls != 0 {
+		t.Fatalf("expected 0 N+1 GetByID calls when GetByIDs succeeds, got %d", contactRepo.getByIDCalls)
 	}
 }
 

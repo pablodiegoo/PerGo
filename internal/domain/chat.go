@@ -27,11 +27,32 @@ const (
 	SenderTypeSystem     SenderType = "system"
 )
 
+// NormalizeSenderType maps common sender type aliases to canonical SenderType constants.
+// Returns an empty SenderType ("") when raw is empty so callers can apply context-specific defaults.
+func NormalizeSenderType(raw string) SenderType {
+	trimmed := strings.TrimSpace(raw)
+	switch strings.ToLower(trimmed) {
+	case "human", "human_agent", "operator":
+		return SenderTypeHumanAgent
+	case "ai", "ai_agent", "bot":
+		return SenderTypeAIAgent
+	case "system":
+		return SenderTypeSystem
+	case "contact":
+		return SenderTypeContact
+	case "":
+		return ""
+	default:
+		return SenderType(trimmed)
+	}
+}
+
 // ChatStatus represents the lifecycle state of a conversation.
 type ChatStatus string
 
 const (
 	ChatStatusOpen    ChatStatus = "open"
+	ChatStatusPending ChatStatus = "pending"
 	ChatStatusClosed  ChatStatus = "closed"
 	ChatStatusSnoozed ChatStatus = "snoozed"
 )
@@ -116,6 +137,7 @@ type ChatFilter struct {
 	Unread        *bool      `json:"unread,omitempty"`
 	Phone         string     `json:"phone,omitempty"`
 	ContactID     *uuid.UUID `json:"contact_id,omitempty"`
+	ConnectionID  *uuid.UUID `json:"connection_id,omitempty"`
 	AssignedEmail *string    `json:"assigned_email,omitempty"`
 	Unassigned    *bool      `json:"unassigned,omitempty"`
 	Tag           string     `json:"tag,omitempty"`

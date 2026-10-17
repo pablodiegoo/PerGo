@@ -71,6 +71,69 @@ func (r *ContactRepository) GetByID(ctx context.Context, workspaceID, contactID 
 	return &c, nil
 }
 
+// GetByIDs batch-loads contacts and their associated identities for a slice of contact IDs.
+func (r *ContactRepository) GetByIDs(ctx context.Context, workspaceID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]*domain.Contact, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
+	result := make(map[uuid.UUID]*domain.Contact, len(ids))
+	if len(ids) == 0 {
+		return result, nil
+	}
+
+	rows, err := r.pool.Query(ctx, `
+		SELECT id, workspace_id, name, email, attributes, tags, closed_at, created_at, updated_at, bot_active, bot_paused_at
+		FROM contacts
+		WHERE workspace_id = $1 AND id = ANY($2)
+	`, workspaceID, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var c domain.Contact
+		var attrsRaw []byte
+		if err := rows.Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt, &c.BotActive, &c.BotPausedAt); err != nil {
+			return nil, err
+		}
+		if len(attrsRaw) > 0 {
+			_ = json.Unmarshal(attrsRaw, &c.Attributes)
+		}
+		if c.Attributes == nil {
+			c.Attributes = make(map[string]string)
+		}
+		cp := c
+		result[c.ID] = &cp
+	}
+
+	if len(result) == 0 {
+		return result, nil
+	}
+
+	idRows, err := r.pool.Query(ctx, `
+		SELECT id, contact_id, workspace_id, channel, sender_identity, created_at
+		FROM contact_identities
+		WHERE workspace_id = $1 AND contact_id = ANY($2)
+	`, workspaceID, ids)
+	if err != nil {
+		return result, nil
+	}
+	defer idRows.Close()
+
+	for idRows.Next() {
+		var ci domain.ContactIdentity
+		if err := idRows.Scan(&ci.ID, &ci.ContactID, &ci.WorkspaceID, &ci.Channel, &ci.SenderIdentity, &ci.CreatedAt); err != nil {
+			continue
+		}
+		if c, ok := result[ci.ContactID]; ok {
+			c.Identities = append(c.Identities, ci)
+		}
+	}
+
+	return result, nil
+}
+
 // ResolveContact maps an incoming channel/sender combination to an existing contact, or inserts a new profile if unmapped.
 func (r *ContactRepository) ResolveContact(
 	ctx context.Context,
@@ -554,6 +617,31 @@ func (r *ContactRepository) UpdateBotState(ctx context.Context, workspaceID, con
 		SET bot_active = $3, bot_paused_at = $4, updated_at = NOW() 
 		WHERE workspace_id = $1 AND id = $2
 	`, workspaceID, contactID, botActive, pausedAt)
+	return err
+}
+
+// MarkAsRead updates the contact's read timestamp across recipient sessions and contact metadata.
+func (r *ContactRepository) MarkAsRead(ctx context.Context, workspaceID, contactID uuid.UUID) error {
+	if workspaceID == uuid.Nil {
+		return ErrInvalidWorkspaceID
+	}
+	_, _ = r.pool.Exec(ctx, `
+		UPDATE recipient_sessions rs
+		SET last_read_at = NOW(), updated_at = NOW()
+		FROM contact_identities ci
+		WHERE rs.workspace_id = $1
+		  AND ci.workspace_id = $1
+		  AND ci.contact_id = $2
+		  AND (
+		      rs.recipient_phone = ci.sender_identity
+		      OR TRIM(LEADING '+' FROM rs.recipient_phone) = TRIM(LEADING '+' FROM ci.sender_identity)
+		  )
+	`, workspaceID, contactID)
+	_, err := r.pool.Exec(ctx, `
+		UPDATE contacts
+		SET updated_at = NOW()
+		WHERE workspace_id = $1 AND id = $2
+	`, workspaceID, contactID)
 	return err
 }
 

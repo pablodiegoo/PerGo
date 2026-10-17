@@ -51,18 +51,6 @@ type InboxHandler struct {
 // engine returns the configured ChatEngine or lazily builds one from the handler's repositories.
 func (h *InboxHandler) engine() *chatpkg.Engine {
 	if h.ChatEngine != nil {
-		if h.Publisher != nil {
-			h.ChatEngine.SetMessagePublisher(h.Publisher)
-		}
-		if h.Ingestor != nil {
-			h.ChatEngine.SetMessageIngestor(h.Ingestor)
-		}
-		if h.WebhookDispatcher != nil {
-			h.ChatEngine.SetWebhookDispatcher(h.WebhookDispatcher)
-		}
-		if h.Debouncer != nil {
-			h.ChatEngine.SetDebounceCanceller(h.Debouncer)
-		}
 		return h.ChatEngine
 	}
 	var opts []chatpkg.Option
@@ -1091,15 +1079,17 @@ func (h *InboxHandler) UpdateChatStatus(c *echo.Context) error {
 			untilStr = strings.TrimSpace(c.FormValue("snoozed_until"))
 		}
 		if untilStr != "" {
-			if parsed, pErr := time.Parse(time.RFC3339, untilStr); pErr == nil {
-				snoozedUntil = &parsed
+			parsed, pErr := time.Parse(time.RFC3339, untilStr)
+			if pErr != nil {
+				return c.String(http.StatusBadRequest, "invalid snoozed_until timestamp")
 			}
+			snoozedUntil = &parsed
 		}
 		if snoozedUntil == nil {
 			defaultUntil := time.Now().UTC().Add(24 * time.Hour)
 			snoozedUntil = &defaultUntil
 		}
-	} else if status != "closed" {
+	} else if status != "closed" && status != "pending" {
 		status = "open"
 	}
 
@@ -1108,6 +1098,9 @@ func (h *InboxHandler) UpdateChatStatus(c *echo.Context) error {
 			Status:       status,
 			SnoozedUntil: snoozedUntil,
 		}); err != nil {
+			if errors.Is(err, chatpkg.ErrInvalidStatus) {
+				return c.String(http.StatusBadRequest, err.Error())
+			}
 			return c.String(http.StatusInternalServerError, "failed to update chat status: "+err.Error())
 		}
 	} else if h.ContactRepo != nil {
