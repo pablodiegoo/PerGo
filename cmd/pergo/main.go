@@ -405,6 +405,9 @@ func BootstrapCore(
 	deps.OutboundProcessor.SetTemplateRepository(deps.WABATemplateRepo)
 	deps.OutboundProcessor.SetChatRepository(deps.ChatRepo)
 	deps.OutboundProcessor.SetContactRepository(deps.ContactRepo)
+	if deps.Debouncer != nil {
+		deps.OutboundProcessor.SetDebounceCanceller(deps.Debouncer)
+	}
 
 	// --- ChatEngine ---
 	chatEngineOpts := []chat.Option{
@@ -733,6 +736,7 @@ func BuildHTTPRouter(core *CoreDeps) *echo.Echo {
 		WebhookDispatcher: core.WebhookDispatcher,
 		ChatEngine:        core.ChatEngine,
 		Ingestor:          core.OutboundProcessor,
+		Debouncer:         core.Debouncer,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
 	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)

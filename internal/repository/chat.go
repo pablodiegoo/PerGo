@@ -295,6 +295,12 @@ func (r *ChatRepository) ListChats(
 		argIdx++
 	}
 
+	if filter.ConnectionID != nil && *filter.ConnectionID != uuid.Nil {
+		query += fmt.Sprintf(" AND connection_id = $%d", argIdx)
+		args = append(args, *filter.ConnectionID)
+		argIdx++
+	}
+
 	if filter.Phone != "" {
 		query += fmt.Sprintf(` AND contact_id IN (
 			SELECT contact_id FROM contact_identities 

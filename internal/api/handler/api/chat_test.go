@@ -339,6 +339,10 @@ func (m *mockContactRepo) UpdateBotState(ctx context.Context, workspaceID, conta
 	return nil
 }
 
+func (m *mockContactRepo) MarkAsRead(ctx context.Context, workspaceID, contactID uuid.UUID) error {
+	return nil
+}
+
 type mockChatConnectionRepo struct {
 	connections map[uuid.UUID]*repository.Connection
 }
@@ -756,6 +760,38 @@ func TestChatAPIHandler(t *testing.T) {
 		}
 		if chatRepo.chats[chatID].Status != domain.ChatStatusClosed {
 			t.Fatalf("expected status closed, got %s", chatRepo.chats[chatID].Status)
+		}
+
+		// Pending
+		pendingPayload := `{"status": "pending"}`
+		reqPending := httptest.NewRequest(http.MethodPatch, "/api/v1/chats/"+chatID.String()+"/status", bytes.NewBufferString(pendingPayload))
+		reqPending.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		recPending := httptest.NewRecorder()
+		e.ServeHTTP(recPending, reqPending)
+		if recPending.Code != http.StatusOK {
+			t.Fatalf("expected status 200 on pending, got %d: %s", recPending.Code, recPending.Body.String())
+		}
+		if chatRepo.chats[chatID].Status != domain.ChatStatusPending {
+			t.Fatalf("expected status pending, got %s", chatRepo.chats[chatID].Status)
+		}
+
+		// Snoozed without snoozed_until -> 400 Bad Request
+		reqNoUntil := httptest.NewRequest(http.MethodPatch, "/api/v1/chats/"+chatID.String()+"/status", bytes.NewBufferString(`{"status": "snoozed"}`))
+		reqNoUntil.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		recNoUntil := httptest.NewRecorder()
+		e.ServeHTTP(recNoUntil, reqNoUntil)
+		if recNoUntil.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400 when snoozed_until is missing, got %d: %s", recNoUntil.Code, recNoUntil.Body.String())
+		}
+
+		// Snoozed with past snoozed_until -> 400 Bad Request
+		pastUntil := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339)
+		reqPastUntil := httptest.NewRequest(http.MethodPatch, "/api/v1/chats/"+chatID.String()+"/status", bytes.NewBufferString(fmt.Sprintf(`{"status": "snoozed", "snoozed_until": "%s"}`, pastUntil)))
+		reqPastUntil.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		recPastUntil := httptest.NewRecorder()
+		e.ServeHTTP(recPastUntil, reqPastUntil)
+		if recPastUntil.Code != http.StatusBadRequest {
+			t.Fatalf("expected status 400 when snoozed_until is in the past, got %d: %s", recPastUntil.Code, recPastUntil.Body.String())
 		}
 	})
 

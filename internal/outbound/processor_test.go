@@ -145,6 +145,15 @@ func (f *fakePublisher) Publish(ctx context.Context, subject string, data []byte
 	return nil
 }
 
+type fakeDebounceCanceller struct {
+	cancelled []uuid.UUID
+}
+
+func (f *fakeDebounceCanceller) Cancel(ctx context.Context, workspaceID, contactID uuid.UUID) error {
+	f.cancelled = append(f.cancelled, contactID)
+	return nil
+}
+
 func TestProcessor_Ingest(t *testing.T) {
 	wsID := uuid.New()
 	connID := uuid.New()

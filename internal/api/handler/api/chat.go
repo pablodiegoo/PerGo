@@ -1005,9 +1005,14 @@ func (h *ChatAPIHandler) UpdateStatus(c *echo.Context) error {
 
 	var snoozedUntil *time.Time
 	if req.SnoozedUntil != nil && strings.TrimSpace(*req.SnoozedUntil) != "" {
-		if parsed, pErr := time.Parse(time.RFC3339, strings.TrimSpace(*req.SnoozedUntil)); pErr == nil {
-			snoozedUntil = &parsed
+		parsed, pErr := time.Parse(time.RFC3339, strings.TrimSpace(*req.SnoozedUntil))
+		if pErr != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"code":    "BAD_REQUEST",
+				"message": "invalid snoozed_until timestamp: must be RFC3339",
+			})
 		}
+		snoozedUntil = &parsed
 	}
 
 	ctx := c.Request().Context()
@@ -1025,7 +1030,7 @@ func (h *ChatAPIHandler) UpdateStatus(c *echo.Context) error {
 		if errors.Is(err, chat.ErrInvalidStatus) {
 			return c.JSON(http.StatusBadRequest, map[string]string{
 				"code":    "BAD_REQUEST",
-				"message": "status must be one of: 'open', 'snoozed', 'closed'",
+				"message": err.Error(),
 			})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{

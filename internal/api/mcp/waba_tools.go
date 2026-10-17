@@ -671,22 +671,7 @@ func (s *Server) handleWABAListChats(ctx context.Context, request mcp.CallToolRe
 			continue
 		}
 
-		isOpen := c.IsServiceWindowOpen()
-		var remSec int64
-		var badge string
-
-		if isOpen && c.ServiceWindowExpiresAt != nil {
-			remSec = int64(c.ServiceWindowExpiresAt.Sub(now).Seconds())
-			hours := remSec / 3600
-			mins := (remSec % 3600) / 60
-			if hours < 4 {
-				badge = fmt.Sprintf("🟡 %dh %02dm remaining", hours, mins)
-			} else {
-				badge = fmt.Sprintf("🟢 %dh %02dm remaining", hours, mins)
-			}
-		} else {
-			badge = "🔴 Expired"
-		}
+		isOpen, remSec, badge := formatServiceWindowStatus(&c.Chat, now)
 
 		dto := WABAChatSummaryDTO{
 			ChatSummaryDTO:            c,
@@ -878,6 +863,9 @@ func (s *Server) handleWABAChatSendMessage(ctx context.Context, request mcp.Call
 	if s.ingestor == nil {
 		return mcp.NewToolResultError("outbound ingestor is not configured on this server"), nil
 	}
+	if s.contactRepo == nil {
+		return mcp.NewToolResultError("contact repository is not configured on this server"), nil
+	}
 
 	wsID, resErr := s.resolveWorkspaceID(ctx, request)
 	if resErr != nil {
@@ -900,95 +888,54 @@ func (s *Server) handleWABAChatSendMessage(ctx context.Context, request mcp.Call
 	messageText = strings.TrimSpace(messageText)
 	senderName := strings.TrimSpace(request.GetString("sender_name", "AI Assistant"))
 
-	chat, err := s.chatRepo.GetChat(ctx, wsID, chatID)
+	eng := s.engine()
+	if eng == nil {
+		return mcp.NewToolResultError("chat engine is not configured on this server"), nil
+	}
+
+	// Pre-check service window before invoking mock/real ingestor so expired chats are never enqueued
+	c, err := eng.ResolveChat(ctx, wsID, chat.ChatRef{ChatID: chatID})
 	if err != nil {
-		if errors.Is(err, repository.ErrChatNotFound) {
+		if errors.Is(err, chat.ErrChatNotFound) {
 			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
 		}
 		return mcp.NewToolResultError(fmt.Sprintf("failed to get chat: %v", err)), nil
 	}
-
-	// 24-HOUR CUSTOMER SERVICE WINDOW ENFORCEMENT:
-	// Freeform text messages are strictly prohibited when the service window is closed.
-	if !chat.IsServiceWindowOpen() {
+	if !c.IsServiceWindowOpen() {
 		return mcp.NewToolResultError("Meta WhatsApp 24-hour customer service window is closed for this chat. Freeform text messages cannot be sent. You must use 'waba_chat_send_template' to initiate contact with an approved HSM template."), nil
 	}
 
-	// Resolve contact phone
-	if s.contactRepo == nil {
-		return mcp.NewToolResultError("contact repository is not configured on this server"), nil
-	}
-	contact, err := s.contactRepo.GetByID(ctx, wsID, chat.ContactID)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to get contact: %v", err)), nil
-	}
-
-	recipientPhone := resolveContactPhone(contact)
-	if recipientPhone == "" {
-		return mcp.NewToolResultError("contact has no phone number or whatsapp_cloud identity"), nil
-	}
-
-	// Resolve sender identity
-	var senderIdentity string
-	if s.connectionRepo != nil && chat.ConnectionID != nil {
-		if conn, cErr := s.connectionRepo.GetByID(ctx, *chat.ConnectionID); cErr == nil && conn != nil {
-			senderIdentity = conn.SenderIdentity
-		}
-	}
-
-	traceID := fmt.Sprintf("mcp-waba-%s", uuid.New().String())
-	req := &domain.CreateMessageRequest{
-		To:      recipientPhone,
-		Channel: "whatsapp_cloud",
-		From:    senderIdentity,
-		Body:    messageText,
-		Type:    "text",
+	sendRes, err := eng.SendMessage(ctx, wsID, chat.SendRequest{
+		Ref:                 chat.ChatRef{ChatID: chatID, Channel: "whatsapp_cloud"},
+		Body:                messageText,
+		Type:                "text",
+		SenderType:          string(domain.SenderTypeAIAgent),
+		SenderName:          senderName,
+		StrictServiceWindow: true,
+		TraceIDPrefix:       "mcp-waba",
+		AuditEventType:      "chat.message.sent",
 		Metadata: map[string]string{
-			"source":      "mcp_gateway",
-			"sender_type": string(domain.SenderTypeAIAgent),
-			"sender_name": senderName,
+			"source": "mcp_gateway",
 		},
-		ConversationalIngestFields: domain.ConversationalIngestFields{
-			ChatID:              &chat.ID,
-			SenderType:          string(domain.SenderTypeAIAgent),
-			SenderName:          senderName,
-			StrictServiceWindow: true,
-		},
-	}
-
-	qMsg, err := s.ingestor.Ingest(ctx, wsID, traceID, req)
+	})
 	if err != nil {
+		if errors.Is(err, chat.ErrChatNotFound) {
+			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
+		}
+		if errors.Is(err, chat.ErrServiceWindowExpired) || strings.Contains(err.Error(), "SESSION_WINDOW_EXPIRED") || strings.Contains(err.Error(), "24-hour") {
+			return mcp.NewToolResultError("Meta WhatsApp 24-hour customer service window is closed for this chat. Freeform text messages cannot be sent. You must use 'waba_chat_send_template' to initiate contact with an approved HSM template."), nil
+		}
 		return mcp.NewToolResultError(fmt.Sprintf("failed to dispatch message: %v", err)), nil
-	}
-
-	if s.auditRepo != nil {
-		auditPayload, _ := json.Marshal(map[string]interface{}{
-			"chat_id":         chat.ID.String(),
-			"to":              recipientPhone,
-			"channel":         "whatsapp_cloud",
-			"sender_identity": senderIdentity,
-			"body":            messageText,
-			"sender_name":     senderName,
-			"sender_type":     string(domain.SenderTypeAIAgent),
-		})
-		_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
-			ID:          uuid.New(),
-			WorkspaceID: wsID,
-			TraceID:     traceID,
-			EventType:   "chat.message.sent",
-			Payload:     auditPayload,
-			CreatedAt:   time.Now().UTC(),
-		})
 	}
 
 	data, err := json.MarshalIndent(map[string]interface{}{
 		"success":                true,
-		"chat_id":                chat.ID,
-		"trace_id":               traceID,
-		"to":                     recipientPhone,
+		"chat_id":                sendRes.ChatID,
+		"trace_id":               sendRes.TraceID,
+		"to":                     sendRes.To,
 		"body":                   messageText,
 		"service_window_is_open": true,
-		"queued_at":              qMsg.QueuedAt,
+		"queued_at":              sendRes.QueuedAt,
 	}, "", "  ")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
@@ -1003,6 +950,9 @@ func (s *Server) handleWABAChatSendTemplate(ctx context.Context, request mcp.Cal
 	}
 	if s.ingestor == nil {
 		return mcp.NewToolResultError("outbound ingestor is not configured on this server"), nil
+	}
+	if s.contactRepo == nil {
+		return mcp.NewToolResultError("contact repository is not configured on this server"), nil
 	}
 
 	wsID, resErr := s.resolveWorkspaceID(ctx, request)
@@ -1033,47 +983,40 @@ func (s *Server) handleWABAChatSendTemplate(ctx context.Context, request mcp.Cal
 
 	senderName := strings.TrimSpace(request.GetString("sender_name", "AI Assistant"))
 
-	chat, err := s.chatRepo.GetChat(ctx, wsID, chatID)
+	eng := s.engine()
+	if eng == nil {
+		return mcp.NewToolResultError("chat engine is not configured on this server"), nil
+	}
+
+	c, err := eng.ResolveChat(ctx, wsID, chat.ChatRef{ChatID: chatID})
 	if err != nil {
-		if errors.Is(err, repository.ErrChatNotFound) {
+		if errors.Is(err, chat.ErrChatNotFound) {
 			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
 		}
 		return mcp.NewToolResultError(fmt.Sprintf("failed to get chat: %v", err)), nil
 	}
 
-	// Resolve contact phone
-	if s.contactRepo == nil {
-		return mcp.NewToolResultError("contact repository is not configured on this server"), nil
-	}
-	contact, err := s.contactRepo.GetByID(ctx, wsID, chat.ContactID)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to get contact: %v", err)), nil
-	}
-
-	recipientPhone := resolveContactPhone(contact)
-	if recipientPhone == "" {
-		return mcp.NewToolResultError("contact has no phone number or whatsapp_cloud identity"), nil
-	}
-
-	// Resolve connection
+	// Resolve connection for template approval verification
 	var conn *repository.Connection
 	if s.connectionRepo != nil {
-		if chat.ConnectionID != nil {
-			conn, _ = s.connectionRepo.GetByID(ctx, *chat.ConnectionID)
+		if c.ConnectionID != nil {
+			conn, _ = s.connectionRepo.GetByID(ctx, *c.ConnectionID)
 		}
 		if conn == nil {
 			conns, _ := s.connectionRepo.ListByWorkspace(ctx, wsID)
-			for _, c := range conns {
-				if c.Channel == "whatsapp_cloud" && (c.Status == "active" || c.Status == "connected" || c.IsDefault) {
-					conn = c
+			for _, cn := range conns {
+				if cn.Channel == "whatsapp_cloud" && (cn.Status == "active" || cn.Status == "connected" || cn.IsDefault) {
+					conn = cn
 					break
 				}
 			}
 		}
 	}
 
+	var connIDPtr *uuid.UUID
 	var senderIdentity string
 	if conn != nil {
+		connIDPtr = &conn.ID
 		senderIdentity = conn.SenderIdentity
 	}
 
@@ -1098,40 +1041,33 @@ func (s *Server) handleWABAChatSendTemplate(ctx context.Context, request mcp.Cal
 		return mcp.NewToolResultError(fmt.Sprintf("invalid template parameters: %v", err)), nil
 	}
 
-	traceID := fmt.Sprintf("mcp-waba-tmpl-%s", uuid.New().String())
-	req := &domain.CreateMessageRequest{
-		To:           recipientPhone,
-		Channel:      "whatsapp_cloud",
-		From:         senderIdentity,
-		TemplateName: templateName,
-		Language:     language,
-		Components:   components,
-		Type:         "template",
+	sendRes, err := eng.SendMessage(ctx, wsID, chat.SendRequest{
+		Ref:            chat.ChatRef{ChatID: chatID, Channel: "whatsapp_cloud"},
+		ConnectionID:   connIDPtr,
+		SenderIdentity: senderIdentity,
+		TemplateName:   templateName,
+		Language:       language,
+		Components:     components,
+		Type:           "template",
+		SenderType:     string(domain.SenderTypeAIAgent),
+		SenderName:     senderName,
+		TraceIDPrefix:  "mcp-waba-tmpl",
 		Metadata: map[string]string{
-			"source":      "mcp_gateway",
-			"sender_type": string(domain.SenderTypeAIAgent),
-			"sender_name": senderName,
+			"source": "mcp_gateway",
 		},
-		ConversationalIngestFields: domain.ConversationalIngestFields{
-			ChatID:     &chat.ID,
-			SenderType: string(domain.SenderTypeAIAgent),
-			SenderName: senderName,
-		},
-	}
-
-	qMsg, err := s.ingestor.Ingest(ctx, wsID, traceID, req)
+	})
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to dispatch template message: %v", err)), nil
 	}
 
 	data, err := json.MarshalIndent(map[string]interface{}{
 		"success":       true,
-		"chat_id":       chat.ID,
-		"trace_id":      traceID,
+		"chat_id":       sendRes.ChatID,
+		"trace_id":      sendRes.TraceID,
 		"template_name": templateName,
 		"language":      language,
-		"to":            recipientPhone,
-		"queued_at":     qMsg.QueuedAt,
+		"to":            sendRes.To,
+		"queued_at":     sendRes.QueuedAt,
 	}, "", "  ")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
@@ -1248,22 +1184,7 @@ func (s *Server) handleWABAChatDetails(ctx context.Context, request mcp.CallTool
 	}
 
 	c := detail.Chat
-	isOpen := c.IsServiceWindowOpen()
-	var remSec int64
-	var badge string
-	now := time.Now().UTC()
-	if isOpen && c.ServiceWindowExpiresAt != nil {
-		remSec = int64(c.ServiceWindowExpiresAt.Sub(now).Seconds())
-		hours := remSec / 3600
-		mins := (remSec % 3600) / 60
-		if hours < 4 {
-			badge = fmt.Sprintf("🟡 %dh %02dm remaining", hours, mins)
-		} else {
-			badge = fmt.Sprintf("🟢 %dh %02dm remaining", hours, mins)
-		}
-	} else {
-		badge = "🔴 Expired"
-	}
+	isOpen, remSec, badge := formatServiceWindowStatus(c, time.Now().UTC())
 
 	response := map[string]interface{}{
 		"chat":                         c,
@@ -1293,6 +1214,19 @@ func (s *Server) handleWABAChatDetails(ctx context.Context, request mcp.CallTool
 		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil
 	}
 	return mcp.NewToolResultText(string(data)), nil
+}
+
+func formatServiceWindowStatus(c *domain.Chat, now time.Time) (bool, int64, string) {
+	if c == nil || !c.IsServiceWindowOpen(now) || c.ServiceWindowExpiresAt == nil {
+		return false, 0, "🔴 Expired"
+	}
+	remSec := int64(c.ServiceWindowExpiresAt.Sub(now).Seconds())
+	hours := remSec / 3600
+	mins := (remSec % 3600) / 60
+	if hours < 4 {
+		return true, remSec, fmt.Sprintf("🟡 %dh %02dm remaining", hours, mins)
+	}
+	return true, remSec, fmt.Sprintf("🟢 %dh %02dm remaining", hours, mins)
 }
 
 func (s *Server) handleWABAChatHistory(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -1410,87 +1344,49 @@ func (s *Server) handleWABAStartChat(ctx context.Context, request mcp.CallToolRe
 		return mcp.NewToolResultError(fmt.Sprintf("invalid template parameters: %v", err)), nil
 	}
 
-	// Resolve or create contact
-	var contactID uuid.UUID
-	if s.contactRepo != nil {
-		contact, cErr := s.contactRepo.ResolveContact(ctx, wsID, "whatsapp_cloud", phone, phone, "", "")
-		if cErr != nil || contact == nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to resolve contact for phone %s: %v", phone, cErr)), nil
-		}
-		contactID = contact.ID
-	} else {
+	if s.contactRepo == nil {
 		return mcp.NewToolResultError("contact repository is not configured on this server"), nil
 	}
-
-	// Find or create chat
-	chat, cErr := s.chatRepo.FindOrCreateChat(ctx, wsID, &conn.ID, contactID)
-	if cErr != nil || chat == nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to find or create chat for contact %s: %v", contactID, cErr)), nil
+	eng := s.engine()
+	if eng == nil {
+		return mcp.NewToolResultError("chat engine is not configured on this server"), nil
 	}
 
-	traceID := fmt.Sprintf("mcp-waba-start-%s", uuid.New().String())
-	req := &domain.CreateMessageRequest{
-		To:           phone,
-		Channel:      "whatsapp_cloud",
-		From:         conn.SenderIdentity,
-		TemplateName: templateName,
-		Language:     language,
-		Components:   components,
-		Type:         "template",
+	sendRes, err := eng.SendMessage(ctx, wsID, chat.SendRequest{
+		Ref: chat.ChatRef{
+			Channel:      "whatsapp_cloud",
+			Phone:        phone,
+			ConnectionID: &conn.ID,
+		},
+		ConnectionID:   &conn.ID,
+		SenderIdentity: conn.SenderIdentity,
+		TemplateName:   templateName,
+		Language:       language,
+		Components:     components,
+		Type:           "template",
+		SenderType:     string(domain.SenderTypeAIAgent),
+		SenderName:     senderName,
+		TraceIDPrefix:  "mcp-waba-start",
+		AuditEventType: "waba.chat.started",
 		Metadata: map[string]string{
 			"source":        "mcp_gateway",
 			"connection_id": conn.ID.String(),
-			"sender_type":   string(domain.SenderTypeAIAgent),
-			"sender_name":   senderName,
-			"chat_id":       chat.ID.String(),
 		},
-		ConversationalIngestFields: domain.ConversationalIngestFields{
-			ChatID:     &chat.ID,
-			SenderType: string(domain.SenderTypeAIAgent),
-			SenderName: senderName,
-		},
-	}
-
-	qMsg, err := s.ingestor.Ingest(ctx, wsID, traceID, req)
+	})
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to dispatch template message: %v", err)), nil
 	}
 
-	now := time.Now().UTC()
-	if qMsg != nil && !qMsg.QueuedAt.IsZero() {
-		now = qMsg.QueuedAt
-	}
-
-	if s.auditRepo != nil {
-		auditPayload, _ := json.Marshal(map[string]interface{}{
-			"chat_id":       chat.ID.String(),
-			"contact_id":    contactID.String(),
-			"connection_id": conn.ID.String(),
-			"to":            phone,
-			"template_name": templateName,
-			"language":      language,
-			"sender_name":   senderName,
-		})
-		_ = s.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
-			ID:          uuid.New(),
-			WorkspaceID: wsID,
-			TraceID:     traceID,
-			EventType:   "waba.chat.started",
-			Payload:     auditPayload,
-			CreatedAt:   now,
-		})
-	}
-
 	data, err := json.MarshalIndent(map[string]interface{}{
 		"success":       true,
-		"chat_id":       chat.ID,
-		"contact_id":    contactID,
+		"chat_id":       sendRes.ChatID,
+		"contact_id":    sendRes.ContactID,
 		"connection_id": conn.ID,
-		"trace_id":      traceID,
+		"trace_id":      sendRes.TraceID,
 		"template_name": templateName,
 		"language":      language,
 		"to":            phone,
-		"queued_at":     qMsg.QueuedAt,
+		"queued_at":     sendRes.QueuedAt,
 	}, "", "  ")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to format output: %v", err)), nil

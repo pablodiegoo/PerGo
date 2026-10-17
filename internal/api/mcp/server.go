@@ -143,8 +143,12 @@ func (s *Server) engine() *chat.Engine {
 	if s.chatEngine != nil {
 		return s.chatEngine
 	}
-	if s.chatRepo == nil {
+	if s.chatRepo == nil && s.connectionRepo == nil {
 		return nil
+	}
+	var chatRepo chat.ChatRepository
+	if s.chatRepo != nil {
+		chatRepo = s.chatRepo
 	}
 	var opts []chat.Option
 	if s.contactRepo != nil {
@@ -171,8 +175,7 @@ func (s *Server) engine() *chat.Engine {
 	if s.debouncer != nil {
 		opts = append(opts, chat.WithDebounceCanceller(s.debouncer))
 	}
-	s.chatEngine = chat.NewEngine(s.chatRepo, opts...)
-	return s.chatEngine
+	return chat.NewEngine(chatRepo, opts...)
 }
 
 // WithWABATemplateRepo configures the WABATemplateRepository for WABA template MCP tools.
