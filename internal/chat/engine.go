@@ -766,6 +766,15 @@ func (e *Engine) List(ctx context.Context, workspaceID uuid.UUID, filter domain.
 		return nil, errors.New("chat repository not configured")
 	}
 
+	if filter.Status == string(domain.ChatStatusOpen) || filter.Status == string(domain.ChatStatusSnoozed) {
+		if snoozedChats, sErr := e.chatRepo.ListChats(ctx, workspaceID, domain.ChatFilter{Status: string(domain.ChatStatusSnoozed)}, 100, 0); sErr == nil {
+			for i := range snoozedChats {
+				sc := snoozedChats[i]
+				e.reopenIfSnoozeExpired(ctx, workspaceID, &sc)
+			}
+		}
+	}
+
 	chats, err := e.chatRepo.ListChats(ctx, workspaceID, filter, limit, offset)
 	if err != nil {
 		return nil, err
@@ -795,6 +804,9 @@ func (e *Engine) List(ctx context.Context, workspaceID uuid.UUID, filter domain.
 	for i := range chats {
 		chatItem := chats[i]
 		e.reopenIfSnoozeExpired(ctx, workspaceID, &chatItem)
+		if filter.Status != "" && !strings.EqualFold(string(chatItem.Status), filter.Status) {
+			continue
+		}
 
 		dto := ChatSummary{Chat: chatItem}
 		if e.contactRepo != nil && chatItem.ContactID != uuid.Nil {
@@ -1460,13 +1472,18 @@ func (e *Engine) PromoteDraft(ctx context.Context, workspaceID uuid.UUID, ref Ch
 		return nil, err
 	}
 
-	finalBody := strings.TrimSpace(editedBody)
-	if finalBody == "" && strings.TrimSpace(draftUID) != "" {
-		msg, mErr := e.chatRepo.GetChatMessageByUID(ctx, c.WorkspaceID, strings.TrimSpace(draftUID))
-		if mErr != nil || msg == nil || msg.ChatID != c.ID {
+	var draftMsg *domain.ChatMessage
+	if strings.TrimSpace(draftUID) != "" && e.chatRepo != nil {
+		var mErr error
+		draftMsg, mErr = e.chatRepo.GetChatMessageByUID(ctx, c.WorkspaceID, strings.TrimSpace(draftUID))
+		if mErr != nil || draftMsg == nil || draftMsg.ChatID != c.ID {
 			return nil, ErrMessageNotFound
 		}
-		finalBody = strings.TrimSpace(strings.TrimPrefix(msg.Body, "[AI Draft]: "))
+	}
+
+	finalBody := strings.TrimSpace(editedBody)
+	if finalBody == "" && draftMsg != nil {
+		finalBody = strings.TrimSpace(strings.TrimPrefix(draftMsg.Body, "[AI Draft]: "))
 		finalBody = strings.TrimSpace(strings.TrimPrefix(finalBody, "[AI Draft]:"))
 	}
 	if finalBody == "" {
@@ -1657,7 +1674,11 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 
 	displayBody := body
 	if displayBody == "" && req.TemplateName != "" {
-		displayBody = fmt.Sprintf("📋 [Template: %s]", req.TemplateName)
+		if req.Language != "" {
+			displayBody = fmt.Sprintf("[Template: %s (%s)]", req.TemplateName, req.Language)
+		} else {
+			displayBody = fmt.Sprintf("[Template: %s]", req.TemplateName)
+		}
 	}
 
 	var persistedMsg *domain.ChatMessage

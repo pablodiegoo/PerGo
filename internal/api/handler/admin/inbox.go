@@ -471,9 +471,10 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 	channel := c.FormValue("channel")                      // whatsapp / whatsapp_cloud / telegram
 	recipientIdentity := c.FormValue("recipient_identity") // the bot/phone identity (sender_identity)
 	body := strings.TrimSpace(c.FormValue("body"))
+	draftUID := strings.TrimSpace(c.FormValue("draft_uid"))
 
 	// Validate
-	if body == "" {
+	if body == "" && draftUID == "" {
 		return c.HTML(http.StatusBadRequest, `<span class="text-red-400">Mensagem não pode ser vazia.</span>`)
 	}
 	if contact == "" || channel == "" {
@@ -488,20 +489,28 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 		return c.HTML(http.StatusServiceUnavailable, `<span class="text-red-400">Publisher não disponível.</span>`)
 	}
 
-	disableAI := true
-	_, err := h.engine().SendMessage(ctx, workspaceID, chatpkg.SendRequest{
-		Ref: chatpkg.ChatRef{
+	var err error
+	if draftUID != "" {
+		_, err = h.engine().PromoteDraft(ctx, workspaceID, chatpkg.ChatRef{
 			Channel: channel,
 			Phone:   contact,
-		},
-		Body:           body,
-		SenderName:     "Agent",
-		SenderType:     string(domain.SenderTypeHumanAgent),
-		DisableAI:      &disableAI,
-		SenderIdentity: recipientIdentity,
-		TraceIDPrefix:  "inbox",
-		AuditEventType: "chat.message.sent",
-	})
+		}, draftUID, body)
+	} else {
+		disableAI := true
+		_, err = h.engine().SendMessage(ctx, workspaceID, chatpkg.SendRequest{
+			Ref: chatpkg.ChatRef{
+				Channel: channel,
+				Phone:   contact,
+			},
+			Body:           body,
+			SenderName:     "Agent",
+			SenderType:     string(domain.SenderTypeHumanAgent),
+			DisableAI:      &disableAI,
+			SenderIdentity: recipientIdentity,
+			TraceIDPrefix:  "inbox",
+			AuditEventType: "chat.message.sent",
+		})
+	}
 	if err != nil {
 		return c.HTML(http.StatusInternalServerError, `<span class="text-red-400">Erro ao enviar mensagem: `+escapeHTML(err.Error())+`</span>`)
 	}
@@ -647,7 +656,7 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 	if connectionID != uuid.Nil {
 		connIDPtr = &connectionID
 	}
-	disableAI := false
+	disableAI := true
 	_, err := h.engine().SendMessage(ctx, workspaceID, chatpkg.SendRequest{
 		Ref: chatpkg.ChatRef{
 			Channel: channel,

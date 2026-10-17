@@ -553,19 +553,20 @@ func (h *ChatAPIHandler) SendMessage(c *echo.Context) error {
 		})
 	}
 
-	if h.contactRepo == nil {
+	if h.contactRepo == nil && h.chatEngine == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{
 			"code":    "SERVICE_UNAVAILABLE",
 			"message": "contact repository not configured",
 		})
 	}
-
-	contact, err := h.contactRepo.GetByID(ctx, wsID, chatObj.ContactID)
-	if err != nil || contact == nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"code":    "CONTACT_NOT_FOUND",
-			"message": "associated contact could not be resolved",
-		})
+	if h.contactRepo != nil {
+		contact, err := h.contactRepo.GetByID(ctx, wsID, chatObj.ContactID)
+		if err != nil || contact == nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"code":    "CONTACT_NOT_FOUND",
+				"message": "associated contact could not be resolved",
+			})
+		}
 	}
 
 	res, err := eng.SendMessage(ctx, wsID, chat.SendRequest{
@@ -583,6 +584,12 @@ func (h *ChatAPIHandler) SendMessage(c *echo.Context) error {
 		TraceIDPrefix:       "api-chat",
 	})
 	if err != nil {
+		if errors.Is(err, chat.ErrContactNotFound) || strings.Contains(err.Error(), "no phone number or channel identity") {
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"code":    "CONTACT_NOT_FOUND",
+				"message": "associated contact could not be resolved",
+			})
+		}
 		if errors.Is(err, outbound.ErrQueueFull) {
 			return c.JSON(http.StatusTooManyRequests, map[string]string{
 				"code":    "QUEUE_FULL",
