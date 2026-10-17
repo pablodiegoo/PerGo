@@ -553,7 +553,7 @@ func (h *ChatAPIHandler) SendMessage(c *echo.Context) error {
 		})
 	}
 
-	if h.contactRepo == nil && h.chatEngine == nil {
+	if h.contactRepo == nil && h.eng == nil {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{
 			"code":    "SERVICE_UNAVAILABLE",
 			"message": "contact repository not configured",

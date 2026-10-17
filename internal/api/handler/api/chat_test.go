@@ -819,8 +819,8 @@ func TestChatAPIHandler(t *testing.T) {
 
 		msgs := chatRepo.messages[chatID]
 		lastMsg := msgs[len(msgs)-1]
-		if lastMsg.Body != "📋 [Template: order_update]" {
-			t.Fatalf("expected display body '📋 [Template: order_update]', got %q", lastMsg.Body)
+		if lastMsg.Body != "[Template: order_update (pt_BR)]" {
+			t.Fatalf("expected display body '[Template: order_update (pt_BR)]', got %q", lastMsg.Body)
 		}
 	})
 
