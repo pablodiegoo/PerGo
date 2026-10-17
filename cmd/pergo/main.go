@@ -6,11 +6,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -60,206 +62,190 @@ import (
 	"github.com/pablojhp.pergo/templates/pages"
 )
 
-func runHealthcheck(port string) int {
-	if port == "" {
-		port = "8080"
-	}
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get("http://127.0.0.1:" + port + "/healthz")
-	if err != nil || resp.StatusCode != http.StatusOK {
-		return 1
-	}
-	_ = resp.Body.Close()
-	return 0
+// CoreDeps holds the shared domain graph constructed for both HTTP server mode
+// and `pergo mcp` stdio mode, as well as integration tests.
+type CoreDeps struct {
+	Config               *config.Config
+	Pool                 *pgxpool.Pool
+	DB                   *sql.DB
+	NC                   *nats.Conn
+	JS                   jetstream.JetStream
+	NATSHealth           handler.NATSConn
+	Publisher            outbound.Publisher
+	JetStreamPublisher   *queue.JetStreamPublisher
+	KEK                  []byte
+	Encryptor            *crypto.Encryptor
+	S3Client             *storage.S3Client
+	MediaEngine          media.Engine
+	RateLimiter          *middleware.RateLimiter
+	QueueDepth           *middleware.QueueDepthTracker
+	AuditWriter          audit.Writer
+	AuditQuerier         *audit.Querier
+	WindowChecker        *session.WindowChecker
+	VerbsEngine          *webhook.VerbsEngine
+	WebhookAllowlist     []string
+	WebhookDispatcher    webhook.WebhookDispatcher
+	SessionRegistry      *session.ActiveSession
+	DispatcherRegistry   *channel.Registry
+	SessionManager       *session.Manager
+	ChatwootSyncer       *chatwoot.ChatwootSyncer
+	TypebotForwarder     *typebot.Forwarder
+	InboundRouter        inbound.InboundRouter
+	Debouncer            *inbound.Debouncer
+	InboundProcessor     *inbound.InboundProcessor
+	OutboundProcessor    *outbound.Processor
+	ChatEngine           *chat.Engine
+	CampaignEngine       campaign.BroadcasterEngine
+	MCPServer            *mcp.Server
+	WorkspaceRepo        *repository.WorkspaceRepository
+	APIKeyRepo           *repository.APIKeyRepository
+	ConnectionRepo       *repository.ConnectionRepository
+	RecipientSessionRepo *repository.RecipientSessionRepository
+	ContactRepo          *repository.ContactRepository
+	ChatRepo             *repository.ChatRepository
+	AuditRepo            *repository.AuditRepository
+	DispatchRepo         *repository.MessageDispatchRepository
+	DedupRepo            *repository.InboundDedupRepository
+	UserActionLogRepo    *repository.UserActionLogRepository
+	WABATemplateRepo     *repository.WABATemplateRepository
+	WebhookSubRepo       *repository.WebhookSubscriptionRepository
+	WebhookDLQRepo       *repository.WebhookDLQRepository
+	CampaignRepo         *repository.CampaignRepository
+	TagRepo              *repository.TagRepository
+	IntegrationRepo      *repository.IntegrationRepository
+	ChatwootMappingRepo  *repository.ChatwootMappingRepository
+	TypebotSessionRepo   *repository.TypebotSessionRepository
+
+	ownsDB    bool
+	closeOnce sync.Once
+	closeErr  error
 }
 
-func main() {
-	if len(os.Args) > 1 && (os.Args[1] == "-healthcheck" || os.Args[1] == "--healthcheck") {
-		os.Exit(runHealthcheck(os.Getenv("PERGO_SERVER_PORT")))
+// Close stops active inbound debounce timers and flushes the audit writer.
+func (d *CoreDeps) Close() error {
+	if d == nil {
+		return nil
+	}
+	d.closeOnce.Do(func() {
+		if d.InboundProcessor != nil {
+			d.InboundProcessor.Close()
+		}
+		if d.AuditWriter != nil {
+			d.closeErr = d.AuditWriter.Close()
+		}
+		if d.ownsDB && d.DB != nil {
+			_ = d.DB.Close()
+		}
+	})
+	return d.closeErr
+}
+
+// CoreOption customizes dependency construction in BootstrapCore.
+type CoreOption func(*CoreDeps)
+
+// WithCorePublisher overrides the outbound/event publisher in CoreDeps.
+func WithCorePublisher(pub outbound.Publisher) CoreOption {
+	return func(d *CoreDeps) {
+		d.Publisher = pub
+	}
+}
+
+// WithCoreJetStream overrides the JetStream context in CoreDeps.
+func WithCoreJetStream(js jetstream.JetStream) CoreOption {
+	return func(d *CoreDeps) {
+		d.JS = js
+	}
+}
+
+// WithCoreMediaEngine overrides the media engine in CoreDeps.
+func WithCoreMediaEngine(me media.Engine) CoreOption {
+	return func(d *CoreDeps) {
+		d.MediaEngine = me
+	}
+}
+
+// WithCoreDebouncer overrides the inbound Redis debouncer in CoreDeps.
+func WithCoreDebouncer(deb *inbound.Debouncer) CoreOption {
+	return func(d *CoreDeps) {
+		d.Debouncer = deb
+	}
+}
+
+// WithCoreWebhookDispatcher overrides the webhook dispatcher in CoreDeps.
+func WithCoreWebhookDispatcher(wd webhook.WebhookDispatcher) CoreOption {
+	return func(d *CoreDeps) {
+		d.WebhookDispatcher = wd
+	}
+}
+
+// WithCoreQueueDepth overrides the queue depth tracker in CoreDeps.
+func WithCoreQueueDepth(qd *middleware.QueueDepthTracker) CoreOption {
+	return func(d *CoreDeps) {
+		d.QueueDepth = qd
+	}
+}
+
+// WithCoreNATSHealth overrides the NATS health probe used by /readyz.
+func WithCoreNATSHealth(nh handler.NATSConn) CoreOption {
+	return func(d *CoreDeps) {
+		d.NATSHealth = nh
+	}
+}
+
+// BootstrapCore initializes and wires the shared core domain graph (PostgreSQL
+// repositories, AES-256-GCM encryptor, S3 media engine, Customer Service Window
+// checker, webhook dispatcher, OutboundProcessor, InboundProcessor + Debouncer,
+// ChatEngine, and MCPServer) for both HTTP server mode and `pergo mcp` stdio mode.
+func BootstrapCore(
+	ctx context.Context,
+	cfg *config.Config,
+	pool *pgxpool.Pool,
+	db *sql.DB,
+	nc *nats.Conn,
+	opts ...CoreOption,
+) (*CoreDeps, error) {
+	if cfg == nil {
+		cfg = config.Load()
 	}
 
-	if len(os.Args) > 1 && os.Args[1] == "mcp" {
-		slog.SetDefault(slog.New(obs.NewRedactingHandler(slog.NewJSONHandler(os.Stderr, nil))))
-		cfg := config.Load()
-		if err := cfg.Validate(); err != nil {
-			slog.Error("invalid configuration", "error", err)
-			os.Exit(1)
+	deps := &CoreDeps{
+		Config: cfg,
+		Pool:   pool,
+		DB:     db,
+		NC:     nc,
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(deps)
 		}
-		ctx := context.Background()
+	}
 
-		pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
+	if deps.DB == nil && pool != nil {
+		sqlDB, err := postgres.NewSQLDB(pool)
 		if err != nil {
-			slog.Error("failed to create pgxpool", "error", err)
-			os.Exit(1)
+			return nil, fmt.Errorf("create sql.DB: %w", err)
 		}
-		defer pool.Close()
-
-		db, err := postgres.NewSQLDB(pool)
-		if err != nil {
-			slog.Error("failed to create sql.DB", "error", err)
-			os.Exit(1)
-		}
-		defer db.Close()
-
-		kek := cfg.KEKBytes
-		if len(kek) != 32 {
-			if cfg.IsProduction() {
-				slog.Error("PERGO_KEK_BASE64 is required and must be 32 bytes in production")
-				os.Exit(1)
-			}
-			kek = make([]byte, 32)
-			copy(kek, []byte("dev-development-key-32-bytes-kek"))
-		}
-		encryptor, err := crypto.NewEncryptor(kek)
-		if err != nil {
-			slog.Error("failed to initialize encryptor", "error", err)
-			os.Exit(1)
-		}
-
-		nc, err := nats.Connect(cfg.NATSUrl)
-		if err != nil {
-			slog.Error("failed to connect to NATS", "error", err)
-			os.Exit(1)
-		}
-		defer nc.Close()
-		js, err := jetstream.New(nc)
-		if err != nil {
-			slog.Error("failed to initialize JetStream context in MCP stdio mode", "error", err)
-			os.Exit(1)
-		}
-		publisher := queue.NewJetStreamPublisher(nc)
-
-		wsRepo := repository.NewWorkspaceRepository(pool)
-		connectionRepo := repository.NewConnectionRepository(pool, encryptor)
-		contactRepo := repository.NewContactRepository(pool)
-		auditRepo := repository.NewAuditRepository(pool)
-		apiKeyRepo := repository.NewAPIKeyRepository(pool)
-		webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, encryptor)
-		webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
-		userActionLogRepo := repository.NewUserActionLogRepository(pool)
-		chatRepo := repository.NewChatRepository(pool)
-		wabaTemplateRepo := repository.NewWABATemplateRepository(pool)
-
-		verbsEngine := webhook.NewVerbsEngine(publisher, contactRepo, userActionLogRepo, connectionRepo)
-		webhookDispatcher := webhook.NewDefaultDispatcher(webhookSubRepo, webhookDLQRepo, wsRepo, nil, verbsEngine)
-
-		sessionRegistry := session.NewActiveSession()
-		dispatcherRegistry := channel.NewRegistry(nil)
-		sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, cfg.WAVersion, nil)
-		sessionManager.SetPublisher(publisher)
-
-		ingestor := outbound.NewProcessor(nil, nil, connectionRepo, publisher)
-		mcpServer := mcp.NewServer(
-			wsRepo,
-			connectionRepo,
-			contactRepo,
-			auditRepo,
-			ingestor,
-			apiKeyRepo,
-			webhookSubRepo,
-			sessionManager,
-			webhookDispatcher,
-			[]byte(cfg.SessionSecret),
-			cfg.ExternalURL,
-			mcp.WithWebhookDLQRepo(webhookDLQRepo),
-			mcp.WithChatRepo(chatRepo),
-			mcp.WithWABATemplateRepo(wabaTemplateRepo),
-			mcp.WithJetStreamPublisher(publisher),
-			mcp.WithJetStream(js),
-			mcp.WithNATSConn(nc),
-		)
-
-		slog.Info("starting MCP server in stdio mode")
-		if err := mcp.RunStdio(ctx, mcpServer, apiKeyRepo, os.Args[2:], os.Stdin, os.Stdout, os.Stderr); err != nil {
-			slog.Error("MCP stdio server execution failed", "error", err)
-			os.Exit(1)
-		}
-		return
+		deps.DB = sqlDB
+		deps.ownsDB = true
 	}
 
-	slog.SetDefault(slog.New(obs.NewRedactingHandler(slog.NewJSONHandler(os.Stdout, nil))))
-
-	// --- Config from env vars ---
-	cfg := config.Load()
-	if err := cfg.Validate(); err != nil {
-		slog.Error("invalid configuration", "error", err)
-		os.Exit(1)
-	}
-
-	// --- PostgreSQL ---
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
-	if err != nil {
-		slog.Error("failed to create pgxpool", "error", err)
-		os.Exit(1)
-	}
-	defer pool.Close()
-
-	db, err := postgres.NewSQLDB(pool)
-	if err != nil {
-		slog.Error("failed to create stdlib sql.DB", "error", err)
-		os.Exit(1)
-	}
-	defer db.Close()
-
-	if err := postgres.RunMigrations(db); err != nil {
-		slog.Error("migrations failed", "error", err)
-		os.Exit(1)
-	}
-	slog.Info("migrations applied successfully")
-
-	// --- NATS ---
-	nc, err := nats.Connect(cfg.NATSUrl)
-	if err != nil {
-		slog.Error("failed to connect to NATS", "error", err, "url", cfg.NATSUrl)
-		os.Exit(1)
-	}
-	defer nc.Close()
-	slog.Info("connected to NATS", "url", cfg.NATSUrl)
-
-	// --- JetStream ---
-	js, err := jetstream.New(nc)
-	if err != nil {
-		slog.Error("failed to create JetStream client", "error", err)
-		os.Exit(1)
-	}
-	stream, err := queue.EnsureStream(ctx, nc)
-	if err != nil {
-		slog.Error("failed to create JetStream stream", "error", err)
-		os.Exit(1)
-	}
-	publisher := queue.NewJetStreamPublisher(nc)
-
-	// --- Worker (reads from JetStream, logs dispatched messages) ---
-	consumer, err := queue.EnsureConsumer(ctx, stream, "worker-1")
-	if err != nil {
-		slog.Error("failed to create JetStream consumer", "error", err)
-		os.Exit(1)
-	}
-	// --- Rate limiter (per-workspace token bucket) ---
-	rateLimiter := middleware.NewRateLimiter(10, 10) // 10 req/s, burst 10
-	queueDepth := middleware.NewQueueDepthTracker()
-
-	// --- Cryptography Encryptor & Credentials Repository ---
 	kek := cfg.KEKBytes
 	if len(kek) != 32 {
 		if cfg.IsProduction() {
-			slog.Error("PERGO_KEK_BASE64 is required and must be 32 bytes in production")
-			os.Exit(1)
+			return nil, fmt.Errorf("PERGO_KEK_BASE64 is required and must be 32 bytes in production")
 		}
 		slog.Warn("PERGO_KEK_BASE64 is not set or not 32 bytes; using a default development key. DO NOT USE IN PRODUCTION.")
 		kek = make([]byte, 32)
 		copy(kek, []byte("dev-development-key-32-bytes-kek"))
 	}
+	deps.KEK = kek
+
 	encryptor, err := crypto.NewEncryptor(kek)
 	if err != nil {
-		slog.Error("failed to initialize encryptor", "error", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("initialize encryptor: %w", err)
 	}
+	deps.Encryptor = encryptor
 
-	// --- S3 Storage Client ---
 	s3Client, err := storage.NewS3Client(
 		cfg.S3Endpoint,
 		cfg.S3Region,
@@ -269,23 +255,86 @@ func main() {
 		cfg.S3UsePathStyle,
 	)
 	if err != nil {
-		slog.Error("failed to initialize S3 client", "error", err)
-		os.Exit(1)
+		return nil, fmt.Errorf("initialize S3 client: %w", err)
+	}
+	deps.S3Client = s3Client
+	if deps.MediaEngine == nil {
+		deps.MediaEngine = media.NewDefaultEngine(s3Client)
 	}
 
-	mediaEngine := media.NewDefaultEngine(s3Client)
+	if deps.RateLimiter == nil {
+		deps.RateLimiter = middleware.NewRateLimiter(10, 10)
+	}
+	if deps.QueueDepth == nil {
+		deps.QueueDepth = middleware.NewQueueDepthTracker()
+	}
 
-	connectionRepo := repository.NewConnectionRepository(pool, encryptor)
-	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
-	contactRepo := repository.NewContactRepository(pool)
-	userActionLogRepo := repository.NewUserActionLogRepository(pool)
-	windowChecker := session.NewWindowChecker(recipientSessionRepo)
+	if nc != nil {
+		if deps.JS == nil {
+			js, err := jetstream.New(nc)
+			if err != nil {
+				return nil, fmt.Errorf("initialize JetStream client: %w", err)
+			}
+			deps.JS = js
+		}
+		deps.JetStreamPublisher = queue.NewJetStreamPublisher(nc)
+		if deps.Publisher == nil {
+			deps.Publisher = deps.JetStreamPublisher
+		}
+	}
+	if deps.NATSHealth == nil {
+		deps.NATSHealth = &natsConn{nc: nc}
+	}
 
-	// --- REST Adapters ---
-	wabaAdapter := whatsapp.NewWABAAdapter(connectionRepo, nil, windowChecker, cfg.ExternalURL)
-	telegramAdapter := telegram.NewTelegramAdapter(connectionRepo, nil, s3Client)
+	// --- PostgreSQL Repositories ---
+	deps.WorkspaceRepo = repository.NewWorkspaceRepository(pool)
+	deps.APIKeyRepo = repository.NewAPIKeyRepository(pool)
+	deps.ConnectionRepo = repository.NewConnectionRepository(pool, encryptor)
+	deps.RecipientSessionRepo = repository.NewRecipientSessionRepository(pool)
+	deps.ContactRepo = repository.NewContactRepository(pool)
+	deps.ChatRepo = repository.NewChatRepository(pool)
+	deps.AuditRepo = repository.NewAuditRepository(pool)
+	deps.DispatchRepo = repository.NewMessageDispatchRepository(pool)
+	deps.DedupRepo = repository.NewInboundDedupRepository(pool)
+	deps.UserActionLogRepo = repository.NewUserActionLogRepository(pool)
+	deps.WABATemplateRepo = repository.NewWABATemplateRepository(pool)
+	if pool != nil {
+		if err := deps.WABATemplateRepo.LoadCache(ctx); err != nil {
+			slog.Warn("failed to warm up WABA template cache", "error", err)
+		} else {
+			slog.Info("WABA template cache warmed up successfully")
+		}
+	}
+	deps.WebhookSubRepo = repository.NewWebhookSubscriptionRepository(pool, encryptor)
+	deps.WebhookDLQRepo = repository.NewWebhookDLQRepository(pool, encryptor)
+	deps.CampaignRepo = repository.NewCampaignRepository(pool)
+	deps.TagRepo = repository.NewTagRepository(pool)
+	deps.IntegrationRepo = repository.NewIntegrationRepository(pool, encryptor)
+	deps.ChatwootMappingRepo = repository.NewChatwootMappingRepository(pool)
+	deps.TypebotSessionRepo = repository.NewTypebotSessionRepository(pool)
+
+	if pool != nil {
+		deps.AuditWriter = audit.NewWriter(pool, 5000, 2)
+		deps.AuditQuerier = audit.NewQuerier(pool)
+	}
+
+	deps.WindowChecker = session.NewWindowChecker(deps.RecipientSessionRepo)
+
+	// --- Webhook Dispatcher ---
+	deps.VerbsEngine = webhook.NewVerbsEngine(deps.Publisher, deps.ContactRepo, deps.UserActionLogRepo, deps.ConnectionRepo)
+	if !cfg.IsProduction() || os.Getenv("PERGO_ALLOW_LOCAL_WEBHOOKS") == "true" {
+		deps.WebhookAllowlist = []string{"localhost", "127.0.0.1", "::1", "0.0.0.0", "host.docker.internal"}
+	}
+	if deps.WebhookDispatcher == nil {
+		dispatcherHTTPClient := security.NewSafeWebhookClient(security.WithTimeout(10*time.Second), security.WithAllowlist(deps.WebhookAllowlist...))
+		deps.WebhookDispatcher = webhook.NewDefaultDispatcher(deps.WebhookSubRepo, deps.WebhookDLQRepo, deps.WorkspaceRepo, dispatcherHTTPClient, deps.VerbsEngine)
+	}
+
+	// --- Channel Adapters & Session Manager ---
+	wabaAdapter := whatsapp.NewWABAAdapter(deps.ConnectionRepo, nil, deps.WindowChecker, cfg.ExternalURL)
+	telegramAdapter := telegram.NewTelegramAdapter(deps.ConnectionRepo, nil, s3Client)
 	whatsAppAdapter := whatsapp.NewWhatsAppAdapter(nil, s3Client)
-	instagramAdapter := instagram.NewAdapter(connectionRepo, nil, cfg.ExternalURL)
+	instagramAdapter := instagram.NewAdapter(deps.ConnectionRepo, nil, cfg.ExternalURL)
 	emailProvider := email.NewSMTPProvider(email.SMTPConfig{
 		Host:        "localhost",
 		Port:        1025,
@@ -294,45 +343,37 @@ func main() {
 	})
 	emailAdapter := email.NewEmailAdapter(emailProvider)
 
-	// --- Worker (reads from JetStream, dispatches with retry/TTL/dedup) ---
-	sessionRegistry := session.NewActiveSession()
-	whatsAppAdapter.SetSessionFinder(sessionRegistry)
+	deps.SessionRegistry = session.NewActiveSession()
+	whatsAppAdapter.SetSessionFinder(deps.SessionRegistry)
 
-	dispatcherRegistry := channel.NewRegistry(nil) // populated by session manager
-	dispatcherRegistry.Register("whatsapp_cloud", wabaAdapter)
-	dispatcherRegistry.Register("telegram", telegramAdapter)
-	dispatcherRegistry.Register("whatsapp", whatsAppAdapter)
-	dispatcherRegistry.Register("instagram", instagramAdapter)
-	dispatcherRegistry.Register("email", emailAdapter)
-	dispatcherRegistry.Register("email_smtp", emailAdapter)
+	deps.DispatcherRegistry = channel.NewRegistry(nil)
+	deps.DispatcherRegistry.Register("whatsapp_cloud", wabaAdapter)
+	deps.DispatcherRegistry.Register("telegram", telegramAdapter)
+	deps.DispatcherRegistry.Register("whatsapp", whatsAppAdapter)
+	deps.DispatcherRegistry.Register("instagram", instagramAdapter)
+	deps.DispatcherRegistry.Register("email", emailAdapter)
+	deps.DispatcherRegistry.Register("email_smtp", emailAdapter)
 
-	// --- Audit writer ---
-	auditWriter := audit.NewWriter(pool, 5000, 2)
+	// --- Inbound Router, Debouncer & InboundProcessor ---
+	deps.ChatwootSyncer = chatwoot.NewChatwootSyncer(deps.IntegrationRepo, deps.ChatwootMappingRepo, nil)
+	deps.TypebotForwarder = typebot.NewForwarder(deps.TypebotSessionRepo, deps.IntegrationRepo, deps.Publisher)
+	deps.InboundRouter = inbound.NewDefaultRouter(deps.ChatwootSyncer, deps.TypebotForwarder)
 
-	dedupRepo := repository.NewInboundDedupRepository(pool)
-	wsRepo := repository.NewWorkspaceRepository(pool)
-	if ws, err := wsRepo.EnsureWorkspace(ctx, "Agora"); err != nil {
-		slog.Warn("could not ensure default workspace on startup", "error", err)
-	} else {
-		slog.Info("default workspace ready", "workspace_id", ws.ID, "name", ws.Name)
-	}
-	dispatchRepo := repository.NewMessageDispatchRepository(pool)
-	auditRepo := repository.NewAuditRepository(pool)
+	deps.InboundProcessor = inbound.NewInboundProcessor(
+		deps.DedupRepo,
+		deps.WorkspaceRepo,
+		deps.MediaEngine,
+		deps.Publisher,
+		deps.AuditWriter,
+		deps.RecipientSessionRepo,
+		deps.ContactRepo,
+		deps.DispatchRepo,
+		deps.InboundRouter,
+	)
+	deps.InboundProcessor.SetChatRepository(deps.ChatRepo)
+	deps.InboundProcessor.SetReactionWebhookDispatcher(deps.WebhookDispatcher)
 
-	integrationRepo := repository.NewIntegrationRepository(pool, encryptor)
-	chatwootMappingRepo := repository.NewChatwootMappingRepository(pool)
-	chatwootSyncer := chatwoot.NewChatwootSyncer(integrationRepo, chatwootMappingRepo, nil)
-
-	typebotSessionRepo := repository.NewTypebotSessionRepository(pool)
-	typebotForwarder := typebot.NewForwarder(typebotSessionRepo, integrationRepo, publisher)
-	inboundRouter := inbound.NewDefaultRouter(chatwootSyncer, typebotForwarder)
-	chatRepo := repository.NewChatRepository(pool)
-
-	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, recipientSessionRepo, contactRepo, dispatchRepo, inboundRouter)
-	inboundProcessor.SetChatRepository(chatRepo)
-
-	var debouncer *inbound.Debouncer
-	if cfg.RedisURL != "" {
+	if deps.Debouncer == nil && cfg.RedisURL != "" {
 		redisOpts, err := redis.ParseURL(cfg.RedisURL)
 		if err != nil {
 			redisOpts = &redis.Options{Addr: cfg.RedisURL}
@@ -340,175 +381,101 @@ func main() {
 		rdb := redis.NewClient(redisOpts)
 		ctxPing, cancelPing := context.WithTimeout(ctx, 2*time.Second)
 		if err := rdb.Ping(ctxPing).Err(); err == nil {
-			debouncer = inbound.NewDebouncer(rdb)
-			inboundProcessor.SetDebouncer(debouncer)
+			deps.Debouncer = inbound.NewDebouncer(rdb)
 			slog.Info("inbound debounce buffer connected", "addr", redisOpts.Addr)
 		} else {
 			slog.Warn("inbound debounce buffer: redis ping failed, operating in bypass mode", "error", err)
 		}
 		cancelPing()
 	}
-
-	sessionManager := session.NewManager(db, connectionRepo, sessionRegistry, dispatcherRegistry, cfg.WAVersion, inboundProcessor)
-	sessionManager.SetPublisher(publisher)
-	go func() {
-		if err := sessionManager.ReconnectAll(ctx); err != nil {
-			slog.Error("session manager: startup reconnect failed", "error", err)
-		}
-	}()
-	orchestrator := queue.NewDispatchOrchestrator(dispatcherRegistry, dispatchRepo, publisher, queueDepth, auditWriter, contactRepo, 5, 60*time.Second)
-	orchestrator.SetContactRepository(contactRepo)
-	orchestrator.SetRecipientSessionRepository(recipientSessionRepo)
-	worker := queue.NewWorker(ctx, consumer, orchestrator)
-	slog.Info("message worker started", "consumer", "worker-1")
-
-	// --- Campaign Worker ---
-	campStream, err := queue.EnsureCampaignStream(ctx, nc)
-	if err != nil {
-		slog.Error("failed to create JetStream campaign stream", "error", err)
-		os.Exit(1)
-	}
-	campConsumer, err := queue.EnsureCampaignConsumer(ctx, campStream, "campaign-worker-1")
-	if err != nil {
-		slog.Error("failed to create JetStream campaign consumer", "error", err)
-		os.Exit(1)
-	}
-	campaignRepo := repository.NewCampaignRepository(pool)
-	tagRepo := repository.NewTagRepository(pool)
-	campaignEngine := campaign.NewBroadcasterEngine(campaignRepo, connectionRepo, dispatchRepo, publisher, auditWriter, tagRepo)
-	campaignWorker := queue.NewCampaignWorker(ctx, campConsumer, campaignEngine)
-	slog.Info("campaign worker started", "consumer", "campaign-worker-1")
-
-	// --- Campaign Scheduler Daemon ---
-	campaignScheduler := queue.NewCampaignScheduler(campaignEngine)
-	go campaignScheduler.Run(ctx)
-	slog.Info("campaign scheduler started", "interval", "5s")
-
-	// --- Webhook Worker ---
-	webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, encryptor)
-	webhookDLQRepo := repository.NewWebhookDLQRepository(pool, encryptor)
-	verbsEngine := webhook.NewVerbsEngine(publisher, contactRepo, userActionLogRepo, connectionRepo)
-
-	var webhookAllowlist []string
-	if !cfg.IsProduction() || os.Getenv("PERGO_ALLOW_LOCAL_WEBHOOKS") == "true" {
-		webhookAllowlist = []string{"localhost", "127.0.0.1", "::1", "0.0.0.0", "host.docker.internal"}
-	}
-	dispatcherHTTPClient := security.NewSafeWebhookClient(security.WithTimeout(10*time.Second), security.WithAllowlist(webhookAllowlist...))
-	webhookDispatcher := webhook.NewDefaultDispatcher(webhookSubRepo, webhookDLQRepo, wsRepo, dispatcherHTTPClient, verbsEngine)
-	inboundProcessor.SetReactionWebhookDispatcher(webhookDispatcher)
-	webhookWorker, err := queue.NewWebhookWorker(ctx, nc, webhookDispatcher, webhookSubRepo)
-	if err != nil {
-		slog.Error("failed to start webhook worker", "error", err)
-		os.Exit(1)
-	}
-	webhookWorker.SetWorkspaceRepository(wsRepo)
-
-	// --- Session Expiration Ticker ---
-	sessionTicker := session.NewSessionTicker(recipientSessionRepo, publisher)
-	go sessionTicker.Run(ctx)
-	slog.Info("session expiration ticker started", "interval", "5m")
-
-	// --- LGPD Data Retention & Media Purge Daemon ---
-	retentionPurger := retention.NewPurger(wsRepo, auditRepo, mediaEngine)
-	retentionDaemon := retention.NewDaemon(retentionPurger, 1*time.Hour)
-	go retentionDaemon.Run(ctx)
-	slog.Info("data retention daemon started", "interval", "1h")
-
-	slog.Info("rate limiter configured", "rps", 10, "burst", 10)
-	slog.Info("queue depth limit", "max", 1000)
-	if cfg.AdminPassword == "pergo-dev-2026" {
-		slog.Warn("admin panel running with default password 'pergo-dev-2026'. Change PERGO_ADMIN_PASSWORD in production.")
-	} else {
-		slog.Info("admin panel password configured from environment")
+	if deps.Debouncer != nil {
+		deps.InboundProcessor.SetDebouncer(deps.Debouncer)
 	}
 
-	// --- Debug server (pprof + expvar) ---
-	debugSrv, err := obs.StartDebugServer(net.JoinHostPort("127.0.0.1", cfg.DebugPort))
-	if err != nil {
-		slog.Warn("debug server unavailable (port in use?), continuing without pprof",
-			"addr", net.JoinHostPort("127.0.0.1", cfg.DebugPort),
-			"error", err)
-	} else {
-		slog.Info("debug server started", "addr", debugSrv.Addr())
+	deps.SessionManager = session.NewManager(deps.DB, deps.ConnectionRepo, deps.SessionRegistry, deps.DispatcherRegistry, cfg.WAVersion, deps.InboundProcessor)
+	if deps.JetStreamPublisher != nil {
+		deps.SessionManager.SetPublisher(deps.JetStreamPublisher)
+	} else if deps.Publisher != nil {
+		deps.SessionManager.SetPublisher(deps.Publisher)
 	}
 
-	// --- Shutdown orchestrator ---
-	orch := shutdown.NewOrchestrator()
+	// --- OutboundProcessor ---
+	deps.OutboundProcessor = outbound.NewProcessor(deps.QueueDepth, deps.MediaEngine, deps.ConnectionRepo, deps.Publisher)
+	deps.OutboundProcessor.SetWindowChecker(deps.WindowChecker)
+	deps.OutboundProcessor.SetTemplateRepository(deps.WABATemplateRepo)
+	deps.OutboundProcessor.SetChatRepository(deps.ChatRepo)
+	deps.OutboundProcessor.SetContactRepository(deps.ContactRepo)
 
-	// Register cleanup in reverse order of startup.
-	// Shutdown order: Echo → debug → audit → worker → NATS → pgxpool → sqlDB
-	orch.Register(func() error {
-		slog.Info("closing sql.DB")
-		return db.Close()
-	})
-	orch.Register(func() error {
-		slog.Info("closing pgxpool")
-		pool.Close()
-		return nil
-	})
-	orch.Register(func() error {
-		slog.Info("closing NATS connection")
-		nc.Close()
-		return nil
-	})
-	// Worker shutdown runs before NATS close — drains the consumer
-	orch.Register(func() error {
-		slog.Info("stopping webhook worker")
-		webhookWorker.Stop()
-		return nil
-	})
-	orch.Register(func() error {
-		slog.Info("stopping campaign worker")
-		campaignWorker.Stop()
-		return nil
-	})
-	orch.Register(func() error {
-		slog.Info("stopping message worker")
-		worker.Stop()
-		return nil
-	})
-	orch.Register(func() error {
-		slog.Info("stopping data retention daemon")
-		retentionDaemon.Stop()
-		return nil
-	})
-	// Session manager stops all device sessions before worker drains
-	orch.Register(func() error {
-		slog.Info("stopping all WhatsApp sessions")
-		sessionManager.StopAll()
-		return nil
-	})
-	orch.Register(func() error {
-		slog.Info("flushing audit buffer")
-		err := auditWriter.Close()
-		slog.Info("audit buffer flushed")
-		return err
-	})
-	if debugSrv != nil {
-		orch.Register(func() error {
-			slog.Info("shutting down debug server")
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			return debugSrv.Shutdown(ctx)
-		})
+	// --- ChatEngine ---
+	chatEngineOpts := []chat.Option{
+		chat.WithContactRepo(deps.ContactRepo),
+		chat.WithConnectionRepo(deps.ConnectionRepo),
+		chat.WithWorkspaceRepo(deps.WorkspaceRepo),
+		chat.WithAuditRepo(deps.AuditRepo),
+		chat.WithMessagePublisher(deps.Publisher),
+		chat.WithReactionWebhookDispatcher(deps.WebhookDispatcher),
+		chat.WithMessageIngestor(deps.OutboundProcessor),
+	}
+	if deps.Debouncer != nil {
+		chatEngineOpts = append(chatEngineOpts, chat.WithDebounceCanceller(deps.Debouncer))
+	}
+	deps.ChatEngine = chat.NewEngine(deps.ChatRepo, chatEngineOpts...)
+
+	// --- CampaignEngine ---
+	deps.CampaignEngine = campaign.NewBroadcasterEngine(
+		deps.CampaignRepo,
+		deps.ConnectionRepo,
+		deps.DispatchRepo,
+		deps.Publisher,
+		deps.AuditWriter,
+		deps.TagRepo,
+	)
+
+	// --- MCPServer ---
+	mcpOpts := []mcp.ServerOption{
+		mcp.WithWebhookDLQRepo(deps.WebhookDLQRepo),
+		mcp.WithChatRepo(deps.ChatRepo),
+		mcp.WithChatEngine(deps.ChatEngine),
+		mcp.WithWABATemplateRepo(deps.WABATemplateRepo),
+		mcp.WithPublisher(deps.Publisher),
+		mcp.WithJetStream(deps.JS),
+		mcp.WithNATSConn(nc),
+	}
+	if deps.Debouncer != nil {
+		mcpOpts = append(mcpOpts, mcp.WithDebounceCanceller(deps.Debouncer))
+	}
+	deps.MCPServer = mcp.NewServer(
+		deps.WorkspaceRepo,
+		deps.ConnectionRepo,
+		deps.ContactRepo,
+		deps.AuditRepo,
+		deps.OutboundProcessor,
+		deps.APIKeyRepo,
+		deps.WebhookSubRepo,
+		deps.SessionManager,
+		deps.WebhookDispatcher,
+		[]byte(cfg.SessionSecret),
+		cfg.ExternalURL,
+		mcpOpts...,
+	)
+
+	return deps, nil
+}
+
+// BuildHTTPRouter assembles the complete *echo.Echo middleware and route tree
+// consuming the bootstrapped CoreDeps.
+func BuildHTTPRouter(core *CoreDeps) *echo.Echo {
+	cfg := core.Config
+	if cfg == nil {
+		cfg = config.Load()
 	}
 
-	// --- Repositories ---
-	apiKeyRepo := repository.NewAPIKeyRepository(pool)
-	wabaTemplateRepo := repository.NewWABATemplateRepository(pool)
-	if err := wabaTemplateRepo.LoadCache(ctx); err != nil {
-		slog.Warn("failed to warm up WABA template cache", "error", err)
-	} else {
-		slog.Info("WABA template cache warmed up successfully")
-	}
+	wabaTemplateHandler := admin.NewWABATemplateHandler(core.WABATemplateRepo, core.ConnectionRepo)
+	userLogsHandler := admin.NewUserLogsHandler(core.UserActionLogRepo)
+	chatwootAdminHandler := admin.NewChatwootAdminHandler(core.IntegrationRepo)
+	typebotAdminHandler := admin.NewTypebotSettingsHandler(core.IntegrationRepo, core.ConnectionRepo)
+	developerHandler := admin.NewDeveloperHandler(core.WorkspaceRepo, core.APIKeyRepo, []byte(cfg.SessionSecret), cfg.ExternalURL)
 
-	wabaTemplateHandler := admin.NewWABATemplateHandler(wabaTemplateRepo, connectionRepo)
-	userLogsHandler := admin.NewUserLogsHandler(userActionLogRepo)
-	chatwootAdminHandler := admin.NewChatwootAdminHandler(integrationRepo)
-	typebotAdminHandler := admin.NewTypebotSettingsHandler(integrationRepo, connectionRepo)
-	developerHandler := admin.NewDeveloperHandler(wsRepo, apiKeyRepo, []byte(cfg.SessionSecret), cfg.ExternalURL)
-
-	// --- Echo HTTP server ---
 	e := echosrv.New()
 
 	// Redirect /admin to /admin/ to prevent trailing-slash 404s
@@ -521,15 +488,15 @@ func main() {
 	e.Use(middleware.LocaleMiddleware())
 
 	// Auth middleware — protects /api/* routes
-	e.Use(middleware.AuthMiddleware(apiKeyRepo, cfg.MasterKey))
+	e.Use(middleware.AuthMiddleware(core.APIKeyRepo, cfg.MasterKey))
 
 	// Audit middleware — audits API operations
-	e.Use(middleware.AuditMiddleware(userActionLogRepo))
+	e.Use(middleware.AuditMiddleware(core.UserActionLogRepo))
 
 	// Health endpoints
 	healthHandler := &handler.HealthHandler{
-		Pool: pool,
-		NATS: &natsConn{nc: nc},
+		Pool: core.Pool,
+		NATS: core.NATSHealth,
 	}
 	healthHandler.RegisterRoutes(e)
 
@@ -538,136 +505,99 @@ func main() {
 	docsHandler.RegisterRoutes(e)
 
 	// --- Message handler (POST /messages) ---
-	outboundProcessor := outbound.NewProcessor(queueDepth, mediaEngine, connectionRepo, publisher)
-	outboundProcessor.SetWindowChecker(windowChecker)
-	outboundProcessor.SetTemplateRepository(wabaTemplateRepo)
-	outboundProcessor.SetChatRepository(chatRepo)
-	outboundProcessor.SetContactRepository(contactRepo)
-
-	chatEngineOpts := []chat.Option{
-		chat.WithContactRepo(contactRepo),
-		chat.WithConnectionRepo(connectionRepo),
-		chat.WithWorkspaceRepo(wsRepo),
-		chat.WithAuditRepo(auditRepo),
-		chat.WithMessagePublisher(publisher),
-		chat.WithReactionWebhookDispatcher(webhookDispatcher),
-		chat.WithMessageIngestor(outboundProcessor),
-	}
-	if debouncer != nil {
-		chatEngineOpts = append(chatEngineOpts, chat.WithDebounceCanceller(debouncer))
-	}
-	chatEngine := chat.NewEngine(chatRepo, chatEngineOpts...)
-
 	messageHandler := &handler.MessageHandler{
-		Ingestor: outboundProcessor,
+		Ingestor: core.OutboundProcessor,
 	}
-	messageHandler.RegisterRoutes(e, middleware.RateLimiterMiddleware(rateLimiter), middleware.EnforceWorkspaceScope())
+	messageHandler.RegisterRoutes(e, middleware.RateLimiterMiddleware(core.RateLimiter), middleware.EnforceWorkspaceScope())
 
 	// --- MCP Server (Model Context Protocol) ---
-	mcpServer := mcp.NewServer(
-		wsRepo,
-		connectionRepo,
-		contactRepo,
-		auditRepo,
-		outboundProcessor,
-		apiKeyRepo,
-		webhookSubRepo,
-		sessionManager,
-		webhookDispatcher,
-		[]byte(cfg.SessionSecret),
-		cfg.ExternalURL,
-		mcp.WithWebhookDLQRepo(webhookDLQRepo),
-		mcp.WithChatRepo(chatRepo),
-		mcp.WithChatEngine(chatEngine),
-		mcp.WithWABATemplateRepo(wabaTemplateRepo),
-		mcp.WithJetStreamPublisher(publisher),
-		mcp.WithJetStream(js),
-		mcp.WithNATSConn(nc),
-	)
-	e.Any("/api/mcp/*", echo.WrapHandler(mcpServer.SSEServer))
+	if core.MCPServer != nil {
+		e.Any("/api/mcp/*", echo.WrapHandler(core.MCPServer.SSEServer))
 
-	// --- Universal Agnostic MCP Gateway & Auto-Discovery Endpoints ---
-	universalGateway := mcp.NewUniversalGateway(mcpServer, cfg.ExternalURL)
-	e.Any("/mcp", echo.WrapHandler(universalGateway))
-	e.Any("/mcp/*", echo.WrapHandler(universalGateway))
-	e.POST("/oauth/register", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthRegister)))
-	e.GET("/oauth/authorize", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthAuthorize)))
-	e.POST("/oauth/token", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthToken)))
-	e.GET("/.well-known/mcp", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownMCP)))
-	e.GET("/.well-known/mcp.json", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownMCP)))
-	e.GET("/.well-known/opencode", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOpenCode)))
-	e.GET("/.well-known/opencode.json", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOpenCode)))
-	e.GET("/.well-known/oauth-protected-resource", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOAuthProtectedResource)))
-	e.GET("/.well-known/oauth-authorization-server", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOAuthAuthorizationServer)))
+		// --- Universal Agnostic MCP Gateway & Auto-Discovery Endpoints ---
+		universalGateway := mcp.NewUniversalGateway(core.MCPServer, cfg.ExternalURL)
+		e.Any("/mcp", echo.WrapHandler(universalGateway))
+		e.Any("/mcp/*", echo.WrapHandler(universalGateway))
+		e.POST("/oauth/register", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthRegister)))
+		e.GET("/oauth/authorize", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthAuthorize)))
+		e.POST("/oauth/token", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthToken)))
+		e.GET("/.well-known/mcp", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownMCP)))
+		e.GET("/.well-known/mcp.json", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownMCP)))
+		e.GET("/.well-known/opencode", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOpenCode)))
+		e.GET("/.well-known/opencode.json", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOpenCode)))
+		e.GET("/.well-known/oauth-protected-resource", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOAuthProtectedResource)))
+		e.GET("/.well-known/oauth-authorization-server", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownOAuthAuthorizationServer)))
+	}
 
 	// --- Media proxy handler (GET /media/:workspace_id/:hash) ---
-	mediaHandler := handler.NewMediaHandler(s3Client)
+	mediaHandler := handler.NewMediaHandler(core.S3Client)
 	e.GET("/media/:workspace_id/:hash", mediaHandler.Handle)
 
 	// --- Telegram Inbound Webhook handler ---
-	telegramWebhookHandler := handler.NewTelegramWebhookHandler(connectionRepo, inboundProcessor, mediaEngine)
+	telegramWebhookHandler := handler.NewTelegramWebhookHandler(core.ConnectionRepo, core.InboundProcessor, core.MediaEngine)
 	e.POST("/webhooks/telegram/:workspace_id", telegramWebhookHandler.Handle)
 
 	// --- WABA Inbound Webhook handler ---
-	wabaWebhookHandler := handler.NewWABAWebhookHandler(connectionRepo, inboundProcessor, mediaEngine)
-	wabaWebhookHandler.SetTemplatesRepo(wabaTemplateRepo)
+	wabaWebhookHandler := handler.NewWABAWebhookHandler(core.ConnectionRepo, core.InboundProcessor, core.MediaEngine)
+	wabaWebhookHandler.SetTemplatesRepo(core.WABATemplateRepo)
 	e.GET("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandleGet)
 	e.POST("/webhooks/waba/:workspace_id", wabaWebhookHandler.HandlePost)
 
 	// --- Workspace REST API handler ---
-	workspaceAPIHandler := apipkg.NewWorkspaceAPIHandler(wsRepo, apiKeyRepo)
+	workspaceAPIHandler := apipkg.NewWorkspaceAPIHandler(core.WorkspaceRepo, core.APIKeyRepo)
 	workspaceAPIHandler.RegisterRoutes(e, middleware.MasterAuth(cfg))
 
 	// --- Connection & Device REST API handler ---
 	wabaMetaClient := client.NewWABAMetaClient(nil, "")
 	telegramBotClient := client.NewTelegramBotClient(nil, "")
 	connectionAPIHandler := apipkg.NewConnectionAPIHandler(
-		connectionRepo,
-		sessionManager,
-		sessionRegistry,
+		core.ConnectionRepo,
+		core.SessionManager,
+		core.SessionRegistry,
 		apipkg.WithWABAMetaClient(wabaMetaClient),
-		apipkg.WithWABATemplateRepo(wabaTemplateRepo),
+		apipkg.WithWABATemplateRepo(core.WABATemplateRepo),
 		apipkg.WithTelegramClient(telegramBotClient),
 		apipkg.WithExternalURL(cfg.ExternalURL),
 	)
 	connectionAPIHandler.RegisterRoutes(e, middleware.EnforceWorkspaceScope())
 
 	// --- WABA Template REST API handler ---
-	wabaTemplateAPIHandler := apipkg.NewWABATemplateAPIHandler(wabaTemplateRepo, connectionRepo, wabaMetaClient)
+	wabaTemplateAPIHandler := apipkg.NewWABATemplateAPIHandler(core.WABATemplateRepo, core.ConnectionRepo, wabaMetaClient)
 	wabaTemplateAPIHandler.RegisterRoutes(e, middleware.EnforceWorkspaceScope())
 
 	// --- Webhook Subscription REST API handler ---
-	webhookSubscriptionAPIHandler := apipkg.NewWebhookSubscriptionAPIHandler(webhookSubRepo, apipkg.WithSubscriptionAllowlist(webhookAllowlist...))
+	webhookSubscriptionAPIHandler := apipkg.NewWebhookSubscriptionAPIHandler(core.WebhookSubRepo, apipkg.WithSubscriptionAllowlist(core.WebhookAllowlist...))
 	webhookSubscriptionAPIHandler.RegisterRoutes(e, middleware.EnforceWorkspaceScope())
 
-	// --- Public Chat REST API handler ---
+	// --- Public Chat REST API handler (sole owner of /api/v1/chats/*) ---
 	chatAPIHandler := apipkg.NewChatAPIHandler(
-		chatRepo,
-		apipkg.WithChatEngine(chatEngine),
-		apipkg.WithChatContactRepo(contactRepo),
-		apipkg.WithChatConnectionRepo(connectionRepo),
-		apipkg.WithChatWorkspaceRepo(wsRepo),
-		apipkg.WithChatAuditRepo(auditRepo),
-		apipkg.WithChatMessagePublisher(publisher),
-		apipkg.WithChatWebhookDispatcher(webhookDispatcher),
-		apipkg.WithChatMessageIngestor(outboundProcessor),
+		core.ChatRepo,
+		apipkg.WithChatEngine(core.ChatEngine),
+		apipkg.WithChatContactRepo(core.ContactRepo),
+		apipkg.WithChatConnectionRepo(core.ConnectionRepo),
+		apipkg.WithChatWorkspaceRepo(core.WorkspaceRepo),
+		apipkg.WithChatAuditRepo(core.AuditRepo),
+		apipkg.WithChatMessagePublisher(core.Publisher),
+		apipkg.WithChatWebhookDispatcher(core.WebhookDispatcher),
+		apipkg.WithChatMessageIngestor(core.OutboundProcessor),
+		apipkg.WithChatDebounceCanceller(core.Debouncer),
 	)
 	chatAPIHandler.RegisterRoutes(e, middleware.EnforceWorkspaceScope())
 
 	// --- WABA Meta Flows Data Exchange endpoint ---
-	flowDataExchangeHandler := handler.NewFlowDataExchangeHandler(connectionRepo, wsRepo)
+	flowDataExchangeHandler := handler.NewFlowDataExchangeHandler(core.ConnectionRepo, core.WorkspaceRepo)
 	e.POST("/api/v1/waba/flows/data-exchange", flowDataExchangeHandler.HandleFlowDataExchange)
 
 	// --- Chatwoot Inbound Webhook handler ---
-	chatwootWebhookHandler := handler.NewChatwootWebhookHandler(pool, chatwootMappingRepo, contactRepo, publisher)
+	chatwootWebhookHandler := handler.NewChatwootWebhookHandler(core.Pool, core.ChatwootMappingRepo, core.ContactRepo, core.Publisher)
 	e.POST("/api/integrations/chatwoot", chatwootWebhookHandler.Handle)
 
 	// --- Typebot Inbound Webhook handler ---
-	typebotWebhookHandler := handler.NewTypebotWebhookHandler(pool, publisher)
+	typebotWebhookHandler := handler.NewTypebotWebhookHandler(core.Pool, core.Publisher)
 	e.POST("/api/integrations/typebot", typebotWebhookHandler.Handle)
 
 	// --- Email Tracking & Webhook handler ---
-	emailTrackingHandler := inbound.NewEmailTrackingHandler(string(kek), dispatchRepo)
+	emailTrackingHandler := inbound.NewEmailTrackingHandler(string(core.KEK), core.DispatchRepo)
 	e.GET("/v1/webhooks/email/open", emailTrackingHandler.HandleOpen)
 	e.GET("/v1/webhooks/email/click", emailTrackingHandler.HandleClick)
 	e.POST("/v1/webhooks/email/ses", emailTrackingHandler.HandleSESWebhook)
@@ -678,11 +608,7 @@ func main() {
 	}, middleware.AgentDiscoveryMiddleware(), middleware.ContentNegotiationMiddleware(api.LLMsTxt))
 
 	// --- Admin panel routes ---
-	// Repositories for admin dashboard
-	auditQuerier := audit.NewQuerier(pool)
-
-	// Public admin routes (no session auth required)
-	ssoHandler := admin.NewSSOHandler(wsRepo, []byte(cfg.SessionSecret))
+	ssoHandler := admin.NewSSOHandler(core.WorkspaceRepo, []byte(cfg.SessionSecret))
 
 	adminPublic := e.Group("/admin")
 	adminPublic.GET("/login", func(c *echo.Context) error {
@@ -692,10 +618,10 @@ func main() {
 		return admin.LoginPage(c, false)
 	})
 	adminPublic.POST("/login", func(c *echo.Context) error {
-		return admin.LoginPost(c, wsRepo, cfg.AdminPassword)
+		return admin.LoginPost(c, core.WorkspaceRepo, cfg.AdminPassword)
 	})
 	adminPublic.POST("/login/", func(c *echo.Context) error {
-		return admin.LoginPost(c, wsRepo, cfg.AdminPassword)
+		return admin.LoginPost(c, core.WorkspaceRepo, cfg.AdminPassword)
 	})
 	adminPublic.POST("/logout", func(c *echo.Context) error {
 		return admin.Logout(c)
@@ -714,18 +640,18 @@ func main() {
 	adminGroup.Use(middleware.HTMXMiddleware())
 	adminGroup.Use(middleware.InternalProxyAuthMiddleware(cfg.MasterKey))
 	adminGroup.Use(middleware.SessionAuthMiddleware())
-	adminGroup.Use(middleware.DashboardAuditMiddleware(userActionLogRepo))
-	adminGroup.Use(middleware.ActiveWorkspaceMiddleware(wsRepo))
+	adminGroup.Use(middleware.DashboardAuditMiddleware(core.UserActionLogRepo))
+	adminGroup.Use(middleware.ActiveWorkspaceMiddleware(core.WorkspaceRepo))
 	adminGroup.Use(middleware.EnforceWorkspaceScope())
 
 	// Admin dashboard
 	dashboardHandler := &admin.DashboardHandler{
-		Pool:        pool,
-		Workspaces:  wsRepo,
-		Audit:       auditQuerier,
-		APIKeys:     apiKeyRepo,
-		Connections: connectionRepo,
-		Publisher:   publisher,
+		Pool:        core.Pool,
+		Workspaces:  core.WorkspaceRepo,
+		Audit:       core.AuditQuerier,
+		APIKeys:     core.APIKeyRepo,
+		Connections: core.ConnectionRepo,
+		Publisher:   core.JetStreamPublisher,
 	}
 	adminGroup.GET("/", dashboardHandler.Index)
 	adminGroup.POST("/webhook/simulate", dashboardHandler.SimulateWebhook)
@@ -734,8 +660,8 @@ func main() {
 
 	// Workspace management routes
 	workspaceHandler := &admin.WorkspaceHandler{
-		Repo:        wsRepo,
-		APIKeys:     apiKeyRepo,
+		Repo:        core.WorkspaceRepo,
+		APIKeys:     core.APIKeyRepo,
 		ExternalURL: cfg.ExternalURL,
 	}
 	adminGroup.GET("/workspaces", workspaceHandler.ActiveWorkspace)
@@ -759,7 +685,7 @@ func main() {
 	adminGroup.POST("/workspace/:id/flow-webhook-url", workspaceHandler.SetFlowWebhookURL)
 
 	// API key management routes
-	apiKeyHandler := &admin.APIKeyHandler{Repo: apiKeyRepo, Workspaces: wsRepo}
+	apiKeyHandler := &admin.APIKeyHandler{Repo: core.APIKeyRepo, Workspaces: core.WorkspaceRepo}
 	adminGroup.GET("/workspaces/:id/keys", apiKeyHandler.List)
 	adminGroup.POST("/workspaces/:id/keys", apiKeyHandler.Generate)
 	adminGroup.GET("/workspaces/:id/keys/new", func(c *echo.Context) error {
@@ -777,7 +703,7 @@ func main() {
 	adminGroup.DELETE("/workspaces/:id/keys/:key_id", apiKeyHandler.Revoke)
 
 	// Audit log review routes
-	auditHandler := &admin.AuditHandler{Repo: auditRepo, Workspaces: wsRepo}
+	auditHandler := &admin.AuditHandler{Repo: core.AuditRepo, Workspaces: core.WorkspaceRepo}
 	adminGroup.GET("/audit", auditHandler.Redirect)
 	adminGroup.GET("/logs", func(c *echo.Context) error {
 		return c.Redirect(http.StatusMovedPermanently, "/admin/logs/outbound")
@@ -791,22 +717,22 @@ func main() {
 	adminGroup.GET("/audit/outbound/export", auditHandler.ExportOutboundCSV)
 	adminGroup.GET("/logs/outbound/export", auditHandler.ExportOutboundCSV)
 
-	// Inbox routes
+	// Inbox routes (backed by ChatEngine & OutboundProcessor)
 	presenceTracker := presence.NewTracker(15 * time.Second)
 	inboxHandler := &admin.InboxHandler{
-		Repo:              auditRepo,
-		ChatRepo:          chatRepo,
-		Sessions:          recipientSessionRepo,
-		Workspaces:        wsRepo,
-		Connections:       connectionRepo,
-		Publisher:         publisher,
-		Templates:         wabaTemplateRepo,
-		ContactRepo:       contactRepo,
-		UserActionLogs:    userActionLogRepo,
+		Repo:              core.AuditRepo,
+		ChatRepo:          core.ChatRepo,
+		Sessions:          core.RecipientSessionRepo,
+		Workspaces:        core.WorkspaceRepo,
+		Connections:       core.ConnectionRepo,
+		Publisher:         core.Publisher,
+		Templates:         core.WABATemplateRepo,
+		ContactRepo:       core.ContactRepo,
+		UserActionLogs:    core.UserActionLogRepo,
 		Presence:          presenceTracker,
-		WebhookDispatcher: webhookDispatcher,
-		ChatEngine:        chatEngine,
-		Ingestor:          outboundProcessor,
+		WebhookDispatcher: core.WebhookDispatcher,
+		ChatEngine:        core.ChatEngine,
+		Ingestor:          core.OutboundProcessor,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
 	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)
@@ -836,14 +762,14 @@ func main() {
 
 	// Device/Connection management routes
 	deviceHandler := &admin.DeviceHandler{
-		Sessions:      sessionRegistry,
-		Manager:       sessionManager,
-		Connections:   connectionRepo,
-		Publisher:     publisher,
-		NC:            nc,
-		TemplatesRepo: wabaTemplateRepo,
+		Sessions:      core.SessionRegistry,
+		Manager:       core.SessionManager,
+		Connections:   core.ConnectionRepo,
+		Publisher:     core.Publisher,
+		NC:            core.NC,
+		TemplatesRepo: core.WABATemplateRepo,
 		ExternalURL:   cfg.ExternalURL,
-		ContactRepo:   contactRepo,
+		ContactRepo:   core.ContactRepo,
 	}
 	adminGroup.GET("/devices", deviceHandler.List)
 	adminGroup.GET("/connections", deviceHandler.List)
@@ -860,11 +786,15 @@ func main() {
 	adminGroup.GET("/connections/flow-key", deviceHandler.FlowKey)
 
 	// Telemetry page (system health: sessions, NATS, uptime)
+	var natsStatus admin.NATSStatus = &natsConn{nc: core.NC}
+	if ns, ok := core.NATSHealth.(admin.NATSStatus); ok {
+		natsStatus = ns
+	}
 	telemetryHandler := &admin.TelemetryHandler{
-		Manager:    sessionManager,
-		Sessions:   sessionRegistry,
-		QueueDepth: queueDepth,
-		NC:         &natsConn{nc: nc},
+		Manager:    core.SessionManager,
+		Sessions:   core.SessionRegistry,
+		QueueDepth: core.QueueDepth,
+		NC:         natsStatus,
 		StartTime:  time.Now(),
 	}
 	adminGroup.GET("/telemetry", telemetryHandler.Index)
@@ -941,7 +871,7 @@ func main() {
 	})
 
 	// Webhooks & DLQ routes (flat admin routes)
-	webhookHandler := admin.NewWebhookDLQHandler(webhookDLQRepo, webhookSubRepo, wsRepo, publisher)
+	webhookHandler := admin.NewWebhookDLQHandler(core.WebhookDLQRepo, core.WebhookSubRepo, core.WorkspaceRepo, core.JetStreamPublisher)
 	adminGroup.GET("/webhooks", webhookHandler.Page)
 	adminGroup.GET("/webhooks/subscriptions/new", webhookHandler.GetSubscriptionNewForm)
 	adminGroup.GET("/webhooks/subscriptions/:subscription_id/edit", webhookHandler.GetSubscriptionEditForm)
@@ -1001,7 +931,7 @@ func main() {
 	adminGroup.GET("/logs/actions/:id/metadata", userLogsHandler.GetMetadata)
 
 	// Tags & Contact Import/Export routes (flat admin routes)
-	tagAdminHandler := admin.NewTagAdminHandler(tagRepo, contactRepo, wsRepo)
+	tagAdminHandler := admin.NewTagAdminHandler(core.TagRepo, core.ContactRepo, core.WorkspaceRepo)
 	adminGroup.GET("/tags", tagAdminHandler.Page)
 	adminGroup.POST("/tags", tagAdminHandler.CreateTag)
 	adminGroup.DELETE("/tags/:id", tagAdminHandler.DeleteTag)
@@ -1026,7 +956,7 @@ func main() {
 	})
 
 	// Campaigns routes (flat admin routes)
-	campaignHandler := admin.NewCampaignHandler(campaignRepo, wabaTemplateRepo, connectionRepo, tagRepo, publisher, campaignEngine)
+	campaignHandler := admin.NewCampaignHandler(core.CampaignRepo, core.WABATemplateRepo, core.ConnectionRepo, core.TagRepo, core.JetStreamPublisher, core.CampaignEngine)
 	adminGroup.GET("/campaigns", campaignHandler.List)
 	adminGroup.GET("/campaigns/new", campaignHandler.NewForm)
 	adminGroup.POST("/campaigns/upload", campaignHandler.UploadCSV)
@@ -1131,7 +1061,271 @@ func main() {
 	}
 	v1Group.GET("/me", meHandler)
 
-	// Start HTTP server
+	return e
+}
+
+func runMCPStdio(ctx context.Context, cfg *config.Config, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return fmt.Errorf("create pgxpool: %w", err)
+	}
+	defer pool.Close()
+
+	db, err := postgres.NewSQLDB(pool)
+	if err != nil {
+		return fmt.Errorf("create sql.DB: %w", err)
+	}
+	defer db.Close()
+
+	nc, err := nats.Connect(cfg.NATSUrl)
+	if err != nil {
+		return fmt.Errorf("connect to NATS: %w", err)
+	}
+	defer nc.Close()
+
+	core, err := BootstrapCore(ctx, cfg, pool, db, nc)
+	if err != nil {
+		return fmt.Errorf("bootstrap core dependencies: %w", err)
+	}
+	defer func() { _ = core.Close() }()
+
+	slog.Info("starting MCP server in stdio mode")
+	return mcp.RunStdio(ctx, core.MCPServer, core.APIKeyRepo, args, stdin, stdout, stderr)
+}
+
+func runHealthcheck(port string) int {
+	if port == "" {
+		port = "8080"
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get("http://127.0.0.1:" + port + "/healthz")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return 1
+	}
+	_ = resp.Body.Close()
+	return 0
+}
+
+func main() {
+	if len(os.Args) > 1 && (os.Args[1] == "-healthcheck" || os.Args[1] == "--healthcheck") {
+		os.Exit(runHealthcheck(os.Getenv("PERGO_SERVER_PORT")))
+	}
+
+	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+		slog.SetDefault(slog.New(obs.NewRedactingHandler(slog.NewJSONHandler(os.Stderr, nil))))
+		cfg := config.Load()
+		if err := cfg.Validate(); err != nil {
+			slog.Error("invalid configuration", "error", err)
+			os.Exit(1)
+		}
+		if err := runMCPStdio(context.Background(), cfg, os.Args[2:], os.Stdin, os.Stdout, os.Stderr); err != nil {
+			slog.Error("MCP stdio server execution failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	slog.SetDefault(slog.New(obs.NewRedactingHandler(slog.NewJSONHandler(os.Stdout, nil))))
+
+	// --- Config from env vars ---
+	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		slog.Error("invalid configuration", "error", err)
+		os.Exit(1)
+	}
+
+	// --- PostgreSQL ---
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	pool, err := postgres.NewPool(ctx, cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("failed to create pgxpool", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	db, err := postgres.NewSQLDB(pool)
+	if err != nil {
+		slog.Error("failed to create stdlib sql.DB", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	if err := postgres.RunMigrations(db); err != nil {
+		slog.Error("migrations failed", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("migrations applied successfully")
+
+	// --- NATS ---
+	nc, err := nats.Connect(cfg.NATSUrl)
+	if err != nil {
+		slog.Error("failed to connect to NATS", "error", err, "url", cfg.NATSUrl)
+		os.Exit(1)
+	}
+	defer nc.Close()
+	slog.Info("connected to NATS", "url", cfg.NATSUrl)
+
+	stream, err := queue.EnsureStream(ctx, nc)
+	if err != nil {
+		slog.Error("failed to create JetStream stream", "error", err)
+		os.Exit(1)
+	}
+	consumer, err := queue.EnsureConsumer(ctx, stream, "worker-1")
+	if err != nil {
+		slog.Error("failed to create JetStream consumer", "error", err)
+		os.Exit(1)
+	}
+
+	// --- Bootstrap Shared Core Dependencies ---
+	core, err := BootstrapCore(ctx, cfg, pool, db, nc)
+	if err != nil {
+		slog.Error("failed to bootstrap core dependencies", "error", err)
+		os.Exit(1)
+	}
+
+	if ws, err := core.WorkspaceRepo.EnsureWorkspace(ctx, "Agora"); err != nil {
+		slog.Warn("could not ensure default workspace on startup", "error", err)
+	} else {
+		slog.Info("default workspace ready", "workspace_id", ws.ID, "name", ws.Name)
+	}
+
+	go func() {
+		if err := core.SessionManager.ReconnectAll(ctx); err != nil {
+			slog.Error("session manager: startup reconnect failed", "error", err)
+		}
+	}()
+
+	orchestrator := queue.NewDispatchOrchestrator(
+		core.DispatcherRegistry,
+		core.DispatchRepo,
+		core.JetStreamPublisher,
+		core.QueueDepth,
+		core.AuditWriter,
+		core.ContactRepo,
+		5,
+		60*time.Second,
+	)
+	orchestrator.SetContactRepository(core.ContactRepo)
+	orchestrator.SetRecipientSessionRepository(core.RecipientSessionRepo)
+	worker := queue.NewWorker(ctx, consumer, orchestrator)
+	slog.Info("message worker started", "consumer", "worker-1")
+
+	// --- Campaign Worker & Scheduler ---
+	campStream, err := queue.EnsureCampaignStream(ctx, nc)
+	if err != nil {
+		slog.Error("failed to create JetStream campaign stream", "error", err)
+		os.Exit(1)
+	}
+	campConsumer, err := queue.EnsureCampaignConsumer(ctx, campStream, "campaign-worker-1")
+	if err != nil {
+		slog.Error("failed to create JetStream campaign consumer", "error", err)
+		os.Exit(1)
+	}
+	campaignWorker := queue.NewCampaignWorker(ctx, campConsumer, core.CampaignEngine)
+	slog.Info("campaign worker started", "consumer", "campaign-worker-1")
+
+	campaignScheduler := queue.NewCampaignScheduler(core.CampaignEngine)
+	go campaignScheduler.Run(ctx)
+	slog.Info("campaign scheduler started", "interval", "5s")
+
+	// --- Webhook Worker ---
+	webhookWorker, err := queue.NewWebhookWorker(ctx, nc, core.WebhookDispatcher, core.WebhookSubRepo)
+	if err != nil {
+		slog.Error("failed to start webhook worker", "error", err)
+		os.Exit(1)
+	}
+	webhookWorker.SetWorkspaceRepository(core.WorkspaceRepo)
+
+	// --- Session Expiration Ticker ---
+	sessionTicker := session.NewSessionTicker(core.RecipientSessionRepo, core.JetStreamPublisher)
+	go sessionTicker.Run(ctx)
+	slog.Info("session expiration ticker started", "interval", "5m")
+
+	// --- LGPD Data Retention & Media Purge Daemon ---
+	retentionPurger := retention.NewPurger(core.WorkspaceRepo, core.AuditRepo, core.MediaEngine)
+	retentionDaemon := retention.NewDaemon(retentionPurger, 1*time.Hour)
+	go retentionDaemon.Run(ctx)
+	slog.Info("data retention daemon started", "interval", "1h")
+
+	slog.Info("rate limiter configured", "rps", 10, "burst", 10)
+	slog.Info("queue depth limit", "max", 1000)
+	if cfg.AdminPassword == "pergo-dev-2026" {
+		slog.Warn("admin panel running with default password 'pergo-dev-2026'. Change PERGO_ADMIN_PASSWORD in production.")
+	} else {
+		slog.Info("admin panel password configured from environment")
+	}
+
+	// --- Debug server (pprof + expvar) ---
+	debugSrv, err := obs.StartDebugServer(net.JoinHostPort("127.0.0.1", cfg.DebugPort))
+	if err != nil {
+		slog.Warn("debug server unavailable (port in use?), continuing without pprof",
+			"addr", net.JoinHostPort("127.0.0.1", cfg.DebugPort),
+			"error", err)
+	} else {
+		slog.Info("debug server started", "addr", debugSrv.Addr())
+	}
+
+	// --- Shutdown orchestrator ---
+	orch := shutdown.NewOrchestrator()
+
+	// Register cleanup in reverse order of startup.
+	orch.Register(func() error {
+		slog.Info("closing sql.DB")
+		return db.Close()
+	})
+	orch.Register(func() error {
+		slog.Info("closing pgxpool")
+		pool.Close()
+		return nil
+	})
+	orch.Register(func() error {
+		slog.Info("closing NATS connection")
+		nc.Close()
+		return nil
+	})
+	orch.Register(func() error {
+		slog.Info("stopping webhook worker")
+		webhookWorker.Stop()
+		return nil
+	})
+	orch.Register(func() error {
+		slog.Info("stopping campaign worker")
+		campaignWorker.Stop()
+		return nil
+	})
+	orch.Register(func() error {
+		slog.Info("stopping message worker")
+		worker.Stop()
+		return nil
+	})
+	orch.Register(func() error {
+		slog.Info("stopping data retention daemon")
+		retentionDaemon.Stop()
+		return nil
+	})
+	orch.Register(func() error {
+		slog.Info("stopping all WhatsApp sessions")
+		core.SessionManager.StopAll()
+		return nil
+	})
+	orch.Register(func() error {
+		slog.Info("closing core dependencies and flushing audit buffer")
+		return core.Close()
+	})
+	if debugSrv != nil {
+		orch.Register(func() error {
+			slog.Info("shutting down debug server")
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			return debugSrv.Shutdown(ctx)
+		})
+	}
+
+	// --- Echo HTTP server ---
+	e := BuildHTTPRouter(core)
+
 	srv := &http.Server{
 		Addr:    net.JoinHostPort("", cfg.ServerPort),
 		Handler: e,
@@ -1172,21 +1366,41 @@ func main() {
 
 // --- helpers ---
 
-// runServer blocks until ctx is cancelled. Used by tests to simulate server lifecycle.
+// runServer boots the shared CoreDeps and HTTP router on an ephemeral listener
+// and blocks until ctx is cancelled, performing graceful shutdown on exit.
 func runServer(ctx context.Context, pool *pgxpool.Pool, db *sql.DB) error {
-	_ = pool
-	_ = db
+	cfg := config.Load()
+	core, err := BootstrapCore(ctx, cfg, pool, db, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = core.Close() }()
+
+	e := BuildHTTPRouter(core)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return err
+	}
+	srv := &http.Server{Handler: e}
+	go func() {
+		_ = srv.Serve(ln)
+	}()
+
 	<-ctx.Done()
-	return nil
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_ = srv.Shutdown(shutdownCtx)
+	return core.Close()
 }
 
-// natsConn wraps *nats.Conn to satisfy the handler.NATSConn interface.
+// natsConn wraps *nats.Conn to satisfy the handler.NATSConn and admin.NATSStatus interfaces.
 type natsConn struct {
 	nc *nats.Conn
 }
 
 func (c *natsConn) Ping() error {
-	if !c.nc.IsConnected() {
+	if c == nil || c.nc == nil || !c.nc.IsConnected() {
 		return fmt.Errorf("nats not connected")
 	}
 	return nil
@@ -1195,5 +1409,5 @@ func (c *natsConn) Ping() error {
 // IsConnected returns true if the NATS connection is active.
 // Satisfies admin.NATSStatus for the TelemetryHandler.
 func (c *natsConn) IsConnected() bool {
-	return c.nc.IsConnected()
+	return c != nil && c.nc != nil && c.nc.IsConnected()
 }
