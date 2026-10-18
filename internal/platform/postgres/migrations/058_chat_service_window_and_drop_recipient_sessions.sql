@@ -1,6 +1,7 @@
 -- +goose Up
 -- +goose StatementBegin
 ALTER TABLE chats ADD COLUMN IF NOT EXISTS entry_point_type VARCHAR(20) NOT NULL DEFAULT 'standard';
+ALTER TABLE chats ADD COLUMN IF NOT EXISTS last_inbound_at TIMESTAMPTZ;
 ALTER TABLE chats ADD COLUMN IF NOT EXISTS last_outbound_at TIMESTAMPTZ;
 ALTER TABLE chats ADD COLUMN IF NOT EXISTS notified_expiring_at TIMESTAMPTZ;
 
@@ -16,6 +17,7 @@ DROP TABLE IF EXISTS recipient_sessions;
 DROP INDEX IF EXISTS idx_chats_expiring_window;
 ALTER TABLE chats DROP COLUMN IF EXISTS notified_expiring_at;
 ALTER TABLE chats DROP COLUMN IF EXISTS last_outbound_at;
+ALTER TABLE chats DROP COLUMN IF EXISTS last_inbound_at;
 ALTER TABLE chats DROP COLUMN IF EXISTS entry_point_type;
 
 CREATE TABLE IF NOT EXISTS recipient_sessions (

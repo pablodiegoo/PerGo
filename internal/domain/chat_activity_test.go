@@ -596,6 +596,31 @@ func TestApply_InboundTurn(t *testing.T) {
 			t.Fatalf("expected LastOutboundAt = %v, got %v", t0, next.LastOutboundAt)
 		}
 	})
+
+	t.Run("non-whatsapp_cloud InboundTurn does not set ServiceWindowExpiresAt", func(t *testing.T) {
+		for _, ch := range []string{"whatsapp", "whatsapp_web", "telegram"} {
+			state := domain.ChatState{
+				ID:          chatID,
+				WorkspaceID: wsID,
+				ContactID:   contactID,
+				Channel:     ch,
+				Status:      domain.ChatStatusOpen,
+				AI:          domain.AIEngagement{Mode: domain.AIModeActive},
+			}
+			next, _, _ := domain.Apply(state, domain.InboundTurn{
+				At:      t0,
+				UID:     "uid-non-waba-" + ch,
+				Body:    "Hello",
+				Channel: ch,
+			})
+			if next.ServiceWindowExpiresAt != nil {
+				t.Fatalf("channel %q: expected nil ServiceWindowExpiresAt on non-whatsapp_cloud InboundTurn, got %v", ch, next.ServiceWindowExpiresAt)
+			}
+			if next.LastInboundAt == nil || !next.LastInboundAt.Equal(t0) {
+				t.Fatalf("channel %q: expected LastInboundAt = %v, got %v", ch, t0, next.LastInboundAt)
+			}
+		}
+	})
 }
 
 func TestExtendServiceWindow(t *testing.T) {

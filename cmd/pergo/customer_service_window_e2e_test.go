@@ -329,7 +329,7 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 						"messages": [{
 							"from": "5511999992222",
 							"id": "wamid.inbound_ctwa_002",
-							"timestamp": "` + fmt.Sprintf("%d", time.Now().Unix()) + `",
+							"timestamp": "` + fmt.Sprintf("%d", time.Now().UTC().Add(-48*time.Hour).Unix()) + `",
 							"type": "text",
 							"text": {"body": "Saw your ad"},
 							"referral": {
@@ -355,21 +355,10 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 			t.Fatalf("failed to process CTWA event: %v", err)
 		}
 
-		// Simulate 48 hours elapsed on the 72h CTWA window (24h remaining)
+		// Window should still be open at 48 hours because CTWA is 72h (24h remaining)
 		ctwaState, exists, err := actRec.Snapshot(ctx, ws.ID, activity.ChatAt(wabaConn.ID, "5511999992222").WithChannel("whatsapp_cloud"))
 		if err != nil || !exists {
-			t.Fatalf("failed to snapshot CTWA chat: %v (exists=%v)", err, exists)
-		}
-		ctwaExp := time.Now().UTC().Add(24 * time.Hour)
-		_, err = pool.Exec(ctx, `UPDATE chats SET service_window_expires_at = $1, entry_point_type = 'ctwa' WHERE workspace_id = $2 AND id = $3`, ctwaExp, ws.ID, ctwaState.ID)
-		if err != nil {
-			t.Fatalf("failed to update CTWA chat window: %v", err)
-		}
-
-		// Window should still be open at 48 hours because CTWA is 72h
-		ctwaState, exists, err = actRec.Snapshot(ctx, ws.ID, activity.ChatAt(wabaConn.ID, "5511999992222").WithChannel("whatsapp_cloud"))
-		if err != nil {
-			t.Fatalf("failed to check CTWA window: %v", err)
+			t.Fatalf("failed to check CTWA window: %v (exists=%v)", err, exists)
 		}
 		status := domain.Window(ctwaState, exists, time.Now().UTC())
 		if !status.Open {
@@ -397,19 +386,25 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 	// Scenario 5: Template Message Dispatched Outside Window
 	// =========================================================================
 	t.Run("Approved template message dispatches successfully outside 24h window", func(t *testing.T) {
-		// Set chat service window to expired
-		stdState, exists, err := actRec.Snapshot(ctx, ws.ID, activity.ChatAt(wabaConn.ID, contactPhone).WithChannel("whatsapp_cloud"))
-		if err != nil || !exists {
-			t.Fatalf("failed to snapshot standard chat: %v (exists=%v)", err, exists)
-		}
-		exp := time.Now().UTC().Add(-6 * time.Hour)
-		_, err = pool.Exec(ctx, `UPDATE chats SET service_window_expires_at = $1, entry_point_type = 'standard' WHERE workspace_id = $2 AND id = $3`, exp, ws.ID, stdState.ID)
+		expiredPhone := "5511999993333"
+		expiredContact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", expiredPhone, "Expired Customer", "", expiredPhone)
 		if err != nil {
-			t.Fatalf("failed to expire chat window: %v", err)
+			t.Fatalf("failed to resolve expired contact: %v", err)
+		}
+		if _, err := actRec.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:       activity.ChatOf(wabaConn.ID, expiredContact.ID).WithChannel("whatsapp_cloud"),
+			UID:        uuid.NewString(),
+			Channel:    "whatsapp_cloud",
+			SenderName: "Expired Customer",
+			SenderID:   expiredPhone,
+			Body:       "Old message 30h ago",
+			At:         time.Now().UTC().Add(-30 * time.Hour),
+		}); err != nil {
+			t.Fatalf("failed to record expired inbound turn: %v", err)
 		}
 
 		body := `{
-			"to": "` + contactPhone + `",
+			"to": "` + expiredPhone + `",
 			"channel": "whatsapp_cloud",
 			"template_name": "welcome_update",
 			"language": "pt_BR",

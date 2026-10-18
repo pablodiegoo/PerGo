@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/pablojhp.pergo/internal/api/mcp"
-	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -44,6 +44,7 @@ func TestUniversalMCPGateway_BearerAuth_StreamableHTTP(t *testing.T) {
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
 
 	ws, err := wsRepo.Create(ctx, "Universal Gateway Test Workspace")
 	if err != nil {
@@ -68,18 +69,20 @@ func TestUniversalMCPGateway_BearerAuth_StreamableHTTP(t *testing.T) {
 		t.Fatalf("failed to create chat: %v", err)
 	}
 
-	err = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-		ChatID:      chat.ID,
-		WorkspaceID: ws.ID,
-		UID:         "msg-tracer-001",
-		Direction:   domain.DirectionInbound,
-		SenderType:  domain.SenderTypeContact,
-		SenderName:  "Sherlock Holmes",
-		Body:        "The game is afoot!",
-		CreatedAt:   time.Now().UTC(),
+	_, err = act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:       activity.ChatID(chat.ID).WithChannel("whatsapp"),
+		Channel:    "whatsapp",
+		SenderName: "Sherlock Holmes",
+		SenderID:   "+447900000001",
+		UID:        "msg-tracer-001",
+		Body:       "The game is afoot!",
+		At:         time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("failed to add chat message: %v", err)
+	}
+	if err := chatRepo.ResetUnread(ctx, ws.ID, chat.ID); err != nil {
+		t.Fatalf("failed to reset unread: %v", err)
 	}
 
 	kek := make([]byte, 32)

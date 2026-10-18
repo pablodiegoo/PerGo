@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
@@ -77,6 +78,7 @@ func TestInboundProcessor_ReactionHandling(t *testing.T) {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
 
 	ws, err := wsRepo.Create(ctx, "Reaction Inbound Test WS")
 	if err != nil {
@@ -95,17 +97,14 @@ func TestInboundProcessor_ReactionHandling(t *testing.T) {
 	}
 
 	msgUID := "test-msg-" + uuid.New().String()
-	chatMsg := &domain.ChatMessage{
-		ChatID:      chat.ID,
-		WorkspaceID: ws.ID,
-		UID:         msgUID,
-		Direction:   domain.DirectionInbound,
-		SenderType:  domain.SenderTypeContact,
-		SenderID:    "+5511999990000",
-		Body:        "Hello there!",
-		CreatedAt:   time.Now().UTC(),
-	}
-	if err := chatRepo.AddChatMessage(ctx, chatMsg); err != nil {
+	if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:     activity.ChatID(chat.ID).WithChannel("whatsapp"),
+		UID:      msgUID,
+		SenderID: "+5511999990000",
+		Body:     "Hello there!",
+		Channel:  "whatsapp",
+		At:       time.Now().UTC(),
+	}); err != nil {
 		t.Fatalf("failed to add chat message: %v", err)
 	}
 

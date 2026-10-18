@@ -231,28 +231,6 @@ func (r *fakeChatRepo) SetChatTags(_ context.Context, workspaceID, chatID uuid.U
 	return nil
 }
 
-func (r *fakeChatRepo) UpdateChatUnreadCount(_ context.Context, workspaceID, chatID uuid.UUID, unreadCount int) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	c, ok := r.chats[chatID]
-	if !ok || c.WorkspaceID != workspaceID {
-		return repository.ErrChatNotFound
-	}
-	c.UnreadCount = unreadCount
-	return nil
-}
-
-func (r *fakeChatRepo) TouchLastMessageAt(_ context.Context, workspaceID, chatID uuid.UUID, t time.Time) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	c, ok := r.chats[chatID]
-	if !ok || c.WorkspaceID != workspaceID {
-		return repository.ErrChatNotFound
-	}
-	c.LastMessageAt = t
-	return nil
-}
-
 func (r *fakeChatRepo) seedMessage(msg *domain.ChatMessage) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

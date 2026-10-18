@@ -35,17 +35,21 @@ func (r *ChatRepository) Pool() *pgxpool.Pool {
 	return r.pool
 }
 
-func applyEffectiveChatStatus(chat *domain.Chat, now time.Time) {
+func hydrateChat(chat *domain.Chat, aiModeStr, entryStr string, metaBytes []byte, now time.Time) {
 	if chat == nil {
 		return
 	}
-	eff := domain.EffectiveStatus(chat.Status, chat.SnoozedUntil, now)
-	if eff == domain.ChatStatusOpen && chat.Status == domain.ChatStatusSnoozed {
-		chat.Status = domain.ChatStatusOpen
-		chat.SnoozedUntil = nil
-	} else {
-		chat.Status = eff
+	chat.NormalizeEffectiveStatus(now)
+	chat.AI.Mode = domain.AIMode(aiModeStr)
+	chat.EntryPointType = domain.NormalizeEntryPointType(entryStr)
+	chat.AIDisabled = !chat.EffectiveAI(now).IsEngaged()
+	if len(metaBytes) > 0 {
+		_ = json.Unmarshal(metaBytes, &chat.Metadata)
 	}
+	if chat.Metadata == nil {
+		chat.Metadata = make(map[string]interface{})
+	}
+	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen(now)
 }
 
 // FindOrCreateChat retrieves an existing chat for the given (workspaceID, connectionID, contactID) or creates one.
@@ -69,7 +73,7 @@ func (r *ChatRepository) FindOrCreateChat(
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
 		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at,
-		       COALESCE(entry_point_type, 'standard'), last_outbound_at, notified_expiring_at,
+		       COALESCE(entry_point_type, 'standard'), last_inbound_at, last_outbound_at, notified_expiring_at,
 		       last_message_at, metadata, created_at, updated_at
 		FROM chats
 		WHERE workspace_id = $1 AND contact_id = $2
@@ -79,33 +83,13 @@ func (r *ChatRepository) FindOrCreateChat(
 	`, workspaceID, contactID, connectionID).Scan(
 		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
 		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &aiModeStr, &chat.AI.PausedUntil,
-		&chat.ServiceWindowExpiresAt, &entryStr, &chat.LastOutboundAt, &chat.NotifiedExpiringAt,
+		&chat.ServiceWindowExpiresAt, &entryStr, &chat.LastInboundAt, &chat.LastOutboundAt, &chat.NotifiedExpiringAt,
 		&chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
 
 	now := time.Now().UTC()
 	if err == nil {
-		applyEffectiveChatStatus(&chat, now)
-		chat.AI.Mode = domain.AIMode(aiModeStr)
-		chat.EntryPointType = domain.EntryPointType(entryStr)
-		chat.AIDisabled = !chat.EffectiveAI(now).IsEngaged()
-		if connectionID != nil && *connectionID != uuid.Nil && chat.ConnectionID == nil {
-			_, _ = r.pool.Exec(ctx, `
-				UPDATE chats SET connection_id = $3, updated_at = NOW()
-				WHERE id = $1 AND workspace_id = $2
-				  AND NOT EXISTS (
-				      SELECT 1 FROM chats WHERE workspace_id = $2 AND connection_id = $3 AND contact_id = $4
-				  )
-			`, chat.ID, workspaceID, connectionID, contactID)
-			chat.ConnectionID = connectionID
-		}
-		if len(metaBytes) > 0 {
-			_ = json.Unmarshal(metaBytes, &chat.Metadata)
-		}
-		if chat.Metadata == nil {
-			chat.Metadata = make(map[string]interface{})
-		}
-		chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen(now)
+		hydrateChat(&chat, aiModeStr, entryStr, metaBytes, now)
 		return &chat, nil
 	}
 
@@ -121,12 +105,12 @@ func (r *ChatRepository) FindOrCreateChat(
 		DO UPDATE SET updated_at = NOW()
 		RETURNING id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
 		          tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at,
-		          COALESCE(entry_point_type, 'standard'), last_outbound_at, notified_expiring_at,
+		          COALESCE(entry_point_type, 'standard'), last_inbound_at, last_outbound_at, notified_expiring_at,
 		          last_message_at, metadata, created_at, updated_at
 	`, workspaceID, connectionID, contactID).Scan(
 		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
 		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &aiModeStr, &chat.AI.PausedUntil,
-		&chat.ServiceWindowExpiresAt, &entryStr, &chat.LastOutboundAt, &chat.NotifiedExpiringAt,
+		&chat.ServiceWindowExpiresAt, &entryStr, &chat.LastInboundAt, &chat.LastOutboundAt, &chat.NotifiedExpiringAt,
 		&chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
 
@@ -134,17 +118,7 @@ func (r *ChatRepository) FindOrCreateChat(
 		return nil, fmt.Errorf("create chat: %w", err)
 	}
 
-	applyEffectiveChatStatus(&chat, now)
-	chat.AI.Mode = domain.AIMode(aiModeStr)
-	chat.EntryPointType = domain.EntryPointType(entryStr)
-	chat.AIDisabled = !chat.EffectiveAI(now).IsEngaged()
-	if len(metaBytes) > 0 {
-		_ = json.Unmarshal(metaBytes, &chat.Metadata)
-	}
-	if chat.Metadata == nil {
-		chat.Metadata = make(map[string]interface{})
-	}
-	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen(now)
+	hydrateChat(&chat, aiModeStr, entryStr, metaBytes, now)
 
 	return &chat, nil
 }
@@ -161,14 +135,14 @@ func (r *ChatRepository) GetChat(ctx context.Context, workspaceID, chatID uuid.U
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
 		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at,
-		       COALESCE(entry_point_type, 'standard'), last_outbound_at, notified_expiring_at,
+		       COALESCE(entry_point_type, 'standard'), last_inbound_at, last_outbound_at, notified_expiring_at,
 		       last_message_at, metadata, created_at, updated_at
 		FROM chats
 		WHERE workspace_id = $1 AND id = $2
 	`, workspaceID, chatID).Scan(
 		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
 		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &aiModeStr, &chat.AI.PausedUntil,
-		&chat.ServiceWindowExpiresAt, &entryStr, &chat.LastOutboundAt, &chat.NotifiedExpiringAt,
+		&chat.ServiceWindowExpiresAt, &entryStr, &chat.LastInboundAt, &chat.LastOutboundAt, &chat.NotifiedExpiringAt,
 		&chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
 
@@ -179,18 +153,7 @@ func (r *ChatRepository) GetChat(ctx context.Context, workspaceID, chatID uuid.U
 		return nil, fmt.Errorf("get chat: %w", err)
 	}
 
-	now := time.Now().UTC()
-	applyEffectiveChatStatus(&chat, now)
-	chat.AI.Mode = domain.AIMode(aiModeStr)
-	chat.EntryPointType = domain.EntryPointType(entryStr)
-	chat.AIDisabled = !chat.EffectiveAI(now).IsEngaged()
-	if len(metaBytes) > 0 {
-		_ = json.Unmarshal(metaBytes, &chat.Metadata)
-	}
-	if chat.Metadata == nil {
-		chat.Metadata = make(map[string]interface{})
-	}
-	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen(now)
+	hydrateChat(&chat, aiModeStr, entryStr, metaBytes, time.Now().UTC())
 
 	return &chat, nil
 }
@@ -211,7 +174,7 @@ func (r *ChatRepository) GetChatByContact(ctx context.Context, workspaceID, cont
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
 		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at,
-		       COALESCE(entry_point_type, 'standard'), last_outbound_at, notified_expiring_at,
+		       COALESCE(entry_point_type, 'standard'), last_inbound_at, last_outbound_at, notified_expiring_at,
 		       last_message_at, metadata, created_at, updated_at
 		FROM chats
 		WHERE workspace_id = $1 AND contact_id = $2
@@ -220,7 +183,7 @@ func (r *ChatRepository) GetChatByContact(ctx context.Context, workspaceID, cont
 	`, workspaceID, contactID).Scan(
 		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
 		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &aiModeStr, &chat.AI.PausedUntil,
-		&chat.ServiceWindowExpiresAt, &entryStr, &chat.LastOutboundAt, &chat.NotifiedExpiringAt,
+		&chat.ServiceWindowExpiresAt, &entryStr, &chat.LastInboundAt, &chat.LastOutboundAt, &chat.NotifiedExpiringAt,
 		&chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
 
@@ -231,18 +194,7 @@ func (r *ChatRepository) GetChatByContact(ctx context.Context, workspaceID, cont
 		return nil, fmt.Errorf("get chat by contact: %w", err)
 	}
 
-	now := time.Now().UTC()
-	applyEffectiveChatStatus(&chat, now)
-	chat.AI.Mode = domain.AIMode(aiModeStr)
-	chat.EntryPointType = domain.EntryPointType(entryStr)
-	chat.AIDisabled = !chat.EffectiveAI(now).IsEngaged()
-	if len(metaBytes) > 0 {
-		_ = json.Unmarshal(metaBytes, &chat.Metadata)
-	}
-	if chat.Metadata == nil {
-		chat.Metadata = make(map[string]interface{})
-	}
-	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen(now)
+	hydrateChat(&chat, aiModeStr, entryStr, metaBytes, time.Now().UTC())
 
 	return &chat, nil
 }
@@ -260,14 +212,14 @@ func (r *ChatRepository) GetChatByID(ctx context.Context, chatID uuid.UUID) (*do
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
 		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at,
-		       COALESCE(entry_point_type, 'standard'), last_outbound_at, notified_expiring_at,
+		       COALESCE(entry_point_type, 'standard'), last_inbound_at, last_outbound_at, notified_expiring_at,
 		       last_message_at, metadata, created_at, updated_at
 		FROM chats
 		WHERE id = $1
 	`, chatID).Scan(
 		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
 		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &aiModeStr, &chat.AI.PausedUntil,
-		&chat.ServiceWindowExpiresAt, &entryStr, &chat.LastOutboundAt, &chat.NotifiedExpiringAt,
+		&chat.ServiceWindowExpiresAt, &entryStr, &chat.LastInboundAt, &chat.LastOutboundAt, &chat.NotifiedExpiringAt,
 		&chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
 
@@ -278,18 +230,7 @@ func (r *ChatRepository) GetChatByID(ctx context.Context, chatID uuid.UUID) (*do
 		return nil, fmt.Errorf("get chat by id: %w", err)
 	}
 
-	now := time.Now().UTC()
-	applyEffectiveChatStatus(&chat, now)
-	chat.AI.Mode = domain.AIMode(aiModeStr)
-	chat.EntryPointType = domain.EntryPointType(entryStr)
-	chat.AIDisabled = !chat.EffectiveAI(now).IsEngaged()
-	if len(metaBytes) > 0 {
-		_ = json.Unmarshal(metaBytes, &chat.Metadata)
-	}
-	if chat.Metadata == nil {
-		chat.Metadata = make(map[string]interface{})
-	}
-	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen(now)
+	hydrateChat(&chat, aiModeStr, entryStr, metaBytes, time.Now().UTC())
 
 	return &chat, nil
 }
@@ -318,7 +259,7 @@ func (r *ChatRepository) ListChats(
 	query := `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
 		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at,
-		       COALESCE(entry_point_type, 'standard'), last_outbound_at, notified_expiring_at,
+		       COALESCE(entry_point_type, 'standard'), last_inbound_at, last_outbound_at, notified_expiring_at,
 		       last_message_at, metadata, created_at, updated_at
 		FROM chats
 		WHERE workspace_id = $1
@@ -404,22 +345,12 @@ func (r *ChatRepository) ListChats(
 		if err := rows.Scan(
 			&c.ID, &c.WorkspaceID, &c.ConnectionID, &c.ContactID, &c.Status, &c.SnoozedUntil,
 			&c.AssignedUserID, &c.AssignedEmail, &c.Tags, &c.UnreadCount, &aiModeStr, &c.AI.PausedUntil,
-			&c.ServiceWindowExpiresAt, &entryStr, &c.LastOutboundAt, &c.NotifiedExpiringAt,
+			&c.ServiceWindowExpiresAt, &entryStr, &c.LastInboundAt, &c.LastOutboundAt, &c.NotifiedExpiringAt,
 			&c.LastMessageAt, &metaBytes, &c.CreatedAt, &c.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan chat: %w", err)
 		}
-		applyEffectiveChatStatus(&c, now)
-		c.AI.Mode = domain.AIMode(aiModeStr)
-		c.EntryPointType = domain.EntryPointType(entryStr)
-		c.AIDisabled = !c.EffectiveAI(now).IsEngaged()
-		if len(metaBytes) > 0 {
-			_ = json.Unmarshal(metaBytes, &c.Metadata)
-		}
-		if chatMeta := c.Metadata; chatMeta == nil {
-			c.Metadata = make(map[string]interface{})
-		}
-		c.ServiceWindowIsOpen = c.IsServiceWindowOpen(now)
+		hydrateChat(&c, aiModeStr, entryStr, metaBytes, now)
 		chats = append(chats, c)
 	}
 
@@ -492,128 +423,6 @@ func (r *ChatRepository) SetChatTags(ctx context.Context, workspaceID, chatID uu
 	return nil
 }
 
-// UpdateChatUnreadCount updates the unread count of a chat.
-func (r *ChatRepository) UpdateChatUnreadCount(ctx context.Context, workspaceID, chatID uuid.UUID, unreadCount int) error {
-	res, err := r.pool.Exec(ctx, `
-		UPDATE chats SET unread_count = $3, updated_at = NOW()
-		WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, chatID, unreadCount)
-	if err != nil {
-		return err
-	}
-	if res.RowsAffected() == 0 {
-		return ErrChatNotFound
-	}
-	return nil
-}
-
-// IncrementUnreadCount increases unread_count by 1.
-func (r *ChatRepository) IncrementUnreadCount(ctx context.Context, workspaceID, chatID uuid.UUID) error {
-	res, err := r.pool.Exec(ctx, `
-		UPDATE chats SET unread_count = unread_count + 1, updated_at = NOW()
-		WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, chatID)
-	if err != nil {
-		return err
-	}
-	if res.RowsAffected() == 0 {
-		return ErrChatNotFound
-	}
-	return nil
-}
-
-// TouchLastMessageAt updates last_message_at and updated_at.
-func (r *ChatRepository) TouchLastMessageAt(ctx context.Context, workspaceID, chatID uuid.UUID, t time.Time) error {
-	if t.IsZero() {
-		t = time.Now().UTC()
-	}
-	res, err := r.pool.Exec(ctx, `
-		UPDATE chats SET last_message_at = $3, updated_at = NOW()
-		WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, chatID, t)
-	if err != nil {
-		return err
-	}
-	if res.RowsAffected() == 0 {
-		return ErrChatNotFound
-	}
-	return nil
-}
-
-// UpdateServiceWindow sets the WhatsApp customer service window expiration.
-func (r *ChatRepository) UpdateServiceWindow(ctx context.Context, workspaceID, chatID uuid.UUID, expiresAt *time.Time) error {
-	res, err := r.pool.Exec(ctx, `
-		UPDATE chats SET service_window_expires_at = $3, updated_at = NOW()
-		WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, chatID, expiresAt)
-	if err != nil {
-		return err
-	}
-	if res.RowsAffected() == 0 {
-		return ErrChatNotFound
-	}
-	return nil
-}
-
-// AddChatMessage appends a new message to the chat and updates chat's last_message_at.
-func (r *ChatRepository) AddChatMessage(ctx context.Context, msg *domain.ChatMessage) error {
-	if msg == nil {
-		return errors.New("chat message is nil")
-	}
-	if msg.WorkspaceID == uuid.Nil {
-		return ErrInvalidWorkspaceID
-	}
-	if msg.ChatID == uuid.Nil {
-		return errors.New("chat_id is required")
-	}
-	if msg.UID == "" {
-		return errors.New("uid is required")
-	}
-	if msg.ID == uuid.Nil {
-		msg.ID = uuid.New()
-	}
-	if msg.CreatedAt.IsZero() {
-		msg.CreatedAt = time.Now().UTC()
-	}
-	if msg.Reactions == nil {
-		msg.Reactions = []domain.Reaction{}
-	}
-	if msg.Metadata == nil {
-		msg.Metadata = make(map[string]interface{})
-	}
-
-	rxJSON, err := json.Marshal(msg.Reactions)
-	if err != nil {
-		return fmt.Errorf("marshal reactions: %w", err)
-	}
-
-	metaJSON, err := json.Marshal(msg.Metadata)
-	if err != nil {
-		return fmt.Errorf("marshal metadata: %w", err)
-	}
-
-	_, err = r.pool.Exec(ctx, `
-		INSERT INTO chat_messages (
-			id, chat_id, workspace_id, uid, direction, sender_type, sender_name, sender_id,
-			body, media_url, media_type, is_private, reactions, reply_to_uid, metadata, created_at
-		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8,
-			$9, $10, $11, $12, $13, $14, $15, $16
-		)
-		ON CONFLICT (uid) DO NOTHING
-	`, msg.ID, msg.ChatID, msg.WorkspaceID, msg.UID, msg.Direction, msg.SenderType, msg.SenderName, msg.SenderID,
-		msg.Body, msg.MediaURL, msg.MediaType, msg.IsPrivate, rxJSON, msg.ReplyToUID, metaJSON, msg.CreatedAt,
-	)
-	if err != nil {
-		return fmt.Errorf("insert chat message: %w", err)
-	}
-
-	// Touch last_message_at on the parent chat
-	_ = r.TouchLastMessageAt(ctx, msg.WorkspaceID, msg.ChatID, msg.CreatedAt)
-
-	return nil
-}
-
 // CreateInternalNote appends a private internal note to a chat thread.
 // It sets direction = DirectionInternalNote ("internal_note") and is_private = true.
 func (r *ChatRepository) CreateInternalNote(
@@ -669,8 +478,29 @@ func (r *ChatRepository) CreateInternalNote(
 		CreatedAt: time.Now().UTC(),
 	}
 
-	if err := r.AddChatMessage(ctx, msg); err != nil {
-		return nil, err
+	rxJSON, err := json.Marshal(msg.Reactions)
+	if err != nil {
+		return nil, fmt.Errorf("marshal reactions: %w", err)
+	}
+	metaJSON, err := json.Marshal(msg.Metadata)
+	if err != nil {
+		return nil, fmt.Errorf("marshal metadata: %w", err)
+	}
+
+	_, err = r.pool.Exec(ctx, `
+		INSERT INTO chat_messages (
+			id, chat_id, workspace_id, uid, direction, sender_type, sender_name, sender_id,
+			body, media_url, media_type, is_private, reactions, reply_to_uid, metadata, created_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8,
+			$9, $10, $11, $12, $13, $14, $15, $16
+		)
+		ON CONFLICT (uid) DO NOTHING
+	`, msg.ID, msg.ChatID, msg.WorkspaceID, msg.UID, msg.Direction, msg.SenderType, msg.SenderName, msg.SenderID,
+		msg.Body, msg.MediaURL, msg.MediaType, msg.IsPrivate, rxJSON, msg.ReplyToUID, metaJSON, msg.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("insert internal note: %w", err)
 	}
 
 	return msg, nil
@@ -1273,13 +1103,9 @@ func (r *ChatRepository) ListConversations(ctx context.Context, workspaceID uuid
 		); err != nil {
 			return nil, fmt.Errorf("scan conversation summary: %w", err)
 		}
-		eff := domain.EffectiveStatus(domain.ChatStatus(s.Status), s.SnoozedUntil, now)
-		if eff == domain.ChatStatusOpen && domain.ChatStatus(s.Status) == domain.ChatStatusSnoozed {
-			s.Status = string(domain.ChatStatusOpen)
-			s.SnoozedUntil = nil
-		} else {
-			s.Status = string(eff)
-		}
+		effStatus, effSnoozed := domain.NormalizeSnooze(domain.ChatStatus(s.Status), s.SnoozedUntil, now)
+		s.Status = string(effStatus)
+		s.SnoozedUntil = effSnoozed
 		s.Unread = s.UnreadCount > 0
 		summaries = append(summaries, s)
 	}

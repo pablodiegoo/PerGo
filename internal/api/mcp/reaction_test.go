@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -107,6 +108,7 @@ func TestMCPMessageReact(t *testing.T) {
 	chatRepo := repository.NewChatRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
 	webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, enc)
+	act := activity.New(pool, nil, nil, nil)
 
 	ws, err := wsRepo.Create(ctx, "MCP Reaction Workspace")
 	if err != nil {
@@ -134,16 +136,14 @@ func TestMCPMessageReact(t *testing.T) {
 	}
 
 	msgUID := "test-msg-uid-" + uuid.New().String()
-	testMsg := &domain.ChatMessage{
-		ChatID:      chat.ID,
-		WorkspaceID: ws.ID,
-		UID:         msgUID,
-		Direction:   domain.DirectionInbound,
-		SenderType:  domain.SenderTypeContact,
-		Body:        "React to me!",
-		CreatedAt:   time.Now().UTC(),
-	}
-	if err := chatRepo.AddChatMessage(ctx, testMsg); err != nil {
+	if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:     activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+		UID:      msgUID,
+		SenderID: "+5511999998888",
+		Body:     "React to me!",
+		Channel:  "whatsapp_cloud",
+		At:       time.Now().UTC(),
+	}); err != nil {
 		t.Fatalf("failed to add chat message: %v", err)
 	}
 

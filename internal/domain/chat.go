@@ -61,13 +61,19 @@ const (
 // EffectiveStatus evaluates the effective ChatStatus at timestamp now without mutating storage.
 // When status is snoozed and snoozedUntil is at or before now, it returns ChatStatusOpen.
 func EffectiveStatus(status ChatStatus, snoozedUntil *time.Time, now time.Time) ChatStatus {
+	eff, _ := NormalizeSnooze(status, snoozedUntil, now)
+	return eff
+}
+
+// NormalizeSnooze returns the effective ChatStatus and snoozedUntil after expiring any past snooze.
+func NormalizeSnooze(status ChatStatus, snoozedUntil *time.Time, now time.Time) (ChatStatus, *time.Time) {
 	if status == "" {
-		return ChatStatusOpen
+		return ChatStatusOpen, snoozedUntil
 	}
 	if status == ChatStatusSnoozed && snoozedUntil != nil && !snoozedUntil.After(now) {
-		return ChatStatusOpen
+		return ChatStatusOpen, nil
 	}
-	return status
+	return status, snoozedUntil
 }
 
 // Reaction represents an emoji reaction attached to a message.
@@ -143,7 +149,8 @@ type Chat struct {
 	AIDisabled             bool                   `json:"ai_disabled"`
 	ServiceWindowExpiresAt *time.Time             `json:"service_window_expires_at,omitempty"`
 	ServiceWindowIsOpen    bool                   `json:"service_window_is_open"`
-	EntryPointType         string                 `json:"entry_point_type,omitempty"`
+	EntryPointType         EntryPointType         `json:"entry_point_type,omitempty"`
+	LastInboundAt          *time.Time             `json:"last_inbound_at,omitempty"`
 	LastOutboundAt         *time.Time             `json:"last_outbound_at,omitempty"`
 	NotifiedExpiringAt     *time.Time             `json:"notified_expiring_at,omitempty"`
 	LastMessageAt          time.Time              `json:"last_message_at"`
@@ -162,6 +169,14 @@ func (c *Chat) EffectiveStatus(now ...time.Time) ChatStatus {
 		t = now[0].UTC()
 	}
 	return EffectiveStatus(c.Status, c.SnoozedUntil, t)
+}
+
+// NormalizeEffectiveStatus normalizes this Chat's Status and SnoozedUntil in place at timestamp now.
+func (c *Chat) NormalizeEffectiveStatus(now time.Time) {
+	if c == nil {
+		return
+	}
+	c.Status, c.SnoozedUntil = NormalizeSnooze(c.Status, c.SnoozedUntil, now)
 }
 
 // EffectiveAI returns the effective AIEngagement for this Chat at the given time (defaults to time.Now().UTC()).
@@ -442,7 +457,7 @@ func BuildOutboundChatMessage(p OutboundChatMessageParams) *ChatMessage {
 }
 
 // EntryPointType constants and service window durations.
-type EntryPointType = string
+type EntryPointType string
 
 const (
 	EntryPointStandard EntryPointType = "standard"
@@ -453,15 +468,15 @@ const (
 )
 
 // NormalizeEntryPointType normalizes raw entry point values to "ctwa" or "standard".
-func NormalizeEntryPointType(entryPoint string) string {
-	if strings.EqualFold(strings.TrimSpace(entryPoint), EntryPointCTWA) {
+func NormalizeEntryPointType[T ~string](entryPoint T) EntryPointType {
+	if strings.EqualFold(strings.TrimSpace(string(entryPoint)), string(EntryPointCTWA)) {
 		return EntryPointCTWA
 	}
 	return EntryPointStandard
 }
 
 // WindowDurationFor returns 72h for "ctwa" and 24h for "standard" (or any other value).
-func WindowDurationFor(entryPoint string) time.Duration {
+func WindowDurationFor[T ~string](entryPoint T) time.Duration {
 	if NormalizeEntryPointType(entryPoint) == EntryPointCTWA {
 		return CTWAWindowDuration
 	}
@@ -471,7 +486,7 @@ func WindowDurationFor(entryPoint string) time.Duration {
 // ExtendServiceWindow computes the new customer service window expiration from an inbound turn.
 // Standard entry points grant 24h; CTWA entry points grant 72h. The window never shortens:
 // if prev is already further in the future than at + duration, prev is returned.
-func ExtendServiceWindow(prev *time.Time, at time.Time, entryPoint string) time.Time {
+func ExtendServiceWindow[T ~string](prev *time.Time, at time.Time, entryPoint T) time.Time {
 	candidate := at.UTC().Add(WindowDurationFor(entryPoint))
 	if prev != nil && prev.UTC().After(candidate) {
 		return prev.UTC()
@@ -484,13 +499,10 @@ type ServiceWindow struct {
 	Channel        string
 	Open           bool
 	ExpiresAt      time.Time
-	EntryPointType string
+	EntryPointType EntryPointType
 	WindowDuration time.Duration
 	Remaining      time.Duration
 }
-
-// WindowStatus is an alias for ServiceWindow.
-type WindowStatus = ServiceWindow
 
 // TemplateRequiredError is returned when an outbound free-form WABA message is attempted
 // while the Chat's customer service window is closed or when no Chat exists yet.
@@ -580,7 +592,7 @@ type ChatState struct {
 	SnoozedUntil           *time.Time
 	AI                     AIEngagement
 	ServiceWindowExpiresAt *time.Time
-	EntryPointType         string
+	EntryPointType         EntryPointType
 	UnreadCount            int
 	LastMessageAt          time.Time
 	LastInboundAt          *time.Time
@@ -604,14 +616,11 @@ type InboundTurn struct {
 	MediaURL       *string
 	MediaType      *string
 	Channel        string
-	EntryPointType string
+	EntryPointType EntryPointType
 	Metadata       map[string]interface{}
 }
 
 func (InboundTurn) isActivity() {}
-
-// InboundActivity is an alias for InboundTurn.
-type InboundActivity = InboundTurn
 
 // OutboundActivity represents an outbound message turn on a Chat.
 type OutboundActivity struct {
@@ -696,21 +705,23 @@ func Apply(s ChatState, a Activity) (ChatState, *ChatMessage, []Intent) {
 			next.Channel = act.Channel
 		}
 
-		ep := act.EntryPointType
-		if ep == "" && act.Metadata != nil {
-			if metaEP, ok := act.Metadata["entry_point_type"].(string); ok {
-				ep = metaEP
+		if strings.EqualFold(strings.TrimSpace(next.Channel), "whatsapp_cloud") {
+			ep := act.EntryPointType
+			if ep == "" && act.Metadata != nil {
+				if metaEP, ok := act.Metadata["entry_point_type"].(string); ok {
+					ep = EntryPointType(metaEP)
+				}
 			}
+			normalizedEP := NormalizeEntryPointType(ep)
+			prevExp := next.ServiceWindowExpiresAt
+			newExp := ExtendServiceWindow(prevExp, at, normalizedEP)
+			if prevExp != nil && newExp.Equal(prevExp.UTC()) && next.EntryPointType == EntryPointCTWA {
+				// Prior CTWA window was further in the future and preserved; keep EntryPointType as ctwa.
+			} else {
+				next.EntryPointType = normalizedEP
+			}
+			next.ServiceWindowExpiresAt = &newExp
 		}
-		normalizedEP := NormalizeEntryPointType(ep)
-		prevExp := next.ServiceWindowExpiresAt
-		newExp := ExtendServiceWindow(prevExp, at, normalizedEP)
-		if prevExp != nil && newExp.Equal(prevExp.UTC()) && next.EntryPointType == EntryPointCTWA {
-			// Prior CTWA window was further in the future and preserved; keep EntryPointType as ctwa.
-		} else {
-			next.EntryPointType = normalizedEP
-		}
-		next.ServiceWindowExpiresAt = &newExp
 
 		msgID := act.ID
 		if msgID == uuid.Nil {
@@ -844,10 +855,7 @@ func Apply(s ChatState, a Activity) (ChatState, *ChatMessage, []Intent) {
 			at = time.Now().UTC()
 		}
 
-		if EffectiveStatus(next.Status, next.SnoozedUntil, at) == ChatStatusOpen {
-			next.Status = ChatStatusOpen
-			next.SnoozedUntil = nil
-		}
+		next.Status, next.SnoozedUntil = NormalizeSnooze(next.Status, next.SnoozedUntil, at)
 
 		eff := s.AI.Effective(at)
 		wasEngaged := eff.IsEngaged()

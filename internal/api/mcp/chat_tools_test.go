@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
@@ -43,6 +44,7 @@ func TestMCPChatTools(t *testing.T) {
 	contactRepo := repository.NewContactRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
 
 	kek := make([]byte, 32)
 	copy(kek, []byte("dev-development-key-32-bytes-kek"))
@@ -76,48 +78,37 @@ func TestMCPChatTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create chat: %v", err)
 	}
-	openExp := time.Now().UTC().Add(24 * time.Hour)
-	_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &openExp)
-	_ = chatRepo.IncrementUnreadCount(ctx, ws.ID, chat.ID)
 	_ = chatRepo.SetChatTags(ctx, ws.ID, chat.ID, []string{"vip", "priority"})
 
-	// Add messages to chat
-	msg1 := &domain.ChatMessage{
-		ChatID:      chat.ID,
-		WorkspaceID: ws.ID,
-		UID:         "mcp-msg-1",
-		Direction:   domain.DirectionInbound,
-		SenderType:  domain.SenderTypeContact,
-		SenderName:  "Diana",
-		SenderID:    "+5511999998888",
-		Body:        "Hello MCP!",
-		CreatedAt:   time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC),
-	}
-	msg2 := &domain.ChatMessage{
-		ChatID:      chat.ID,
-		WorkspaceID: ws.ID,
-		UID:         "mcp-msg-2",
-		Direction:   domain.DirectionOutbound,
-		SenderType:  domain.SenderTypeHumanAgent,
-		SenderName:  "Agent Smith",
-		SenderID:    "+551100001111",
-		Body:        "Greetings Diana! How can I assist?",
-		CreatedAt:   time.Date(2026, 10, 10, 12, 1, 0, 0, time.UTC),
-	}
-	msg3 := &domain.ChatMessage{
-		ChatID:      chat.ID,
-		WorkspaceID: ws.ID,
-		UID:         "mcp-msg-3",
-		Direction:   domain.DirectionInbound,
-		SenderType:  domain.SenderTypeContact,
-		SenderName:  "Diana",
-		SenderID:    "+5511999998888",
-		Body:        "I need help with my account.",
-		CreatedAt:   time.Date(2026, 10, 10, 12, 2, 0, 0, time.UTC),
-	}
-	_ = chatRepo.AddChatMessage(ctx, msg1)
-	_ = chatRepo.AddChatMessage(ctx, msg2)
-	_ = chatRepo.AddChatMessage(ctx, msg3)
+	now := time.Now().UTC()
+	_, _ = act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:       activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+		UID:        "mcp-msg-1",
+		SenderName: "Diana",
+		SenderID:   "+5511999998888",
+		Body:       "Hello MCP!",
+		Channel:    "whatsapp_cloud",
+		At:         now.Add(-2 * time.Minute),
+	})
+	_, _ = act.Outbound(ctx, ws.ID, activity.OutboundTurn{
+		Chat:       activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+		UID:        "mcp-msg-2",
+		SenderType: domain.SenderTypeAIAgent,
+		SenderName: "Agent Smith",
+		SenderID:   "+551100001111",
+		Body:       "Greetings Diana! How can I assist?",
+		Channel:    "whatsapp_cloud",
+		At:         now.Add(-1 * time.Minute),
+	})
+	_, _ = act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:       activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+		UID:        "mcp-msg-3",
+		SenderName: "Diana",
+		SenderID:   "+5511999998888",
+		Body:       "I need help with my account.",
+		Channel:    "whatsapp_cloud",
+		At:         now,
+	})
 
 	srv := NewServer(
 		wsRepo,
@@ -884,7 +875,14 @@ func TestMCPChatTools(t *testing.T) {
 		if err != nil {
 			t.Fatalf("find or create chat: %v", err)
 		}
-		_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat2.ID, &openExp)
+		_, _ = act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:     activity.ChatID(chat2.ID).WithChannel("whatsapp_cloud"),
+			UID:      "mcp-seed-order-0000",
+			SenderID: "+5511999990000",
+			Body:     "Hi",
+			Channel:  "whatsapp_cloud",
+			At:       time.Now().UTC().Add(-1 * time.Hour),
+		})
 
 		res, err := srv.CallTool(ctx, "whatsapp_account_send_message", map[string]any{
 			"workspace_id":  ws.ID.String(),

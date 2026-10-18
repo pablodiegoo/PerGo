@@ -369,14 +369,10 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 		}
 
 		conversationCount++
-		var lastInboundAt, lastOutboundAt, lastMsgAt time.Time
 		contactSlug := slug.Generate(conv.ContactName)
 
 		for msgIdx, msg := range conv.Messages {
 			msgTime := now.Add(-time.Duration(msg.OffsetMinutes) * time.Minute)
-			if msgTime.After(lastMsgAt) {
-				lastMsgAt = msgTime
-			}
 			traceID := fmt.Sprintf("trace-seed-%s-%s-%d", ws.ID.String()[:8], contactSlug, msgIdx)
 			messageID := fmt.Sprintf("wamid.seed.%s.%d", contactSlug, msgIdx)
 			messageCount++
@@ -388,9 +384,6 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 			_ = pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM chat_messages WHERE workspace_id = $1 AND uid = $2)`, ws.ID, traceID).Scan(&chatMsgExists)
 
 			if msg.Direction == "inbound" {
-				if msgTime.After(lastInboundAt) {
-					lastInboundAt = msgTime
-				}
 				if !alreadyExists {
 					payload, _ := buildInboundAuditPayload(
 						ws.ID,
@@ -412,7 +405,7 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 				}
 				if !chatMsgExists {
 					_, _ = activityRec.Inbound(ctx, ws.ID, activity.InboundTurn{
-						Chat:       activity.ChatID(seededChat.ID),
+						Chat:       activity.ChatID(seededChat.ID).WithChannel(conv.Channel),
 						UID:        traceID,
 						SenderName: contact.Name,
 						SenderID:   contactPhone,
@@ -429,9 +422,6 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 					})
 				}
 			} else {
-				if msgTime.After(lastOutboundAt) {
-					lastOutboundAt = msgTime
-				}
 				if !alreadyExists {
 					payload, _ := buildOutboundAuditPayload(
 						ws.ID,
@@ -465,12 +455,13 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 				}
 				if !chatMsgExists {
 					_, _ = activityRec.Outbound(ctx, ws.ID, activity.OutboundTurn{
-						Chat:       activity.ChatID(seededChat.ID),
+						Chat:       activity.ChatID(seededChat.ID).WithChannel(conv.Channel),
 						UID:        traceID,
 						SenderType: domain.SenderTypeHumanAgent,
 						SenderName: "Agent",
 						SenderID:   conv.RecipientIdentity,
 						Body:       msg.Body,
+						Channel:    conv.Channel,
 						Metadata: map[string]string{
 							"channel":         conv.Channel,
 							"to":              contactPhone,
@@ -488,21 +479,6 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 			} else if cf.AIMode == domain.AIModeActive {
 				_, _ = activityRec.SetAI(ctx, ws.ID, activity.ChatID(seededChat.ID), activity.AIResume())
 			}
-		}
-
-		if !lastMsgAt.IsZero() {
-			_ = chatRepo.TouchLastMessageAt(ctx, ws.ID, seededChat.ID, lastMsgAt)
-		}
-		if !lastInboundAt.IsZero() {
-			expiresAt := lastInboundAt.Add(24 * time.Hour)
-			_, _ = pool.Exec(ctx, `
-				UPDATE chats SET service_window_expires_at = $1 WHERE workspace_id = $2 AND id = $3
-			`, expiresAt, ws.ID, seededChat.ID)
-		}
-		if !lastOutboundAt.IsZero() {
-			_, _ = pool.Exec(ctx, `
-				UPDATE chats SET last_outbound_at = $1 WHERE workspace_id = $2 AND id = $3
-			`, lastOutboundAt, ws.ID, seededChat.ID)
 		}
 	}
 

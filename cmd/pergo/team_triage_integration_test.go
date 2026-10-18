@@ -15,6 +15,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	mcppkg "github.com/pablojhp.pergo/internal/api/mcp"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/i18n"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
@@ -45,6 +46,7 @@ func TestTeamTriageIntegration(t *testing.T) {
 	contactRepo := repository.NewContactRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
 
 	// 1. Create Workspace
 	ws, err := wsRepo.Create(ctx, "Team Triage Integration Workspace")
@@ -120,18 +122,19 @@ func TestTeamTriageIntegration(t *testing.T) {
 	}
 
 	// Insert chat message and audit message so ListConversations finds the thread
-	err = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-		ChatID:      chat.ID,
-		WorkspaceID: ws.ID,
-		UID:         "trace-triage-1001",
-		Direction:   "inbound",
-		SenderType:  domain.SenderTypeContact,
-		Body:        "Preciso de atendimento urgente",
+	_, err = act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:       activity.ChatID(chat.ID).WithChannel("whatsapp"),
+		Channel:    "whatsapp",
+		SenderName: customerName,
+		SenderID:   customerPhone,
+		UID:        "trace-triage-1001",
+		Body:       "Preciso de atendimento urgente",
 		Metadata: map[string]any{
 			"channel": "whatsapp",
 			"from":    customerPhone,
 			"to":      conn.SenderIdentity,
 		},
+		At: time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatalf("failed to create chat message: %v", err)

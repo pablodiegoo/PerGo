@@ -79,26 +79,26 @@ func NewProcessor(
 func (p *Processor) SetActivity(rec *activity.Recorder) *Processor {
 	p.activity = rec
 	p.explicitActivity = rec != nil
+	if p.contactRepo == nil && rec != nil && rec.Pool() != nil {
+		p.contactRepo = repository.NewContactRepository(rec.Pool())
+	}
 	return p
 }
 
 func (p *Processor) rebuildDefaultActivity() {
-	if p.explicitActivity {
-		return
-	}
-	if p.chatRepo != nil && p.chatRepo.Pool() != nil {
-		p.activity = activity.New(p.chatRepo.Pool(), p.publisher, p.debouncer, nil)
-		return
-	}
-	if p.contactRepo != nil && p.contactRepo.Pool() != nil {
-		p.activity = activity.New(p.contactRepo.Pool(), p.publisher, p.debouncer, nil)
-		return
-	}
-	if p.resolver != nil {
-		if pooler, ok := p.resolver.(interface{ Pool() *pgxpool.Pool }); ok && pooler != nil && pooler.Pool() != nil {
-			p.activity = activity.New(pooler.Pool(), p.publisher, p.debouncer, nil)
-			return
+	if !p.explicitActivity {
+		if p.chatRepo != nil && p.chatRepo.Pool() != nil {
+			p.activity = activity.New(p.chatRepo.Pool(), p.publisher, p.debouncer, nil)
+		} else if p.contactRepo != nil && p.contactRepo.Pool() != nil {
+			p.activity = activity.New(p.contactRepo.Pool(), p.publisher, p.debouncer, nil)
+		} else if p.resolver != nil {
+			if pooler, ok := p.resolver.(interface{ Pool() *pgxpool.Pool }); ok && pooler != nil && pooler.Pool() != nil {
+				p.activity = activity.New(pooler.Pool(), p.publisher, p.debouncer, nil)
+			}
 		}
+	}
+	if p.contactRepo == nil && p.activity != nil && p.activity.Pool() != nil {
+		p.contactRepo = repository.NewContactRepository(p.activity.Pool())
 	}
 }
 
@@ -464,29 +464,13 @@ func (p *Processor) recordOutboundTurn(
 	}
 
 	_, err := p.activity.Outbound(ctx, workspaceID, turn)
-	if errors.Is(err, activity.ErrChatNotFound) && req.ChatID != nil && qMsg.To != "" {
-		if conn.Channel == "whatsapp_cloud" && !isTemplate {
-			turn.Chat = activity.ChatAt(conn.ID, qMsg.To).WithChannel(conn.Channel)
-		} else if p.contactRepo != nil {
-			if contact, cErr := p.contactRepo.ResolveContact(ctx, workspaceID, conn.Channel, qMsg.To, "", "", qMsg.To); cErr == nil && contact != nil && contact.ID != uuid.Nil {
-				turn.Chat = activity.ChatOf(conn.ID, contact.ID).WithChannel(conn.Channel)
-			} else {
-				turn.Chat = activity.ChatAt(conn.ID, qMsg.To).WithChannel(conn.Channel)
-			}
-		} else {
-			turn.Chat = activity.ChatAt(conn.ID, qMsg.To).WithChannel(conn.Channel)
-		}
-		_, err = p.activity.Outbound(ctx, workspaceID, turn)
-	}
 	if err != nil {
 		var tmplErr *domain.TemplateRequiredError
 		if errors.As(err, &tmplErr) {
 			return tmplErr
 		}
-		if errors.Is(err, activity.ErrChatNotFound) && p.contactRepo == nil {
-			return nil
-		}
 		slog.Error("outbound processor: failed to record chat activity", "error", err, "trace_id", traceID)
+		return err
 	}
 	return nil
 }

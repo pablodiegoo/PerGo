@@ -526,6 +526,61 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		}
 	}
 
+	// 0.2 Deduplication check
+	if p.dedupRepo != nil && ev.MessageID != "" {
+		if ev.Metadata == nil || ev.Metadata["deduplicated"] != "true" {
+			unique, err := p.dedupRepo.InsertAndCheck(ctx, ev.WorkspaceID, ev.Channel, ev.MessageID)
+			if err != nil {
+				return fmt.Errorf("inbound: deduplication check failed: %w", err)
+			}
+			if !unique {
+				slog.Info("inbound processor: duplicate message ignored", "message_id", ev.MessageID, "channel", ev.Channel, "trace_id", traceID)
+				return nil
+			}
+		}
+	}
+
+	// 0.4 Upload media to S3 if present (before recording Chat Activity so chat_messages.media_url is persisted)
+	var uploadedMedia *EventMedia
+	if ev.Media != nil && len(ev.Media.Bytes) > 0 {
+		alreadyRecorded := false
+		if p.chatRepo != nil {
+			if existing, err := p.chatRepo.GetChatMessageByUID(ctx, ev.WorkspaceID, msgUID); err == nil && existing != nil {
+				alreadyRecorded = true
+			}
+		}
+		if !alreadyRecorded {
+			if p.mediaEngine == nil {
+				slog.Error("inbound processor: skipped S3 upload; S3 client/media engine is not configured", "trace_id", traceID)
+			} else {
+				mediaURL, err := p.mediaEngine.ProcessInbound(ctx, ev.WorkspaceID, ev.Media.MediaType, ev.Media.Bytes)
+				if err != nil {
+					slog.Error("inbound processor: media upload/process failed", "error", err, "trace_id", traceID)
+				} else {
+					uploadedMedia = &EventMedia{
+						MediaURL:  mediaURL,
+						MediaType: ev.Media.MediaType,
+						Filename:  ev.Media.Filename,
+						Caption:   ev.Media.Caption,
+					}
+					ev.Media.MediaURL = mediaURL
+
+					// If media is audio, extract acoustic telemetry (RMS energy and duration)
+					if media.IsAudio(ev.Media.MediaType, ev.Media.Filename) {
+						telemetry, err := p.mediaEngine.ExtractAudioTelemetry(ev.Media.Bytes, ev.Media.MediaType)
+						if err != nil {
+							slog.Warn("inbound processor: failed to extract audio telemetry", "error", err, "trace_id", traceID)
+						} else if telemetry != nil {
+							uploadedMedia.DurationMS = telemetry.DurationMS
+							uploadedMedia.RMSEnergy = &telemetry.RMSEnergy
+							uploadedMedia.Telemetry = telemetry
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// 0.5 Chat Activity: atomically record inbound turn and advance Chat state
 	var receipt activity.InboundReceipt
 	hasReceipt := false
@@ -571,7 +626,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 			MediaURL:       mediaURL,
 			MediaType:      mediaType,
 			Channel:        ev.Channel,
-			EntryPointType: entryPointType,
+			EntryPointType: domain.NormalizeEntryPointType(entryPointType),
 			Metadata:       msgMetadata,
 			At:             occurredAt,
 		})
@@ -600,20 +655,6 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		}
 	}
 
-	// 2. Deduplication check
-	if p.dedupRepo != nil && ev.MessageID != "" {
-		if ev.Metadata == nil || ev.Metadata["deduplicated"] != "true" {
-			unique, err := p.dedupRepo.InsertAndCheck(ctx, ev.WorkspaceID, ev.Channel, ev.MessageID)
-			if err != nil {
-				return fmt.Errorf("inbound: deduplication check failed: %w", err)
-			}
-			if !unique {
-				slog.Info("inbound processor: duplicate message ignored", "message_id", ev.MessageID, "channel", ev.Channel, "trace_id", traceID)
-				return nil
-			}
-		}
-	}
-
 	// 3. Retrieve Workspace PII Opt-In
 	var piiOptIn bool
 	if p.wsRepo != nil {
@@ -633,43 +674,12 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		From:        ev.From,
 		To:          ev.To,
 		Body:        ev.Body,
+		Media:       uploadedMedia,
 		Interactive: ev.Interactive,
 		Story:       ev.Story,
 		Timing:      timing,
 		SenderName:  ev.SenderName,
 		Metadata:    ev.Metadata,
-	}
-
-	// 5. Upload media to S3 if present
-	if ev.Media != nil && len(ev.Media.Bytes) > 0 {
-		if p.mediaEngine == nil {
-			slog.Error("inbound processor: skipped S3 upload; S3 client/media engine is not configured", "trace_id", traceID)
-		} else {
-			mediaURL, err := p.mediaEngine.ProcessInbound(ctx, ev.WorkspaceID, ev.Media.MediaType, ev.Media.Bytes)
-			if err != nil {
-				slog.Error("inbound processor: media upload/process failed", "error", err, "trace_id", traceID)
-			} else {
-				payload.Media = &EventMedia{
-					MediaURL:  mediaURL,
-					MediaType: ev.Media.MediaType,
-					Filename:  ev.Media.Filename,
-					Caption:   ev.Media.Caption,
-				}
-				ev.Media.MediaURL = mediaURL
-
-				// If media is audio, extract acoustic telemetry (RMS energy and duration)
-				if media.IsAudio(ev.Media.MediaType, ev.Media.Filename) {
-					telemetry, err := p.mediaEngine.ExtractAudioTelemetry(ev.Media.Bytes, ev.Media.MediaType)
-					if err != nil {
-						slog.Warn("inbound processor: failed to extract audio telemetry", "error", err, "trace_id", traceID)
-					} else if telemetry != nil {
-						payload.Media.DurationMS = telemetry.DurationMS
-						payload.Media.RMSEnergy = &telemetry.RMSEnergy
-						payload.Media.Telemetry = telemetry
-					}
-				}
-			}
-		}
 	}
 
 	// 6. PII Opt-In check (Locations and Contacts)

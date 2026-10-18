@@ -244,13 +244,16 @@ func TestInboundProcessor_Process(t *testing.T) {
 			t.Errorf("got payload channel %q, want %q", payload.Channel, "telegram")
 		}
 
-		// Verify Chat Service Window was opened on chats
+		// Verify Chat was created with LastInboundAt and non-WABA open window
 		snap, exists, err := act.Snapshot(ctx, ws.ID, activity.ChatAt(uuid.Nil, "user-chat-99").WithChannel("telegram"))
 		if err != nil || !exists {
 			t.Fatalf("failed to snapshot chat: exists=%v err=%v", exists, err)
 		}
-		if snap.ServiceWindowExpiresAt == nil {
-			t.Errorf("expected ServiceWindowExpiresAt to be populated on chat")
+		if snap.LastInboundAt == nil {
+			t.Errorf("expected LastInboundAt to be populated on chat")
+		}
+		if !domain.Window(snap, exists, time.Now().UTC()).Open {
+			t.Errorf("expected telegram chat window to be open")
 		}
 	})
 
@@ -297,8 +300,9 @@ func TestInboundProcessor_Process(t *testing.T) {
 			},
 		}
 		aud := &fakeAuditWriter{}
+		chatRepo := repository.NewChatRepository(pool)
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil).SetChatRepository(chatRepo)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -342,6 +346,18 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 		if !strings.HasPrefix(payload.Media.MediaURL, "/media/"+ws.ID.String()+"/") {
 			t.Errorf("invalid media URL format: %s", payload.Media.MediaURL)
+		}
+
+		// Verify chat_messages row persisted media_url and media_type
+		persistedMsg, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, "test-media-1")
+		if err != nil {
+			t.Fatalf("failed to get persisted chat message: %v", err)
+		}
+		if persistedMsg.MediaURL == nil || *persistedMsg.MediaURL != payload.Media.MediaURL {
+			t.Errorf("expected persisted MediaURL %q, got %v", payload.Media.MediaURL, persistedMsg.MediaURL)
+		}
+		if persistedMsg.MediaType == nil || *persistedMsg.MediaType != "image" {
+			t.Errorf("expected persisted MediaType 'image', got %v", persistedMsg.MediaType)
 		}
 	})
 
@@ -1151,7 +1167,7 @@ func TestInboundProcessor_WhatsAppCloudSessionTracking(t *testing.T) {
 			From:           "5511999990001",
 			To:             "+5511888880001",
 			Body:           "Hi there",
-			EntryPointType: domain.EntryPointStandard,
+			EntryPointType: string(domain.EntryPointStandard),
 			Metadata: map[string]string{
 				"entry_point_type": "standard",
 			},
@@ -1186,7 +1202,7 @@ func TestInboundProcessor_WhatsAppCloudSessionTracking(t *testing.T) {
 			From:           "5511999990002",
 			To:             "+5511888880001",
 			Body:           "Clicked ad",
-			EntryPointType: domain.EntryPointCTWA,
+			EntryPointType: string(domain.EntryPointCTWA),
 			Metadata: map[string]string{
 				"entry_point_type": "ctwa",
 			},

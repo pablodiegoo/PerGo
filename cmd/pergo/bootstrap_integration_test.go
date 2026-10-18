@@ -16,6 +16,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/nats-io/nats.go"
 	"github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/config"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
@@ -138,10 +139,17 @@ func TestBootstrapCore_StdioAndHTTPParity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find or create chat: %v", err)
 	}
-	// Explicitly expire the Customer Service Window (closed 2 hours ago)
-	expiredAt := time.Now().UTC().Add(-2 * time.Hour)
-	if err := core.ChatRepo.UpdateServiceWindow(ctx, ws.ID, chatThread.ID, &expiredAt); err != nil {
-		t.Fatalf("expire service window: %v", err)
+	// Explicitly expire the Customer Service Window (inbound 26 hours ago -> closed 2 hours ago)
+	if _, err := core.Activity.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:       activity.ChatID(chatThread.ID).WithChannel("whatsapp_cloud"),
+		UID:        uuid.NewString(),
+		Channel:    "whatsapp_cloud",
+		SenderName: "Stdio Customer",
+		SenderID:   customerPhone,
+		Body:       "Old inbound message",
+		At:         time.Now().UTC().Add(-26 * time.Hour),
+	}); err != nil {
+		t.Fatalf("seed expired service window via Activity.Inbound: %v", err)
 	}
 
 	resClosed, err := core.MCPServer.CallTool(ctx, "waba_chat_send_message", map[string]any{
@@ -316,20 +324,19 @@ func TestBuildHTTPRouter_SingleRouteOwnershipAndWorkspaceScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find or create chatA: %v", err)
 	}
-	msgA := &domain.ChatMessage{
-		ChatID:      chatA.ID,
-		WorkspaceID: wsA.ID,
-		UID:         "msg-smoke-a-" + uuid.NewString()[:8],
-		Direction:   domain.DirectionInbound,
-		SenderType:  domain.SenderTypeContact,
-		SenderName:  "Maria Smoke",
-		SenderID:    "+5511922223333",
-		Body:        "Preciso de ajuda com o boleto vencido.",
-		CreatedAt:   time.Now().UTC(),
-	}
-	if err := core.ChatRepo.AddChatMessage(ctx, msgA); err != nil {
+	inResA, err := core.Activity.Inbound(ctx, wsA.ID, activity.InboundTurn{
+		Chat:       activity.ChatID(chatA.ID).WithChannel("whatsapp"),
+		Channel:    "whatsapp",
+		SenderName: "Maria Smoke",
+		SenderID:   "+5511922223333",
+		UID:        "msg-smoke-a-" + uuid.NewString()[:8],
+		Body:       "Preciso de ajuda com o boleto vencido.",
+		At:         time.Now().UTC(),
+	})
+	if err != nil {
 		t.Fatalf("add msgA: %v", err)
 	}
+	msgA := inResA.Message
 
 	// Create a chat in Workspace B
 	contactB, err := core.ContactRepo.ResolveContact(ctx, wsB.ID, "whatsapp", "+5511944445555", "Tenant B User", "", "+5511944445555")

@@ -671,12 +671,20 @@ func (s *Server) handleWABAListChats(ctx context.Context, request mcp.CallToolRe
 			continue
 		}
 
-		isOpen, remSec, badge := formatServiceWindowStatus(&c.Chat, now)
+		win := eng.Window(ctx, wsID, &c.Chat, "whatsapp_cloud", now)
+		isOpen, remSec, badge := formatServiceWindowStatus(win)
+		var expPtr *time.Time
+		if !win.ExpiresAt.IsZero() {
+			exp := win.ExpiresAt
+			expPtr = &exp
+		} else {
+			expPtr = c.ServiceWindowExpiresAt
+		}
 
 		dto := WABAChatSummaryDTO{
 			ChatSummaryDTO:            c,
 			ServiceWindowIsOpen:       isOpen,
-			ServiceWindowExpiresAt:    c.ServiceWindowExpiresAt,
+			ServiceWindowExpiresAt:    expPtr,
 			ServiceWindowRemainingSec: remSec,
 			ServiceWindowStatusBadge:  badge,
 		}
@@ -1172,12 +1180,20 @@ func (s *Server) handleWABAChatDetails(ctx context.Context, request mcp.CallTool
 	}
 
 	c := detail.Chat
-	isOpen, remSec, badge := formatServiceWindowStatus(c, time.Now().UTC())
+	win := eng.Window(ctx, wsID, c, "whatsapp_cloud", time.Now().UTC())
+	isOpen, remSec, badge := formatServiceWindowStatus(win)
+	var expPtr *time.Time
+	if !win.ExpiresAt.IsZero() {
+		exp := win.ExpiresAt
+		expPtr = &exp
+	} else if c != nil {
+		expPtr = c.ServiceWindowExpiresAt
+	}
 
 	response := map[string]interface{}{
 		"chat":                         c,
 		"service_window_is_open":       isOpen,
-		"service_window_expires_at":    c.ServiceWindowExpiresAt,
+		"service_window_expires_at":    expPtr,
 		"service_window_remaining_sec": remSec,
 		"service_window_status_badge":  badge,
 	}
@@ -1204,11 +1220,11 @@ func (s *Server) handleWABAChatDetails(ctx context.Context, request mcp.CallTool
 	return mcp.NewToolResultText(string(data)), nil
 }
 
-func formatServiceWindowStatus(c *domain.Chat, now time.Time) (bool, int64, string) {
-	if c == nil || !c.IsServiceWindowOpen(now) || c.ServiceWindowExpiresAt == nil {
+func formatServiceWindowStatus(win domain.ServiceWindow) (bool, int64, string) {
+	if !win.Open || win.ExpiresAt.IsZero() {
 		return false, 0, "🔴 Expired"
 	}
-	remSec := int64(c.ServiceWindowExpiresAt.Sub(now).Seconds())
+	remSec := int64(win.Remaining.Seconds())
 	hours := remSec / 3600
 	mins := (remSec % 3600) / 60
 	if hours < 4 {

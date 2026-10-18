@@ -209,7 +209,7 @@ type InboundTurn struct {
 	MediaURL       *string
 	MediaType      *string
 	Channel        string
-	EntryPointType string
+	EntryPointType domain.EntryPointType
 	Metadata       map[string]interface{}
 	At             time.Time
 }
@@ -270,7 +270,7 @@ type ExpiringChat struct {
 	ContactID      uuid.UUID
 	RecipientPhone string
 	Channel        string
-	EntryPointType string
+	EntryPointType domain.EntryPointType
 	ExpiresAt      time.Time
 }
 
@@ -347,6 +347,9 @@ func (r *Recorder) SetDebounceCanceller(deb DebounceCanceller) {
 func (r *Recorder) Inbound(ctx context.Context, ws uuid.UUID, turn InboundTurn) (InboundReceipt, error) {
 	if r == nil || r.pool == nil {
 		return InboundReceipt{}, errors.New("activity recorder pool is not configured")
+	}
+	if ws == uuid.Nil {
+		return InboundReceipt{}, ErrInvalidWorkspaceID
 	}
 	uid := strings.TrimSpace(turn.UID)
 	if uid == "" {
@@ -448,6 +451,9 @@ func (r *Recorder) Inbound(ctx context.Context, ws uuid.UUID, turn InboundTurn) 
 func (r *Recorder) Outbound(ctx context.Context, ws uuid.UUID, turn OutboundTurn) (OutboundReceipt, error) {
 	if r == nil || r.pool == nil {
 		return OutboundReceipt{}, errors.New("activity recorder pool is not configured")
+	}
+	if ws == uuid.Nil {
+		return OutboundReceipt{}, ErrInvalidWorkspaceID
 	}
 	uid := strings.TrimSpace(turn.UID)
 	if uid == "" {
@@ -586,7 +592,7 @@ func (r *Recorder) TouchOutbound(ctx context.Context, ws uuid.UUID, ref ChatRef,
 	if r == nil || r.pool == nil {
 		return nil
 	}
-	if ws == uuid.Nil && ref.id == uuid.Nil {
+	if ws == uuid.Nil {
 		return ErrInvalidWorkspaceID
 	}
 	at = at.UTC()
@@ -595,21 +601,12 @@ func (r *Recorder) TouchOutbound(ctx context.Context, ws uuid.UUID, ref ChatRef,
 	}
 
 	if ref.id != uuid.Nil {
-		if ws != uuid.Nil {
-			_, err := r.pool.Exec(ctx, `
-				UPDATE chats
-				SET last_outbound_at = GREATEST(COALESCE(last_outbound_at, $3), $3),
-				    updated_at = $3
-				WHERE workspace_id = $1 AND id = $2
-			`, ws, ref.id, at)
-			return err
-		}
 		_, err := r.pool.Exec(ctx, `
 			UPDATE chats
-			SET last_outbound_at = GREATEST(COALESCE(last_outbound_at, $2), $2),
-			    updated_at = $2
-			WHERE id = $1
-		`, ref.id, at)
+			SET last_outbound_at = GREATEST(COALESCE(last_outbound_at, $3), $3),
+			    updated_at = $3
+			WHERE workspace_id = $1 AND id = $2
+		`, ws, ref.id, at)
 		return err
 	}
 
@@ -617,9 +614,16 @@ func (r *Recorder) TouchOutbound(ctx context.Context, ws uuid.UUID, ref ChatRef,
 	if contactID == uuid.Nil && ref.address != "" {
 		channel := ref.channel
 		if channel == "" && ref.connID != uuid.Nil {
-			_ = r.pool.QueryRow(ctx, `SELECT channel FROM connections WHERE workspace_id = $1 AND id = $2`, ws, ref.connID).Scan(&channel)
+			err := r.pool.QueryRow(ctx, `SELECT channel FROM connections WHERE workspace_id = $1 AND id = $2`, ws, ref.connID).Scan(&channel)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return err
+			}
 		}
-		contactID = lookupContactIDByAddress(ctx, r.pool, ws, channel, ref.address)
+		var err error
+		contactID, err = lookupContactIDByAddress(ctx, r.pool, ws, channel, ref.address)
+		if err != nil {
+			return err
+		}
 	}
 	if contactID == uuid.Nil {
 		return nil
@@ -740,7 +744,7 @@ func (r *Recorder) SetAI(ctx context.Context, ws uuid.UUID, ref ChatRef, change 
 	if r == nil || r.pool == nil {
 		return domain.AIEngagement{}, errors.New("activity recorder pool is not configured")
 	}
-	if ws == uuid.Nil && ref.id == uuid.Nil {
+	if ws == uuid.Nil {
 		return domain.AIEngagement{}, ErrInvalidWorkspaceID
 	}
 
@@ -836,33 +840,20 @@ func (r *Recorder) Snapshot(ctx context.Context, ws uuid.UUID, ref ChatRef) (dom
 	if r == nil || r.pool == nil {
 		return defaultState, false, nil
 	}
-	if ws == uuid.Nil && ref.id == uuid.Nil {
+	if ws == uuid.Nil {
 		return defaultState, false, ErrInvalidWorkspaceID
 	}
 
 	if ref.id != uuid.Nil {
-		var row pgx.Row
-		if ws != uuid.Nil {
-			row = r.pool.QueryRow(ctx, `
-				SELECT c.id, c.workspace_id, c.connection_id, c.contact_id, COALESCE(conn.channel, ''),
-				       c.status, c.snoozed_until, c.ai_mode, c.ai_paused_until,
-				       c.service_window_expires_at, COALESCE(c.entry_point_type, 'standard'),
-				       c.unread_count, c.last_message_at, c.last_outbound_at
-				FROM chats c
-				LEFT JOIN connections conn ON conn.id = c.connection_id
-				WHERE c.workspace_id = $1 AND c.id = $2
-			`, ws, ref.id)
-		} else {
-			row = r.pool.QueryRow(ctx, `
-				SELECT c.id, c.workspace_id, c.connection_id, c.contact_id, COALESCE(conn.channel, ''),
-				       c.status, c.snoozed_until, c.ai_mode, c.ai_paused_until,
-				       c.service_window_expires_at, COALESCE(c.entry_point_type, 'standard'),
-				       c.unread_count, c.last_message_at, c.last_outbound_at
-				FROM chats c
-				LEFT JOIN connections conn ON conn.id = c.connection_id
-				WHERE c.id = $1
-			`, ref.id)
-		}
+		row := r.pool.QueryRow(ctx, `
+			SELECT c.id, c.workspace_id, c.connection_id, c.contact_id, COALESCE(conn.channel, ''),
+			       c.status, c.snoozed_until, c.ai_mode, c.ai_paused_until,
+			       c.service_window_expires_at, COALESCE(c.entry_point_type, 'standard'),
+			       c.unread_count, c.last_message_at, c.last_inbound_at, c.last_outbound_at
+			FROM chats c
+			LEFT JOIN connections conn ON conn.id = c.connection_id
+			WHERE c.workspace_id = $1 AND c.id = $2
+		`, ws, ref.id)
 		st, err := scanChatState(row)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -878,13 +869,20 @@ func (r *Recorder) Snapshot(ctx context.Context, ws uuid.UUID, ref ChatRef) (dom
 
 	channel := ref.channel
 	if channel == "" && ref.connID != uuid.Nil {
-		_ = r.pool.QueryRow(ctx, `SELECT channel FROM connections WHERE workspace_id = $1 AND id = $2`, ws, ref.connID).Scan(&channel)
+		err := r.pool.QueryRow(ctx, `SELECT channel FROM connections WHERE workspace_id = $1 AND id = $2`, ws, ref.connID).Scan(&channel)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return defaultState, false, err
+		}
 	}
 	defaultState.Channel = channel
 
 	contactID := ref.contactID
 	if contactID == uuid.Nil && ref.address != "" {
-		contactID = lookupContactIDByAddress(ctx, r.pool, ws, channel, ref.address)
+		var err error
+		contactID, err = lookupContactIDByAddress(ctx, r.pool, ws, channel, ref.address)
+		if err != nil {
+			return defaultState, false, err
+		}
 		if contactID == uuid.Nil {
 			return defaultState, false, nil
 		}
@@ -904,7 +902,7 @@ func (r *Recorder) Snapshot(ctx context.Context, ws uuid.UUID, ref ChatRef) (dom
 		SELECT c.id, c.workspace_id, c.connection_id, c.contact_id, COALESCE(conn.channel, ''),
 		       c.status, c.snoozed_until, c.ai_mode, c.ai_paused_until,
 		       c.service_window_expires_at, COALESCE(c.entry_point_type, 'standard'),
-		       c.unread_count, c.last_message_at, c.last_outbound_at
+		       c.unread_count, c.last_message_at, c.last_inbound_at, c.last_outbound_at
 		FROM chats c
 		LEFT JOIN connections conn ON conn.id = c.connection_id
 		WHERE c.workspace_id = $1 AND c.contact_id = $2
@@ -932,55 +930,53 @@ type rowQuerier interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
-func lookupContactIDByAddress(ctx context.Context, q rowQuerier, ws uuid.UUID, channel, address string) uuid.UUID {
+func lookupContactIDByAddress(ctx context.Context, q rowQuerier, ws uuid.UUID, channel, address string) (uuid.UUID, error) {
 	address = strings.TrimSpace(address)
 	if address == "" || ws == uuid.Nil {
-		return uuid.Nil
+		return uuid.Nil, nil
 	}
 	var contactID uuid.UUID
 	if channel != "" {
-		_ = q.QueryRow(ctx, `
+		err := q.QueryRow(ctx, `
 			SELECT contact_id FROM contact_identities
 			WHERE workspace_id = $1 AND channel = $2
 			  AND (sender_identity = $3 OR LTRIM(sender_identity, '+') = LTRIM($3, '+'))
 			ORDER BY (sender_identity = $3) DESC
 			LIMIT 1
 		`, ws, channel, address).Scan(&contactID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, err
+		}
 	}
 	if contactID == uuid.Nil {
-		_ = q.QueryRow(ctx, `
+		err := q.QueryRow(ctx, `
 			SELECT contact_id FROM contact_identities
 			WHERE workspace_id = $1
 			  AND (sender_identity = $2 OR LTRIM(sender_identity, '+') = LTRIM($2, '+'))
 			ORDER BY (sender_identity = $2) DESC
 			LIMIT 1
 		`, ws, address).Scan(&contactID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, err
+		}
 	}
-	return contactID
+	return contactID, nil
 }
 
 func (r *Recorder) resolveAndLockChat(ctx context.Context, tx pgx.Tx, ws uuid.UUID, ref ChatRef, allowCreate bool) (domain.ChatState, error) {
+	if ws == uuid.Nil {
+		return domain.ChatState{}, ErrInvalidWorkspaceID
+	}
+
 	if ref.id != uuid.Nil {
-		var row pgx.Row
-		if ws != uuid.Nil {
-			row = tx.QueryRow(ctx, `
-				SELECT id, workspace_id, connection_id, contact_id, ''::text, status, snoozed_until,
-				       ai_mode, ai_paused_until, service_window_expires_at, COALESCE(entry_point_type, 'standard'),
-				       unread_count, last_message_at, last_outbound_at
-				FROM chats
-				WHERE workspace_id = $1 AND id = $2
-				FOR UPDATE
-			`, ws, ref.id)
-		} else {
-			row = tx.QueryRow(ctx, `
-				SELECT id, workspace_id, connection_id, contact_id, ''::text, status, snoozed_until,
-				       ai_mode, ai_paused_until, service_window_expires_at, COALESCE(entry_point_type, 'standard'),
-				       unread_count, last_message_at, last_outbound_at
-				FROM chats
-				WHERE id = $1
-				FOR UPDATE
-			`, ref.id)
-		}
+		row := tx.QueryRow(ctx, `
+			SELECT id, workspace_id, connection_id, contact_id, ''::text, status, snoozed_until,
+			       ai_mode, ai_paused_until, service_window_expires_at, COALESCE(entry_point_type, 'standard'),
+			       unread_count, last_message_at, last_inbound_at, last_outbound_at
+			FROM chats
+			WHERE workspace_id = $1 AND id = $2
+			FOR UPDATE
+		`, ws, ref.id)
 		st, err := scanChatState(row)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
@@ -992,10 +988,6 @@ func (r *Recorder) resolveAndLockChat(ctx context.Context, tx pgx.Tx, ws uuid.UU
 			_ = tx.QueryRow(ctx, `SELECT channel FROM connections WHERE id = $1`, *st.ConnectionID).Scan(&st.Channel)
 		}
 		return st, nil
-	}
-
-	if ws == uuid.Nil {
-		return domain.ChatState{}, ErrInvalidWorkspaceID
 	}
 
 	var connPtr *uuid.UUID
@@ -1017,7 +1009,11 @@ func (r *Recorder) resolveAndLockChat(ctx context.Context, tx pgx.Tx, ws uuid.UU
 	if contactID == uuid.Nil && ref.address != "" {
 		// ChatAt is strictly read-only: look up existing contact without creating.
 		allowCreate = false
-		contactID = lookupContactIDByAddress(ctx, tx, ws, channel, ref.address)
+		var err error
+		contactID, err = lookupContactIDByAddress(ctx, tx, ws, channel, ref.address)
+		if err != nil {
+			return domain.ChatState{}, err
+		}
 	}
 
 	if contactID == uuid.Nil {
@@ -1028,7 +1024,7 @@ func (r *Recorder) resolveAndLockChat(ctx context.Context, tx pgx.Tx, ws uuid.UU
 	row := tx.QueryRow(ctx, `
 		SELECT id, workspace_id, connection_id, contact_id, ''::text, status, snoozed_until,
 		       ai_mode, ai_paused_until, service_window_expires_at, COALESCE(entry_point_type, 'standard'),
-		       unread_count, last_message_at, last_outbound_at
+		       unread_count, last_message_at, last_inbound_at, last_outbound_at
 		FROM chats
 		WHERE workspace_id = $1 AND contact_id = $2
 		  AND ($3::uuid IS NULL OR connection_id = $3 OR connection_id IS NULL)
@@ -1069,7 +1065,7 @@ func (r *Recorder) resolveAndLockChat(ctx context.Context, tx pgx.Tx, ws uuid.UU
 		DO UPDATE SET updated_at = NOW()
 		RETURNING id, workspace_id, connection_id, contact_id, ''::text, status, snoozed_until,
 		          ai_mode, ai_paused_until, service_window_expires_at, COALESCE(entry_point_type, 'standard'),
-		          unread_count, last_message_at, last_outbound_at
+		          unread_count, last_message_at, last_inbound_at, last_outbound_at
 	`, ws, connPtr, contactID)
 
 	st, err = scanChatState(createRow)
@@ -1084,6 +1080,7 @@ func scanChatState(row pgx.Row) (domain.ChatState, error) {
 	var st domain.ChatState
 	var aiMode string
 	var aiPausedUntil *time.Time
+	var entryPoint string
 	err := row.Scan(
 		&st.ID,
 		&st.WorkspaceID,
@@ -1095,9 +1092,10 @@ func scanChatState(row pgx.Row) (domain.ChatState, error) {
 		&aiMode,
 		&aiPausedUntil,
 		&st.ServiceWindowExpiresAt,
-		&st.EntryPointType,
+		&entryPoint,
 		&st.UnreadCount,
 		&st.LastMessageAt,
+		&st.LastInboundAt,
 		&st.LastOutboundAt,
 	)
 	if err != nil {
@@ -1111,9 +1109,7 @@ func scanChatState(row pgx.Row) (domain.ChatState, error) {
 		Mode:        mode,
 		PausedUntil: aiPausedUntil,
 	}
-	if st.EntryPointType == "" {
-		st.EntryPointType = domain.EntryPointStandard
-	}
+	st.EntryPointType = domain.NormalizeEntryPointType(entryPoint)
 	return st, nil
 }
 
@@ -1197,7 +1193,11 @@ func updateInboundChatState(ctx context.Context, tx pgx.Tx, state domain.ChatSta
 	if lastMsgAt.IsZero() {
 		lastMsgAt = now
 	}
-	ep := domain.NormalizeEntryPointType(state.EntryPointType)
+	inAt := now
+	if state.LastInboundAt != nil && !state.LastInboundAt.IsZero() {
+		inAt = *state.LastInboundAt
+	}
+	ep := string(domain.NormalizeEntryPointType(state.EntryPointType))
 
 	_, err := tx.Exec(ctx, `
 		UPDATE chats
@@ -1209,10 +1209,11 @@ func updateInboundChatState(ctx context.Context, tx pgx.Tx, state domain.ChatSta
 		    service_window_expires_at = $8,
 		    entry_point_type = $9,
 		    notified_expiring_at = NULL,
-		    last_message_at = $10,
-		    updated_at = $11
+		    last_inbound_at = GREATEST(COALESCE(last_inbound_at, $10), $10),
+		    last_message_at = $11,
+		    updated_at = $12
 		WHERE workspace_id = $1 AND id = $2
-	`, state.WorkspaceID, state.ID, string(state.Status), state.SnoozedUntil, modeStr, state.AI.PausedUntil, state.UnreadCount, state.ServiceWindowExpiresAt, ep, lastMsgAt, now)
+	`, state.WorkspaceID, state.ID, string(state.Status), state.SnoozedUntil, modeStr, state.AI.PausedUntil, state.UnreadCount, state.ServiceWindowExpiresAt, ep, inAt, lastMsgAt, now)
 	if err != nil {
 		return fmt.Errorf("update inbound chat state: %w", err)
 	}

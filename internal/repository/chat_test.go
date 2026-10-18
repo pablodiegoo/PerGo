@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -27,6 +28,7 @@ func TestChatRepository(t *testing.T) {
 	chatRepo := repository.NewChatRepository(pool)
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
 
 	// Create test workspace
 	ws, err := wsRepo.Create(ctx, "chat_test_ws_"+uuid.New().String())
@@ -118,10 +120,6 @@ func TestChatRepository(t *testing.T) {
 		if err := chatRepo.SetChatTags(ctx, ws.ID, chat.ID, []string{"vip", "support"}); err != nil {
 			t.Fatalf("failed to set tags: %v", err)
 		}
-		// UnreadCount
-		if err := chatRepo.UpdateChatUnreadCount(ctx, ws.ID, chat.ID, 5); err != nil {
-			t.Fatalf("failed to update unread: %v", err)
-		}
 
 		updated, err := chatRepo.GetChat(ctx, ws.ID, chat.ID)
 		if err != nil {
@@ -140,21 +138,9 @@ func TestChatRepository(t *testing.T) {
 		if updated.AIDisabled {
 			t.Errorf("expected ai disabled false by default, got true")
 		}
-		if updated.UnreadCount != 5 {
-			t.Errorf("expected unread count 5, got %d", updated.UnreadCount)
-		}
-
-		// Increment
-		if err := chatRepo.IncrementUnreadCount(ctx, ws.ID, chat.ID); err != nil {
-			t.Fatalf("failed to increment unread: %v", err)
-		}
-		afterInc, _ := chatRepo.GetChat(ctx, ws.ID, chat.ID)
-		if afterInc.UnreadCount != 6 {
-			t.Errorf("expected unread count 6, got %d", afterInc.UnreadCount)
-		}
 	})
 
-	t.Run("AddChatMessage_And_ListChatMessages_CursorPagination", func(t *testing.T) {
+	t.Run("ListChatMessages_CursorPagination", func(t *testing.T) {
 		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
 		if err != nil {
 			t.Fatalf("failed to get chat: %v", err)
@@ -164,18 +150,15 @@ func TestChatRepository(t *testing.T) {
 		uids := []string{"msg-1", "msg-2", "msg-3", "msg-4", "msg-5"}
 
 		for i, uid := range uids {
-			msg := &domain.ChatMessage{
-				ChatID:      chat.ID,
-				WorkspaceID: ws.ID,
-				UID:         uid,
-				Direction:   domain.DirectionInbound,
-				SenderType:  domain.SenderTypeContact,
-				SenderName:  "Alice",
-				SenderID:    "+5511999999999",
-				Body:        "Message " + uid,
-				CreatedAt:   baseTime.Add(time.Duration(i) * time.Minute),
-			}
-			if err := chatRepo.AddChatMessage(ctx, msg); err != nil {
+			if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+				Chat:       activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+				UID:        uid,
+				SenderName: "Alice",
+				SenderID:   "+5511999999999",
+				Body:       "Message " + uid,
+				Channel:    "whatsapp_cloud",
+				At:         baseTime.Add(time.Duration(i) * time.Minute),
+			}); err != nil {
 				t.Fatalf("failed to add message %s: %v", uid, err)
 			}
 		}
@@ -225,16 +208,14 @@ func TestChatRepository(t *testing.T) {
 		}
 
 		msgUID := "msg-rx-test"
-		msg := &domain.ChatMessage{
-			ChatID:      chat.ID,
-			WorkspaceID: ws.ID,
-			UID:         msgUID,
-			Direction:   domain.DirectionInbound,
-			SenderType:  domain.SenderTypeContact,
-			Body:        "Reactions testing",
-			CreatedAt:   time.Now().UTC(),
-		}
-		if err := chatRepo.AddChatMessage(ctx, msg); err != nil {
+		if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:     activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+			UID:      msgUID,
+			SenderID: "+5511999999999",
+			Body:     "Reactions testing",
+			Channel:  "whatsapp_cloud",
+			At:       time.Now().UTC(),
+		}); err != nil {
 			t.Fatalf("failed to add message: %v", err)
 		}
 
@@ -356,16 +337,14 @@ func TestChatRepository(t *testing.T) {
 		}
 
 		msgUID := "msg-rx-concurrent-" + uuid.New().String()
-		msg := &domain.ChatMessage{
-			ChatID:      chat.ID,
-			WorkspaceID: ws.ID,
-			UID:         msgUID,
-			Direction:   domain.DirectionInbound,
-			SenderType:  domain.SenderTypeContact,
-			Body:        "Concurrent toggle target",
-			CreatedAt:   time.Now().UTC(),
-		}
-		if err := chatRepo.AddChatMessage(ctx, msg); err != nil {
+		if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:     activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+			UID:      msgUID,
+			SenderID: "+5511999999999",
+			Body:     "Concurrent toggle target",
+			Channel:  "whatsapp_cloud",
+			At:       time.Now().UTC(),
+		}); err != nil {
 			t.Fatalf("failed to add message: %v", err)
 		}
 
@@ -546,58 +525,55 @@ func TestChatRepository_ConversationsAndThread(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create chat1: %v", err)
 	}
-	_ = chatRepo.UpdateChatUnreadCount(ctx, ws.ID, chat1.ID, 3)
 
 	chat2, err := chatRepo.FindOrCreateChat(ctx, ws.ID, nil, c2.ID)
 	if err != nil {
 		t.Fatalf("failed to create chat2: %v", err)
 	}
 
+	act := activity.New(pool, nil, nil, nil)
+
 	insertInbound := func(chatID uuid.UUID, from, channel, to, body string, createdAt time.Time) *domain.ChatMessage {
-		msg := &domain.ChatMessage{
-			ID:          uuid.New(),
-			ChatID:      chatID,
-			WorkspaceID: ws.ID,
-			UID:         uuid.New().String(),
-			Direction:   domain.DirectionInbound,
-			SenderType:  domain.SenderTypeContact,
-			SenderName:  from,
-			SenderID:    from,
-			Body:        body,
+		res, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:       activity.ChatID(chatID).WithChannel(channel),
+			UID:        uuid.NewString(),
+			Channel:    channel,
+			SenderName: from,
+			SenderID:   from,
+			Body:       body,
 			Metadata: map[string]interface{}{
 				"channel": channel,
 				"to":      to,
 			},
-			CreatedAt: createdAt,
-		}
-		if err := chatRepo.AddChatMessage(ctx, msg); err != nil {
+			At: createdAt,
+		})
+		if err != nil {
 			t.Fatalf("failed to insert inbound chat message: %v", err)
 		}
-		return msg
+		return res.Message
 	}
 
 	insertOutbound := func(chatID uuid.UUID, to, channel, senderIdentity, body string, createdAt time.Time) *domain.ChatMessage {
-		msg := &domain.ChatMessage{
-			ID:          uuid.New(),
-			ChatID:      chatID,
-			WorkspaceID: ws.ID,
-			UID:         uuid.New().String(),
-			Direction:   domain.DirectionOutbound,
-			SenderType:  domain.SenderTypeHumanAgent,
-			SenderName:  "Agent",
-			SenderID:    senderIdentity,
-			Body:        body,
-			Metadata: map[string]interface{}{
+		res, err := act.Outbound(ctx, ws.ID, activity.OutboundTurn{
+			Chat:       activity.ChatID(chatID).WithChannel(channel),
+			UID:        uuid.NewString(),
+			Channel:    channel,
+			To:         to,
+			SenderType: domain.SenderTypeHumanAgent,
+			SenderName: "Agent",
+			SenderID:   senderIdentity,
+			Body:       body,
+			Metadata: map[string]string{
 				"channel":         channel,
 				"sender_identity": senderIdentity,
 				"to":              to,
 			},
-			CreatedAt: createdAt,
-		}
-		if err := chatRepo.AddChatMessage(ctx, msg); err != nil {
+			At: createdAt,
+		})
+		if err != nil {
 			t.Fatalf("failed to insert outbound chat message: %v", err)
 		}
-		return msg
+		return res.Message
 	}
 
 	now := time.Now().UTC()
@@ -607,6 +583,9 @@ func TestChatRepository_ConversationsAndThread(t *testing.T) {
 	insertOutbound(chat1.ID, "contact1", "telegram", identity1, "Reply 1", now.Add(-5*time.Minute))
 	insertInbound(chat1.ID, "contact1", "telegram", identity2, "Hello bot 2", now.Add(-2*time.Minute))
 	insertInbound(chat2.ID, "contact2", "whatsapp", identity3, "Hello from Contact Two", now.Add(-1*time.Minute))
+	if err := chatRepo.ResetUnread(ctx, ws.ID, chat2.ID); err != nil {
+		t.Fatalf("failed to reset unread on chat2: %v", err)
+	}
 
 	t.Run("ListConversations grouping, unread state, and filters", func(t *testing.T) {
 		conversations, err := chatRepo.ListConversations(ctx, ws.ID, "")
@@ -782,21 +761,19 @@ func TestChatRepository_ConversationsAndThread(t *testing.T) {
 			t.Fatalf("failed to update dispatch status: %v", err)
 		}
 
-		err = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-			ID:          uuid.New(),
-			ChatID:      chat1.ID,
-			WorkspaceID: ws.ID,
-			UID:         outboundTraceID,
-			Direction:   domain.DirectionOutbound,
-			SenderType:  domain.SenderTypeHumanAgent,
-			SenderName:  "Agent",
-			SenderID:    identity1,
-			Body:        "Status Checked Reply",
-			Metadata: map[string]interface{}{
+		_, err = act.Outbound(ctx, ws.ID, activity.OutboundTurn{
+			Chat:       activity.ChatID(chat1.ID).WithChannel("telegram"),
+			Channel:    "telegram",
+			SenderType: domain.SenderTypeHumanAgent,
+			SenderName: "Agent",
+			SenderID:   identity1,
+			UID:        outboundTraceID,
+			Body:       "Status Checked Reply",
+			Metadata: map[string]string{
 				"channel":         "telegram",
 				"sender_identity": identity1,
 			},
-			CreatedAt: now.Add(-3 * time.Minute),
+			At: now.Add(-3 * time.Minute),
 		})
 		if err != nil {
 			t.Fatalf("failed to insert outbound chat message: %v", err)
@@ -839,6 +816,7 @@ func TestChatRepository_OutboundMessagesInConversationsList(t *testing.T) {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
 
 	ws, err := wsRepo.Create(ctx, "outbound_inbox_test_ws_"+uuid.New().String())
 	if err != nil {
@@ -861,20 +839,19 @@ func TestChatRepository_OutboundMessagesInConversationsList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create chat A: %v", err)
 	}
-	if err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-		ChatID:      chatA.ID,
-		WorkspaceID: ws.ID,
-		UID:         uuid.New().String(),
-		Direction:   domain.DirectionOutbound,
-		SenderType:  domain.SenderTypeHumanAgent,
-		SenderName:  "Agent",
-		SenderID:    senderIdentity1,
-		Body:        "Test outgoing msg A",
-		Metadata: map[string]interface{}{
+	if _, err := act.Outbound(ctx, ws.ID, activity.OutboundTurn{
+		Chat:       activity.ChatID(chatA.ID).WithChannel("whatsapp"),
+		UID:        uuid.NewString(),
+		Channel:    "whatsapp",
+		SenderType: domain.SenderTypeHumanAgent,
+		SenderName: "Agent",
+		SenderID:   senderIdentity1,
+		Body:       "Test outgoing msg A",
+		Metadata: map[string]string{
 			"channel":         "whatsapp",
 			"sender_identity": senderIdentity1,
 		},
-		CreatedAt: now.Add(-5 * time.Minute),
+		At: now.Add(-5 * time.Minute),
 	}); err != nil {
 		t.Fatalf("failed to add outbound message A: %v", err)
 	}
@@ -887,37 +864,34 @@ func TestChatRepository_OutboundMessagesInConversationsList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create chat B: %v", err)
 	}
-	if err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-		ChatID:      chatB.ID,
-		WorkspaceID: ws.ID,
-		UID:         uuid.New().String(),
-		Direction:   domain.DirectionInbound,
-		SenderType:  domain.SenderTypeContact,
-		SenderName:  "Contact B Mixed",
-		SenderID:    "contact_b_tg",
-		Body:        "Inbound msg B",
+	if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:       activity.ChatID(chatB.ID).WithChannel("telegram"),
+		UID:        uuid.NewString(),
+		Channel:    "telegram",
+		SenderName: "Contact B Mixed",
+		SenderID:   "contact_b_tg",
+		Body:       "Inbound msg B",
 		Metadata: map[string]interface{}{
 			"channel": "telegram",
 			"to":      senderIdentity2,
 		},
-		CreatedAt: now.Add(-10 * time.Minute),
+		At: now.Add(-10 * time.Minute),
 	}); err != nil {
 		t.Fatalf("failed to add inbound message B: %v", err)
 	}
-	if err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-		ChatID:      chatB.ID,
-		WorkspaceID: ws.ID,
-		UID:         uuid.New().String(),
-		Direction:   domain.DirectionOutbound,
-		SenderType:  domain.SenderTypeHumanAgent,
-		SenderName:  "Agent",
-		SenderID:    senderIdentity2,
-		Body:        "Latest Outbound reply B",
-		Metadata: map[string]interface{}{
+	if _, err := act.Outbound(ctx, ws.ID, activity.OutboundTurn{
+		Chat:       activity.ChatID(chatB.ID).WithChannel("telegram"),
+		UID:        uuid.NewString(),
+		Channel:    "telegram",
+		SenderType: domain.SenderTypeHumanAgent,
+		SenderName: "Agent",
+		SenderID:   senderIdentity2,
+		Body:       "Latest Outbound reply B",
+		Metadata: map[string]string{
 			"channel":         "telegram",
 			"sender_identity": senderIdentity2,
 		},
-		CreatedAt: now.Add(-2 * time.Minute),
+		At: now.Add(-2 * time.Minute),
 	}); err != nil {
 		t.Fatalf("failed to add outbound message B: %v", err)
 	}

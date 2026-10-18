@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
@@ -117,6 +118,7 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
 
 	ws, err := wsRepo.Create(ctx, "chat_outbound_ws_"+uuid.New().String())
 	if err != nil {
@@ -166,8 +168,16 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create chat: %v", err)
 		}
-		openExp := time.Now().UTC().Add(20 * time.Hour)
-		_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &openExp)
+		if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:     activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+			UID:      "seed-open-1111",
+			SenderID: "+5511999991111",
+			Body:     "Customer hi",
+			Channel:  "whatsapp_cloud",
+			At:       time.Now().UTC().Add(-4 * time.Hour),
+		}); err != nil {
+			t.Fatalf("failed to seed inbound turn: %v", err)
+		}
 
 		req := &domain.CreateMessageRequest{
 			To:      "+5511999991111",
@@ -223,17 +233,18 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to list chat messages: %v", err)
 		}
-		if len(msgs) != 1 {
-			t.Fatalf("expected 1 message, got %d", len(msgs))
+		if len(msgs) != 2 {
+			t.Fatalf("expected 2 messages (1 seed inbound + 1 outbound), got %d", len(msgs))
 		}
-		if msgs[0].Direction != domain.DirectionOutbound {
-			t.Errorf("expected direction outbound, got %s", msgs[0].Direction)
+		lastMsg := msgs[len(msgs)-1]
+		if lastMsg.Direction != domain.DirectionOutbound {
+			t.Errorf("expected direction outbound, got %s", lastMsg.Direction)
 		}
-		if msgs[0].SenderType != domain.SenderTypeHumanAgent {
-			t.Errorf("expected sender type human_agent, got %s", msgs[0].SenderType)
+		if lastMsg.SenderType != domain.SenderTypeHumanAgent {
+			t.Errorf("expected sender type human_agent, got %s", lastMsg.SenderType)
 		}
-		if msgs[0].Body != "Hello from human agent!" {
-			t.Errorf("expected body 'Hello from human agent!', got %s", msgs[0].Body)
+		if lastMsg.Body != "Hello from human agent!" {
+			t.Errorf("expected body 'Hello from human agent!', got %s", lastMsg.Body)
 		}
 	})
 
@@ -250,8 +261,16 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create chat: %v", err)
 		}
-		openExp := time.Now().UTC().Add(20 * time.Hour)
-		_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &openExp)
+		if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:     activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+			UID:      "seed-open-3333",
+			SenderID: "+5511999993333",
+			Body:     "Customer hi",
+			Channel:  "whatsapp_cloud",
+			At:       time.Now().UTC().Add(-4 * time.Hour),
+		}); err != nil {
+			t.Fatalf("failed to seed inbound turn: %v", err)
+		}
 
 		req := &domain.CreateMessageRequest{
 			ConversationalIngestFields: domain.ConversationalIngestFields{
@@ -294,25 +313,23 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create chat: %v", err)
 		}
-		openExp := time.Now().UTC().Add(20 * time.Hour)
-		_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &openExp)
+		parentUID := "inbound-parent-uid-100"
+		if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:     activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+			UID:      parentUID,
+			SenderID: "+5511999992222",
+			Body:     "Parent question",
+			Channel:  "whatsapp_cloud",
+			At:       time.Now().UTC().Add(-5 * time.Minute),
+		}); err != nil {
+			t.Fatalf("failed to seed inbound parent message: %v", err)
+		}
 
 		// Snooze the chat first
 		snoozeUntil := time.Now().UTC().Add(2 * time.Hour)
 		if err := chatRepo.SnoozeChat(ctx, ws.ID, chat.ID, &snoozeUntil); err != nil {
 			t.Fatalf("failed to snooze chat: %v", err)
 		}
-
-		parentUID := "inbound-parent-uid-100"
-		_ = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-			ChatID:      chat.ID,
-			WorkspaceID: ws.ID,
-			UID:         parentUID,
-			Direction:   domain.DirectionInbound,
-			SenderType:  domain.SenderTypeContact,
-			Body:        "Parent question",
-			CreatedAt:   time.Now().UTC().Add(-5 * time.Minute),
-		})
 
 		// Send threaded AI reply using ConversationalIngestFields
 		chatIDCopy := chat.ID
@@ -410,14 +427,31 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		}
 
 		// Verify service window enforcement against chat's expired ServiceWindowExpiresAt
-		expiredAt := time.Now().UTC().Add(-1 * time.Hour)
-		_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &expiredAt)
+		expiredContact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999994444", "Expired Customer", "", "+5511999994444")
+		if err != nil {
+			t.Fatalf("failed to resolve expired contact: %v", err)
+		}
+		expiredChat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, expiredContact.ID)
+		if err != nil {
+			t.Fatalf("failed to create expired chat: %v", err)
+		}
+		if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:     activity.ChatID(expiredChat.ID).WithChannel("whatsapp_cloud"),
+			UID:      "seed-expired-4444",
+			SenderID: "+5511999994444",
+			Body:     "Old question",
+			Channel:  "whatsapp_cloud",
+			At:       time.Now().UTC().Add(-25 * time.Hour),
+		}); err != nil {
+			t.Fatalf("failed to seed expired inbound turn: %v", err)
+		}
+		expiredChatID := expiredChat.ID
 
 		strictReq := &domain.CreateMessageRequest{
 			ConversationalIngestFields: domain.ConversationalIngestFields{
-				ChatID: &chatIDCopy,
+				ChatID: &expiredChatID,
 			},
-			To:      "+5511999992222",
+			To:      "+5511999994444",
 			Channel: "whatsapp_cloud",
 			From:    "+551100000000",
 			Body:    "Freeform message when chat service window is expired",

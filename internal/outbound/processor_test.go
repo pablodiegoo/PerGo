@@ -588,7 +588,7 @@ func TestProcessor_WhatsAppCloudWindowIngestion(t *testing.T) {
 	resolver := &fakeRouteResolver{conn: wabaConn}
 	publisher := &fakePublisher{}
 
-	seedInbound := func(t *testing.T, phone, uid string, entryPoint string, at time.Time) {
+	seedInbound := func(t *testing.T, phone, uid string, entryPoint domain.EntryPointType, at time.Time) {
 		t.Helper()
 		contact, err := contactRepo.ResolveContact(ctx, wsID, "whatsapp_cloud", phone, "Test Contact", "", phone)
 		if err != nil {

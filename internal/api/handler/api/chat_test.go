@@ -181,27 +181,23 @@ func TestChatAPIHandler(t *testing.T) {
 		t.Fatalf("failed to set chat tags: %v", err)
 	}
 
-	// Initial inbound message
-	initialMsg := &domain.ChatMessage{
-		ID:          uuid.New(),
-		ChatID:      chatID,
-		WorkspaceID: wsID,
-		UID:         "msg-001",
-		Direction:   domain.DirectionInbound,
-		SenderType:  domain.SenderTypeContact,
-		SenderName:  "Alice",
-		Body:        "Hello there!",
-		CreatedAt:   time.Now().UTC(),
-	}
-	if err := chatRepo.AddChatMessage(ctx, initialMsg); err != nil {
-		t.Fatalf("failed to seed initial inbound message: %v", err)
-	}
-
 	publisher := &mockPublisher{}
 	auditRepo := &mockChatAuditRepo{}
 	webhookDispatcher := &mockChatWebhookDispatcher{}
 
 	rec := activity.New(pool, publisher, nil, nil)
+	if _, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+		Chat:       activity.ChatID(chatID).WithChannel("whatsapp"),
+		UID:        "msg-001",
+		SenderName: "Alice",
+		SenderID:   "5511999999999",
+		Body:       "Hello there!",
+		Channel:    "whatsapp",
+		At:         time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("failed to seed initial inbound message: %v", err)
+	}
+
 	ingestor := outbound.NewProcessor(
 		nil,
 		nil,

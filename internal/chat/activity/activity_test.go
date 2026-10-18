@@ -547,6 +547,16 @@ func TestRecorder_Inbound(t *testing.T) {
 	if r1.Chat.ServiceWindowExpiresAt == nil || !r1.Chat.ServiceWindowExpiresAt.Equal(wantWindow) {
 		t.Fatalf("expected ServiceWindowExpiresAt=%v, got %v", wantWindow, r1.Chat.ServiceWindowExpiresAt)
 	}
+	if r1.Chat.LastInboundAt == nil || !r1.Chat.LastInboundAt.Equal(t0) {
+		t.Fatalf("expected LastInboundAt=%v, got %v", t0, r1.Chat.LastInboundAt)
+	}
+	snap1, exists1, err := rec.Snapshot(ctx, wsID, activity.ChatID(chat1ID))
+	if err != nil || !exists1 {
+		t.Fatalf("Snapshot chat1: exists=%v err=%v", exists1, err)
+	}
+	if snap1.LastInboundAt == nil || !snap1.LastInboundAt.Equal(t0) {
+		t.Fatalf("expected persisted LastInboundAt=%v in Snapshot, got %v", t0, snap1.LastInboundAt)
+	}
 
 	// Verify Chat 2 of the same Contact is STILL closed with unread=0
 	snap2, exists, err := rec.Snapshot(ctx, wsID, activity.ChatID(chat2ID))
@@ -875,10 +885,10 @@ func TestRecorder_S3_ServiceWindow_IndependentConnections_CTWA_TouchOutbound_And
 			t.Fatalf("Inbound for expiring test: %v", err)
 		}
 
-		// Also create a WhatsApp Web chat with service_window_expires_at in the same horizon -> must NOT be claimed
+		// Also create a WhatsApp Web chat in the same horizon -> must NOT have service_window_expires_at set or be claimed
 		webPhone := "+5511966667777"
 		webContactID := seedContactWithIdentity(t, ctx, pool, wsID, "whatsapp", webPhone)
-		_, err = rec.Inbound(ctx, wsID, activity.InboundTurn{
+		webRes, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
 			Chat:     activity.ChatOf(connWeb, webContactID).WithChannel("whatsapp"),
 			UID:      "wamid.web.exp.1",
 			SenderID: webPhone,
@@ -888,6 +898,9 @@ func TestRecorder_S3_ServiceWindow_IndependentConnections_CTWA_TouchOutbound_And
 		})
 		if err != nil {
 			t.Fatalf("Inbound on web chat: %v", err)
+		}
+		if webRes.Chat.ServiceWindowExpiresAt != nil {
+			t.Fatalf("expected nil ServiceWindowExpiresAt on whatsapp (non-WABA) chat, got %v", webRes.Chat.ServiceWindowExpiresAt)
 		}
 
 		claimed, err := rec.ClaimExpiring(ctx, baseNow, 1*time.Hour, 50)
@@ -950,6 +963,27 @@ func TestRecorder_S3_ServiceWindow_IndependentConnections_CTWA_TouchOutbound_And
 		}
 		if !renewedFound {
 			t.Fatalf("expected renewed window for chat %s to be claimed again", inRes.Chat.ID)
+		}
+
+		// Every workspace-scoped call rejects uuid.Nil workspace even when ChatID is provided
+		refByID := activity.ChatID(inRes.Chat.ID)
+		if _, err := rec.Inbound(ctx, uuid.Nil, activity.InboundTurn{Chat: refByID, UID: "nil-ws-in"}); !errors.Is(err, activity.ErrInvalidWorkspaceID) {
+			t.Fatalf("Inbound with nil ws: got %v, want ErrInvalidWorkspaceID", err)
+		}
+		if _, err := rec.Outbound(ctx, uuid.Nil, activity.OutboundTurn{Chat: refByID, UID: "nil-ws-out"}); !errors.Is(err, activity.ErrInvalidWorkspaceID) {
+			t.Fatalf("Outbound with nil ws: got %v, want ErrInvalidWorkspaceID", err)
+		}
+		if _, err := rec.SetAI(ctx, uuid.Nil, refByID, activity.AIOff()); !errors.Is(err, activity.ErrInvalidWorkspaceID) {
+			t.Fatalf("SetAI with nil ws: got %v, want ErrInvalidWorkspaceID", err)
+		}
+		if err := rec.DispatchFailed(ctx, uuid.Nil, "wamid.exp.2"); !errors.Is(err, activity.ErrInvalidWorkspaceID) {
+			t.Fatalf("DispatchFailed with nil ws: got %v, want ErrInvalidWorkspaceID", err)
+		}
+		if err := rec.TouchOutbound(ctx, uuid.Nil, refByID, baseNow); !errors.Is(err, activity.ErrInvalidWorkspaceID) {
+			t.Fatalf("TouchOutbound with nil ws: got %v, want ErrInvalidWorkspaceID", err)
+		}
+		if _, _, err := rec.Snapshot(ctx, uuid.Nil, refByID); !errors.Is(err, activity.ErrInvalidWorkspaceID) {
+			t.Fatalf("Snapshot with nil ws: got %v, want ErrInvalidWorkspaceID", err)
 		}
 	})
 }

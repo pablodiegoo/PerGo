@@ -148,13 +148,7 @@ func TestWABAComplianceIntegration(t *testing.T) {
 		t.Fatalf("failed to find or create chat: %v", err)
 	}
 
-	// Simulate expired service window (expired 2 hours ago)
-	expiredAt := time.Now().UTC().Add(-2 * time.Hour)
-	if err := chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &expiredAt); err != nil {
-		t.Fatalf("failed to update service window: %v", err)
-	}
-
-	// Verify initial state: Window is closed
+	// Verify initial state: Window is closed (no prior inbound turn on chat)
 	chatCheck, err := chatRepo.GetChat(ctx, ws.ID, chat.ID)
 	if err != nil {
 		t.Fatalf("failed to get chat: %v", err)

@@ -104,7 +104,7 @@ func (st *SessionTicker) CheckExpiringSessionsAt(ctx context.Context, now time.T
 			ConnectionID:   connIDStr,
 			RecipientPhone: c.RecipientPhone,
 			Channel:        c.Channel,
-			EntryPointType: c.EntryPointType,
+			EntryPointType: string(c.EntryPointType),
 			ExpiresAt:      c.ExpiresAt.UTC().Format(time.RFC3339),
 			Timestamp:      now.Format(time.RFC3339),
 		}

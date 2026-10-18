@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
@@ -59,6 +60,7 @@ func TestMCPWABATools(t *testing.T) {
 	contactRepo := repository.NewContactRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
 	tmplRepo := repository.NewWABATemplateRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
 
 	kek := make([]byte, 32)
 	copy(kek, []byte("dev-development-key-32-bytes-kek"))
@@ -123,15 +125,31 @@ func TestMCPWABATools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create chatActive: %v", err)
 	}
-	activeExp := time.Now().UTC().Add(20 * time.Hour)
-	_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chatActive.ID, &activeExp)
+	if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:     activity.ChatID(chatActive.ID).WithChannel("whatsapp_cloud"),
+		UID:      "waba-seed-active",
+		SenderID: "+5511999991111",
+		Body:     "Hi active",
+		Channel:  "whatsapp_cloud",
+		At:       time.Now().UTC().Add(-4 * time.Hour),
+	}); err != nil {
+		t.Fatalf("failed to seed active chat inbound: %v", err)
+	}
 
 	chatExpired, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &wabaConnID, contact2.ID)
 	if err != nil {
 		t.Fatalf("failed to create chatExpired: %v", err)
 	}
-	expiredExp := time.Now().UTC().Add(-2 * time.Hour)
-	_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chatExpired.ID, &expiredExp)
+	if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:     activity.ChatID(chatExpired.ID).WithChannel("whatsapp_cloud"),
+		UID:      "waba-seed-expired",
+		SenderID: "+5511999992222",
+		Body:     "Hi expired",
+		Channel:  "whatsapp_cloud",
+		At:       time.Now().UTC().Add(-26 * time.Hour),
+	}); err != nil {
+		t.Fatalf("failed to seed expired chat inbound: %v", err)
+	}
 
 	// 5. Create approved WABA template with variable placeholders
 	tmplComponents := `[

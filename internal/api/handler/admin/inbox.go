@@ -310,7 +310,10 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 	}
 
 	eng := h.engine()
-	currentChat, _ := eng.EnsureChatForContact(ctx, workspaceID, contactID, true)
+	var currentChat *domain.Chat
+	if res, gErr := eng.Get(ctx, workspaceID, chatpkg.ChatRef{ContactID: contactID}, 0, false); gErr == nil && res != nil {
+		currentChat = res.Chat
+	}
 
 	// Load the thread messages (full history — no cursor) from chat_messages and reset unread count
 	messages, err := eng.ListThread(ctx, workspaceID, contactID, nil, true)
@@ -361,13 +364,16 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 	}
 
 	var windowExpiresAt *time.Time
-	if currentChat != nil && currentChat.ServiceWindowExpiresAt != nil {
-		windowExpiresAt = currentChat.ServiceWindowExpiresAt
-	}
-
 	isWabaBlocked := false
 	if hasWabaIdentity {
-		isWabaBlocked = currentChat == nil || !currentChat.IsServiceWindowOpen()
+		win := eng.Window(ctx, workspaceID, currentChat, "whatsapp_cloud", time.Now().UTC())
+		if !win.ExpiresAt.IsZero() {
+			exp := win.ExpiresAt
+			windowExpiresAt = &exp
+		}
+		isWabaBlocked = !win.Open
+	} else if currentChat != nil && currentChat.ServiceWindowExpiresAt != nil {
+		windowExpiresAt = currentChat.ServiceWindowExpiresAt
 	}
 
 	if mw.IsHTMX(c) {

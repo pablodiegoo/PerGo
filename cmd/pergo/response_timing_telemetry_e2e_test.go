@@ -184,8 +184,7 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to resolve contact: %v", err)
 		}
-		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &wabaConn.ID, contact.ID)
-		if err != nil {
+		if _, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &wabaConn.ID, contact.ID); err != nil {
 			t.Fatalf("failed to create chat: %v", err)
 		}
 
@@ -216,14 +215,7 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 			t.Fatal("expected LastOutboundAt on chat")
 		}
 
-		// Adjust LastOutboundAt in database to simulate a 3200ms thinking/reading time
-		simulatedOutboundAt := time.Now().UTC().Add(-3200 * time.Millisecond).Truncate(time.Second)
-		_, err = pool.Exec(ctx, `UPDATE chats SET last_outbound_at = $1 WHERE workspace_id = $2 AND id = $3`, simulatedOutboundAt, ws.ID, chat.ID)
-		if err != nil {
-			t.Fatalf("failed to update simulated outbound time: %v", err)
-		}
-
-		simulatedInboundAt := simulatedOutboundAt.Add(3200 * time.Millisecond)
+		simulatedInboundAt := state.LastOutboundAt.Add(4 * time.Second)
 
 		// Step B: Inbound response arrives from contact
 		inboundPayload := fmt.Sprintf(`{
@@ -300,7 +292,7 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 
 		latency := *lastDelivery.Payload.Timing.ResponseLatencyMS
 		if latency < 3000 || latency > 5000 {
-			t.Errorf("expected response latency ~3200ms, got %d ms", latency)
+			t.Errorf("expected response latency ~3000-4000ms, got %d ms", latency)
 		}
 
 		if lastDelivery.Payload.Timing.LastOutboundAt == "" {
@@ -417,7 +409,18 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 
 		// Outbound sent at fixed past time T0
 		fixedOutboundAt := time.Date(2026, 8, 28, 20, 0, 0, 0, time.UTC)
-		_, err = pool.Exec(ctx, `UPDATE chats SET last_outbound_at = $1 WHERE workspace_id = $2 AND id = $3`, fixedOutboundAt, ws.ID, lagChat.ID)
+		_, err = actRec.Outbound(ctx, ws.ID, activity.OutboundTurn{
+			Chat:         activity.ChatID(lagChat.ID).WithChannel("whatsapp_cloud"),
+			UID:          uuid.NewString(),
+			Channel:      "whatsapp_cloud",
+			To:           lagPhone,
+			TemplateName: "test_template",
+			SenderType:   domain.SenderTypeHumanAgent,
+			SenderName:   "Interviewer",
+			SenderID:     wabaConn.SenderIdentity,
+			Body:         "Pergunta inicial com timestamp fixo",
+			At:           fixedOutboundAt,
+		})
 		if err != nil {
 			t.Fatalf("failed to record outbound timestamp on chat: %v", err)
 		}

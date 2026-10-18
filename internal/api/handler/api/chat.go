@@ -405,8 +405,15 @@ func (h *ChatAPIHandler) Get(c *echo.Context) error {
 		})
 	}
 
+	var connChannel string
+	if res.Connection != nil {
+		connChannel = res.Connection.Channel
+	}
+	win := eng.Window(ctx, wsID, res.Chat, connChannel, time.Now().UTC())
+
 	resp := map[string]interface{}{
-		"chat": res.Chat,
+		"chat":           res.Chat,
+		"service_window": win,
 	}
 	if res.Contact != nil {
 		resp["contact"] = res.Contact

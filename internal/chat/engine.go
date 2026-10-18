@@ -50,7 +50,6 @@ type ChatRepository interface {
 	SetChatTags(ctx context.Context, workspaceID, chatID uuid.UUID, tags []string) error
 	UpdateChatStatus(ctx context.Context, workspaceID, chatID uuid.UUID, status string) error
 	SnoozeChat(ctx context.Context, workspaceID, chatID uuid.UUID, snoozedUntil *time.Time) error
-	TouchLastMessageAt(ctx context.Context, workspaceID, chatID uuid.UUID, t time.Time) error
 	GetChatMessageByUID(ctx context.Context, workspaceID uuid.UUID, uid string) (*domain.ChatMessage, error)
 	GetReactions(ctx context.Context, workspaceID uuid.UUID, messageUID string) ([]domain.Reaction, error)
 	MutateReaction(ctx context.Context, workspaceID uuid.UUID, messageUID, emoji, sender, action string) (uuid.UUID, string, []domain.Reaction, error)
@@ -69,10 +68,6 @@ type chatFinderCreator interface {
 
 type chatByIDGetter interface {
 	GetChatByID(ctx context.Context, chatID uuid.UUID) (*domain.Chat, error)
-}
-
-type chatUnreadUpdater interface {
-	UpdateChatUnreadCount(ctx context.Context, workspaceID, chatID uuid.UUID, unreadCount int) error
 }
 
 type messageByUIDFinder interface {
@@ -483,15 +478,57 @@ func deriveEffectiveStatus(c *domain.Chat) *domain.Chat {
 		return nil
 	}
 	cp := *c
-	now := time.Now().UTC()
-	eff := domain.EffectiveStatus(cp.Status, cp.SnoozedUntil, now)
-	if eff == domain.ChatStatusOpen && cp.Status == domain.ChatStatusSnoozed {
-		cp.Status = domain.ChatStatusOpen
-		cp.SnoozedUntil = nil
-	} else {
-		cp.Status = eff
-	}
+	cp.NormalizeEffectiveStatus(time.Now().UTC())
 	return &cp
+}
+
+// Window evaluates the customer service window for a Chat by reading activity.Snapshot
+// (when an activity Recorder is available) and passing the result to domain.Window(state, exists, now).
+func (e *Engine) Window(ctx context.Context, workspaceID uuid.UUID, c *domain.Chat, channel string, now time.Time) domain.ServiceWindow {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	wsID, err := EnforceWorkspaceScope(ctx, workspaceID)
+	if err != nil || wsID == uuid.Nil {
+		if c != nil && c.WorkspaceID != uuid.Nil {
+			wsID = c.WorkspaceID
+		} else {
+			wsID = workspaceID
+		}
+	}
+	if rec := e.ensureActivity(); rec != nil && wsID != uuid.Nil {
+		if c != nil && c.ID != uuid.Nil {
+			ref := activity.ChatID(c.ID).WithChannel(channel)
+			if state, exists, sErr := rec.Snapshot(ctx, wsID, ref); sErr == nil {
+				if state.Channel == "" && channel != "" {
+					state.Channel = channel
+				}
+				return domain.Window(state, exists, now)
+			}
+		} else {
+			return domain.Window(domain.ChatState{WorkspaceID: wsID, Channel: channel}, false, now)
+		}
+	}
+	if c == nil {
+		return domain.Window(domain.ChatState{WorkspaceID: wsID, Channel: channel}, false, now)
+	}
+	state := domain.ChatState{
+		ID:                     c.ID,
+		WorkspaceID:            c.WorkspaceID,
+		ConnectionID:           c.ConnectionID,
+		ContactID:              c.ContactID,
+		Channel:                channel,
+		Status:                 c.Status,
+		SnoozedUntil:           c.SnoozedUntil,
+		AI:                     c.AI,
+		ServiceWindowExpiresAt: c.ServiceWindowExpiresAt,
+		EntryPointType:         domain.NormalizeEntryPointType(c.EntryPointType),
+		UnreadCount:            c.UnreadCount,
+		LastMessageAt:          c.LastMessageAt,
+		LastInboundAt:          c.LastInboundAt,
+		LastOutboundAt:         c.LastOutboundAt,
+	}
+	return domain.Window(state, true, now)
 }
 
 // ResolveChat resolves a ChatRef (by ChatID, ContactID, MessageUID, or Channel+Phone)
@@ -511,7 +548,13 @@ func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref Cha
 		if wsID == uuid.Nil {
 			if byID, ok := e.chatRepo.(chatByIDGetter); ok {
 				c, gErr := byID.GetChatByID(ctx, ref.ChatID)
-				if gErr != nil || c == nil {
+				if gErr != nil {
+					if errors.Is(gErr, repository.ErrChatNotFound) || errors.Is(gErr, ErrChatNotFound) {
+						return nil, ErrChatNotFound
+					}
+					return nil, gErr
+				}
+				if c == nil {
 					return nil, ErrChatNotFound
 				}
 				if _, sErr := EnforceWorkspaceScope(ctx, c.WorkspaceID); sErr != nil {
@@ -522,7 +565,13 @@ func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref Cha
 			return nil, ErrChatNotFound
 		}
 		c, gErr := e.chatRepo.GetChat(ctx, wsID, ref.ChatID)
-		if gErr != nil || c == nil || c.WorkspaceID != wsID {
+		if gErr != nil {
+			if errors.Is(gErr, repository.ErrChatNotFound) || errors.Is(gErr, ErrChatNotFound) {
+				return nil, ErrChatNotFound
+			}
+			return nil, gErr
+		}
+		if c == nil || c.WorkspaceID != wsID {
 			return nil, ErrChatNotFound
 		}
 		return deriveEffectiveStatus(c), nil
@@ -533,7 +582,11 @@ func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref Cha
 		wantConn := ref.ConnectionID != nil && *ref.ConnectionID != uuid.Nil
 		if !wantConn {
 			if byContact, ok := e.chatRepo.(chatByContactGetter); ok {
-				if c, gErr := byContact.GetChatByContact(ctx, wsID, ref.ContactID); gErr == nil && c != nil && c.WorkspaceID == wsID {
+				c, gErr := byContact.GetChatByContact(ctx, wsID, ref.ContactID)
+				if gErr != nil && !errors.Is(gErr, repository.ErrChatNotFound) && !errors.Is(gErr, ErrChatNotFound) {
+					return nil, gErr
+				}
+				if gErr == nil && c != nil && c.WorkspaceID == wsID {
 					return deriveEffectiveStatus(c), nil
 				}
 			}
@@ -543,20 +596,26 @@ func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref Cha
 		if wantConn {
 			filter.ConnectionID = ref.ConnectionID
 		}
-		if chats, lErr := e.chatRepo.ListChats(ctx, wsID, filter, 20, 0); lErr == nil {
-			for i := range chats {
-				if chats[i].WorkspaceID != wsID || chats[i].ContactID != ref.ContactID {
-					continue
-				}
-				if wantConn && (chats[i].ConnectionID == nil || *chats[i].ConnectionID != *ref.ConnectionID) {
-					continue
-				}
-				return deriveEffectiveStatus(&chats[i]), nil
+		chats, lErr := e.chatRepo.ListChats(ctx, wsID, filter, 20, 0)
+		if lErr != nil {
+			return nil, lErr
+		}
+		for i := range chats {
+			if chats[i].WorkspaceID != wsID || chats[i].ContactID != ref.ContactID {
+				continue
 			}
+			if wantConn && (chats[i].ConnectionID == nil || *chats[i].ConnectionID != *ref.ConnectionID) {
+				continue
+			}
+			return deriveEffectiveStatus(&chats[i]), nil
 		}
 		if wantConn {
 			if byContact, ok := e.chatRepo.(chatByContactGetter); ok {
-				if c, gErr := byContact.GetChatByContact(ctx, wsID, ref.ContactID); gErr == nil && c != nil && c.WorkspaceID == wsID {
+				c, gErr := byContact.GetChatByContact(ctx, wsID, ref.ContactID)
+				if gErr != nil && !errors.Is(gErr, repository.ErrChatNotFound) && !errors.Is(gErr, ErrChatNotFound) {
+					return nil, gErr
+				}
+				if gErr == nil && c != nil && c.WorkspaceID == wsID {
 					if c.ConnectionID != nil && *c.ConnectionID == *ref.ConnectionID {
 						return deriveEffectiveStatus(c), nil
 					}
@@ -569,10 +628,14 @@ func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref Cha
 	// 3. Resolve by MessageUID
 	if uid := strings.TrimSpace(ref.MessageUID); uid != "" {
 		var msg *domain.ChatMessage
+		var mErr error
 		if wsID != uuid.Nil {
-			msg, _ = e.chatRepo.GetChatMessageByUID(ctx, wsID, uid)
+			msg, mErr = e.chatRepo.GetChatMessageByUID(ctx, wsID, uid)
 		} else if finder, ok := e.chatRepo.(messageByUIDFinder); ok {
-			msg, _ = finder.FindMessageByUID(ctx, uid)
+			msg, mErr = finder.FindMessageByUID(ctx, uid)
+		}
+		if mErr != nil && !errors.Is(mErr, repository.ErrChatMessageNotFound) && !errors.Is(mErr, ErrMessageNotFound) {
+			return nil, mErr
 		}
 		if msg == nil || msg.ChatID == uuid.Nil {
 			return nil, ErrChatNotFound
@@ -584,7 +647,13 @@ func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref Cha
 			return nil, ErrChatNotFound
 		}
 		c, gErr := e.chatRepo.GetChat(ctx, msg.WorkspaceID, msg.ChatID)
-		if gErr != nil || c == nil {
+		if gErr != nil {
+			if errors.Is(gErr, repository.ErrChatNotFound) || errors.Is(gErr, ErrChatNotFound) {
+				return nil, ErrChatNotFound
+			}
+			return nil, gErr
+		}
+		if c == nil {
 			return nil, ErrChatNotFound
 		}
 		return deriveEffectiveStatus(c), nil
@@ -602,23 +671,24 @@ func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref Cha
 			filter.ConnectionID = ref.ConnectionID
 		}
 		chats, lErr := e.chatRepo.ListChats(ctx, wsID, filter, 50, 0)
-		if lErr == nil {
-			for i := range chats {
-				c := chats[i]
-				if c.WorkspaceID != wsID {
-					continue
-				}
-				if wantConn && (c.ConnectionID == nil || *c.ConnectionID != *ref.ConnectionID) {
-					continue
-				}
-				if e.contactRepo == nil {
+		if lErr != nil {
+			return nil, lErr
+		}
+		for i := range chats {
+			c := chats[i]
+			if c.WorkspaceID != wsID {
+				continue
+			}
+			if wantConn && (c.ConnectionID == nil || *c.ConnectionID != *ref.ConnectionID) {
+				continue
+			}
+			if e.contactRepo == nil {
+				return deriveEffectiveStatus(&c), nil
+			}
+			contact, cErr := e.contactRepo.GetByID(ctx, wsID, c.ContactID)
+			if cErr == nil && contact != nil {
+				if matchesContactPhone(contact, channel, phone) {
 					return deriveEffectiveStatus(&c), nil
-				}
-				contact, cErr := e.contactRepo.GetByID(ctx, wsID, c.ContactID)
-				if cErr == nil && contact != nil {
-					if matchesContactPhone(contact, channel, phone) {
-						return deriveEffectiveStatus(&c), nil
-					}
 				}
 			}
 		}
@@ -644,46 +714,6 @@ func matchesContactPhone(contact *domain.Contact, channel, phone string) bool {
 	return false
 }
 
-func (e *Engine) findOrCreateChatByPhone(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, connID *uuid.UUID) (*domain.Chat, error) {
-	wsID, err := EnforceWorkspaceScope(ctx, workspaceID)
-	if err != nil || wsID == uuid.Nil {
-		return nil, ErrChatNotFound
-	}
-	phone := strings.TrimSpace(ref.Phone)
-	channel := strings.ToLower(strings.TrimSpace(ref.Channel))
-	if channel == "" {
-		channel = "whatsapp"
-	}
-
-	var resolvedConnID *uuid.UUID
-	if connID != nil && *connID != uuid.Nil {
-		resolvedConnID = connID
-	} else if ref.ConnectionID != nil && *ref.ConnectionID != uuid.Nil {
-		resolvedConnID = ref.ConnectionID
-	} else if e.connRepo != nil {
-		if defaultConn, cErr := e.connRepo.GetDefaultChannelConnection(ctx, wsID, channel); cErr == nil && defaultConn != nil {
-			resolvedConnID = &defaultConn.ID
-		}
-	}
-
-	resolver, okR := e.contactRepo.(contactResolver)
-	creator, okC := e.chatRepo.(chatFinderCreator)
-	if !okR || !okC {
-		return nil, ErrChatNotFound
-	}
-
-	contact, cErr := resolver.ResolveContact(ctx, wsID, channel, phone, phone, "", "")
-	if cErr != nil || contact == nil {
-		return nil, ErrChatNotFound
-	}
-
-	c, chErr := creator.FindOrCreateChat(ctx, wsID, resolvedConnID, contact.ID)
-	if chErr != nil || c == nil {
-		return nil, ErrChatNotFound
-	}
-	return deriveEffectiveStatus(c), nil
-}
-
 // EnsureChatForContact resolves or creates the chat thread for a contact within workspaceID,
 // derives effective snooze status, and optionally resets unread count on that chat.
 func (e *Engine) EnsureChatForContact(ctx context.Context, workspaceID, contactID uuid.UUID, markRead bool) (*domain.Chat, error) {
@@ -697,6 +727,9 @@ func (e *Engine) EnsureChatForContact(ctx context.Context, workspaceID, contactI
 
 	c, err := e.ResolveChat(ctx, wsID, ChatRef{ContactID: contactID})
 	if err != nil {
+		if !errors.Is(err, ErrChatNotFound) {
+			return nil, err
+		}
 		if e.contactRepo != nil {
 			contact, cErr := e.contactRepo.GetByID(ctx, wsID, contactID)
 			if cErr != nil || contact == nil {
@@ -746,8 +779,6 @@ func (e *Engine) resetChatUnread(ctx context.Context, workspaceID, chatID, conta
 	if e.chatRepo != nil {
 		if resetter, ok := e.chatRepo.(chatUnreadResetter); ok {
 			resetErr = resetter.ResetUnread(ctx, wsID, chatID)
-		} else if updater, ok := e.chatRepo.(chatUnreadUpdater); ok {
-			resetErr = updater.UpdateChatUnreadCount(ctx, wsID, chatID, 0)
 		}
 	}
 	if e.contactRepo != nil && contactID != uuid.Nil {
@@ -775,21 +806,7 @@ func (e *Engine) ListConversations(ctx context.Context, workspaceID uuid.UUID, c
 	if !ok {
 		return nil, nil
 	}
-	convs, err := lister.ListConversations(ctx, wsID, channelFilter)
-	if err != nil {
-		return nil, err
-	}
-	now := time.Now().UTC()
-	for i := range convs {
-		eff := domain.EffectiveStatus(domain.ChatStatus(convs[i].Status), convs[i].SnoozedUntil, now)
-		if eff == domain.ChatStatusOpen && domain.ChatStatus(convs[i].Status) == domain.ChatStatusSnoozed {
-			convs[i].Status = string(domain.ChatStatusOpen)
-			convs[i].SnoozedUntil = nil
-		} else {
-			convs[i].Status = string(eff)
-		}
-	}
-	return convs, nil
+	return lister.ListConversations(ctx, wsID, channelFilter)
 }
 
 // ListThread returns chronological ThreadMessage rows for a contact in a workspace,
@@ -805,7 +822,10 @@ func (e *Engine) ListThread(ctx context.Context, workspaceID, contactID uuid.UUI
 	if wsID == uuid.Nil {
 		return nil, nil
 	}
-	resolvedChat, _ := e.ResolveChat(ctx, wsID, ChatRef{ContactID: contactID})
+	resolvedChat, rErr := e.ResolveChat(ctx, wsID, ChatRef{ContactID: contactID})
+	if rErr != nil && !errors.Is(rErr, ErrChatNotFound) {
+		return nil, rErr
+	}
 	lister, ok := e.chatRepo.(threadLister)
 	if !ok {
 		return nil, nil
@@ -888,9 +908,6 @@ func (e *Engine) List(ctx context.Context, workspaceID uuid.UUID, filter domain.
 // and returns the chat along with its contact, connection, and optional message history.
 func (e *Engine) Get(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, messageLimit int, markRead bool) (*GetChatResult, error) {
 	c, err := e.ResolveChat(ctx, workspaceID, ref)
-	if errors.Is(err, ErrChatNotFound) && ref.ContactID != uuid.Nil {
-		c, err = e.EnsureChatForContact(ctx, workspaceID, ref.ContactID, false)
-	}
 	if err != nil {
 		return nil, err
 	}
@@ -1253,7 +1270,12 @@ func (e *Engine) SetAI(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, 
 		return nil, errors.New("chat activity recorder not configured")
 	}
 
-	ai, err := rec.SetAI(ctx, c.WorkspaceID, activity.ChatID(c.ID), change)
+	targetWS := c.WorkspaceID
+	if targetWS == uuid.Nil {
+		targetWS, _ = EnforceWorkspaceScope(ctx, workspaceID)
+	}
+
+	ai, err := rec.SetAI(ctx, targetWS, activity.ChatID(c.ID), change)
 	if err != nil {
 		return nil, err
 	}
@@ -1645,20 +1667,6 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 		channel = "whatsapp"
 	}
 
-	if c == nil {
-		isFreeformWABA := channel == "whatsapp_cloud" && strings.TrimSpace(req.TemplateName) == "" && !strings.EqualFold(strings.TrimSpace(req.Type), "template")
-		if !isFreeformWABA {
-			if req.Ref.ContactID != uuid.Nil {
-				c, err = e.EnsureChatForContact(ctx, wsID, req.Ref.ContactID, false)
-			} else if strings.TrimSpace(req.Ref.Phone) != "" {
-				c, err = e.findOrCreateChatByPhone(ctx, wsID, req.Ref, req.ConnectionID)
-			}
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-
 	senderName := strings.TrimSpace(req.SenderName)
 	if senderName == "" {
 		senderName = "Agent"
@@ -1733,34 +1741,67 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 		if errors.As(ingestErr, &tmplErr) {
 			return nil, fmt.Errorf("%w: %w", ErrServiceWindowExpired, ingestErr)
 		}
-		var valErr *outbound.ValidationError
-		if errors.As(ingestErr, &valErr) && valErr.Response != nil && valErr.Response.Code == "SESSION_WINDOW_EXPIRED" {
-			return nil, fmt.Errorf("%w: %w", ErrServiceWindowExpired, ingestErr)
-		}
 		return nil, ingestErr
-	}
-	if c == nil {
-		tmplErr := &domain.TemplateRequiredError{
-			Window: domain.Window(domain.ChatState{Channel: channel}, false, now),
-			Source: "ingestion",
-		}
-		return nil, fmt.Errorf("%w: %w", ErrServiceWindowExpired, tmplErr)
 	}
 	if qMsg != nil && !qMsg.QueuedAt.IsZero() {
 		now = qMsg.QueuedAt
 	}
 
-	if c.Status == domain.ChatStatusSnoozed || c.Status == domain.ChatStatusClosed {
-		c.Status = domain.ChatStatusOpen
-		c.SnoozedUntil = nil
-	}
-
 	var persistedMsg *domain.ChatMessage
 	if e.chatRepo != nil {
 		persistedMsg, _ = e.chatRepo.GetChatMessageByUID(ctx, wsID, traceID)
-		if updatedChat, gErr := e.chatRepo.GetChat(ctx, wsID, c.ID); gErr == nil && updatedChat != nil {
-			c = updatedChat
+		if persistedMsg != nil && persistedMsg.ChatID != uuid.Nil {
+			if updatedChat, gErr := e.chatRepo.GetChat(ctx, wsID, persistedMsg.ChatID); gErr == nil && updatedChat != nil {
+				c = updatedChat
+			}
+		} else if c != nil {
+			if updatedChat, gErr := e.chatRepo.GetChat(ctx, wsID, c.ID); gErr == nil && updatedChat != nil {
+				c = updatedChat
+			}
 		}
+	}
+	if c == nil {
+		c, _ = e.ResolveChat(ctx, wsID, req.Ref)
+	}
+	if c == nil {
+		isFreeformWABA := channel == "whatsapp_cloud" && strings.TrimSpace(req.TemplateName) == "" && !strings.EqualFold(strings.TrimSpace(req.Type), "template")
+		if isFreeformWABA {
+			tmplErr := &domain.TemplateRequiredError{
+				Window: domain.Window(domain.ChatState{Channel: channel}, false, now),
+				Source: "ingestion",
+			}
+			return nil, fmt.Errorf("%w: %w", ErrServiceWindowExpired, tmplErr)
+		}
+		if req.Ref.ContactID != uuid.Nil {
+			c, err = e.EnsureChatForContact(ctx, wsID, req.Ref.ContactID, false)
+		} else if strings.TrimSpace(req.Ref.Phone) != "" {
+			if resolver, ok := e.contactRepo.(contactResolver); ok {
+				if creator, ok := e.chatRepo.(chatFinderCreator); ok {
+					phone := strings.TrimSpace(req.Ref.Phone)
+					resolvedContact, rErr := resolver.ResolveContact(ctx, wsID, channel, phone, phone, "", phone)
+					if rErr == nil && resolvedContact != nil {
+						connIDPtr := req.ConnectionID
+						if connIDPtr == nil && connID != uuid.Nil {
+							connIDPtr = &connID
+						}
+						c, err = creator.FindOrCreateChat(ctx, wsID, connIDPtr, resolvedContact.ID)
+					} else {
+						err = rErr
+					}
+				}
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+		if c == nil {
+			return nil, ErrChatNotFound
+		}
+	}
+
+	if c.Status == domain.ChatStatusSnoozed || c.Status == domain.ChatStatusClosed {
+		c.Status = domain.ChatStatusOpen
+		c.SnoozedUntil = nil
 	}
 
 	if e.auditRepo != nil {

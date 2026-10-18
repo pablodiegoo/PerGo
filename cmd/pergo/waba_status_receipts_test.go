@@ -14,6 +14,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 
 	"github.com/pablojhp.pergo/internal/api/handler"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/platform/audit"
@@ -65,6 +66,7 @@ func TestWABAStatusReceiptsEndToEnd(t *testing.T) {
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
 
 	// 1. Setup a Workspace
 	ws, err := wsRepo.Create(ctx, "waba_status_integration_ws_"+uuid.New().String())
@@ -116,14 +118,16 @@ func TestWABAStatusReceiptsEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to find or create chat: %v", err)
 	}
-	err = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-		ChatID:      chat.ID,
-		WorkspaceID: ws.ID,
-		UID:         traceID,
-		Direction:   "outbound",
-		SenderType:  domain.SenderTypeHumanAgent,
-		Body:        "End-To-End Status Test Outbound Message",
-		Metadata: map[string]any{
+	_, err = act.Outbound(ctx, ws.ID, activity.OutboundTurn{
+		Chat:         activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+		Channel:      "whatsapp_cloud",
+		To:           "5511999990000",
+		TemplateName: "test_template",
+		SenderType:   domain.SenderTypeHumanAgent,
+		SenderID:     "123456789",
+		UID:          traceID,
+		Body:         "End-To-End Status Test Outbound Message",
+		Metadata: map[string]string{
 			"channel":         "whatsapp_cloud",
 			"to":              "5511999990000",
 			"sender_identity": "123456789",

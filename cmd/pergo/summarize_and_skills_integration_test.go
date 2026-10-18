@@ -18,6 +18,7 @@ import (
 	mcp "github.com/mark3labs/mcp-go/mcp"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	mcppkg "github.com/pablojhp.pergo/internal/api/mcp"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
@@ -48,6 +49,7 @@ func TestSummarizeAndSkillsIntegration(t *testing.T) {
 	contactRepo := repository.NewContactRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
 
 	kek := make([]byte, 32)
 	copy(kek, []byte("dev-development-key-32-bytes-kek"))
@@ -110,48 +112,40 @@ func TestSummarizeAndSkillsIntegration(t *testing.T) {
 
 	// 5. Populate Chat Messages with customer issues and promises
 	now := time.Now().UTC()
-	msg1 := &domain.ChatMessage{
-		ChatID:      chat.ID,
-		WorkspaceID: ws.ID,
-		UID:         "msg-inbound-1",
-		Direction:   domain.DirectionInbound,
-		SenderType:  domain.SenderTypeContact,
-		SenderName:  customerName,
-		SenderID:    customerPhone,
-		Body:        "Olá! Estou com problema na minha fatura. O pagamento falhou e não consigo acessar o serviço.",
-		CreatedAt:   now.Add(-10 * time.Minute),
-	}
-	if err := chatRepo.AddChatMessage(ctx, msg1); err != nil {
+	if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:       activity.ChatID(chat.ID).WithChannel("whatsapp"),
+		Channel:    "whatsapp",
+		SenderName: customerName,
+		SenderID:   customerPhone,
+		UID:        "msg-inbound-1",
+		Body:       "Olá! Estou com problema na minha fatura. O pagamento falhou e não consigo acessar o serviço.",
+		At:         now.Add(-10 * time.Minute),
+	}); err != nil {
 		t.Fatalf("failed to add chat message 1: %v", err)
 	}
 
-	msg2 := &domain.ChatMessage{
-		ChatID:      chat.ID,
-		WorkspaceID: ws.ID,
-		UID:         "msg-outbound-2",
-		Direction:   domain.DirectionOutbound,
-		SenderType:  domain.SenderTypeHumanAgent,
-		SenderName:  "Support Agent",
-		SenderID:    conn.SenderIdentity,
-		Body:        "Olá Joana! Verifiquei seu chamado. Vou enviar o comprovante de estorno e retorno o contato com o novo link.",
-		CreatedAt:   now.Add(-5 * time.Minute),
-	}
-	if err := chatRepo.AddChatMessage(ctx, msg2); err != nil {
+	if _, err := act.Outbound(ctx, ws.ID, activity.OutboundTurn{
+		Chat:       activity.ChatID(chat.ID).WithChannel("whatsapp"),
+		Channel:    "whatsapp",
+		SenderType: domain.SenderTypeHumanAgent,
+		SenderName: "Support Agent",
+		SenderID:   conn.SenderIdentity,
+		UID:        "msg-outbound-2",
+		Body:       "Olá Joana! Verifiquei seu chamado. Vou enviar o comprovante de estorno e retorno o contato com o novo link.",
+		At:         now.Add(-5 * time.Minute),
+	}); err != nil {
 		t.Fatalf("failed to add chat message 2: %v", err)
 	}
 
-	msg3 := &domain.ChatMessage{
-		ChatID:      chat.ID,
-		WorkspaceID: ws.ID,
-		UID:         "msg-inbound-3",
-		Direction:   domain.DirectionInbound,
-		SenderType:  domain.SenderTypeContact,
-		SenderName:  customerName,
-		SenderID:    customerPhone,
-		Body:        "Muito obrigada! Fico no aguardo da reativação.",
-		CreatedAt:   now.Add(-2 * time.Minute),
-	}
-	if err := chatRepo.AddChatMessage(ctx, msg3); err != nil {
+	if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:       activity.ChatID(chat.ID).WithChannel("whatsapp"),
+		Channel:    "whatsapp",
+		SenderName: customerName,
+		SenderID:   customerPhone,
+		UID:        "msg-inbound-3",
+		Body:       "Muito obrigada! Fico no aguardo da reativação.",
+		At:         now.Add(-2 * time.Minute),
+	}); err != nil {
 		t.Fatalf("failed to add chat message 3: %v", err)
 	}
 

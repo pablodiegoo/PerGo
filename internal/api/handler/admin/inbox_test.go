@@ -210,33 +210,30 @@ func TestInboxHandler_PollMessages_NoContent(t *testing.T) {
 		t.Fatalf("failed to create chat: %v", err)
 	}
 
-	insertInbound := func(id uuid.UUID, from, channel, to, body string, createdAt time.Time) uuid.UUID {
-		err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-			ID:          id,
-			ChatID:      chat.ID,
-			WorkspaceID: ws.ID,
-			UID:         uuid.New().String(),
-			Direction:   domain.DirectionInbound,
-			SenderType:  domain.SenderTypeContact,
-			SenderName:  "Contact One",
-			SenderID:    from,
-			Body:        body,
+	act := activity.New(pool, nil, nil, nil)
+	insertInbound := func(from, channel, to, body string, createdAt time.Time) uuid.UUID {
+		res, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:       activity.ChatID(chat.ID).WithChannel(channel),
+			UID:        uuid.New().String(),
+			SenderName: "Contact One",
+			SenderID:   from,
+			Body:       body,
+			Channel:    channel,
 			Metadata: map[string]interface{}{
 				"channel": channel,
 				"from":    from,
 				"to":      to,
 			},
-			CreatedAt: createdAt,
+			At: createdAt,
 		})
 		if err != nil {
 			t.Fatalf("failed to insert inbound chat message: %v", err)
 		}
-		return id
+		return res.Message.ID
 	}
 
 	now := time.Now().UTC()
-	msgID1 := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	insertInbound(msgID1, "contact1", "telegram", "bot1", "Old Message", now.Add(-5*time.Minute))
+	msgID1 := insertInbound("contact1", "telegram", "bot1", "Old Message", now.Add(-5*time.Minute))
 
 	h := &admin.InboxHandler{
 		Repo:        auditRepo,
@@ -314,37 +311,32 @@ func TestInboxHandler_PollMessages_NewMessages(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create chat: %v", err)
 	}
-	_ = chatRepo.UpdateChatUnreadCount(ctx, ws.ID, chat.ID, 2)
+	act := activity.New(pool, nil, nil, nil)
 
-	insertInbound := func(id uuid.UUID, from, channel, to, body string, createdAt time.Time) uuid.UUID {
-		err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-			ID:          id,
-			ChatID:      chat.ID,
-			WorkspaceID: ws.ID,
-			UID:         uuid.New().String(),
-			Direction:   domain.DirectionInbound,
-			SenderType:  domain.SenderTypeContact,
-			SenderName:  "Contact One",
-			SenderID:    from,
-			Body:        body,
+	insertInbound := func(from, channel, to, body string, createdAt time.Time) uuid.UUID {
+		res, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:       activity.ChatID(chat.ID).WithChannel(channel),
+			UID:        uuid.New().String(),
+			SenderName: "Contact One",
+			SenderID:   from,
+			Body:       body,
+			Channel:    channel,
 			Metadata: map[string]interface{}{
 				"channel": channel,
 				"from":    from,
 				"to":      to,
 			},
-			CreatedAt: createdAt,
+			At: createdAt,
 		})
 		if err != nil {
 			t.Fatalf("failed to insert inbound chat message: %v", err)
 		}
-		return id
+		return res.Message.ID
 	}
 
 	now := time.Now().UTC()
-	msgID1 := uuid.MustParse("11111111-1111-1111-1111-111111111111")
-	msgID2 := uuid.MustParse("22222222-2222-2222-2222-222222222222")
-	insertInbound(msgID1, "contact1", "telegram", "bot1", "Old Message", now.Add(-10*time.Minute))
-	insertInbound(msgID2, "contact1", "telegram", "bot1", "New Message Body", now.Add(-5*time.Minute))
+	msgID1 := insertInbound("contact1", "telegram", "bot1", "Old Message", now.Add(-10*time.Minute))
+	msgID2 := insertInbound("contact1", "telegram", "bot1", "New Message Body", now.Add(-5*time.Minute))
 
 	h := &admin.InboxHandler{
 		Repo:        auditRepo,
@@ -1045,6 +1037,8 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 		t.Fatalf("failed to find or create chat: %v", err)
 	}
 
+	act := activity.New(pool, nil, nil, nil)
+
 	h := &admin.InboxHandler{
 		Repo:        auditRepo,
 		ChatRepo:    chatRepo,
@@ -1056,10 +1050,17 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 	bannerText := "Janela de atendimento (24h) fechada para este contato"
 
 	t.Run("hides banner when active 24h standard session exists for contact and connection sender", func(t *testing.T) {
-		expiresAt := time.Now().UTC().Add(22 * time.Hour)
-		_, err := pool.Exec(ctx, `UPDATE chats SET service_window_expires_at = $1 WHERE workspace_id = $2 AND id = $3`, expiresAt, ws.ID, chat.ID)
+		_, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:       activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+			UID:        uuid.NewString(),
+			Channel:    "whatsapp_cloud",
+			SenderName: "WABA Customer",
+			SenderID:   "+5511977776666",
+			Body:       "Hello within 24h",
+			At:         time.Now().UTC().Add(-2 * time.Hour),
+		})
 		if err != nil {
-			t.Fatalf("failed to update chat service window: %v", err)
+			t.Fatalf("failed to record inbound turn: %v", err)
 		}
 
 		e := echo.New()
@@ -1086,14 +1087,30 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 	})
 
 	t.Run("hides banner when active 72h CTWA session exists for contact and connection sender", func(t *testing.T) {
-		expiresAt := time.Now().UTC().Add(42 * time.Hour)
-		_, err := pool.Exec(ctx, `UPDATE chats SET service_window_expires_at = $1 WHERE workspace_id = $2 AND id = $3`, expiresAt, ws.ID, chat.ID)
+		ctwaContact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511977776667", "CTWA Customer", "", "+5511977776667")
 		if err != nil {
-			t.Fatalf("failed to update chat service window: %v", err)
+			t.Fatalf("failed to resolve ctwaContact: %v", err)
+		}
+		ctwaChat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &conn.ID, ctwaContact.ID)
+		if err != nil {
+			t.Fatalf("failed to create ctwaChat: %v", err)
+		}
+		_, err = act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:           activity.ChatID(ctwaChat.ID).WithChannel("whatsapp_cloud"),
+			UID:            uuid.NewString(),
+			Channel:        "whatsapp_cloud",
+			EntryPointType: domain.EntryPointCTWA,
+			SenderName:     "CTWA Customer",
+			SenderID:       "+5511977776667",
+			Body:           "Hello from CTWA ad 30h ago",
+			At:             time.Now().UTC().Add(-30 * time.Hour),
+		})
+		if err != nil {
+			t.Fatalf("failed to record CTWA inbound turn: %v", err)
 		}
 
 		e := echo.New()
-		req := httptest.NewRequest(http.MethodGet, "/admin/inbox/chat?contact_id="+contact.ID.String(), nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/inbox/chat?contact_id="+ctwaContact.ID.String(), nil)
 		req.Header.Set("HX-Request", "true")
 		req.Header.Set("Accept-Language", "pt-BR")
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
@@ -1116,14 +1133,29 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 	})
 
 	t.Run("shows banner when session is expired (>24h for standard)", func(t *testing.T) {
-		expiresAt := time.Now().UTC().Add(-2 * time.Hour)
-		_, err := pool.Exec(ctx, `UPDATE chats SET service_window_expires_at = $1 WHERE workspace_id = $2 AND id = $3`, expiresAt, ws.ID, chat.ID)
+		expContact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511977776668", "Expired Customer", "", "+5511977776668")
 		if err != nil {
-			t.Fatalf("failed to update chat service window: %v", err)
+			t.Fatalf("failed to resolve expContact: %v", err)
+		}
+		expChat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &conn.ID, expContact.ID)
+		if err != nil {
+			t.Fatalf("failed to create expChat: %v", err)
+		}
+		_, err = act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:       activity.ChatID(expChat.ID).WithChannel("whatsapp_cloud"),
+			UID:        uuid.NewString(),
+			Channel:    "whatsapp_cloud",
+			SenderName: "Expired Customer",
+			SenderID:   "+5511977776668",
+			Body:       "Hello 26h ago",
+			At:         time.Now().UTC().Add(-26 * time.Hour),
+		})
+		if err != nil {
+			t.Fatalf("failed to record expired inbound turn: %v", err)
 		}
 
 		e := echo.New()
-		req := httptest.NewRequest(http.MethodGet, "/admin/inbox/chat?contact_id="+contact.ID.String(), nil)
+		req := httptest.NewRequest(http.MethodGet, "/admin/inbox/chat?contact_id="+expContact.ID.String(), nil)
 		req.Header.Set("HX-Request", "true")
 		req.Header.Set("Accept-Language", "pt-BR")
 		req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
@@ -1656,21 +1688,18 @@ func TestInboxHandler_ViewAndChatPanel_UnreadSyncViaChatEngine(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find or create chat: %v", err)
 	}
-	if err := chatRepo.UpdateChatUnreadCount(ctx, ws.ID, chat.ID, 3); err != nil {
-		t.Fatalf("set unread count: %v", err)
-	}
-
-	if err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-		ChatID:      chat.ID,
-		WorkspaceID: ws.ID,
-		UID:         "unread-msg-1",
-		Direction:   domain.DirectionInbound,
-		SenderType:  domain.SenderTypeContact,
-		Body:        "Mensagem nao lida sincronizada",
+	act := activity.New(pool, nil, nil, nil)
+	if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:     activity.ChatID(chat.ID).WithChannel("whatsapp"),
+		UID:      "unread-msg-1",
+		SenderID: "+5511977776666",
+		Body:     "Mensagem nao lida sincronizada",
+		Channel:  "whatsapp",
 		Metadata: map[string]any{
 			"channel": "whatsapp",
 			"from":    "+5511977776666",
 		},
+		At: time.Now().UTC(),
 	}); err != nil {
 		t.Fatalf("add chat message: %v", err)
 	}
@@ -1742,6 +1771,7 @@ func TestInboxHandler_SendMessage_PromoteDraftUpdatesNoteMetadata(t *testing.T) 
 	chatRepo := repository.NewChatRepository(pool)
 	connRepo := repository.NewConnectionRepository(pool, nil)
 	auditRepo := repository.NewAuditRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
 
 	conn := &repository.Connection{
 		ID:             uuid.New(),
@@ -1765,23 +1795,22 @@ func TestInboxHandler_SendMessage_PromoteDraftUpdatesNoteMetadata(t *testing.T) 
 	if err != nil {
 		t.Fatalf("find or create chat: %v", err)
 	}
-	exp := time.Now().UTC().Add(24 * time.Hour)
-	_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &exp)
-
-	noteUID := "note-draft-" + uuid.New().String()
-	if err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-		ChatID:      chat.ID,
-		WorkspaceID: ws.ID,
-		UID:         noteUID,
-		Direction:   domain.DirectionInternalNote,
-		SenderType:  domain.SenderTypeAIAgent,
-		SenderName:  "AI Drafter",
-		Body:        "Original AI Draft",
-		IsPrivate:   true,
-		Metadata:    map[string]any{"author_name": "AI Drafter"},
+	if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:     activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+		UID:      "seed-open-draft",
+		SenderID: "+5511966665555",
+		Body:     "Hello",
+		Channel:  "whatsapp_cloud",
+		At:       time.Now().UTC().Add(-1 * time.Hour),
 	}); err != nil {
+		t.Fatalf("seed inbound: %v", err)
+	}
+
+	createdNote, err := chatRepo.CreateInternalNote(ctx, ws.ID, chat.ID, "AI Drafter", string(domain.SenderTypeAIAgent), "Original AI Draft")
+	if err != nil {
 		t.Fatalf("add note: %v", err)
 	}
+	noteUID := createdNote.UID
 
 	pub := &testMessagePublisher{}
 	h := &admin.InboxHandler{
