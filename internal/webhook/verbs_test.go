@@ -154,15 +154,13 @@ func TestVerbsEngine(t *testing.T) {
 			t.Fatalf("Execute failed: %v", err)
 		}
 
-		// Query the database directly using the pool
-		var tags []string
-		err = pool.QueryRow(ctx, "SELECT tags FROM contacts WHERE id = $1", c.ID).Scan(&tags)
+		updatedContact, err := contactRepo.GetByID(ctx, ws.ID, c.ID)
 		if err != nil {
 			t.Fatalf("failed to query contact: %v", err)
 		}
 
-		if len(tags) != 2 {
-			t.Errorf("expected 2 tags, got %v", tags)
+		if len(updatedContact.Tags) != 2 {
+			t.Errorf("expected 2 tags, got %v", updatedContact.Tags)
 		}
 
 		var chatStatus string
@@ -299,12 +297,11 @@ func TestVerbsEngine(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ResolveContact failed: %v", err)
 		}
-		var tags []string
-		err = pool.QueryRow(ctx, "SELECT tags FROM contacts WHERE id = $1", c.ID).Scan(&tags)
+		updatedC, err := contactRepo.GetByID(ctx, ws.ID, c.ID)
 		if err != nil {
 			t.Fatalf("query contact failed: %v", err)
 		}
-		for _, tag := range tags {
+		for _, tag := range updatedC.Tags {
 			if tag == "should-not-be-added" {
 				t.Error("tag was added despite context cancellation")
 			}

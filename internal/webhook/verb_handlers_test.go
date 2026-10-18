@@ -232,14 +232,18 @@ func TestTagHandler(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		var tags []string
-		err = pool.QueryRow(ctx, "SELECT tags FROM contacts WHERE id = $1", c.ID).Scan(&tags)
+		updated, err := contactRepo.GetByID(ctx, ws.ID, c.ID)
 		if err != nil {
-			t.Fatalf("failed to query tags: %v", err)
+			t.Fatalf("failed to load contact: %v", err)
 		}
 
-		if len(tags) != 2 || tags[0] != "test-tag" || tags[1] != "another-tag" {
-			t.Errorf("unexpected tags: %v", tags)
+		if len(updated.Tags) != 2 || updated.Tags[0] != "another-tag" || updated.Tags[1] != "test-tag" {
+			t.Errorf("unexpected tags: %v", updated.Tags)
+		}
+		tagRepo := repository.NewTagRepository(pool)
+		catalog, err := tagRepo.ListTags(ctx, ws.ID)
+		if err != nil || len(catalog) != 2 {
+			t.Errorf("expected 2 tags in workspace catalog, got %v (err=%v)", catalog, err)
 		}
 	})
 

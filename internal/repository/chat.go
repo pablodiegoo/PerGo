@@ -72,7 +72,8 @@ func (r *ChatRepository) FindOrCreateChat(
 
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
-		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at,
+		       COALESCE((SELECT ARRAY_AGG(t.name ORDER BY t.name ASC) FROM contact_tags ct JOIN tags t ON t.id = ct.tag_id WHERE ct.contact_id = chats.contact_id AND t.workspace_id = chats.workspace_id), '{}') AS tags,
+		       unread_count, ai_mode, ai_paused_until, service_window_expires_at,
 		       COALESCE(entry_point_type, 'standard'), last_inbound_at, last_outbound_at, notified_expiring_at,
 		       last_message_at, metadata, created_at, updated_at
 		FROM chats
@@ -99,12 +100,13 @@ func (r *ChatRepository) FindOrCreateChat(
 
 	// Insert on conflict
 	err = r.pool.QueryRow(ctx, `
-		INSERT INTO chats (workspace_id, connection_id, contact_id, status, tags, unread_count, metadata)
-		VALUES ($1, $2, $3, 'open', '{}', 0, '{}')
+		INSERT INTO chats (workspace_id, connection_id, contact_id, status, unread_count, metadata)
+		VALUES ($1, $2, $3, 'open', 0, '{}')
 		ON CONFLICT (workspace_id, connection_id, contact_id)
 		DO UPDATE SET updated_at = NOW()
 		RETURNING id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
-		          tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at,
+		          COALESCE((SELECT ARRAY_AGG(t.name ORDER BY t.name ASC) FROM contact_tags ct JOIN tags t ON t.id = ct.tag_id WHERE ct.contact_id = chats.contact_id AND t.workspace_id = chats.workspace_id), '{}') AS tags,
+		          unread_count, ai_mode, ai_paused_until, service_window_expires_at,
 		          COALESCE(entry_point_type, 'standard'), last_inbound_at, last_outbound_at, notified_expiring_at,
 		          last_message_at, metadata, created_at, updated_at
 	`, workspaceID, connectionID, contactID).Scan(
@@ -134,7 +136,8 @@ func (r *ChatRepository) GetChat(ctx context.Context, workspaceID, chatID uuid.U
 
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
-		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at,
+		       COALESCE((SELECT ARRAY_AGG(t.name ORDER BY t.name ASC) FROM contact_tags ct JOIN tags t ON t.id = ct.tag_id WHERE ct.contact_id = chats.contact_id AND t.workspace_id = chats.workspace_id), '{}') AS tags,
+		       unread_count, ai_mode, ai_paused_until, service_window_expires_at,
 		       COALESCE(entry_point_type, 'standard'), last_inbound_at, last_outbound_at, notified_expiring_at,
 		       last_message_at, metadata, created_at, updated_at
 		FROM chats
@@ -173,7 +176,8 @@ func (r *ChatRepository) GetChatByContact(ctx context.Context, workspaceID, cont
 
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
-		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at,
+		       COALESCE((SELECT ARRAY_AGG(t.name ORDER BY t.name ASC) FROM contact_tags ct JOIN tags t ON t.id = ct.tag_id WHERE ct.contact_id = chats.contact_id AND t.workspace_id = chats.workspace_id), '{}') AS tags,
+		       unread_count, ai_mode, ai_paused_until, service_window_expires_at,
 		       COALESCE(entry_point_type, 'standard'), last_inbound_at, last_outbound_at, notified_expiring_at,
 		       last_message_at, metadata, created_at, updated_at
 		FROM chats
@@ -211,7 +215,8 @@ func (r *ChatRepository) GetChatByID(ctx context.Context, chatID uuid.UUID) (*do
 
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
-		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at,
+		       COALESCE((SELECT ARRAY_AGG(t.name ORDER BY t.name ASC) FROM contact_tags ct JOIN tags t ON t.id = ct.tag_id WHERE ct.contact_id = chats.contact_id AND t.workspace_id = chats.workspace_id), '{}') AS tags,
+		       unread_count, ai_mode, ai_paused_until, service_window_expires_at,
 		       COALESCE(entry_point_type, 'standard'), last_inbound_at, last_outbound_at, notified_expiring_at,
 		       last_message_at, metadata, created_at, updated_at
 		FROM chats
@@ -258,7 +263,8 @@ func (r *ChatRepository) ListChats(
 
 	query := `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
-		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at,
+		       COALESCE((SELECT ARRAY_AGG(t.name ORDER BY t.name ASC) FROM contact_tags ct JOIN tags t ON t.id = ct.tag_id WHERE ct.contact_id = chats.contact_id AND t.workspace_id = chats.workspace_id), '{}') AS tags,
+		       unread_count, ai_mode, ai_paused_until, service_window_expires_at,
 		       COALESCE(entry_point_type, 'standard'), last_inbound_at, last_outbound_at, notified_expiring_at,
 		       last_message_at, metadata, created_at, updated_at
 		FROM chats
@@ -322,8 +328,14 @@ func (r *ChatRepository) ListChats(
 	}
 
 	if filter.Tag != "" {
-		query += fmt.Sprintf(" AND $%d = ANY(tags)", argIdx)
-		args = append(args, filter.Tag)
+		query += fmt.Sprintf(` AND EXISTS (
+			SELECT 1 FROM contact_tags ct
+			JOIN tags t ON t.id = ct.tag_id
+			WHERE ct.contact_id = chats.contact_id
+			  AND t.workspace_id = chats.workspace_id
+			  AND LOWER(t.name) = LOWER($%d)
+		)`, argIdx)
+		args = append(args, strings.TrimSpace(filter.Tag))
 		argIdx++
 	}
 
@@ -396,24 +408,6 @@ func (r *ChatRepository) AssignChat(ctx context.Context, workspaceID, chatID uui
 		UPDATE chats SET assigned_user_id = $3, assigned_email = $4, updated_at = NOW()
 		WHERE workspace_id = $1 AND id = $2
 	`, workspaceID, chatID, userID, email)
-	if err != nil {
-		return err
-	}
-	if res.RowsAffected() == 0 {
-		return ErrChatNotFound
-	}
-	return nil
-}
-
-// SetChatTags sets tags on a chat.
-func (r *ChatRepository) SetChatTags(ctx context.Context, workspaceID, chatID uuid.UUID, tags []string) error {
-	if tags == nil {
-		tags = []string{}
-	}
-	res, err := r.pool.Exec(ctx, `
-		UPDATE chats SET tags = $3, updated_at = NOW()
-		WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, chatID, tags)
 	if err != nil {
 		return err
 	}
@@ -994,7 +988,6 @@ func (r *ChatRepository) ListConversations(ctx context.Context, workspaceID uuid
 				c.status,
 				c.snoozed_until,
 				c.assigned_email,
-				c.tags,
 				c.unread_count,
 				c.last_message_at,
 				ROW_NUMBER() OVER (
@@ -1068,7 +1061,7 @@ func (r *ChatRepository) ListConversations(ctx context.Context, workspaceID uuid
 			COALESCE(cc.status, 'open'),
 			cc.snoozed_until,
 			cc.assigned_email,
-			COALESCE(cc.tags, '{}'),
+			COALESCE((SELECT ARRAY_AGG(t.name ORDER BY t.name ASC) FROM contact_tags ct JOIN tags t ON t.id = ct.tag_id WHERE ct.contact_id = rc.contact_id AND t.workspace_id = $1), '{}'),
 			COALESCE(cc.total_unread_count, 0)::int
 		FROM RankedConversations rc
 		JOIN ContactChats cc ON cc.contact_id = rc.contact_id AND cc.chat_rn = 1

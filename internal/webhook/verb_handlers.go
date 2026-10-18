@@ -124,11 +124,15 @@ func (h *forwardHandler) Execute(ctx context.Context, vc VerbContext, params jso
 }
 
 type tagHandler struct {
-	contactRepo *repository.ContactRepository
+	tagRepo *repository.TagRepository
 }
 
 func NewTagHandler(contactRepo *repository.ContactRepository) VerbHandler {
-	return &tagHandler{contactRepo: contactRepo}
+	var tagRepo *repository.TagRepository
+	if contactRepo != nil && contactRepo.Pool() != nil {
+		tagRepo = repository.NewTagRepository(contactRepo.Pool())
+	}
+	return &tagHandler{tagRepo: tagRepo}
 }
 
 func (h *tagHandler) Execute(ctx context.Context, vc VerbContext, params json.RawMessage) error {
@@ -139,7 +143,10 @@ func (h *tagHandler) Execute(ctx context.Context, vc VerbContext, params json.Ra
 	if vc.ContactID == uuid.Nil {
 		return fmt.Errorf("contact not resolved")
 	}
-	if err := h.contactRepo.AddTags(ctx, vc.WorkspaceID, vc.ContactID, p.Tags); err != nil {
+	if h.tagRepo == nil {
+		return fmt.Errorf("tag repository not configured")
+	}
+	if _, err := h.tagRepo.AddTagsByName(ctx, vc.WorkspaceID, vc.ContactID, p.Tags); err != nil {
 		return fmt.Errorf("db update failed: %w", err)
 	}
 	return nil

@@ -330,28 +330,7 @@ func (h *TagAdminHandler) ImportContactsCSV(c *echo.Context) error {
 		if tagsIdx != -1 && tagsIdx < len(record) {
 			rawTagsStr := strings.Join(record[tagsIdx:], ",")
 			rawTags := strings.Split(rawTagsStr, ",")
-			for _, tagStr := range rawTags {
-				tagName := strings.TrimSpace(tagStr)
-				if tagName == "" {
-					continue
-				}
-				tag, err := h.tagRepo.CreateTag(c.Request().Context(), workspaceID, tagName, "#6B7280")
-				if err != nil && !errors.Is(err, repository.ErrTagAlreadyExists) {
-					continue
-				}
-				if errors.Is(err, repository.ErrTagAlreadyExists) {
-					tags, _ := h.tagRepo.ListTags(c.Request().Context(), workspaceID)
-					for _, t := range tags {
-						if strings.EqualFold(t.Name, tagName) {
-							tag = &t
-							break
-						}
-					}
-				}
-				if tag != nil {
-					_ = h.tagRepo.AddTagToContact(c.Request().Context(), workspaceID, contact.ID, tag.ID)
-				}
-			}
+			_, _ = h.tagRepo.AddTagsByName(c.Request().Context(), workspaceID, contact.ID, rawTags)
 		}
 
 		// Collect custom attributes from unmapped columns (excluding standard fields and tags)

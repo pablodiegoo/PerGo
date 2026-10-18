@@ -219,18 +219,6 @@ func (r *fakeChatRepo) AssignChat(_ context.Context, workspaceID, chatID uuid.UU
 	return nil
 }
 
-func (r *fakeChatRepo) SetChatTags(_ context.Context, workspaceID, chatID uuid.UUID, tags []string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	c, ok := r.chats[chatID]
-	if !ok || c.WorkspaceID != workspaceID {
-		return repository.ErrChatNotFound
-	}
-	c.Tags = tags
-	c.UpdatedAt = time.Now().UTC()
-	return nil
-}
-
 func (r *fakeChatRepo) seedMessage(msg *domain.ChatMessage) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -504,13 +492,57 @@ func (r *fakeContactRepo) GetByIDs(_ context.Context, workspaceID uuid.UUID, ids
 	return res, nil
 }
 
-func (r *fakeContactRepo) SetTags(_ context.Context, workspaceID, contactID uuid.UUID, tags []string) error {
+func (r *fakeContactRepo) MutateContactTags(_ context.Context, workspaceID, contactID uuid.UUID, set, add, remove []string) ([]string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if c, ok := r.contacts[contactID]; ok && c.WorkspaceID == workspaceID {
-		c.Tags = tags
+	c, ok := r.contacts[contactID]
+	if !ok || c.WorkspaceID != workspaceID {
+		return nil, repository.ErrContactNotFound
 	}
-	return nil
+	var next []string
+	seen := make(map[string]bool)
+	if set != nil {
+		for _, t := range set {
+			clean := strings.TrimSpace(t)
+			if clean != "" && !seen[strings.ToLower(clean)] {
+				seen[strings.ToLower(clean)] = true
+				next = append(next, clean)
+			}
+		}
+	} else {
+		for _, t := range c.Tags {
+			clean := strings.TrimSpace(t)
+			if clean != "" && !seen[strings.ToLower(clean)] {
+				seen[strings.ToLower(clean)] = true
+				next = append(next, clean)
+			}
+		}
+		for _, t := range add {
+			clean := strings.TrimSpace(t)
+			if clean != "" && !seen[strings.ToLower(clean)] {
+				seen[strings.ToLower(clean)] = true
+				next = append(next, clean)
+			}
+		}
+		if len(remove) > 0 {
+			rem := make(map[string]bool, len(remove))
+			for _, t := range remove {
+				rem[strings.ToLower(strings.TrimSpace(t))] = true
+			}
+			filtered := make([]string, 0, len(next))
+			for _, t := range next {
+				if !rem[strings.ToLower(t)] {
+					filtered = append(filtered, t)
+				}
+			}
+			next = filtered
+		}
+	}
+	if next == nil {
+		next = []string{}
+	}
+	c.Tags = next
+	return next, nil
 }
 
 type fakeConnRepo struct {
@@ -920,7 +952,7 @@ func TestEngine_TriageMutations_StatusTagsAssign(t *testing.T) {
 		t.Fatalf("expected open status, got %s", updated.Status)
 	}
 
-	// 3. UpdateTags -> Add & Remove syncs chat and contact tags
+	// 3. UpdateTags -> Add & Remove mutates contact tags
 	tags, err := eng.UpdateTags(ctx, wsID, chat.ChatRef{ChatID: c.ID}, chat.TagMutation{
 		Add:    []string{"vip", "urgent"},
 		Remove: []string{"initial"},
@@ -933,6 +965,28 @@ func TestEngine_TriageMutations_StatusTagsAssign(t *testing.T) {
 	}
 	if len(contactRepo.contacts[contact.ID].Tags) != 2 {
 		t.Fatalf("expected contact tags synced to 2 tags, got %v", contactRepo.contacts[contact.ID].Tags)
+	}
+
+	// 3b. UpdateTags by ContactID on a Contact with NO existing Chat succeeds without creating a phantom Chat
+	contactNoChat := &domain.Contact{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		Tags:        []string{},
+	}
+	contactRepo.contacts[contactNoChat.ID] = contactNoChat
+	beforeChatCount := len(chatRepo.chats)
+
+	noChatTags, err := eng.UpdateTags(ctx, wsID, chat.ChatRef{ContactID: contactNoChat.ID}, chat.TagMutation{
+		Add: []string{"lead"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateTags by ContactID (no existing chat) failed: %v", err)
+	}
+	if len(noChatTags) != 1 || noChatTags[0] != "lead" {
+		t.Fatalf("expected [lead], got %v", noChatTags)
+	}
+	if len(chatRepo.chats) != beforeChatCount {
+		t.Fatalf("expected UpdateTags by ContactID NOT to create a phantom Chat, chat count went from %d to %d", beforeChatCount, len(chatRepo.chats))
 	}
 
 	// 4. Assign -> non-member rejected, valid member succeeds
@@ -1110,6 +1164,53 @@ func TestEngine_SendMessage_PromoteDraft_SetAI_TakeoverAndBackpressure(t *testin
 	if synopsis.CurrentStatus == "" {
 		raw, _ := json.Marshal(synopsis)
 		t.Fatalf("expected non-empty synopsis, got %s", string(raw))
+	}
+
+	// 6. UpdateTags on Postgres: mutating tags on chat1 projects to chat2 of same contact, and UpdateTags by ContactID on chatless contact does not create a phantom chat
+	connID2 := uuid.New()
+	chatID2 := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO connections (id, workspace_id, name, slug, channel, sender_identity, status) VALUES ($1, $2, 'TG', 'tg-1', 'telegram', 'tg_bot', 'connected')`, connID2, wsID); err != nil {
+		t.Fatalf("seed conn2: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO chats (id, workspace_id, connection_id, contact_id, status) VALUES ($1, $2, $3, $4, 'open')`, chatID2, wsID, connID2, contactID); err != nil {
+		t.Fatalf("seed chat2: %v", err)
+	}
+	updatedTags, err := eng.UpdateTags(ctx, wsID, chat.ChatRef{ChatID: chatID}, chat.TagMutation{
+		Add: []string{"vip", "enterprise"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateTags on chat1 failed: %v", err)
+	}
+	if len(updatedTags) != 2 || updatedTags[0] != "enterprise" || updatedTags[1] != "vip" {
+		t.Fatalf("expected [enterprise vip], got %v", updatedTags)
+	}
+	chat2Res, err := eng.Get(ctx, wsID, chat.ChatRef{ChatID: chatID2}, 10, false)
+	if err != nil {
+		t.Fatalf("Get chat2 failed: %v", err)
+	}
+	if len(chat2Res.Chat.Tags) != 2 || chat2Res.Chat.Tags[0] != "enterprise" || chat2Res.Chat.Tags[1] != "vip" {
+		t.Fatalf("expected chat2 to project contact tags [enterprise vip], got %v", chat2Res.Chat.Tags)
+	}
+
+	chatlessContactID := uuid.New()
+	if _, err := pool.Exec(ctx, `INSERT INTO contacts (id, workspace_id, name) VALUES ($1, $2, 'Chatless Contact')`, chatlessContactID, wsID); err != nil {
+		t.Fatalf("seed chatless contact: %v", err)
+	}
+	chatlessTags, err := eng.UpdateTags(ctx, wsID, chat.ChatRef{ContactID: chatlessContactID}, chat.TagMutation{
+		Add: []string{"prospect"},
+	})
+	if err != nil {
+		t.Fatalf("UpdateTags on chatless contact failed: %v", err)
+	}
+	if len(chatlessTags) != 1 || chatlessTags[0] != "prospect" {
+		t.Fatalf("expected [prospect], got %v", chatlessTags)
+	}
+	var phantomChats int
+	if err := pool.QueryRow(ctx, `SELECT COUNT(*) FROM chats WHERE contact_id = $1`, chatlessContactID).Scan(&phantomChats); err != nil {
+		t.Fatalf("count chats for chatless contact: %v", err)
+	}
+	if phantomChats != 0 {
+		t.Fatalf("expected 0 chats for chatless contact after UpdateTags by ContactID, got %d", phantomChats)
 	}
 }
 

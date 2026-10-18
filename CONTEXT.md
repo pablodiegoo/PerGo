@@ -65,7 +65,7 @@ A scheduled or immediate bulk message dispatch targeting a defined contact segme
 _Avoid_: Broadcast job, bulk blast, mass message batch
 
 **Tag**:
-A workspace-scoped label attached to a contact for categorization and segment filtering. Multiple tags in a campaign operate as a Union (OR).
+A workspace-scoped label belonging strictly to a Contact (`tags` + `contact_tags`) for categorization and segment filtering, projected onto the Contact's Chats for inbox display and filtering. Multiple tags in a campaign operate as a Union (OR).
 _Avoid_: Contact label, group tag, list category
 
 **Contact**:
@@ -155,7 +155,7 @@ _Avoid_: NATS monitor, queue stats, stream checker
 ### Shared Team Inbox & Agent Triage
 
 **Chat**:
-An active conversational thread between a Contact and a Connection within a Workspace, tracking read status, assignment, and tags.
+An active conversational thread between a Contact and a Connection within a Workspace, tracking read status and assignment while projecting the Contact's Tags for inbox display and filtering.
 _Avoid_: Conversation, ticket, thread, session
 
 **Chat Engine**:

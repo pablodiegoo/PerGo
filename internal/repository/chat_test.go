@@ -100,7 +100,7 @@ func TestChatRepository(t *testing.T) {
 		}
 	})
 
-	t.Run("UpdateChatStatus_Assign_SetTags_AIDisabled", func(t *testing.T) {
+	t.Run("UpdateChatStatus_Assign_ContactTagsProjection_AIDisabled", func(t *testing.T) {
 		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
 		if err != nil {
 			t.Fatalf("failed to get chat: %v", err)
@@ -116,9 +116,10 @@ func TestChatRepository(t *testing.T) {
 		if err := chatRepo.AssignChat(ctx, ws.ID, chat.ID, &userUUID, &email); err != nil {
 			t.Fatalf("failed to assign: %v", err)
 		}
-		// Tags
-		if err := chatRepo.SetChatTags(ctx, ws.ID, chat.ID, []string{"vip", "support"}); err != nil {
-			t.Fatalf("failed to set tags: %v", err)
+		// Tags belong strictly to Contact (tags + contact_tags) and project onto Chat reads
+		tagRepo := repository.NewTagRepository(pool)
+		if _, err := tagRepo.AddTagsByName(ctx, ws.ID, contact.ID, []string{"vip", "support"}); err != nil {
+			t.Fatalf("failed to add contact tags: %v", err)
 		}
 
 		updated, err := chatRepo.GetChat(ctx, ws.ID, chat.ID)
@@ -132,11 +133,29 @@ func TestChatRepository(t *testing.T) {
 		if updated.AssignedEmail == nil || *updated.AssignedEmail != email {
 			t.Errorf("expected assigned email %s, got %v", email, updated.AssignedEmail)
 		}
-		if len(updated.Tags) != 2 || updated.Tags[0] != "vip" {
-			t.Errorf("expected tags [vip support], got %v", updated.Tags)
+		if len(updated.Tags) != 2 || updated.Tags[0] != "support" || updated.Tags[1] != "vip" {
+			t.Errorf("expected projected sorted tags [support vip], got %v", updated.Tags)
 		}
 		if updated.AIDisabled {
 			t.Errorf("expected ai disabled false by default, got true")
+		}
+
+		// GetChatByContact also projects Contact's tags
+		byContact, err := chatRepo.GetChatByContact(ctx, ws.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("GetChatByContact failed: %v", err)
+		}
+		if len(byContact.Tags) != 2 || byContact.Tags[0] != "support" || byContact.Tags[1] != "vip" {
+			t.Errorf("expected GetChatByContact tags [support vip], got %v", byContact.Tags)
+		}
+
+		// ListChats with case-insensitive filter.Tag matches via contact_tags + tags
+		tagFiltered, err := chatRepo.ListChats(ctx, ws.ID, domain.ChatFilter{Tag: "VIP"}, 10, 0)
+		if err != nil {
+			t.Fatalf("ListChats(Tag=VIP) failed: %v", err)
+		}
+		if len(tagFiltered) != 1 || tagFiltered[0].ID != chat.ID || len(tagFiltered[0].Tags) != 2 {
+			t.Errorf("expected 1 chat matching Tag=VIP with 2 tags, got %+v", tagFiltered)
 		}
 	})
 

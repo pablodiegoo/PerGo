@@ -167,7 +167,8 @@ func TestChatAPIHandler(t *testing.T) {
 		t.Fatalf("failed to resolve contact: %v", err)
 	}
 	contactID := contact.ID
-	if err := contactRepo.SetTags(ctx, wsID, contactID, []string{"lead"}); err != nil {
+	tagRepo := repository.NewTagRepository(pool)
+	if _, err := tagRepo.SetTagsByName(ctx, wsID, contactID, []string{"lead"}); err != nil {
 		t.Fatalf("failed to set contact tags: %v", err)
 	}
 
@@ -177,9 +178,6 @@ func TestChatAPIHandler(t *testing.T) {
 		t.Fatalf("failed to ensure chat: %v", err)
 	}
 	chatID := chatRow.ID
-	if err := chatRepo.SetChatTags(ctx, wsID, chatID, []string{"lead"}); err != nil {
-		t.Fatalf("failed to set chat tags: %v", err)
-	}
 
 	publisher := &mockPublisher{}
 	auditRepo := &mockChatAuditRepo{}

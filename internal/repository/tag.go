@@ -27,6 +27,13 @@ func NewTagRepository(pool *pgxpool.Pool) *TagRepository {
 	return &TagRepository{pool: pool}
 }
 
+func (r *TagRepository) Pool() *pgxpool.Pool {
+	if r == nil {
+		return nil
+	}
+	return r.pool
+}
+
 // CreateTag creates a new workspace-scoped tag.
 func (r *TagRepository) CreateTag(ctx context.Context, workspaceID uuid.UUID, name, color string) (*domain.Tag, error) {
 	if workspaceID == uuid.Nil {
@@ -204,13 +211,225 @@ func (r *TagRepository) GetContactTags(ctx context.Context, workspaceID, contact
 	return tags, nil
 }
 
+func cleanTagNames(names []string) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(names))
+	out := make([]string, 0, len(names))
+	for _, raw := range names {
+		clean := strings.TrimSpace(raw)
+		if clean == "" {
+			continue
+		}
+		lower := strings.ToLower(clean)
+		if _, ok := seen[lower]; ok {
+			continue
+		}
+		seen[lower] = struct{}{}
+		out = append(out, clean)
+	}
+	return out
+}
+
+func ensureTagID(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, name string) (uuid.UUID, error) {
+	var tagID uuid.UUID
+	err := tx.QueryRow(ctx, `
+		SELECT id FROM tags
+		WHERE workspace_id = $1 AND LOWER(name) = LOWER($2)
+		LIMIT 1
+	`, workspaceID, name).Scan(&tagID)
+	if err == nil {
+		return tagID, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, fmt.Errorf("lookup tag %q: %w", name, err)
+	}
+
+	err = tx.QueryRow(ctx, `
+		INSERT INTO tags (workspace_id, name, color)
+		VALUES ($1, $2, '#6B7280')
+		ON CONFLICT (workspace_id, LOWER(name)) DO UPDATE SET name = tags.name
+		RETURNING id
+	`, workspaceID, name).Scan(&tagID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("ensure tag %q: %w", name, err)
+	}
+	return tagID, nil
+}
+
+// MutateContactTags atomically replaces (when set != nil) or adds/removes (when set == nil)
+// a contact's tags by name in the authoritative tags + contact_tags store, returning the
+// contact's resulting tag names ordered by t.name ASC.
+func (r *TagRepository) MutateContactTags(
+	ctx context.Context,
+	workspaceID, contactID uuid.UUID,
+	set, add, remove []string,
+) ([]string, error) {
+	if workspaceID == uuid.Nil {
+		return nil, ErrInvalidWorkspaceID
+	}
+	if contactID == uuid.Nil {
+		return nil, ErrContactNotFound
+	}
+	if r == nil || r.pool == nil {
+		return nil, errors.New("tag repository pool not configured")
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var lockedID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		SELECT id FROM contacts
+		WHERE workspace_id = $1 AND id = $2
+		FOR UPDATE
+	`, workspaceID, contactID).Scan(&lockedID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrContactNotFound
+		}
+		return nil, fmt.Errorf("verify contact in workspace: %w", err)
+	}
+
+	if set != nil {
+		cleanedSet := cleanTagNames(set)
+		tagIDs := make([]uuid.UUID, 0, len(cleanedSet))
+		for _, name := range cleanedSet {
+			tagID, err := ensureTagID(ctx, tx, workspaceID, name)
+			if err != nil {
+				return nil, err
+			}
+			tagIDs = append(tagIDs, tagID)
+		}
+
+		if len(tagIDs) == 0 {
+			if _, err := tx.Exec(ctx, `DELETE FROM contact_tags WHERE contact_id = $1`, contactID); err != nil {
+				return nil, fmt.Errorf("clear contact tags: %w", err)
+			}
+		} else {
+			if _, err := tx.Exec(ctx, `
+				DELETE FROM contact_tags
+				WHERE contact_id = $1 AND NOT (tag_id = ANY($2))
+			`, contactID, tagIDs); err != nil {
+				return nil, fmt.Errorf("prune contact tags: %w", err)
+			}
+			for _, tagID := range tagIDs {
+				if _, err := tx.Exec(ctx, `
+					INSERT INTO contact_tags (contact_id, tag_id)
+					VALUES ($1, $2)
+					ON CONFLICT (contact_id, tag_id) DO NOTHING
+				`, contactID, tagID); err != nil {
+					return nil, fmt.Errorf("link contact tag: %w", err)
+				}
+			}
+		}
+	} else {
+		cleanedRemove := cleanTagNames(remove)
+		removeSet := make(map[string]struct{}, len(cleanedRemove))
+		removeLower := make([]string, 0, len(cleanedRemove))
+		for _, rem := range cleanedRemove {
+			lower := strings.ToLower(rem)
+			removeSet[lower] = struct{}{}
+			removeLower = append(removeLower, lower)
+		}
+
+		cleanedAdd := cleanTagNames(add)
+		for _, name := range cleanedAdd {
+			if _, removed := removeSet[strings.ToLower(name)]; removed {
+				continue
+			}
+			tagID, err := ensureTagID(ctx, tx, workspaceID, name)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := tx.Exec(ctx, `
+				INSERT INTO contact_tags (contact_id, tag_id)
+				VALUES ($1, $2)
+				ON CONFLICT (contact_id, tag_id) DO NOTHING
+			`, contactID, tagID); err != nil {
+				return nil, fmt.Errorf("link contact tag: %w", err)
+			}
+		}
+
+		if len(removeLower) > 0 {
+			if _, err := tx.Exec(ctx, `
+				DELETE FROM contact_tags ct
+				USING tags t
+				WHERE ct.contact_id = $1
+				  AND ct.tag_id = t.id
+				  AND t.workspace_id = $2
+				  AND LOWER(t.name) = ANY($3)
+			`, contactID, workspaceID, removeLower); err != nil {
+				return nil, fmt.Errorf("remove contact tags: %w", err)
+			}
+		}
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE contacts SET updated_at = NOW()
+		WHERE workspace_id = $1 AND id = $2
+	`, workspaceID, contactID); err != nil {
+		return nil, fmt.Errorf("touch contact updated_at: %w", err)
+	}
+
+	var resultTags []string
+	if err := tx.QueryRow(ctx, `
+		SELECT COALESCE(ARRAY_AGG(t.name ORDER BY t.name ASC), '{}')
+		FROM contact_tags ct
+		JOIN tags t ON t.id = ct.tag_id
+		WHERE ct.contact_id = $1 AND t.workspace_id = $2
+	`, contactID, workspaceID).Scan(&resultTags); err != nil {
+		return nil, fmt.Errorf("load contact tags: %w", err)
+	}
+	if resultTags == nil {
+		resultTags = []string{}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit contact tags tx: %w", err)
+	}
+
+	return resultTags, nil
+}
+
+// AddTagsByName attaches the given tag names to a contact (auto-creating workspace tags when needed)
+// and returns the contact's resulting sorted tag names.
+func (r *TagRepository) AddTagsByName(ctx context.Context, workspaceID, contactID uuid.UUID, names []string) ([]string, error) {
+	return r.MutateContactTags(ctx, workspaceID, contactID, nil, names, nil)
+}
+
+// RemoveTagsByName unlinks the given tag names (case-insensitively) from a contact without deleting
+// the workspace tag catalog entries, and returns the contact's resulting sorted tag names.
+func (r *TagRepository) RemoveTagsByName(ctx context.Context, workspaceID, contactID uuid.UUID, names []string) ([]string, error) {
+	return r.MutateContactTags(ctx, workspaceID, contactID, nil, nil, names)
+}
+
+// SetTagsByName replaces the contact's tag set with the given tag names and returns the resulting sorted tag names.
+func (r *TagRepository) SetTagsByName(ctx context.Context, workspaceID, contactID uuid.UUID, names []string) ([]string, error) {
+	if names == nil {
+		names = []string{}
+	}
+	return r.MutateContactTags(ctx, workspaceID, contactID, names, nil, nil)
+}
+
 // ListContactsByTag retrieves all contacts matching a given tag ID.
 func (r *TagRepository) ListContactsByTag(ctx context.Context, workspaceID, tagID uuid.UUID) ([]domain.Contact, error) {
 	if workspaceID == uuid.Nil {
 		return nil, ErrInvalidWorkspaceID
 	}
 	rows, err := r.pool.Query(ctx, `
-		SELECT c.id, c.workspace_id, c.name, c.email, c.attributes, c.tags, c.created_at, c.updated_at
+		SELECT c.id, c.workspace_id, c.name, c.email, c.attributes,
+		       COALESCE((
+		           SELECT ARRAY_AGG(t.name ORDER BY t.name ASC)
+		           FROM contact_tags ct2
+		           JOIN tags t ON t.id = ct2.tag_id
+		           WHERE ct2.contact_id = c.id AND t.workspace_id = c.workspace_id
+		       ), '{}') AS tags,
+		       c.created_at, c.updated_at
 		FROM contacts c
 		JOIN contact_tags ct ON ct.contact_id = c.id
 		WHERE c.workspace_id = $1 AND ct.tag_id = $2
@@ -237,6 +456,9 @@ func (r *TagRepository) ListContactsByTag(ctx context.Context, workspaceID, tagI
 		}
 		if c.Attributes == nil {
 			c.Attributes = make(map[string]string)
+		}
+		if tags == nil {
+			tags = []string{}
 		}
 		c.Tags = tags
 		contacts = append(contacts, c)

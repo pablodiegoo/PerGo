@@ -38,8 +38,10 @@ func (r *ContactRepository) GetByID(ctx context.Context, workspaceID, contactID 
 	var c domain.Contact
 	var attrsRaw []byte
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, workspace_id, name, email, attributes, tags, created_at, updated_at
-		FROM contacts WHERE workspace_id = $1 AND id = $2
+		SELECT c.id, c.workspace_id, c.name, c.email, c.attributes,
+		       COALESCE((SELECT ARRAY_AGG(t.name ORDER BY t.name ASC) FROM contact_tags ct JOIN tags t ON t.id = ct.tag_id WHERE ct.contact_id = c.id AND t.workspace_id = c.workspace_id), '{}') AS tags,
+		       c.created_at, c.updated_at
+		FROM contacts c WHERE c.workspace_id = $1 AND c.id = $2
 	`, workspaceID, contactID).Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -88,9 +90,11 @@ func (r *ContactRepository) GetByIDs(ctx context.Context, workspaceID uuid.UUID,
 	}
 
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, workspace_id, name, email, attributes, tags, created_at, updated_at
-		FROM contacts
-		WHERE workspace_id = $1 AND id = ANY($2)
+		SELECT c.id, c.workspace_id, c.name, c.email, c.attributes,
+		       COALESCE((SELECT ARRAY_AGG(t.name ORDER BY t.name ASC) FROM contact_tags ct JOIN tags t ON t.id = ct.tag_id WHERE ct.contact_id = c.id AND t.workspace_id = c.workspace_id), '{}') AS tags,
+		       c.created_at, c.updated_at
+		FROM contacts c
+		WHERE c.workspace_id = $1 AND c.id = ANY($2)
 	`, workspaceID, ids)
 	if err != nil {
 		return nil, err
@@ -472,7 +476,19 @@ func (r *ContactRepository) MergeContacts(ctx context.Context, workspaceID uuid.
 		return fmt.Errorf("reassign secondary chats: %w", err)
 	}
 
-	// 7. Delete secondary contact profile
+	// 7. Carry over secondary contact_tags to primary contact before deleting secondary contact
+	_, err = tx.Exec(ctx, `
+		INSERT INTO contact_tags (contact_id, tag_id, created_at)
+		SELECT $1, tag_id, created_at
+		FROM contact_tags
+		WHERE contact_id = $2
+		ON CONFLICT (contact_id, tag_id) DO NOTHING
+	`, primaryID, secondaryID)
+	if err != nil {
+		return fmt.Errorf("carry over secondary contact tags: %w", err)
+	}
+
+	// 8. Delete secondary contact profile
 	_, err = tx.Exec(ctx, "DELETE FROM contacts WHERE id = $1 AND workspace_id = $2", secondaryID, workspaceID)
 	if err != nil {
 		return fmt.Errorf("delete secondary contact profile: %w", err)
@@ -488,7 +504,9 @@ func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid
 	}
 	q := "%" + strings.ToLower(query) + "%"
 	rows, err := r.pool.Query(ctx, `
-		SELECT DISTINCT c.id, c.name, c.email, c.attributes, c.tags, c.created_at, c.updated_at
+		SELECT DISTINCT c.id, c.name, c.email, c.attributes,
+		       COALESCE((SELECT ARRAY_AGG(t.name ORDER BY t.name ASC) FROM contact_tags ct JOIN tags t ON t.id = ct.tag_id WHERE ct.contact_id = c.id AND t.workspace_id = c.workspace_id), '{}') AS tags,
+		       c.created_at, c.updated_at
 		FROM contacts c
 		LEFT JOIN contact_identities ci ON ci.contact_id = c.id
 		WHERE c.workspace_id = $1
@@ -571,44 +589,6 @@ func (r *ContactRepository) ResolveTelegramChatID(ctx context.Context, workspace
 	}
 
 	return chatID, nil
-}
-
-// AddTags appends tags to the contact's tag list while preserving uniqueness.
-func (r *ContactRepository) AddTags(ctx context.Context, workspaceID, contactID uuid.UUID, tags []string) error {
-	if workspaceID == uuid.Nil {
-		return ErrInvalidWorkspaceID
-	}
-	if len(tags) == 0 {
-		return nil
-	}
-	_, err := r.pool.Exec(ctx, `
-		UPDATE contacts 
-		SET tags = ARRAY(
-			SELECT DISTINCT val 
-			FROM unnest(array_cat(tags, $3)) val 
-			WHERE val IS NOT NULL
-		), 
-		updated_at = NOW() 
-		WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, contactID, tags)
-	return err
-}
-
-
-// SetTags overwrites the contact's tag list.
-func (r *ContactRepository) SetTags(ctx context.Context, workspaceID, contactID uuid.UUID, tags []string) error {
-	if workspaceID == uuid.Nil {
-		return ErrInvalidWorkspaceID
-	}
-	if tags == nil {
-		tags = []string{}
-	}
-	_, err := r.pool.Exec(ctx, `
-		UPDATE contacts 
-		SET tags = $3, updated_at = NOW() 
-		WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, contactID, tags)
-	return err
 }
 
 // MarkAsRead updates the contact's read timestamp.

@@ -1038,11 +1038,7 @@ func (h *InboxHandler) AddChatTag(c *echo.Context) error {
 	}
 
 	if tag != "" {
-		if h.ChatRepo != nil || h.ChatEngine != nil {
-			_, _ = h.engine().UpdateTags(ctx, workspaceID, chatpkg.ChatRef{ContactID: contactID}, chatpkg.TagMutation{Add: []string{tag}})
-		} else if h.ContactRepo != nil {
-			_ = h.ContactRepo.AddTags(ctx, workspaceID, contactID, []string{tag})
-		}
+		_, _ = h.engine().UpdateTags(ctx, workspaceID, chatpkg.ChatRef{ContactID: contactID}, chatpkg.TagMutation{Add: []string{tag}})
 	}
 
 	c.Response().Header().Set("HX-Trigger", "refreshChats")
@@ -1080,19 +1076,7 @@ func (h *InboxHandler) RemoveChatTag(c *echo.Context) error {
 	}
 
 	if tag != "" {
-		if h.ChatRepo != nil || h.ChatEngine != nil {
-			_, _ = h.engine().UpdateTags(ctx, workspaceID, chatpkg.ChatRef{ContactID: contactID}, chatpkg.TagMutation{Remove: []string{tag}})
-		} else if h.ContactRepo != nil {
-			if contact, cErr := h.ContactRepo.GetByID(ctx, workspaceID, contactID); cErr == nil && contact != nil {
-				var newTags []string
-				for _, t := range contact.Tags {
-					if !strings.EqualFold(t, tag) {
-						newTags = append(newTags, t)
-					}
-				}
-				_ = h.ContactRepo.SetTags(ctx, workspaceID, contactID, newTags)
-			}
-		}
+		_, _ = h.engine().UpdateTags(ctx, workspaceID, chatpkg.ChatRef{ContactID: contactID}, chatpkg.TagMutation{Remove: []string{tag}})
 	}
 
 	c.Response().Header().Set("HX-Trigger", "refreshChats")

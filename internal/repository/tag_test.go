@@ -44,10 +44,14 @@ func TestTagRepository(t *testing.T) {
 			t.Fatalf("failed to create tag2: %v", err)
 		}
 
-		// Duplicate tag name check
+		// Duplicate tag name check (exact and case-insensitive)
 		_, err = tagRepo.CreateTag(ctx, wsID, "VIP", "#111111")
 		if err == nil {
 			t.Errorf("expected duplicate tag error, got nil")
+		}
+		_, err = tagRepo.CreateTag(ctx, wsID, "vip", "#222222")
+		if err != repository.ErrTagAlreadyExists {
+			t.Errorf("expected ErrTagAlreadyExists for case-insensitive duplicate 'vip', got %v", err)
 		}
 
 		tags, err := tagRepo.ListTags(ctx, wsID)
@@ -98,6 +102,9 @@ func TestTagRepository(t *testing.T) {
 		if len(contactsByTag) != 1 || contactsByTag[0].ID != contact.ID {
 			t.Errorf("expected 1 contact by VIP tag, got %+v", contactsByTag)
 		}
+		if len(contactsByTag[0].Tags) != 1 || contactsByTag[0].Tags[0] != "VIP" {
+			t.Errorf("expected contact.Tags projected from contact_tags as [VIP], got %v", contactsByTag[0].Tags)
+		}
 		if contactsByTag[0].Attributes["plan"] != "Premium" {
 			t.Errorf("expected contact attributes plan='Premium', got %v", contactsByTag[0].Attributes)
 		}
@@ -114,6 +121,66 @@ func TestTagRepository(t *testing.T) {
 		}
 		if len(cTagsAfter) != 0 {
 			t.Errorf("expected 0 contact tags, got %d", len(cTagsAfter))
+		}
+	})
+
+	t.Run("MutateContactTags_AddRemoveSet_CaseInsensitiveAndCatalogPreservation", func(t *testing.T) {
+		contact, err := contactRepo.ResolveContact(ctx, wsID, "whatsapp", "5511999997777", "Maria Mutate", "", "")
+		if err != nil {
+			t.Fatalf("failed to resolve contact: %v", err)
+		}
+
+		// 1. AddTagsByName with lowercase "vip" should reuse existing "VIP" tag (preserving "VIP" casing) and auto-create "Enterprise"
+		gotTags, err := tagRepo.AddTagsByName(ctx, wsID, contact.ID, []string{"vip", "Enterprise", "VIP"})
+		if err != nil {
+			t.Fatalf("AddTagsByName failed: %v", err)
+		}
+		if len(gotTags) != 2 || gotTags[0] != "Enterprise" || gotTags[1] != "VIP" {
+			t.Fatalf("expected sorted tags [Enterprise VIP], got %v", gotTags)
+		}
+
+		// 2. MutateContactTags with Add + Remove (case-insensitive remove of "enterprise")
+		gotTags, err = tagRepo.MutateContactTags(ctx, wsID, contact.ID, nil, []string{"Priority"}, []string{"enterprise"})
+		if err != nil {
+			t.Fatalf("MutateContactTags add+remove failed: %v", err)
+		}
+		if len(gotTags) != 2 || gotTags[0] != "Priority" || gotTags[1] != "VIP" {
+			t.Fatalf("expected sorted tags [Priority VIP], got %v", gotTags)
+		}
+
+		// Removing a tag from a contact must NOT delete the catalog row from tags
+		allCatalogTags, err := tagRepo.ListTags(ctx, wsID)
+		if err != nil {
+			t.Fatalf("ListTags failed: %v", err)
+		}
+		hasEnterpriseInCatalog := false
+		for _, ct := range allCatalogTags {
+			if ct.Name == "Enterprise" {
+				hasEnterpriseInCatalog = true
+				break
+			}
+		}
+		if !hasEnterpriseInCatalog {
+			t.Errorf("expected 'Enterprise' to remain in workspace tag catalog after unlinking from contact")
+		}
+
+		// 3. SetTagsByName replaces contact's tag set
+		gotTags, err = tagRepo.SetTagsByName(ctx, wsID, contact.ID, []string{"lead", "Renewal", "LEAD"})
+		if err != nil {
+			t.Fatalf("SetTagsByName failed: %v", err)
+		}
+		// "Lead" already existed in catalog with capital L
+		if len(gotTags) != 2 || gotTags[0] != "Lead" || gotTags[1] != "Renewal" {
+			t.Fatalf("expected sorted tags [Lead Renewal], got %v", gotTags)
+		}
+
+		// 4. SetTagsByName with empty slice clears all contact_tags and returns non-nil empty slice
+		gotTags, err = tagRepo.SetTagsByName(ctx, wsID, contact.ID, []string{})
+		if err != nil {
+			t.Fatalf("SetTagsByName(empty) failed: %v", err)
+		}
+		if gotTags == nil || len(gotTags) != 0 {
+			t.Fatalf("expected non-nil empty slice, got %v", gotTags)
 		}
 	})
 

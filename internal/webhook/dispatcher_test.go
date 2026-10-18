@@ -746,10 +746,8 @@ func TestDefaultDispatcher_VerbsIntegration(t *testing.T) {
 
 	for time.Now().Before(deadline) {
 		// Check tags and chat status
-		var tempTags []string
-		err = pool.QueryRow(ctx, "SELECT tags FROM contacts WHERE id = $1", c.ID).Scan(&tempTags)
-		if err == nil {
-			contactTags = tempTags
+		if fetched, gErr := contactRepo.GetByID(ctx, ws.ID, c.ID); gErr == nil && fetched != nil {
+			contactTags = fetched.Tags
 		}
 		var tempStatus string
 		if err := pool.QueryRow(ctx, "SELECT status FROM chats WHERE workspace_id = $1 AND contact_id = $2", ws.ID, c.ID).Scan(&tempStatus); err == nil {

@@ -47,7 +47,6 @@ type ChatRepository interface {
 	ListChatMessages(ctx context.Context, workspaceID, chatID uuid.UUID, beforeUID, afterUID string, limit int) ([]domain.ChatMessage, error)
 	CreateInternalNote(ctx context.Context, workspaceID, chatID uuid.UUID, authorName, senderType, body string) (*domain.ChatMessage, error)
 	AssignChat(ctx context.Context, workspaceID, chatID uuid.UUID, memberID *uuid.UUID, email *string) error
-	SetChatTags(ctx context.Context, workspaceID, chatID uuid.UUID, tags []string) error
 	UpdateChatStatus(ctx context.Context, workspaceID, chatID uuid.UUID, status string) error
 	SnoozeChat(ctx context.Context, workspaceID, chatID uuid.UUID, snoozedUntil *time.Time) error
 	GetChatMessageByUID(ctx context.Context, workspaceID uuid.UUID, uid string) (*domain.ChatMessage, error)
@@ -97,8 +96,12 @@ type poolProvider interface {
 // ContactRepository defines contact operations required by Engine.
 type ContactRepository interface {
 	GetByID(ctx context.Context, workspaceID, contactID uuid.UUID) (*domain.Contact, error)
-	SetTags(ctx context.Context, workspaceID, contactID uuid.UUID, tags []string) error
 	MarkAsRead(ctx context.Context, workspaceID, contactID uuid.UUID) error
+}
+
+// TagRepository defines contact tag mutation operations required by Engine.
+type TagRepository interface {
+	MutateContactTags(ctx context.Context, workspaceID, contactID uuid.UUID, set, add, remove []string) ([]string, error)
 }
 
 type contactsByIDsGetter interface {
@@ -347,10 +350,20 @@ func WithActivity(r *activity.Recorder) Option {
 	}
 }
 
+// WithTagRepo configures the tag repository.
+func WithTagRepo(r TagRepository) Option {
+	return func(e *Engine) {
+		if !isNilInterface(r) {
+			e.tagRepo = r
+		}
+	}
+}
+
 // Config groups dependencies used to construct a Chat Engine.
 type Config struct {
 	ChatRepo          ChatRepository
 	ContactRepo       ContactRepository
+	TagRepo           TagRepository
 	ConnRepo          ConnectionRepository
 	WorkspaceRepo     WorkspaceRepository
 	AuditRepo         AuditRepository
@@ -366,6 +379,7 @@ func NewEngineFromConfig(cfg Config) *Engine {
 	return NewEngine(
 		cfg.ChatRepo,
 		WithContactRepo(cfg.ContactRepo),
+		WithTagRepo(cfg.TagRepo),
 		WithConnectionRepo(cfg.ConnRepo),
 		WithWorkspaceRepo(cfg.WorkspaceRepo),
 		WithAuditRepo(cfg.AuditRepo),
@@ -383,6 +397,7 @@ func NewEngineFromConfig(cfg Config) *Engine {
 type Engine struct {
 	chatRepo          ChatRepository
 	contactRepo       ContactRepository
+	tagRepo           TagRepository
 	connRepo          ConnectionRepository
 	wsRepo            WorkspaceRepository
 	auditRepo         AuditRepository
@@ -451,6 +466,28 @@ func (e *Engine) ensureActivity() *activity.Recorder {
 		if pp, ok := e.chatRepo.(poolProvider); ok && pp.Pool() != nil {
 			e.activity = activity.New(pp.Pool(), e.publisher, e.debouncer, slog.Default())
 			return e.activity
+		}
+	}
+	return nil
+}
+
+func (e *Engine) ensureTagRepo() TagRepository {
+	if e.tagRepo != nil {
+		return e.tagRepo
+	}
+	if e.chatRepo != nil {
+		if pp, ok := e.chatRepo.(poolProvider); ok && pp.Pool() != nil {
+			e.tagRepo = repository.NewTagRepository(pp.Pool())
+			return e.tagRepo
+		}
+	}
+	if e.contactRepo != nil {
+		if pp, ok := e.contactRepo.(poolProvider); ok && pp.Pool() != nil {
+			e.tagRepo = repository.NewTagRepository(pp.Pool())
+			return e.tagRepo
+		}
+		if tr, ok := e.contactRepo.(TagRepository); ok {
+			return tr
 		}
 	}
 	return nil
@@ -1087,74 +1124,69 @@ func (e *Engine) UpdateStatus(ctx context.Context, workspaceID uuid.UUID, ref Ch
 	return c, snoozedUntil, nil
 }
 
-// UpdateTags adds, removes, or replaces tags on a chat thread,
-// synchronizing the resulting tag set onto the contact and writing an audit log.
+// UpdateTags adds, removes, or replaces tags on the Contact identified by ref
+// via TagRepository and writes an audit log.
 func (e *Engine) UpdateTags(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, mut TagMutation) ([]string, error) {
-	c, err := e.ResolveChat(ctx, workspaceID, ref)
-	if errors.Is(err, ErrChatNotFound) && ref.ContactID != uuid.Nil {
-		c, err = e.EnsureChatForContact(ctx, workspaceID, ref.ContactID, false)
-	}
+	wsID, err := EnforceWorkspaceScope(ctx, workspaceID)
 	if err != nil {
-		return nil, err
+		return nil, ErrChatNotFound
 	}
 
-	var newTags []string
-	if mut.Set != nil {
-		newTags = mut.Set
-	} else {
-		tagMap := make(map[string]bool)
-		for _, t := range c.Tags {
-			clean := strings.TrimSpace(t)
-			if clean != "" {
-				tagMap[strings.ToLower(clean)] = true
-				newTags = append(newTags, clean)
-			}
-		}
-		for _, addTag := range mut.Add {
-			clean := strings.TrimSpace(addTag)
-			if clean != "" && !tagMap[strings.ToLower(clean)] {
-				tagMap[strings.ToLower(clean)] = true
-				newTags = append(newTags, clean)
-			}
-		}
-		if len(mut.Remove) > 0 {
-			removeMap := make(map[string]bool)
-			for _, remTag := range mut.Remove {
-				removeMap[strings.ToLower(strings.TrimSpace(remTag))] = true
-			}
-			filtered := make([]string, 0, len(newTags))
-			for _, t := range newTags {
-				if !removeMap[strings.ToLower(t)] {
-					filtered = append(filtered, t)
+	var contactID uuid.UUID
+	var chatID uuid.UUID
+
+	if ref.ChatID == uuid.Nil && ref.ContactID != uuid.Nil {
+		contactID = ref.ContactID
+		if e.chatRepo != nil {
+			if c, rErr := e.ResolveChat(ctx, wsID, ref); rErr == nil && c != nil {
+				chatID = c.ID
+				if c.WorkspaceID != uuid.Nil {
+					wsID = c.WorkspaceID
 				}
+			} else if rErr != nil && !errors.Is(rErr, ErrChatNotFound) {
+				return nil, rErr
 			}
-			newTags = filtered
 		}
+	} else {
+		c, rErr := e.ResolveChat(ctx, wsID, ref)
+		if rErr != nil {
+			return nil, rErr
+		}
+		chatID = c.ID
+		contactID = c.ContactID
+		wsID = c.WorkspaceID
+	}
+
+	if wsID == uuid.Nil || contactID == uuid.Nil {
+		return nil, ErrChatNotFound
+	}
+
+	tagRepo := e.ensureTagRepo()
+	if tagRepo == nil {
+		return nil, errors.New("tag repository not configured")
+	}
+
+	newTags, err := tagRepo.MutateContactTags(ctx, wsID, contactID, mut.Set, mut.Add, mut.Remove)
+	if err != nil {
+		if errors.Is(err, repository.ErrContactNotFound) {
+			return nil, ErrContactNotFound
+		}
+		return nil, err
 	}
 
 	if newTags == nil {
 		newTags = []string{}
 	}
 
-	if err := e.chatRepo.SetChatTags(ctx, c.WorkspaceID, c.ID, newTags); err != nil {
-		return nil, err
-	}
-
-	if e.contactRepo != nil && c.ContactID != uuid.Nil {
-		if sErr := e.contactRepo.SetTags(ctx, c.WorkspaceID, c.ContactID, newTags); sErr != nil {
-			slog.WarnContext(ctx, "failed to sync tags with contact", "error", sErr, "contact_id", c.ContactID)
-		}
-	}
-
 	if e.auditRepo != nil {
 		auditPayload, _ := json.Marshal(map[string]interface{}{
-			"chat_id":    c.ID.String(),
-			"contact_id": c.ContactID.String(),
+			"chat_id":    chatID.String(),
+			"contact_id": contactID.String(),
 			"tags":       newTags,
 		})
 		_ = e.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
 			ID:          uuid.New(),
-			WorkspaceID: c.WorkspaceID,
+			WorkspaceID: wsID,
 			TraceID:     fmt.Sprintf("chat-labels-%s", uuid.New().String()),
 			EventType:   "chat.tag.updated",
 			Payload:     auditPayload,

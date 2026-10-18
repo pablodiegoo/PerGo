@@ -1059,8 +1059,8 @@ func (r *Recorder) resolveAndLockChat(ctx context.Context, tx pgx.Tx, ws uuid.UU
 	}
 
 	createRow := tx.QueryRow(ctx, `
-		INSERT INTO chats (workspace_id, connection_id, contact_id, status, tags, unread_count, ai_mode, entry_point_type, metadata)
-		VALUES ($1, $2, $3, 'open', '{}', 0, 'active', 'standard', '{}')
+		INSERT INTO chats (workspace_id, connection_id, contact_id, status, unread_count, ai_mode, entry_point_type, metadata)
+		VALUES ($1, $2, $3, 'open', 0, 'active', 'standard', '{}')
 		ON CONFLICT (workspace_id, connection_id, contact_id)
 		DO UPDATE SET updated_at = NOW()
 		RETURNING id, workspace_id, connection_id, contact_id, ''::text, status, snoozed_until,

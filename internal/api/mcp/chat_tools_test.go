@@ -74,11 +74,13 @@ func TestMCPChatTools(t *testing.T) {
 		t.Fatalf("failed to create contact: %v", err)
 	}
 
+	tagRepo := repository.NewTagRepository(pool)
+	_, _ = tagRepo.SetTagsByName(ctx, ws.ID, contact.ID, []string{"vip", "priority"})
+
 	chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
 	if err != nil {
 		t.Fatalf("failed to create chat: %v", err)
 	}
-	_ = chatRepo.SetChatTags(ctx, ws.ID, chat.ID, []string{"vip", "priority"})
 
 	now := time.Now().UTC()
 	_, _ = act.Inbound(ctx, ws.ID, activity.InboundTurn{

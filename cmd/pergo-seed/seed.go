@@ -152,16 +152,16 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 		attrsJSON, _ := json.Marshal(cf.Attributes)
 		if errors.Is(err, pgx.ErrNoRows) {
 			err = pool.QueryRow(ctx, `
-				INSERT INTO contacts (workspace_id, name, email, tags, attributes)
-				VALUES ($1, $2, $3, $4, $5)
+				INSERT INTO contacts (workspace_id, name, email, attributes)
+				VALUES ($1, $2, $3, $4)
 				RETURNING id
-			`, ws.ID, cf.Name, cf.Email, cf.Tags, attrsJSON).Scan(&contactID)
+			`, ws.ID, cf.Name, cf.Email, attrsJSON).Scan(&contactID)
 			if err != nil {
 				return nil, fmt.Errorf("insert contact %s: %w", cf.Name, err)
 			}
 		} else {
-			// Update attributes & tags
-			_, _ = pool.Exec(ctx, `UPDATE contacts SET attributes = $1, tags = $2, email = $3 WHERE id = $4`, attrsJSON, cf.Tags, cf.Email, contactID)
+			// Update attributes & email
+			_, _ = pool.Exec(ctx, `UPDATE contacts SET attributes = $1, email = $2 WHERE id = $3`, attrsJSON, cf.Email, contactID)
 		}
 
 		// Identities
@@ -177,14 +177,10 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 			}
 		}
 
-		// Tag associations
+		// Tag associations via TagRepository
 		for _, tagName := range cf.Tags {
 			if tag, ok := tagMap[tagName]; ok {
-				_, _ = pool.Exec(ctx, `
-					INSERT INTO contact_tags (contact_id, tag_id)
-					VALUES ($1, $2)
-					ON CONFLICT (contact_id, tag_id) DO NOTHING
-				`, contactID, tag.ID)
+				_ = tagRepo.AddTagToContact(ctx, ws.ID, contactID, tag.ID)
 			}
 		}
 
@@ -363,9 +359,6 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 		seededChat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, connID, contact.ID)
 		if err != nil {
 			return nil, fmt.Errorf("find or create chat for %s: %w", conv.ContactName, err)
-		}
-		if len(contact.Tags) > 0 {
-			_ = chatRepo.SetChatTags(ctx, ws.ID, seededChat.ID, contact.Tags)
 		}
 
 		conversationCount++

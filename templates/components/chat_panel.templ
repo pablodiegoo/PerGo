@@ -710,22 +710,7 @@ templ ContactCRMPanel(contact *domain.Contact, extra ...any) {
 				</div>
 			</form>
 			<div class="flex flex-wrap gap-1.5">
-				{{
-					allTags := contact.Tags
-					if chat != nil && len(chat.Tags) > 0 {
-						tagSet := make(map[string]bool)
-						for _, t := range allTags {
-							tagSet[t] = true
-						}
-						for _, t := range chat.Tags {
-							if !tagSet[t] {
-								allTags = append(allTags, t)
-								tagSet[t] = true
-							}
-						}
-					}
-				}}
-				for _, tag := range allTags {
+				for _, tag := range contact.Tags {
 					<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-sky-50 dark:bg-sky-950/40 text-[#0284c7] dark:text-sky-300 border border-sky-200 dark:border-sky-800">
 						<span>{ tag }</span>
 						<button
@@ -739,7 +724,7 @@ templ ContactCRMPanel(contact *domain.Contact, extra ...any) {
 						</button>
 					</span>
 				}
-				if len(allTags) == 0 {
+				if len(contact.Tags) == 0 {
 					<p class="text-xs text-[#787774] dark:text-[#9b9b9b]">Nenhuma etiqueta aplicada</p>
 				}
 			</div>

@@ -108,6 +108,18 @@ func TestRepository_StrictTenantIsolation_RejectsNilUUID(t *testing.T) {
 		if _, err := repo.ListContactsByTag(ctx, nilID, uuid.New()); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("ListContactsByTag: expected ErrInvalidWorkspaceID, got %v", err)
 		}
+		if _, err := repo.MutateContactTags(ctx, nilID, uuid.New(), nil, []string{"tag"}, nil); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
+			t.Errorf("MutateContactTags: expected ErrInvalidWorkspaceID, got %v", err)
+		}
+		if _, err := repo.AddTagsByName(ctx, nilID, uuid.New(), []string{"tag"}); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
+			t.Errorf("AddTagsByName: expected ErrInvalidWorkspaceID, got %v", err)
+		}
+		if _, err := repo.RemoveTagsByName(ctx, nilID, uuid.New(), []string{"tag"}); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
+			t.Errorf("RemoveTagsByName: expected ErrInvalidWorkspaceID, got %v", err)
+		}
+		if _, err := repo.SetTagsByName(ctx, nilID, uuid.New(), []string{"tag"}); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
+			t.Errorf("SetTagsByName: expected ErrInvalidWorkspaceID, got %v", err)
+		}
 	})
 
 	t.Run("ContactRepository", func(t *testing.T) {
@@ -139,9 +151,6 @@ func TestRepository_StrictTenantIsolation_RejectsNilUUID(t *testing.T) {
 		}
 		if _, err := repo.ResolveTelegramChatID(ctx, nilID, "@user"); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("ResolveTelegramChatID: expected ErrInvalidWorkspaceID, got %v", err)
-		}
-		if err := repo.AddTags(ctx, nilID, uuid.New(), []string{"tag"}); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
-			t.Errorf("AddTags: expected ErrInvalidWorkspaceID, got %v", err)
 		}
 		if _, _, err := repo.FindIdentityForChannel(ctx, nilID, "test@example.com", "email"); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("FindIdentityForChannel: expected ErrInvalidWorkspaceID, got %v", err)

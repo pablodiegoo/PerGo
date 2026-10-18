@@ -144,6 +144,15 @@ func TestContactRepository(t *testing.T) {
 			t.Fatalf("failed to create secondary contact: %v", err)
 		}
 
+		// Attach tags to primary and secondary before merge
+		tagRepo := repository.NewTagRepository(pool)
+		if _, err := tagRepo.AddTagsByName(ctx, ws.ID, primary.ID, []string{"PrimaryTag", "SharedTag"}); err != nil {
+			t.Fatalf("failed to tag primary contact: %v", err)
+		}
+		if _, err := tagRepo.AddTagsByName(ctx, ws.ID, secondary.ID, []string{"SecondaryTag", "sharedtag"}); err != nil {
+			t.Fatalf("failed to tag secondary contact: %v", err)
+		}
+
 		// Merge them
 		err = repo.MergeContacts(ctx, ws.ID, primary.ID, secondary.ID)
 		if err != nil {
@@ -156,7 +165,7 @@ func TestContactRepository(t *testing.T) {
 			t.Errorf("expected secondary contact to be deleted, but found it or got error: %v", err)
 		}
 
-		// Verify primary has secondary's identities
+		// Verify primary has secondary's identities and merged tags
 		updatedPrimary, err := repo.GetByID(ctx, ws.ID, primary.ID)
 		if err != nil {
 			t.Fatalf("failed to load updated primary contact: %v", err)
@@ -171,6 +180,10 @@ func TestContactRepository(t *testing.T) {
 
 		if !hasSecWA {
 			t.Error("primary contact did not acquire secondary's whatsapp identity")
+		}
+
+		if len(updatedPrimary.Tags) != 3 || updatedPrimary.Tags[0] != "PrimaryTag" || updatedPrimary.Tags[1] != "SecondaryTag" || updatedPrimary.Tags[2] != "SharedTag" {
+			t.Errorf("expected merged primary tags [PrimaryTag SecondaryTag SharedTag], got %v", updatedPrimary.Tags)
 		}
 
 		// Test merging two distinct contacts
@@ -247,8 +260,9 @@ func TestContactRepository(t *testing.T) {
 			t.Errorf("expected empty tags, got %v", contact.Tags)
 		}
 
-		// 2. Add tags and verify deduplication
-		err = repo.AddTags(ctx, ws.ID, contact.ID, []string{"vip", "support", "vip"})
+		// 2. Add tags via TagRepository and verify projection on GetByID and GetByIDs
+		tagRepo := repository.NewTagRepository(pool)
+		_, err = tagRepo.AddTagsByName(ctx, ws.ID, contact.ID, []string{"vip", "support", "vip"})
 		if err != nil {
 			t.Fatalf("failed to add tags: %v", err)
 		}
@@ -258,21 +272,16 @@ func TestContactRepository(t *testing.T) {
 			t.Fatalf("failed to reload contact: %v", err)
 		}
 
-		if len(contact.Tags) != 2 {
-			t.Errorf("expected 2 unique tags, got %v", contact.Tags)
+		if len(contact.Tags) != 2 || contact.Tags[0] != "support" || contact.Tags[1] != "vip" {
+			t.Errorf("expected sorted tags [support vip], got %v", contact.Tags)
 		}
-		hasVIP := false
-		hasSupport := false
-		for _, tag := range contact.Tags {
-			if tag == "vip" {
-				hasVIP = true
-			}
-			if tag == "support" {
-				hasSupport = true
-			}
+
+		batchMap, err := repo.GetByIDs(ctx, ws.ID, []uuid.UUID{contact.ID})
+		if err != nil {
+			t.Fatalf("GetByIDs failed: %v", err)
 		}
-		if !hasVIP || !hasSupport {
-			t.Errorf("expected tags to contain vip and support, got %v", contact.Tags)
+		if batchContact := batchMap[contact.ID]; batchContact == nil || len(batchContact.Tags) != 2 || batchContact.Tags[0] != "support" || batchContact.Tags[1] != "vip" {
+			t.Errorf("expected GetByIDs contact tags [support vip], got %+v", batchContact)
 		}
 	})
 
