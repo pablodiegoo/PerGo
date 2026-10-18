@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -161,11 +162,19 @@ func (h *closeHandler) Execute(ctx context.Context, vc VerbContext, params json.
 }
 
 type pauseBotHandler struct {
-	contactRepo *repository.ContactRepository
+	activity *activity.Recorder
 }
 
 func NewPauseBotHandler(contactRepo *repository.ContactRepository) VerbHandler {
-	return &pauseBotHandler{contactRepo: contactRepo}
+	var rec *activity.Recorder
+	if contactRepo != nil && contactRepo.Pool() != nil {
+		rec = activity.New(contactRepo.Pool(), nil, nil, nil)
+	}
+	return &pauseBotHandler{activity: rec}
+}
+
+func NewPauseBotHandlerWithActivity(rec *activity.Recorder) VerbHandler {
+	return &pauseBotHandler{activity: rec}
 }
 
 func (h *pauseBotHandler) Execute(ctx context.Context, vc VerbContext, params json.RawMessage) error {
@@ -178,15 +187,19 @@ func (h *pauseBotHandler) Execute(ctx context.Context, vc VerbContext, params js
 			return fmt.Errorf("invalid params: %w", err)
 		}
 	}
-	pausedAt := time.Now().UTC()
+	d := 12 * time.Hour
 	if p.Duration != "" {
-		d, err := time.ParseDuration(p.Duration)
+		parsed, err := time.ParseDuration(p.Duration)
 		if err != nil {
 			return fmt.Errorf("invalid duration '%s': %w", p.Duration, err)
 		}
-		pausedAt = time.Now().UTC().Add(-12 * time.Hour).Add(d)
+		d = parsed
 	}
-	if err := h.contactRepo.UpdateBotState(ctx, vc.WorkspaceID, vc.ContactID, false, &pausedAt); err != nil {
+	if h.activity == nil {
+		return fmt.Errorf("activity recorder not configured")
+	}
+	until := time.Now().UTC().Add(d)
+	if _, err := h.activity.SetAI(ctx, vc.WorkspaceID, activity.ChatOf(vc.ConnectionID, vc.ContactID), activity.AIPauseUntil(until)); err != nil {
 		return fmt.Errorf("db update failed: %w", err)
 	}
 	return nil

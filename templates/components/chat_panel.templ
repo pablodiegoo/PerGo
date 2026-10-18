@@ -104,7 +104,7 @@ templ ChatPanel(contact *domain.Contact, chat *domain.Chat, replyOptions []Reply
 					<div class="min-w-0">
 						<div class="flex items-center gap-2">
 							<p class="font-semibold text-sm text-[#37352f] dark:text-[#e3e3e3] truncate">{ contact.Name }</p>
-							@BotStatusBadge(contact)
+							@BotStatusBadge(chat)
 							if chat != nil {
 								@AIStatusBadge(chat)
 							}
@@ -590,16 +590,23 @@ templ ContactSearchResults(results []domain.Contact, primaryID uuid.UUID) {
 	}
 }
 
-templ BotStatusBadge(contact *domain.Contact) {
+templ BotStatusBadge(chat *domain.Chat) {
+	{{
+		engaged := chat != nil && chat.EffectiveAI().IsEngaged()
+		var contactIDStr string
+		if chat != nil {
+			contactIDStr = chat.ContactID.String()
+		}
+	}}
 	<button
 		id="bot-status-badge"
-		hx-post={ fmt.Sprintf("/admin/inbox/contacts/%s/toggle-bot", contact.ID.String()) }
+		hx-post={ fmt.Sprintf("/admin/inbox/contacts/%s/toggle-bot", contactIDStr) }
 		hx-swap="outerHTML"
 		class={ "inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-colors border select-none",
-			templ.KV("bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100", contact.BotActive),
-			templ.KV("bg-[#fbfbfa] dark:bg-[#191919] text-[#787774] dark:text-[#9b9b9b] border-[#e9e9e7] dark:border-[#2f2f2f] hover:bg-[#e9e9e7]/50", !contact.BotActive) }
+			templ.KV("bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100", engaged),
+			templ.KV("bg-[#fbfbfa] dark:bg-[#191919] text-[#787774] dark:text-[#9b9b9b] border-[#e9e9e7] dark:border-[#2f2f2f] hover:bg-[#e9e9e7]/50", !engaged) }
 	>
-		if contact.BotActive {
+		if engaged {
 			<span class="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1" aria-hidden="true"></span>
 			{ i18n.T(ctx, "inbox.bot_active") }
 		} else {
@@ -612,7 +619,7 @@ templ BotStatusBadge(contact *domain.Contact) {
 templ AIStatusBadge(chat *domain.Chat) {
 	if chat != nil {
 		<div id="ai-status-container" class="inline-flex items-center gap-1.5">
-			if chat.AIDisabled {
+			if !chat.EffectiveAI().IsEngaged() || chat.AIDisabled {
 				<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 select-none">
 					<span class="h-1.5 w-1.5 rounded-full bg-amber-500 mr-1.5 animate-pulse" aria-hidden="true"></span>
 					AI Paused (Human Takeover)
@@ -660,7 +667,7 @@ templ ContactCRMPanel(contact *domain.Contact, extra ...any) {
 				<p class="text-xs text-[#787774] dark:text-[#9b9b9b] mt-0.5">{ *contact.Email }</p>
 			}
 			<div class="mt-3">
-				@BotStatusBadge(contact)
+				@BotStatusBadge(chat)
 			</div>
 		</div>
 

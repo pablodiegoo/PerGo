@@ -10,13 +10,57 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/pablojhp.pergo/internal/chat"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
+	pgplatform "github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
+
+func setupChatEngineTestPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	ctx := context.Background()
+	pgC, err := postgres.Run(ctx,
+		"postgres:16-alpine",
+		postgres.WithDatabase("pergo_test"),
+		postgres.WithUsername("pergo"),
+		postgres.WithPassword("secret"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() { _ = pgC.Terminate(context.Background()) })
+
+	connStr, err := pgC.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("conn string: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, connStr)
+	if err != nil {
+		t.Fatalf("new pool: %v", err)
+	}
+	t.Cleanup(func() { pool.Close() })
+
+	sqlDB := stdlib.OpenDBFromPool(pool)
+	defer sqlDB.Close()
+	if err := pgplatform.RunMigrations(sqlDB); err != nil {
+		t.Fatalf("migrations: %v", err)
+	}
+	return pool
+}
 
 // --- Mocks ---
 
@@ -209,18 +253,7 @@ func (r *fakeChatRepo) TouchLastMessageAt(_ context.Context, workspaceID, chatID
 	return nil
 }
 
-func (r *fakeChatRepo) SetAIDisabled(_ context.Context, workspaceID, chatID uuid.UUID, disabled bool) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	c, ok := r.chats[chatID]
-	if !ok || c.WorkspaceID != workspaceID {
-		return repository.ErrChatNotFound
-	}
-	c.AIDisabled = disabled
-	return nil
-}
-
-func (r *fakeChatRepo) AddChatMessage(_ context.Context, msg *domain.ChatMessage) error {
+func (r *fakeChatRepo) seedMessage(msg *domain.ChatMessage) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if msg.ID == uuid.Nil {
@@ -231,7 +264,6 @@ func (r *fakeChatRepo) AddChatMessage(_ context.Context, msg *domain.ChatMessage
 	}
 	cp := *msg
 	r.messages[msg.ChatID] = append(r.messages[msg.ChatID], &cp)
-	return nil
 }
 
 func (r *fakeChatRepo) CreateInternalNote(_ context.Context, workspaceID, chatID uuid.UUID, authorName, senderType, body string) (*domain.ChatMessage, error) {
@@ -524,16 +556,6 @@ func (r *fakeContactRepo) ReopenThread(_ context.Context, workspaceID, contactID
 	return nil
 }
 
-func (r *fakeContactRepo) UpdateBotState(_ context.Context, workspaceID, contactID uuid.UUID, botActive bool, pausedAt *time.Time) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if c, ok := r.contacts[contactID]; ok && c.WorkspaceID == workspaceID {
-		c.BotActive = botActive
-		c.BotPausedAt = pausedAt
-	}
-	return nil
-}
-
 type fakeConnRepo struct {
 	conns map[uuid.UUID]*repository.Connection
 }
@@ -561,6 +583,15 @@ func (r *fakeConnRepo) GetBySenderIdentity(_ context.Context, workspaceID uuid.U
 		}
 	}
 	return nil, nil
+}
+
+func (r *fakeConnRepo) GetBySlug(_ context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error) {
+	for _, c := range r.conns {
+		if c.WorkspaceID == workspaceID && c.Slug == slug {
+			return c, nil
+		}
+	}
+	return nil, repository.ErrConnectionNotFound
 }
 
 func (r *fakeConnRepo) ListByWorkspace(_ context.Context, workspaceID uuid.UUID) ([]*repository.Connection, error) {
@@ -618,18 +649,18 @@ func (p *fakePublisher) Publish(_ context.Context, subject string, data []byte, 
 type fakeDebouncer struct {
 	mu        sync.Mutex
 	cancelled []struct {
-		wsID      uuid.UUID
-		contactID uuid.UUID
+		wsID   uuid.UUID
+		chatID uuid.UUID
 	}
 }
 
-func (d *fakeDebouncer) Cancel(_ context.Context, workspaceID, contactID uuid.UUID) error {
+func (d *fakeDebouncer) Cancel(_ context.Context, workspaceID, chatID uuid.UUID) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.cancelled = append(d.cancelled, struct {
-		wsID      uuid.UUID
-		contactID uuid.UUID
-	}{wsID: workspaceID, contactID: contactID})
+		wsID   uuid.UUID
+		chatID uuid.UUID
+	}{wsID: workspaceID, chatID: chatID})
 	return nil
 }
 
@@ -972,44 +1003,45 @@ func TestEngine_TriageMutations_StatusTagsAssign(t *testing.T) {
 	}
 }
 
-func TestEngine_SendMessage_PromoteDraft_SetAIEnabled_TakeoverAndBackpressure(t *testing.T) {
+func TestEngine_SendMessage_PromoteDraft_SetAI_TakeoverAndBackpressure(t *testing.T) {
+	pool := setupChatEngineTestPool(t)
 	ctx := context.Background()
 	wsID := uuid.New()
-	chatRepo := newFakeChatRepo()
-	contactRepo := newFakeContactRepo()
-	auditRepo := &fakeAuditRepo{}
-	pub := &fakePublisher{}
-	debouncer := &fakeDebouncer{}
-	ingestor := &fakeIngestor{}
-
 	connID := uuid.New()
+	contactID := uuid.New()
+	chatID := uuid.New()
+
+	if _, err := pool.Exec(ctx, `INSERT INTO workspaces (id, name) VALUES ($1, $2)`, wsID, "eng-ws"); err != nil {
+		t.Fatalf("seed ws: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO connections (id, workspace_id, name, slug, channel, sender_identity, status) VALUES ($1, $2, 'WABA', 'waba-1', 'whatsapp_cloud', '15550001111', 'connected')`, connID, wsID); err != nil {
+		t.Fatalf("seed conn: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO contacts (id, workspace_id, name) VALUES ($1, $2, 'Test Contact')`, contactID, wsID); err != nil {
+		t.Fatalf("seed contact: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO contact_identities (id, workspace_id, contact_id, channel, sender_identity) VALUES ($1, $2, $3, 'whatsapp_cloud', '+5511888888888')`, uuid.New(), wsID, contactID); err != nil {
+		t.Fatalf("seed identity: %v", err)
+	}
+	future := time.Now().UTC().Add(2 * time.Hour)
+	if _, err := pool.Exec(ctx, `INSERT INTO chats (id, workspace_id, connection_id, contact_id, status, service_window_expires_at) VALUES ($1, $2, $3, $4, 'open', $5)`, chatID, wsID, connID, contactID, future); err != nil {
+		t.Fatalf("seed chat: %v", err)
+	}
+
+	chatRepo := repository.NewChatRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
 	connRepo := &fakeConnRepo{
 		conns: map[uuid.UUID]*repository.Connection{
-			connID: {ID: connID, WorkspaceID: wsID, Channel: "whatsapp_cloud", Status: "connected", SenderIdentity: "15550001111"},
+			connID: {ID: connID, WorkspaceID: wsID, Slug: "waba-1", Channel: "whatsapp_cloud", Status: "connected", SenderIdentity: "15550001111"},
 		},
 	}
+	auditRepo := &fakeAuditRepo{}
+	pub := activity.NewMemoryPublisher()
+	debouncer := activity.NewMemoryDebounceCanceller()
+	rec := activity.New(pool, pub, debouncer, nil)
 
-	contact := &domain.Contact{
-		ID:          uuid.New(),
-		WorkspaceID: wsID,
-		BotActive:   true,
-		Identities: []domain.ContactIdentity{
-			{Channel: "whatsapp_cloud", SenderIdentity: "+5511888888888"},
-		},
-	}
-	contactRepo.contacts[contact.ID] = contact
-
-	future := time.Now().UTC().Add(2 * time.Hour)
-	c := &domain.Chat{
-		ID:                     uuid.New(),
-		WorkspaceID:            wsID,
-		ConnectionID:           &connID,
-		ContactID:              contact.ID,
-		Status:                 domain.ChatStatusOpen,
-		AIDisabled:             false,
-		ServiceWindowExpiresAt: &future,
-	}
-	chatRepo.chats[c.ID] = c
+	outProc := outbound.NewProcessor(nil, nil, connRepo, pub)
+	outProc.SetActivity(rec)
 
 	eng := chat.NewEngine(
 		chatRepo,
@@ -1017,13 +1049,14 @@ func TestEngine_SendMessage_PromoteDraft_SetAIEnabled_TakeoverAndBackpressure(t 
 		chat.WithConnectionRepo(connRepo),
 		chat.WithAuditRepo(auditRepo),
 		chat.WithMessagePublisher(pub),
-		chat.WithMessageIngestor(ingestor),
+		chat.WithMessageIngestor(outProc),
 		chat.WithDebounceCanceller(debouncer),
+		chat.WithActivity(rec),
 	)
 
-	// 1. SendMessage delegates to OutboundProcessor.Ingest, sets ai_disabled=true, bot_active=false, cancels debounce, publishes handoff events
+	// 1. SendMessage delegates to OutboundProcessor.Ingest -> activity.Recorder.Outbound, sets ai_mode='off', cancels debounce by chatID, publishes handoff events
 	res, err := eng.SendMessage(ctx, wsID, chat.SendRequest{
-		Ref:        chat.ChatRef{ChatID: c.ID},
+		Ref:        chat.ChatRef{ChatID: chatID},
 		Body:       "Human agent stepping in",
 		SenderType: string(domain.SenderTypeHumanAgent),
 		SenderName: "Agent Smith",
@@ -1034,74 +1067,74 @@ func TestEngine_SendMessage_PromoteDraft_SetAIEnabled_TakeoverAndBackpressure(t 
 	if !res.AIDisabled {
 		t.Fatalf("expected AIDisabled=true on human send")
 	}
-	if len(ingestor.requests) != 1 {
-		t.Fatalf("expected 1 call to ingestor.Ingest, got %d", len(ingestor.requests))
+	snap, _, err := rec.Snapshot(ctx, wsID, activity.ChatID(chatID))
+	if err != nil {
+		t.Fatalf("Snapshot failed: %v", err)
 	}
-	if !chatRepo.chats[c.ID].AIDisabled {
-		t.Fatalf("expected chat.AIDisabled=true in repo")
+	if snap.AI.Mode != domain.AIModePaused || snap.AI.PausedUntil == nil {
+		t.Fatalf("expected AI.Mode=paused with non-nil PausedUntil after human send, got %+v", snap.AI)
 	}
-	if contactRepo.contacts[contact.ID].BotActive {
-		t.Fatalf("expected contact.BotActive=false in repo")
-	}
-	if len(debouncer.cancelled) != 1 || debouncer.cancelled[0].contactID != contact.ID {
-		t.Fatalf("expected debouncer.Cancel to be called for contact, got %v", debouncer.cancelled)
+	cancelled := debouncer.Cancelled()
+	if len(cancelled) != 1 || cancelled[0].ChatID != chatID {
+		t.Fatalf("expected debouncer.Cancel to be called for chatID %s, got %+v", chatID, cancelled)
 	}
 	hasGlobalHandoff := false
 	hasWsHandoff := false
-	for _, p := range pub.published {
-		if p.subject == "chat.handoff.human_takeover" {
+	for _, p := range pub.Messages() {
+		if p.Subject == "chat.handoff.human_takeover" {
 			hasGlobalHandoff = true
 		}
-		if p.subject == "chat.handoff."+wsID.String() {
+		if p.Subject == "chat.handoff."+wsID.String() {
 			hasWsHandoff = true
 		}
 	}
 	if !hasGlobalHandoff || !hasWsHandoff {
-		t.Fatalf("expected both handoff subjects published, got %+v", pub.published)
+		t.Fatalf("expected both handoff subjects published, got %+v", pub.Messages())
 	}
 
 	// 2. Queue-depth backpressure error from OutboundProcessor.Ingest propagates cleanly
-	ingestor.err = outbound.ErrQueueFull
+	mockIng := &fakeIngestor{err: outbound.ErrQueueFull}
+	eng.SetMessageIngestor(mockIng)
 	_, err = eng.SendMessage(ctx, wsID, chat.SendRequest{
-		Ref:  chat.ChatRef{ChatID: c.ID},
+		Ref:  chat.ChatRef{ChatID: chatID},
 		Body: "Blocked by queue depth",
 	})
 	if !errors.Is(err, outbound.ErrQueueFull) {
 		t.Fatalf("expected ErrQueueFull, got %v", err)
 	}
-	ingestor.err = nil
+	eng.SetMessageIngestor(outProc)
 
-	// 3. SetAIEnabled re-enables AI and updates contact.BotActive = true, then disabling AI cancels debounce and publishes handoff
-	updatedChat, err := eng.SetAIEnabled(ctx, wsID, chat.ChatRef{ChatID: c.ID}, true)
+	// 3. SetAI(AIResume()) re-enables AI, then SetAI(AIOff()) disables AI, cancels debounce, and publishes handoff
+	updatedChat, err := eng.SetAI(ctx, wsID, chat.ChatRef{ChatID: chatID}, activity.AIResume())
 	if err != nil {
-		t.Fatalf("SetAIEnabled(true) failed: %v", err)
+		t.Fatalf("SetAI(AIResume) failed: %v", err)
 	}
-	if updatedChat.AIDisabled || !contactRepo.contacts[contact.ID].BotActive {
-		t.Fatalf("expected AI enabled and BotActive=true")
+	if updatedChat.AIDisabled || !updatedChat.EffectiveAI().IsEngaged() {
+		t.Fatalf("expected AI engaged after AIResume")
 	}
 
-	prevCancelCount := len(debouncer.cancelled)
-	updatedChat, err = eng.SetAIEnabled(ctx, wsID, chat.ChatRef{ChatID: c.ID}, false)
+	prevCancelCount := len(debouncer.Cancelled())
+	updatedChat, err = eng.SetAI(ctx, wsID, chat.ChatRef{ChatID: chatID}, activity.AIOff())
 	if err != nil {
-		t.Fatalf("SetAIEnabled(false) failed: %v", err)
+		t.Fatalf("SetAI(AIOff) failed: %v", err)
 	}
-	if !updatedChat.AIDisabled || contactRepo.contacts[contact.ID].BotActive {
-		t.Fatalf("expected AI disabled and BotActive=false")
+	if !updatedChat.AIDisabled || updatedChat.EffectiveAI().IsEngaged() {
+		t.Fatalf("expected AI disabled after AIOff")
 	}
-	if len(debouncer.cancelled) != prevCancelCount+1 {
-		t.Fatalf("expected debouncer.Cancel on SetAIEnabled(false)")
+	if len(debouncer.Cancelled()) != prevCancelCount+1 {
+		t.Fatalf("expected debouncer.Cancel on SetAI(AIOff)")
 	}
 
 	// 4. PromoteDraft promotes a whisper note, dispatches via SendMessage, and marks original note metadata as promoted
 	note, err := eng.CreateNote(ctx, wsID, chat.NoteRequest{
-		Ref:        chat.ChatRef{ChatID: c.ID},
+		Ref:        chat.ChatRef{ChatID: chatID},
 		Body:       "[AI Draft]: Here is your invoice",
 		AuthorName: "Copilot",
 	})
 	if err != nil {
 		t.Fatalf("CreateNote failed: %v", err)
 	}
-	promoteRes, err := eng.PromoteDraft(ctx, wsID, chat.ChatRef{ChatID: c.ID}, note.UID, "Here is your updated invoice")
+	promoteRes, err := eng.PromoteDraft(ctx, wsID, chat.ChatRef{ChatID: chatID}, note.UID, "Here is your updated invoice")
 	if err != nil {
 		t.Fatalf("PromoteDraft failed: %v", err)
 	}
@@ -1123,7 +1156,7 @@ func TestEngine_SendMessage_PromoteDraft_SetAIEnabled_TakeoverAndBackpressure(t 
 	}
 
 	// 5. Summarize produces structured ChatSynopsis
-	synopsis, err := eng.Summarize(ctx, wsID, chat.ChatRef{ChatID: c.ID}, 50)
+	synopsis, err := eng.Summarize(ctx, wsID, chat.ChatRef{ChatID: chatID}, 50)
 	if err != nil {
 		t.Fatalf("Summarize failed: %v", err)
 	}
@@ -1143,7 +1176,6 @@ func TestEngine_InboxConversationAndThreadMethods(t *testing.T) {
 		ID:          uuid.New(),
 		WorkspaceID: wsID,
 		Name:        "Inbox Contact",
-		BotActive:   true,
 	}
 	contactRepo.contacts[contact.ID] = contact
 
@@ -1160,7 +1192,7 @@ func TestEngine_InboxConversationAndThreadMethods(t *testing.T) {
 	chatRepo.chats[c.ID].UnreadCount = 4
 
 	msgID := uuid.New()
-	_ = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+	chatRepo.seedMessage(&domain.ChatMessage{
 		ID:          msgID,
 		ChatID:      c.ID,
 		WorkspaceID: wsID,
@@ -1190,18 +1222,6 @@ func TestEngine_InboxConversationAndThreadMethods(t *testing.T) {
 	}
 	if chatRepo.chats[c.ID].UnreadCount != 0 {
 		t.Fatalf("expected unread_count reset to 0 after ListThread(markRead=true), got %d", chatRepo.chats[c.ID].UnreadCount)
-	}
-
-	// 4. ToggleContactBot toggles BotActive and syncs chat.AIDisabled
-	updatedContact, err := eng.ToggleContactBot(ctx, wsID, contact.ID)
-	if err != nil {
-		t.Fatalf("ToggleContactBot failed: %v", err)
-	}
-	if updatedContact.BotActive {
-		t.Fatalf("expected BotActive=false after toggle")
-	}
-	if !chatRepo.chats[c.ID].AIDisabled {
-		t.Fatalf("expected chat.AIDisabled=true when BotActive toggled to false")
 	}
 }
 
@@ -1335,8 +1355,7 @@ func TestEngine_GetMessage(t *testing.T) {
 		SenderType:  domain.SenderTypeContact,
 		Body:        "Checking message details",
 	}
-	_ = chatRepo.AddChatMessage(ctx, msg)
-	// Restore snoozed status after AddChatMessage
+	chatRepo.seedMessage(msg)
 	c.Status = domain.ChatStatusSnoozed
 	c.SnoozedUntil = &pastSnooze
 

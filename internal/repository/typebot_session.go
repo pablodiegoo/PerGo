@@ -32,6 +32,13 @@ func NewTypebotSessionRepository(pool *pgxpool.Pool) *TypebotSessionRepository {
 	return &TypebotSessionRepository{pool: pool}
 }
 
+func (r *TypebotSessionRepository) Pool() *pgxpool.Pool {
+	if r == nil {
+		return nil
+	}
+	return r.pool
+}
+
 func (r *TypebotSessionRepository) GetSession(ctx context.Context, workspaceID, contactID, connectionID uuid.UUID) (*TypebotSession, error) {
 	if workspaceID == uuid.Nil {
 		return nil, ErrInvalidWorkspaceID

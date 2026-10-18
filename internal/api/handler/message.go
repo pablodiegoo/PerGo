@@ -90,6 +90,13 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 		return err
 	}
 
+	if req.SenderType == "" && req.Metadata != nil {
+		req.SenderType = req.Metadata["sender_type"]
+	}
+	if req.SenderType == "" {
+		req.SenderType = string(domain.SenderTypeAIAgent)
+	}
+
 	// Dynamically wrap legacy fields if Ingestor is not injected
 	ingestor := h.Ingestor
 	if ingestor == nil {

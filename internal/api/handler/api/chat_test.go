@@ -4,383 +4,37 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"sync"
+	"os"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/api/handler/api"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/outbound"
+	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/testcontainers/testcontainers-go"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-type mockChatRepo struct {
-	mu        sync.RWMutex
-	chats     map[uuid.UUID]*domain.Chat
-	messages  map[uuid.UUID][]*domain.ChatMessage
-	reactions map[string][]domain.Reaction
+type noOpCrypto struct{}
+
+func (noOpCrypto) Encrypt(plaintext []byte) ([]byte, string, int, error) {
+	return plaintext, "noop", 1, nil
 }
 
-func newMockChatRepo() *mockChatRepo {
-	return &mockChatRepo{
-		chats:     make(map[uuid.UUID]*domain.Chat),
-		messages:  make(map[uuid.UUID][]*domain.ChatMessage),
-		reactions: make(map[string][]domain.Reaction),
-	}
-}
-
-func (m *mockChatRepo) GetChat(ctx context.Context, workspaceID, chatID uuid.UUID) (*domain.Chat, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	chat, ok := m.chats[chatID]
-	if !ok || chat.WorkspaceID != workspaceID {
-		return nil, repository.ErrChatNotFound
-	}
-	cp := *chat
-	return &cp, nil
-}
-
-func (m *mockChatRepo) ListChats(ctx context.Context, workspaceID uuid.UUID, filter domain.ChatFilter, limit, offset int) ([]domain.Chat, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	var list []domain.Chat
-	for _, c := range m.chats {
-		if c.WorkspaceID != workspaceID {
-			continue
-		}
-		if filter.Status != "" && string(c.Status) != filter.Status {
-			continue
-		}
-		if filter.Tag != "" {
-			has := false
-			for _, t := range c.Tags {
-				if t == filter.Tag {
-					has = true
-					break
-				}
-			}
-			if !has {
-				continue
-			}
-		}
-		list = append(list, *c)
-	}
-	return list, nil
-}
-
-func (m *mockChatRepo) ListChatMessages(ctx context.Context, workspaceID, chatID uuid.UUID, beforeUID, afterUID string, limit int) ([]domain.ChatMessage, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	msgs := m.messages[chatID]
-	var res []domain.ChatMessage
-	for _, msg := range msgs {
-		if msg.WorkspaceID == workspaceID {
-			res = append(res, *msg)
-		}
-	}
-	return res, nil
-}
-
-func (m *mockChatRepo) AddChatMessage(ctx context.Context, msg *domain.ChatMessage) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if msg.ID == uuid.Nil {
-		msg.ID = uuid.New()
-	}
-	m.messages[msg.ChatID] = append(m.messages[msg.ChatID], msg)
-	return nil
-}
-
-func (m *mockChatRepo) CreateInternalNote(ctx context.Context, workspaceID, chatID uuid.UUID, authorName, senderType, body string) (*domain.ChatMessage, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	chat, ok := m.chats[chatID]
-	if !ok || chat.WorkspaceID != workspaceID {
-		return nil, repository.ErrChatNotFound
-	}
-	note := &domain.ChatMessage{
-		ID:          uuid.New(),
-		ChatID:      chatID,
-		WorkspaceID: workspaceID,
-		UID:         fmt.Sprintf("note-%s", uuid.New().String()),
-		Direction:   domain.DirectionInternalNote,
-		SenderType:  domain.SenderType(senderType),
-		SenderName:  authorName,
-		Body:        body,
-		IsPrivate:   true,
-		CreatedAt:   time.Now().UTC(),
-	}
-	m.messages[chatID] = append(m.messages[chatID], note)
-	return note, nil
-}
-
-func (m *mockChatRepo) AssignChat(ctx context.Context, workspaceID, chatID uuid.UUID, memberID *uuid.UUID, email *string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	chat, ok := m.chats[chatID]
-	if !ok || chat.WorkspaceID != workspaceID {
-		return repository.ErrChatNotFound
-	}
-	chat.AssignedUserID = memberID
-	chat.AssignedEmail = email
-	return nil
-}
-
-func (m *mockChatRepo) SetChatTags(ctx context.Context, workspaceID, chatID uuid.UUID, tags []string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	chat, ok := m.chats[chatID]
-	if !ok || chat.WorkspaceID != workspaceID {
-		return repository.ErrChatNotFound
-	}
-	chat.Tags = tags
-	return nil
-}
-
-func (m *mockChatRepo) UpdateChatStatus(ctx context.Context, workspaceID, chatID uuid.UUID, status string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	chat, ok := m.chats[chatID]
-	if !ok || chat.WorkspaceID != workspaceID {
-		return repository.ErrChatNotFound
-	}
-	chat.Status = domain.ChatStatus(status)
-	chat.SnoozedUntil = nil
-	return nil
-}
-
-func (m *mockChatRepo) SnoozeChat(ctx context.Context, workspaceID, chatID uuid.UUID, snoozedUntil *time.Time) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	chat, ok := m.chats[chatID]
-	if !ok || chat.WorkspaceID != workspaceID {
-		return repository.ErrChatNotFound
-	}
-	chat.Status = domain.ChatStatusSnoozed
-	chat.SnoozedUntil = snoozedUntil
-	return nil
-}
-
-func (m *mockChatRepo) SetAIDisabled(ctx context.Context, workspaceID, chatID uuid.UUID, disabled bool) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if chat, ok := m.chats[chatID]; ok {
-		chat.AIDisabled = disabled
-	}
-	return nil
-}
-
-func (m *mockChatRepo) TouchLastMessageAt(ctx context.Context, workspaceID, chatID uuid.UUID, t time.Time) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if chat, ok := m.chats[chatID]; ok {
-		chat.LastMessageAt = t
-	}
-	return nil
-}
-
-func (m *mockChatRepo) GetChatMessageByUID(ctx context.Context, workspaceID uuid.UUID, uid string) (*domain.ChatMessage, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	for _, msgs := range m.messages {
-		for _, msg := range msgs {
-			if msg.UID == uid && msg.WorkspaceID == workspaceID {
-				return msg, nil
-			}
-		}
-	}
-	return nil, errors.New("message not found")
-}
-
-func (m *mockChatRepo) GetReactions(ctx context.Context, workspaceID uuid.UUID, messageUID string) ([]domain.Reaction, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.reactions[messageUID], nil
-}
-
-func (m *mockChatRepo) MutateReaction(ctx context.Context, workspaceID uuid.UUID, messageUID, emoji, sender, action string) (uuid.UUID, string, []domain.Reaction, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	var foundMsg *domain.ChatMessage
-	for _, msgs := range m.messages {
-		for _, msg := range msgs {
-			if msg.UID == messageUID && msg.WorkspaceID == workspaceID {
-				foundMsg = msg
-				break
-			}
-		}
-	}
-	if foundMsg == nil {
-		return uuid.Nil, "", nil, repository.ErrChatMessageNotFound
-	}
-
-	if sender == "" {
-		sender = "operator"
-	}
-	normAction := action
-	if emoji == "" {
-		normAction = "remove"
-	}
-
-	reactions := m.reactions[messageUID]
-	var resolvedAction string
-	switch normAction {
-	case "", "toggle":
-		hasReacted := false
-		for _, r := range reactions {
-			if r.Emoji == emoji && (r.Sender == sender || r.Sender == "operator") {
-				hasReacted = true
-				break
-			}
-		}
-		if hasReacted {
-			resolvedAction = "remove"
-			var filtered []domain.Reaction
-			for _, r := range reactions {
-				if r.Emoji == emoji && (r.Sender == sender || r.Sender == "operator") {
-					continue
-				}
-				filtered = append(filtered, r)
-			}
-			reactions = filtered
-		} else {
-			resolvedAction = "add"
-			reactions = append(reactions, domain.Reaction{Emoji: emoji, Sender: sender, CreatedAt: time.Now().UTC()})
-		}
-	case "add":
-		resolvedAction = "add"
-		exists := false
-		for _, r := range reactions {
-			if r.Emoji == emoji && r.Sender == sender {
-				exists = true
-				break
-			}
-		}
-		if !exists {
-			reactions = append(reactions, domain.Reaction{Emoji: emoji, Sender: sender, CreatedAt: time.Now().UTC()})
-		}
-	case "remove":
-		resolvedAction = "remove"
-		var filtered []domain.Reaction
-		for _, r := range reactions {
-			if r.Emoji == emoji && (r.Sender == sender || sender == "operator" || r.Sender == "operator") {
-				continue
-			}
-			filtered = append(filtered, r)
-		}
-		reactions = filtered
-	default:
-		return uuid.Nil, "", nil, fmt.Errorf("invalid reaction action %q", action)
-	}
-	if reactions == nil {
-		reactions = []domain.Reaction{}
-	}
-	m.reactions[messageUID] = reactions
-	return foundMsg.ChatID, resolvedAction, reactions, nil
-}
-
-func (m *mockChatRepo) AddReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, reaction domain.Reaction) ([]domain.Reaction, error) {
-	_, _, rxs, err := m.MutateReaction(ctx, workspaceID, messageUID, reaction.Emoji, reaction.Sender, "add")
-	return rxs, err
-}
-
-func (m *mockChatRepo) RemoveReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, emoji, sender string) ([]domain.Reaction, error) {
-	_, _, rxs, err := m.MutateReaction(ctx, workspaceID, messageUID, emoji, sender, "remove")
-	return rxs, err
-}
-
-type mockContactRepo struct {
-	contacts map[uuid.UUID]*domain.Contact
-}
-
-func (m *mockContactRepo) GetByID(ctx context.Context, workspaceID, contactID uuid.UUID) (*domain.Contact, error) {
-	c, ok := m.contacts[contactID]
-	if !ok {
-		return nil, errors.New("contact not found")
-	}
-	return c, nil
-}
-
-func (m *mockContactRepo) SetTags(ctx context.Context, workspaceID, contactID uuid.UUID, tags []string) error {
-	if c, ok := m.contacts[contactID]; ok {
-		c.Tags = tags
-	}
-	return nil
-}
-
-func (m *mockContactRepo) CloseThread(ctx context.Context, workspaceID, contactID uuid.UUID) error {
-	if c, ok := m.contacts[contactID]; ok {
-		now := time.Now().UTC()
-		c.ClosedAt = &now
-	}
-	return nil
-}
-
-func (m *mockContactRepo) ReopenThread(ctx context.Context, workspaceID, contactID uuid.UUID) error {
-	if c, ok := m.contacts[contactID]; ok {
-		c.ClosedAt = nil
-	}
-	return nil
-}
-
-func (m *mockContactRepo) UpdateBotState(ctx context.Context, workspaceID, contactID uuid.UUID, botActive bool, pausedAt *time.Time) error {
-	if c, ok := m.contacts[contactID]; ok {
-		c.BotActive = botActive
-		c.BotPausedAt = pausedAt
-	}
-	return nil
-}
-
-func (m *mockContactRepo) MarkAsRead(ctx context.Context, workspaceID, contactID uuid.UUID) error {
-	return nil
-}
-
-type mockChatConnectionRepo struct {
-	connections map[uuid.UUID]*repository.Connection
-}
-
-func (m *mockChatConnectionRepo) GetByID(ctx context.Context, id uuid.UUID) (*repository.Connection, error) {
-	conn, ok := m.connections[id]
-	if !ok {
-		return nil, errors.New("connection not found")
-	}
-	return conn, nil
-}
-
-func (m *mockChatConnectionRepo) GetDefaultChannelConnection(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error) {
-	for _, conn := range m.connections {
-		if conn.WorkspaceID == workspaceID && conn.Channel == channel {
-			return conn, nil
-		}
-	}
-	return nil, errors.New("no default connection")
-}
-
-func (m *mockChatConnectionRepo) GetBySenderIdentity(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error) {
-	for _, conn := range m.connections {
-		if conn.WorkspaceID == workspaceID && conn.SenderIdentity == senderIdentity {
-			return conn, nil
-		}
-	}
-	return nil, errors.New("connection not found")
-}
-
-func (m *mockChatConnectionRepo) ListByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]*repository.Connection, error) {
-	var list []*repository.Connection
-	for _, c := range m.connections {
-		if c.WorkspaceID == workspaceID {
-			list = append(list, c)
-		}
-	}
-	return list, nil
+func (noOpCrypto) Decrypt(ciphertext []byte) ([]byte, error) {
+	return ciphertext, nil
 }
 
 type mockPublisher struct {
@@ -422,55 +76,112 @@ func (m *mockChatWebhookDispatcher) DispatchReaction(ctx context.Context, worksp
 	return nil
 }
 
+func setupChatAPITestPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	dsn := os.Getenv("PERGO_DATABASE_URL")
+	if dsn == "" {
+		bgCtx := context.Background()
+		pgContainer, err := tcpostgres.Run(bgCtx,
+			"postgres:16-alpine",
+			tcpostgres.WithDatabase("pergo_test"),
+			tcpostgres.WithUsername("postgres"),
+			tcpostgres.WithPassword("postgres"),
+			testcontainers.WithWaitStrategy(
+				wait.ForLog("database system is ready to accept connections").
+					WithOccurrence(2).
+					WithStartupTimeout(30*time.Second),
+			),
+		)
+		if err != nil {
+			t.Fatalf("failed to start postgres container: %v", err)
+		}
+		t.Cleanup(func() {
+			_ = pgContainer.Terminate(bgCtx)
+		})
+		connStr, err := pgContainer.ConnectionString(bgCtx, "sslmode=disable")
+		if err != nil {
+			t.Fatalf("failed to get connection string: %v", err)
+		}
+		dsn = connStr
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		t.Fatalf("failed to connect to postgres: %v", err)
+	}
+	t.Cleanup(func() { pool.Close() })
+
+	db, err := postgres.NewSQLDB(pool)
+	if err != nil {
+		t.Fatalf("failed to wrap pool: %v", err)
+	}
+	defer db.Close()
+
+	if err := postgres.RunMigrations(db); err != nil {
+		t.Fatalf("failed to run migrations: %v", err)
+	}
+	return pool
+}
+
 func TestChatAPIHandler(t *testing.T) {
-	wsID := uuid.New()
-	contactID := uuid.New()
+	pool := setupChatAPITestPool(t)
+	ctx := context.Background()
+
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "chat_api_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+	wsID := ws.ID
+
+	if err := wsRepo.AddMember(ctx, &repository.WorkspaceMember{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		Email:       "agent@example.com",
+		Name:        "Agent",
+		Role:        "member",
+	}); err != nil {
+		t.Fatalf("failed to add workspace member: %v", err)
+	}
+
+	connRepo := repository.NewConnectionRepository(pool, noOpCrypto{})
 	connID := uuid.New()
-	chatID := uuid.New()
-
-	chatRepo := newMockChatRepo()
-	contactRepo := &mockContactRepo{
-		contacts: map[uuid.UUID]*domain.Contact{
-			contactID: {
-				ID:          contactID,
-				WorkspaceID: wsID,
-				Name:        "Alice Doe",
-				Identities: []domain.ContactIdentity{
-					{Channel: "whatsapp", SenderIdentity: "5511999999999"},
-				},
-				Tags: []string{"lead"},
-			},
-		},
+	if err := connRepo.Create(ctx, &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    wsID,
+		Name:           "Main WhatsApp",
+		Channel:        "whatsapp",
+		SenderIdentity: "5511888888888",
+		Status:         "connected",
+	}); err != nil {
+		t.Fatalf("failed to create connection: %v", err)
 	}
-	connRepo := &mockChatConnectionRepo{
-		connections: map[uuid.UUID]*repository.Connection{
-			connID: {
-				ID:             connID,
-				WorkspaceID:    wsID,
-				Name:           "Main WhatsApp",
-				Channel:        "whatsapp",
-				SenderIdentity: "5511888888888",
-				Status:         "connected",
-			},
-		},
-	}
-	publisher := &mockPublisher{}
-	auditRepo := &mockChatAuditRepo{}
-	webhookDispatcher := &mockChatWebhookDispatcher{}
 
-	chat := &domain.Chat{
-		ID:           chatID,
-		WorkspaceID:  wsID,
-		ConnectionID: &connID,
-		ContactID:    contactID,
-		Status:       domain.ChatStatusOpen,
-		Tags:         []string{"lead"},
-		CreatedAt:    time.Now().UTC(),
-		UpdatedAt:    time.Now().UTC(),
+	contactRepo := repository.NewContactRepository(pool)
+	contact, err := contactRepo.ResolveContact(ctx, wsID, "whatsapp", "5511999999999", "Alice Doe", "", "5511999999999")
+	if err != nil {
+		t.Fatalf("failed to resolve contact: %v", err)
 	}
-	chatRepo.chats[chatID] = chat
+	contactID := contact.ID
+	if err := contactRepo.SetTags(ctx, wsID, contactID, []string{"lead"}); err != nil {
+		t.Fatalf("failed to set contact tags: %v", err)
+	}
 
-	// Initial message
+	chatRepo := repository.NewChatRepository(pool)
+	chatRow, err := chatRepo.FindOrCreateChat(ctx, wsID, &connID, contactID)
+	if err != nil {
+		t.Fatalf("failed to ensure chat: %v", err)
+	}
+	chatID := chatRow.ID
+	if err := chatRepo.SetChatTags(ctx, wsID, chatID, []string{"lead"}); err != nil {
+		t.Fatalf("failed to set chat tags: %v", err)
+	}
+
+	// Initial inbound message
 	initialMsg := &domain.ChatMessage{
 		ID:          uuid.New(),
 		ChatID:      chatID,
@@ -482,14 +193,31 @@ func TestChatAPIHandler(t *testing.T) {
 		Body:        "Hello there!",
 		CreatedAt:   time.Now().UTC(),
 	}
-	chatRepo.messages[chatID] = []*domain.ChatMessage{initialMsg}
+	if err := chatRepo.AddChatMessage(ctx, initialMsg); err != nil {
+		t.Fatalf("failed to seed initial inbound message: %v", err)
+	}
+
+	publisher := &mockPublisher{}
+	auditRepo := &mockChatAuditRepo{}
+	webhookDispatcher := &mockChatWebhookDispatcher{}
+
+	rec := activity.New(pool, publisher, nil, nil)
+	ingestor := outbound.NewProcessor(
+		nil,
+		nil,
+		connRepo,
+		publisher,
+	).SetActivity(rec)
 
 	handler := api.NewChatAPIHandler(
 		chatRepo,
 		api.WithChatContactRepo(contactRepo),
 		api.WithChatConnectionRepo(connRepo),
+		api.WithChatWorkspaceRepo(wsRepo),
 		api.WithChatAuditRepo(auditRepo),
 		api.WithChatMessagePublisher(publisher),
+		api.WithChatMessageIngestor(ingestor),
+		api.WithChatActivity(rec),
 	)
 	handler.SetWebhookDispatcher(webhookDispatcher)
 
@@ -568,18 +296,62 @@ func TestChatAPIHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("POST /api/v1/chats/:id/messages", func(t *testing.T) {
+	t.Run("POST /api/v1/chats/:id/messages defaults sender_type to ai_agent without pausing AI", func(t *testing.T) {
 		payload := `{"body": "Hello Alice, how can I help you today?"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/chats/"+chatID.String()+"/messages", bytes.NewBufferString(payload))
 		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-		rec := httptest.NewRecorder()
-		e.ServeHTTP(rec, req)
+		httpRec := httptest.NewRecorder()
+		e.ServeHTTP(httpRec, req)
 
-		if rec.Code != http.StatusCreated {
-			t.Fatalf("expected status 201, got %d: %s", rec.Code, rec.Body.String())
+		if httpRec.Code != http.StatusCreated {
+			t.Fatalf("expected status 201, got %d: %s", httpRec.Code, httpRec.Body.String())
 		}
 		if len(publisher.published) == 0 {
 			t.Fatalf("expected message to be published to JetStream")
+		}
+
+		state, _, err := rec.Snapshot(ctx, wsID, activity.ChatID(chatID))
+		if err != nil {
+			t.Fatalf("Snapshot failed: %v", err)
+		}
+		if state.AI.Mode != domain.AIModeActive {
+			t.Fatalf("expected AI mode engaged after default ai_agent outbound, got %q", state.AI.Mode)
+		}
+	})
+
+	t.Run("PATCH /api/v1/chats/:id/ai toggles AI off and back to engaged", func(t *testing.T) {
+		// Disable AI
+		reqOff := httptest.NewRequest(http.MethodPatch, "/api/v1/chats/"+chatID.String()+"/ai", bytes.NewBufferString(`{"disabled": true}`))
+		reqOff.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		recOff := httptest.NewRecorder()
+		e.ServeHTTP(recOff, reqOff)
+
+		if recOff.Code != http.StatusOK {
+			t.Fatalf("expected status 200 on disable AI, got %d: %s", recOff.Code, recOff.Body.String())
+		}
+		state, _, err := rec.Snapshot(ctx, wsID, activity.ChatID(chatID))
+		if err != nil {
+			t.Fatalf("Snapshot failed: %v", err)
+		}
+		if state.AI.Mode != domain.AIModeOff {
+			t.Fatalf("expected AI mode off, got %q", state.AI.Mode)
+		}
+
+		// Re-enable AI
+		reqOn := httptest.NewRequest(http.MethodPatch, "/api/v1/chats/"+chatID.String()+"/ai", bytes.NewBufferString(`{"disabled": false}`))
+		reqOn.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		recOn := httptest.NewRecorder()
+		e.ServeHTTP(recOn, reqOn)
+
+		if recOn.Code != http.StatusOK {
+			t.Fatalf("expected status 200 on enable AI, got %d: %s", recOn.Code, recOn.Body.String())
+		}
+		state, _, err = rec.Snapshot(ctx, wsID, activity.ChatID(chatID))
+		if err != nil {
+			t.Fatalf("Snapshot failed: %v", err)
+		}
+		if state.AI.Mode != domain.AIModeActive {
+			t.Fatalf("expected AI mode engaged, got %q", state.AI.Mode)
 		}
 	})
 
@@ -681,7 +453,11 @@ func TestChatAPIHandler(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 		}
-		if chatRepo.chats[chatID].AssignedEmail == nil || *chatRepo.chats[chatID].AssignedEmail != email {
+		updated, err := chatRepo.GetChat(ctx, wsID, chatID)
+		if err != nil {
+			t.Fatalf("GetChat failed: %v", err)
+		}
+		if updated.AssignedEmail == nil || *updated.AssignedEmail != email {
 			t.Fatalf("expected chat assigned to %s", email)
 		}
 
@@ -695,7 +471,11 @@ func TestChatAPIHandler(t *testing.T) {
 		if rec2.Code != http.StatusOK {
 			t.Fatalf("expected status 200 on unassign, got %d: %s", rec2.Code, rec2.Body.String())
 		}
-		if chatRepo.chats[chatID].AssignedEmail != nil {
+		updated, err = chatRepo.GetChat(ctx, wsID, chatID)
+		if err != nil {
+			t.Fatalf("GetChat failed: %v", err)
+		}
+		if updated.AssignedEmail != nil {
 			t.Fatalf("expected chat unassigned")
 		}
 	})
@@ -711,7 +491,11 @@ func TestChatAPIHandler(t *testing.T) {
 			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 		}
 
-		tags := chatRepo.chats[chatID].Tags
+		updated, err := chatRepo.GetChat(ctx, wsID, chatID)
+		if err != nil {
+			t.Fatalf("GetChat failed: %v", err)
+		}
+		tags := updated.Tags
 		hasVIP, hasSupport, hasLead := false, false, false
 		for _, tag := range tags {
 			if tag == "vip" {
@@ -741,10 +525,14 @@ func TestChatAPIHandler(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 		}
-		if chatRepo.chats[chatID].Status != domain.ChatStatusSnoozed {
-			t.Fatalf("expected status snoozed, got %s", chatRepo.chats[chatID].Status)
+		updated, err := chatRepo.GetChat(ctx, wsID, chatID)
+		if err != nil {
+			t.Fatalf("GetChat failed: %v", err)
 		}
-		if chatRepo.chats[chatID].SnoozedUntil == nil {
+		if updated.Status != domain.ChatStatusSnoozed {
+			t.Fatalf("expected status snoozed, got %s", updated.Status)
+		}
+		if updated.SnoozedUntil == nil {
 			t.Fatalf("expected snoozed_until to be set")
 		}
 
@@ -758,8 +546,12 @@ func TestChatAPIHandler(t *testing.T) {
 		if rec2.Code != http.StatusOK {
 			t.Fatalf("expected status 200 on close, got %d: %s", rec2.Code, rec2.Body.String())
 		}
-		if chatRepo.chats[chatID].Status != domain.ChatStatusClosed {
-			t.Fatalf("expected status closed, got %s", chatRepo.chats[chatID].Status)
+		updated, err = chatRepo.GetChat(ctx, wsID, chatID)
+		if err != nil {
+			t.Fatalf("GetChat failed: %v", err)
+		}
+		if updated.Status != domain.ChatStatusClosed {
+			t.Fatalf("expected status closed, got %s", updated.Status)
 		}
 
 		// Pending
@@ -771,8 +563,12 @@ func TestChatAPIHandler(t *testing.T) {
 		if recPending.Code != http.StatusOK {
 			t.Fatalf("expected status 200 on pending, got %d: %s", recPending.Code, recPending.Body.String())
 		}
-		if chatRepo.chats[chatID].Status != domain.ChatStatusPending {
-			t.Fatalf("expected status pending, got %s", chatRepo.chats[chatID].Status)
+		updated, err = chatRepo.GetChat(ctx, wsID, chatID)
+		if err != nil {
+			t.Fatalf("GetChat failed: %v", err)
+		}
+		if updated.Status != domain.ChatStatusPending {
+			t.Fatalf("expected status pending, got %s", updated.Status)
 		}
 
 		// Snoozed without snoozed_until -> 400 Bad Request
@@ -817,7 +613,10 @@ func TestChatAPIHandler(t *testing.T) {
 			t.Fatalf("expected status 201 Created for template message, got %d: %s", rec.Code, rec.Body.String())
 		}
 
-		msgs := chatRepo.messages[chatID]
+		msgs, err := chatRepo.ListChatMessages(ctx, wsID, chatID, "", "", 50)
+		if err != nil {
+			t.Fatalf("ListChatMessages failed: %v", err)
+		}
 		lastMsg := msgs[len(msgs)-1]
 		if lastMsg.Body != "[Template: order_update (pt_BR)]" {
 			t.Fatalf("expected display body '[Template: order_update (pt_BR)]', got %q", lastMsg.Body)
@@ -846,10 +645,12 @@ func TestChatAPIHandler(t *testing.T) {
 
 	t.Run("Lazy snooze reopen on GET /api/v1/chats/:id syncs contact ReopenThread", func(t *testing.T) {
 		past := time.Now().UTC().Add(-5 * time.Minute)
-		chatRepo.chats[chatID].Status = domain.ChatStatusSnoozed
-		chatRepo.chats[chatID].SnoozedUntil = &past
-		closedNow := time.Now().UTC()
-		contactRepo.contacts[contactID].ClosedAt = &closedNow
+		if err := chatRepo.SnoozeChat(ctx, wsID, chatID, &past); err != nil {
+			t.Fatalf("SnoozeChat failed: %v", err)
+		}
+		if err := contactRepo.CloseThread(ctx, wsID, contactID); err != nil {
+			t.Fatalf("CloseThread failed: %v", err)
+		}
 
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/chats/"+chatID.String(), nil)
 		rec := httptest.NewRecorder()
@@ -858,10 +659,18 @@ func TestChatAPIHandler(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("expected status 200, got %d: %s", rec.Code, rec.Body.String())
 		}
-		if chatRepo.chats[chatID].Status != domain.ChatStatusOpen || chatRepo.chats[chatID].SnoozedUntil != nil {
-			t.Fatalf("expected chat to be lazily reopened, got status=%s", chatRepo.chats[chatID].Status)
+		updatedChat, err := chatRepo.GetChat(ctx, wsID, chatID)
+		if err != nil {
+			t.Fatalf("GetChat failed: %v", err)
 		}
-		if contactRepo.contacts[contactID].ClosedAt != nil {
+		if updatedChat.Status != domain.ChatStatusOpen || updatedChat.SnoozedUntil != nil {
+			t.Fatalf("expected chat to be lazily reopened, got status=%s", updatedChat.Status)
+		}
+		updatedContact, err := contactRepo.GetByID(ctx, wsID, contactID)
+		if err != nil {
+			t.Fatalf("GetByID failed: %v", err)
+		}
+		if updatedContact.ClosedAt != nil {
 			t.Fatalf("expected contact ClosedAt to be cleared via ReopenThread")
 		}
 	})

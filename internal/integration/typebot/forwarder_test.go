@@ -13,11 +13,15 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/integration/typebot"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/testcontainers/testcontainers-go"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 type mockPublisher struct {
@@ -48,10 +52,32 @@ func getTestPool(t *testing.T) *pgxpool.Pool {
 
 	dsn := os.Getenv("PERGO_DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+		bgCtx := context.Background()
+		pgContainer, err := tcpostgres.Run(bgCtx,
+			"postgres:16-alpine",
+			tcpostgres.WithDatabase("pergo_test"),
+			tcpostgres.WithUsername("postgres"),
+			tcpostgres.WithPassword("postgres"),
+			testcontainers.WithWaitStrategy(
+				wait.ForLog("database system is ready to accept connections").
+					WithOccurrence(2).
+					WithStartupTimeout(30*time.Second),
+			),
+		)
+		if err != nil {
+			t.Fatalf("failed to start postgres container: %v", err)
+		}
+		t.Cleanup(func() {
+			_ = pgContainer.Terminate(bgCtx)
+		})
+		connStr, err := pgContainer.ConnectionString(bgCtx, "sslmode=disable")
+		if err != nil {
+			t.Fatalf("failed to get connection string: %v", err)
+		}
+		dsn = connStr
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	pool, err := pgxpool.New(ctx, dsn)
@@ -81,27 +107,57 @@ func getTestPool(t *testing.T) *pgxpool.Pool {
 }
 
 func TestTypebotForwarder_BotInactive(t *testing.T) {
-	pub := &mockPublisher{}
-	f := typebot.NewForwarder(nil, nil, pub)
+	pool := getTestPool(t)
+	defer pool.Close()
 
-	contact := &domain.Contact{
-		ID:        uuid.New(),
-		BotActive: false,
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "typebot_inactive_ws_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	connID := uuid.New()
+	connRepo := repository.NewConnectionRepository(pool, noOpCryptoProvider{})
+	if err := connRepo.Create(ctx, &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    ws.ID,
+		Name:           "Test Connection",
+		Channel:        "whatsapp",
+		SenderIdentity: "+987654321",
+		Status:         "connected",
+	}); err != nil {
+		t.Fatalf("failed to create connection: %v", err)
 	}
 
+	contactRepo := repository.NewContactRepository(pool)
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "+123456789", "Test User", "", "+123456789")
+	if err != nil {
+		t.Fatalf("failed to resolve contact: %v", err)
+	}
+
+	rec := activity.New(pool, nil, nil, nil)
+	if _, err := rec.SetAI(ctx, ws.ID, activity.ChatOf(connID, contact.ID), activity.AIOff()); err != nil {
+		t.Fatalf("SetAI failed: %v", err)
+	}
+
+	pub := &mockPublisher{}
+	f := typebot.NewForwarder(nil, nil, pub).WithActivity(rec)
+
 	event := &inbound.InboundEvent{
-		WorkspaceID:  uuid.New(),
-		ConnectionID: uuid.New(),
+		WorkspaceID:  ws.ID,
+		ConnectionID: connID,
 		Body:         "Hello",
 	}
 
-	err := f.SyncInboundMessage(context.Background(), contact, event)
+	err = f.SyncInboundMessage(ctx, contact, event)
 	if err != nil {
 		t.Fatalf("expected nil error, got: %v", err)
 	}
 
 	if pub.called {
-		t.Error("expected publisher to not be called when bot is inactive")
+		t.Error("expected publisher to not be called when chat AI is off")
 	}
 }
 
@@ -110,8 +166,7 @@ func TestTypebotForwarder_GroupMessage_SkipsBot(t *testing.T) {
 	f := typebot.NewForwarder(nil, nil, pub)
 
 	contact := &domain.Contact{
-		ID:        uuid.New(),
-		BotActive: true,
+		ID: uuid.New(),
 	}
 
 	event := &inbound.InboundEvent{
@@ -257,7 +312,6 @@ func TestTypebotForwarder_PopulatesRoutingFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to resolve contact: %v", err)
 	}
-	contact.BotActive = true
 
 	ev := &inbound.InboundEvent{
 		WorkspaceID:  ws.ID,
@@ -371,7 +425,6 @@ func TestTypebotForwarder_GroupMessage_WithActiveBot_SkipsExecution(t *testing.T
 	if err != nil {
 		t.Fatalf("failed to resolve contact: %v", err)
 	}
-	contact.BotActive = true
 
 	ev := &inbound.InboundEvent{
 		WorkspaceID:  ws.ID,
@@ -478,11 +531,10 @@ func TestTypebotForwarder_InteractiveReplies(t *testing.T) {
 	}
 
 	contactRepo := repository.NewContactRepository(pool)
-	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999991111", "Interactive User", "", "+5511999991111")
+	_, err = contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999991111", "Interactive User", "", "+5511999991111")
 	if err != nil {
 		t.Fatalf("failed to resolve contact: %v", err)
 	}
-	contact.BotActive = true
 
 	pub := &mockPublisher{}
 	f := typebot.NewForwarder(sessionRepo, integrationRepo, pub)
@@ -490,7 +542,6 @@ func TestTypebotForwarder_InteractiveReplies(t *testing.T) {
 	t.Run("button_reply passes clean button title to typebot", func(t *testing.T) {
 		capturedStartRequest = typebot.StartChatRequest{}
 		c1, _ := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999991111", "Btn User", "", "+5511999991111")
-		c1.BotActive = true
 
 		ev := &inbound.InboundEvent{
 			WorkspaceID:  ws.ID,
@@ -531,7 +582,6 @@ func TestTypebotForwarder_InteractiveReplies(t *testing.T) {
 	t.Run("list_reply passes clean list title to typebot", func(t *testing.T) {
 		capturedStartRequest = typebot.StartChatRequest{}
 		c2, _ := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999992222", "List User", "", "+5511999992222")
-		c2.BotActive = true
 
 		ev := &inbound.InboundEvent{
 			WorkspaceID:  ws.ID,
@@ -573,7 +623,6 @@ func TestTypebotForwarder_InteractiveReplies(t *testing.T) {
 	t.Run("nfm_reply passes flow data in pergo_metadata", func(t *testing.T) {
 		capturedStartRequest = typebot.StartChatRequest{}
 		c3, _ := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999993333", "Flow User", "", "+5511999993333")
-		c3.BotActive = true
 
 		ev := &inbound.InboundEvent{
 			WorkspaceID:  ws.ID,

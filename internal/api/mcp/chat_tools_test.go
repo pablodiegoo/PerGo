@@ -1183,8 +1183,8 @@ func TestMCPChatTools(t *testing.T) {
 		if err != nil || resDisableAI.IsError {
 			t.Fatalf("chat_enable_ai(false) failed: %v, %+v", err, resDisableAI)
 		}
-		if len(debouncer.cancelled) != 1 || debouncer.cancelled[0] != contact.ID {
-			t.Errorf("expected debouncer.Cancel to be called for contact %s, got %+v", contact.ID, debouncer.cancelled)
+		if len(debouncer.cancelled) != 1 || debouncer.cancelled[0] != chat.ID {
+			t.Errorf("expected debouncer.Cancel to be called for chat %s, got %+v", chat.ID, debouncer.cancelled)
 		}
 		if len(pub.subjects) != 2 {
 			t.Fatalf("expected 2 handoff events published on chat_enable_ai(false), got %d: %+v", len(pub.subjects), pub.subjects)
@@ -1199,8 +1199,8 @@ type testMCPDebounceCanceller struct {
 	cancelled []uuid.UUID
 }
 
-func (d *testMCPDebounceCanceller) Cancel(_ context.Context, _ uuid.UUID, contactID uuid.UUID) error {
-	d.cancelled = append(d.cancelled, contactID)
+func (d *testMCPDebounceCanceller) Cancel(_ context.Context, _ uuid.UUID, chatID uuid.UUID) error {
+	d.cancelled = append(d.cancelled, chatID)
 	return nil
 }
 

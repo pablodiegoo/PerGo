@@ -191,7 +191,6 @@ type ConversationalIngestFields struct {
 	ReplyToUID          *string    `json:"reply_to_uid,omitempty"`
 	SenderType          string     `json:"sender_type,omitempty"`
 	SenderName          string     `json:"sender_name,omitempty"`
-	DisableAI           bool       `json:"disable_ai,omitempty"`
 	StrictServiceWindow bool       `json:"strict_service_window,omitempty"`
 }
 

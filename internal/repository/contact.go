@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -24,6 +23,13 @@ func NewContactRepository(pool *pgxpool.Pool) *ContactRepository {
 	return &ContactRepository{pool: pool}
 }
 
+func (r *ContactRepository) Pool() *pgxpool.Pool {
+	if r == nil {
+		return nil
+	}
+	return r.pool
+}
+
 // GetByID loads a contact and all its associated identities.
 func (r *ContactRepository) GetByID(ctx context.Context, workspaceID, contactID uuid.UUID) (*domain.Contact, error) {
 	if workspaceID == uuid.Nil {
@@ -32,9 +38,9 @@ func (r *ContactRepository) GetByID(ctx context.Context, workspaceID, contactID 
 	var c domain.Contact
 	var attrsRaw []byte
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, workspace_id, name, email, attributes, tags, closed_at, created_at, updated_at, bot_active, bot_paused_at
+		SELECT id, workspace_id, name, email, attributes, tags, closed_at, created_at, updated_at
 		FROM contacts WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, contactID).Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt, &c.BotActive, &c.BotPausedAt)
+	`, workspaceID, contactID).Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrContactNotFound
@@ -82,7 +88,7 @@ func (r *ContactRepository) GetByIDs(ctx context.Context, workspaceID uuid.UUID,
 	}
 
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, workspace_id, name, email, attributes, tags, closed_at, created_at, updated_at, bot_active, bot_paused_at
+		SELECT id, workspace_id, name, email, attributes, tags, closed_at, created_at, updated_at
 		FROM contacts
 		WHERE workspace_id = $1 AND id = ANY($2)
 	`, workspaceID, ids)
@@ -94,7 +100,7 @@ func (r *ContactRepository) GetByIDs(ctx context.Context, workspaceID uuid.UUID,
 	for rows.Next() {
 		var c domain.Contact
 		var attrsRaw []byte
-		if err := rows.Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt, &c.BotActive, &c.BotPausedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if len(attrsRaw) > 0 {
@@ -502,7 +508,7 @@ func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid
 	}
 	q := "%" + strings.ToLower(query) + "%"
 	rows, err := r.pool.Query(ctx, `
-		SELECT DISTINCT c.id, c.name, c.email, c.attributes, c.tags, c.closed_at, c.created_at, c.updated_at, c.bot_active, c.bot_paused_at
+		SELECT DISTINCT c.id, c.name, c.email, c.attributes, c.tags, c.closed_at, c.created_at, c.updated_at
 		FROM contacts c
 		LEFT JOIN contact_identities ci ON ci.contact_id = c.id
 		WHERE c.workspace_id = $1
@@ -519,7 +525,7 @@ func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid
 	for rows.Next() {
 		var c domain.Contact
 		var attrsRaw []byte
-		if err := rows.Scan(&c.ID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt, &c.BotActive, &c.BotPausedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if len(attrsRaw) > 0 {
@@ -647,19 +653,6 @@ func (r *ContactRepository) SetTags(ctx context.Context, workspaceID, contactID 
 		SET tags = $3, updated_at = NOW() 
 		WHERE workspace_id = $1 AND id = $2
 	`, workspaceID, contactID, tags)
-	return err
-}
-
-// UpdateBotState toggles bot activity and sets the paused timestamp for a contact.
-func (r *ContactRepository) UpdateBotState(ctx context.Context, workspaceID, contactID uuid.UUID, botActive bool, pausedAt *time.Time) error {
-	if workspaceID == uuid.Nil {
-		return ErrInvalidWorkspaceID
-	}
-	_, err := r.pool.Exec(ctx, `
-		UPDATE contacts 
-		SET bot_active = $3, bot_paused_at = $4, updated_at = NOW() 
-		WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, contactID, botActive, pausedAt)
 	return err
 }
 

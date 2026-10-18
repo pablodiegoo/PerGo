@@ -22,8 +22,6 @@ type Contact struct {
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
 	Identities  []ContactIdentity `json:"identities,omitempty"`
-	BotActive   bool              `json:"bot_active"`
-	BotPausedAt *time.Time        `json:"bot_paused_at,omitempty"`
 }
 
 // ContactIdentity represents a channel-specific identity linked to a Contact.

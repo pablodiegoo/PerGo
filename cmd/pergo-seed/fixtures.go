@@ -72,7 +72,7 @@ type ContactFixture struct {
 	Identities []IdentityFixture
 	Tags       []string
 	Attributes map[string]string
-	BotActive  bool
+	AIMode     domain.AIMode
 }
 
 type TemplateFixture struct {
@@ -145,13 +145,13 @@ func getDeterministicFixtures(displayPhone string) FixtureData {
 				},
 				Tags: []string{"VIP", "Cliente Ativo"},
 				Attributes: map[string]string{
-					"plano":      "Enterprise",
-					"cidade":     "São Paulo",
-					"contrato":   "PJ-9821",
-					"vendedor":   "Rafael Souza",
+					"plano":       "Enterprise",
+					"cidade":      "São Paulo",
+					"contrato":    "PJ-9821",
+					"vendedor":    "Rafael Souza",
 					"recorrencia": "Mensal",
 				},
-				BotActive: false,
+				AIMode: domain.AIModeOff,
 			},
 			{
 				Name:  "Carlos Eduardo Santos",
@@ -161,12 +161,12 @@ func getDeterministicFixtures(displayPhone string) FixtureData {
 				},
 				Tags: []string{"Lead Qualificado"},
 				Attributes: map[string]string{
-					"empresa":  "Santos Tech",
-					"cargo":    "CTO",
-					"origem":   "Inbound Web",
+					"empresa":   "Santos Tech",
+					"cargo":     "CTO",
+					"origem":    "Inbound Web",
 					"interesse": "Meta Flows API",
 				},
-				BotActive: false,
+				AIMode: domain.AIModeOff,
 			},
 			{
 				Name:  "Mariana Oliveira",
@@ -181,7 +181,7 @@ func getDeterministicFixtures(displayPhone string) FixtureData {
 					"status_contrato": "vigente",
 					"tier_suporte":    "SLA 1h",
 				},
-				BotActive: false,
+				AIMode: domain.AIModeOff,
 			},
 			{
 				Name:  "Lucas Mendonça",
@@ -195,7 +195,7 @@ func getDeterministicFixtures(displayPhone string) FixtureData {
 					"interesse": "WhatsApp Cloud Gateway",
 					"cidade":    "Belo Horizonte",
 				},
-				BotActive: true,
+				AIMode: domain.AIModeActive,
 			},
 			{
 				Name:  "Beatriz Costa",
@@ -205,11 +205,11 @@ func getDeterministicFixtures(displayPhone string) FixtureData {
 				},
 				Tags: []string{"Pesquisa 2026"},
 				Attributes: map[string]string{
-					"nps":          "10",
-					"regiao":       "Sul",
+					"nps":           "10",
+					"regiao":        "Sul",
 					"ultima_compra": "2026-08-15",
 				},
-				BotActive: false,
+				AIMode: domain.AIModeOff,
 			},
 		},
 		Templates: []TemplateFixture{

@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -38,6 +39,7 @@ type ChatwootWebhookHandler struct {
 	mappingRepo *repository.ChatwootMappingRepository
 	contactRepo *repository.ContactRepository
 	publisher   Publisher
+	activity    *activity.Recorder
 }
 
 // NewChatwootWebhookHandler creates a new ChatwootWebhookHandler.
@@ -47,12 +49,22 @@ func NewChatwootWebhookHandler(
 	contactRepo *repository.ContactRepository,
 	publisher Publisher,
 ) *ChatwootWebhookHandler {
+	var rec *activity.Recorder
+	if pool != nil {
+		rec = activity.New(pool, publisher, nil, slog.Default())
+	}
 	return &ChatwootWebhookHandler{
 		pool:        pool,
 		mappingRepo: mappingRepo,
 		contactRepo: contactRepo,
 		publisher:   publisher,
+		activity:    rec,
 	}
+}
+
+// SetActivity sets the Chat Activity recorder on the handler.
+func (h *ChatwootWebhookHandler) SetActivity(rec *activity.Recorder) {
+	h.activity = rec
 }
 
 // Handle processes the incoming Chatwoot webhook request.
@@ -100,11 +112,16 @@ func (h *ChatwootWebhookHandler) Handle(c *echo.Context) error {
 		})
 	}
 
-	if h.contactRepo != nil {
+	if h.activity != nil {
 		now := time.Now().UTC()
-		err = h.contactRepo.UpdateBotState(c.Request().Context(), workspaceID, mapping.ContactID, false, &now)
+		_, err = h.activity.SetAI(
+			c.Request().Context(),
+			workspaceID,
+			activity.ChatOf(mapping.ConnectionID, mapping.ContactID),
+			activity.AIPauseUntil(now.Add(12*time.Hour)),
+		)
 		if err != nil {
-			slog.Error("failed to update contact bot active state on Chatwoot reply", "error", err, "contact_id", mapping.ContactID)
+			slog.Error("failed to pause chat AI on Chatwoot reply", "error", err, "contact_id", mapping.ContactID, "connection_id", mapping.ConnectionID)
 		}
 	}
 

@@ -15,6 +15,7 @@ import (
 
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	chatpkg "github.com/pablojhp.pergo/internal/chat"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
@@ -46,6 +47,7 @@ type InboxHandler struct {
 	ChatEngine        *chatpkg.Engine
 	Ingestor          outbound.OutboundProcessor
 	Debouncer         chatpkg.DebounceCanceller
+	Activity          *activity.Recorder
 }
 
 // NewInboxHandler creates an InboxHandler backed by a pre-configured ChatEngine.
@@ -58,16 +60,45 @@ func (h *InboxHandler) engine() *chatpkg.Engine {
 	if h.ChatEngine != nil {
 		return h.ChatEngine
 	}
+	chatRepo := h.ChatRepo
+	contactRepo := h.ContactRepo
+	if chatRepo == nil {
+		if contactRepo != nil && contactRepo.Pool() != nil {
+			chatRepo = repository.NewChatRepository(contactRepo.Pool())
+		} else if h.Workspaces != nil && h.Workspaces.Pool() != nil {
+			chatRepo = repository.NewChatRepository(h.Workspaces.Pool())
+		}
+	}
+	if contactRepo == nil && chatRepo != nil && chatRepo.Pool() != nil {
+		contactRepo = repository.NewContactRepository(chatRepo.Pool())
+	}
+	connRepo := h.Connections
+	if connRepo == nil && chatRepo != nil && chatRepo.Pool() != nil {
+		connRepo = repository.NewConnectionRepository(chatRepo.Pool(), nil)
+	}
+	rec := h.Activity
+	if rec == nil && chatRepo != nil && chatRepo.Pool() != nil {
+		rec = activity.New(chatRepo.Pool(), h.Publisher, h.Debouncer, nil)
+	}
+	ingestor := h.Ingestor
+	if ingestor == nil && h.Publisher != nil && rec != nil {
+		ingestor = outbound.NewProcessor(nil, nil, connRepo, h.Publisher).
+			SetActivity(rec).
+			SetContactRepository(contactRepo).
+			SetChatRepository(chatRepo).
+			SetDebounceCanceller(h.Debouncer)
+	}
 	return chatpkg.NewEngineFromConfig(chatpkg.Config{
-		ChatRepo:          h.ChatRepo,
-		ContactRepo:       h.ContactRepo,
-		ConnRepo:          h.Connections,
+		ChatRepo:          chatRepo,
+		ContactRepo:       contactRepo,
+		ConnRepo:          connRepo,
 		WorkspaceRepo:     h.Workspaces,
 		AuditRepo:         h.Repo,
 		Publisher:         h.Publisher,
 		WebhookDispatcher: h.WebhookDispatcher,
-		Ingestor:          h.Ingestor,
+		Ingestor:          ingestor,
 		Debouncer:         h.Debouncer,
+		Activity:          rec,
 	})
 }
 
@@ -482,7 +513,6 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 			Phone:   contact,
 		}, draftUID, body)
 	} else {
-		disableAI := true
 		_, err = h.engine().SendMessage(ctx, workspaceID, chatpkg.SendRequest{
 			Ref: chatpkg.ChatRef{
 				Channel: channel,
@@ -491,7 +521,6 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 			Body:           body,
 			SenderName:     "Agent",
 			SenderType:     string(domain.SenderTypeHumanAgent),
-			DisableAI:      &disableAI,
 			SenderIdentity: recipientIdentity,
 			TraceIDPrefix:  "inbox",
 			AuditEventType: "chat.message.sent",
@@ -642,7 +671,6 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 	if connectionID != uuid.Nil {
 		connIDPtr = &connectionID
 	}
-	disableAI := true
 	_, err := h.engine().SendMessage(ctx, workspaceID, chatpkg.SendRequest{
 		Ref: chatpkg.ChatRef{
 			Channel: channel,
@@ -651,7 +679,6 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 		Body:           body,
 		SenderName:     "Agent",
 		SenderType:     string(domain.SenderTypeHumanAgent),
-		DisableAI:      &disableAI,
 		TemplateName:   templateName,
 		Language:       language,
 		Components:     componentsList,
@@ -823,15 +850,42 @@ func (h *InboxHandler) ToggleBot(c *echo.Context) error {
 		return c.String(http.StatusBadRequest, "invalid contact_id")
 	}
 
-	contact, err := h.engine().ToggleContactBot(ctx, workspaceID, contactID)
+	if h.ContactRepo != nil {
+		if _, err := h.ContactRepo.GetByID(ctx, workspaceID, contactID); err != nil {
+			return c.String(http.StatusNotFound, "contact not found")
+		}
+	}
+
+	eng := h.engine()
+	currentChat, err := eng.EnsureChatForContact(ctx, workspaceID, contactID, false)
 	if err != nil {
-		if errors.Is(err, chatpkg.ErrContactNotFound) {
+		if errors.Is(err, chatpkg.ErrContactNotFound) || errors.Is(err, chatpkg.ErrChatNotFound) {
+			return c.String(http.StatusNotFound, "contact not found")
+		}
+		return c.String(http.StatusInternalServerError, "failed to resolve chat: "+err.Error())
+	}
+
+	var change activity.AIChange
+	if currentChat != nil && currentChat.EffectiveAI().IsEngaged() {
+		change = activity.AIOff()
+	} else {
+		change = activity.AIResume()
+	}
+
+	ref := chatpkg.ChatRef{ContactID: contactID}
+	if currentChat != nil && currentChat.ID != uuid.Nil {
+		ref.ChatID = currentChat.ID
+	}
+
+	updatedChat, err := eng.SetAI(ctx, workspaceID, ref, change)
+	if err != nil {
+		if errors.Is(err, chatpkg.ErrContactNotFound) || errors.Is(err, chatpkg.ErrChatNotFound) {
 			return c.String(http.StatusNotFound, "contact not found")
 		}
 		return c.String(http.StatusInternalServerError, "failed to update bot state: "+err.Error())
 	}
 
-	return mw.Render(c, http.StatusOK, components.BotStatusBadge(contact))
+	return mw.Render(c, http.StatusOK, components.BotStatusBadge(updatedChat))
 }
 
 // EnableChatAI handles POST /admin/inbox/chats/:id/enable-ai and /admin/inbox/chat_enable_ai
@@ -880,7 +934,13 @@ func (h *InboxHandler) EnableChatAI(c *echo.Context) error {
 	}
 
 	if h.ChatRepo != nil || h.ChatEngine != nil {
-		chat, err := h.engine().SetAIEnabled(ctx, workspaceID, chatpkg.ChatRef{ChatID: chatID}, enabled)
+		var change activity.AIChange
+		if enabled {
+			change = activity.AIResume()
+		} else {
+			change = activity.AIOff()
+		}
+		chat, err := h.engine().SetAI(ctx, workspaceID, chatpkg.ChatRef{ChatID: chatID}, change)
 		if err != nil {
 			if errors.Is(err, chatpkg.ErrChatNotFound) {
 				return c.String(http.StatusNotFound, "chat not found")

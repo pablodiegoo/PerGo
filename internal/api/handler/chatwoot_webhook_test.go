@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -14,9 +13,13 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
+	"github.com/testcontainers/testcontainers-go"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
@@ -43,23 +46,31 @@ func (f *fakePublisher) Publish(ctx context.Context, subject string, data []byte
 func getTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
-	dsn := os.Getenv("PERGO_DATABASE_URL")
-	if dsn == "" {
-		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+	ctx := context.Background()
+	pgC, err := tcpostgres.Run(ctx,
+		"postgres:16-alpine",
+		tcpostgres.WithDatabase("pergo_test"),
+		tcpostgres.WithUsername("pergo"),
+		tcpostgres.WithPassword("secret"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(30*time.Second),
+		),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
 	}
+	t.Cleanup(func() { _ = pgC.Terminate(context.Background()) })
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+	dsn, err := pgC.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("conn string: %v", err)
+	}
 
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
-		t.Skipf("PostgreSQL not available at %s: %v", dsn, err)
-	}
-
-	err = pool.Ping(ctx)
-	if err != nil {
-		pool.Close()
-		t.Skipf("PostgreSQL ping failed at %s: %v", dsn, err)
+		t.Fatalf("new pool: %v", err)
 	}
 
 	db, err := postgres.NewSQLDB(pool)
@@ -196,6 +207,26 @@ func TestChatwootWebhookHandler_Integration(t *testing.T) {
 		t.Fatalf("failed to create connection: %v", err)
 	}
 
+	connB := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "Second Connection",
+		Channel:        "telegram",
+		SenderIdentity: "@my_second_bot_" + uuid.New().String(),
+		Credentials:    []byte(`{}`),
+	}
+	if err := connRepo.Create(ctx, connB); err != nil {
+		t.Fatalf("failed to create second connection: %v", err)
+	}
+
+	chatRepo := repository.NewChatRepository(pool)
+	if _, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connectionID, contact.ID); err != nil {
+		t.Fatalf("failed to create chat A: %v", err)
+	}
+	if _, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connB.ID, contact.ID); err != nil {
+		t.Fatalf("failed to create chat B: %v", err)
+	}
+
 	mapping := &repository.ChatwootMapping{
 		WorkspaceID:            ws.ID,
 		ContactID:              contact.ID,
@@ -210,7 +241,9 @@ func TestChatwootWebhookHandler_Integration(t *testing.T) {
 	}
 
 	pub := &fakePublisher{}
+	actRec := activity.New(pool, pub, nil, nil)
 	h := handler.NewChatwootWebhookHandler(pool, mappingRepo, contactRepo, pub)
+	h.SetActivity(actRec)
 
 	e := echo.New()
 	e.Use(middleware.AuthMiddleware(apiKeyRepo))
@@ -301,17 +334,24 @@ func TestChatwootWebhookHandler_Integration(t *testing.T) {
 			t.Errorf("expected 200 OK, got %d. Body: %s", rec.Code, rec.Body.String())
 		}
 
-		if len(pub.published) != 1 {
-			t.Fatalf("expected 1 published message, got %d", len(pub.published))
+		// Expect messages.outbound AND handoff events published
+		var outboundPub *struct {
+			subject string
+			data    []byte
+			traceID string
 		}
-
-		pubMsg := pub.published[0]
-		if pubMsg.subject != "messages.outbound" {
-			t.Errorf("expected subject messages.outbound, got %q", pubMsg.subject)
+		for i := range pub.published {
+			if pub.published[i].subject == "messages.outbound" {
+				outboundPub = &pub.published[i]
+				break
+			}
+		}
+		if outboundPub == nil {
+			t.Fatalf("expected messages.outbound published message, got %+v", pub.published)
 		}
 
 		var queueMsg domain.QueueMessage
-		if err := json.Unmarshal(pubMsg.data, &queueMsg); err != nil {
+		if err := json.Unmarshal(outboundPub.data, &queueMsg); err != nil {
 			t.Fatalf("failed to unmarshal QueueMessage: %v", err)
 		}
 
@@ -334,16 +374,25 @@ func TestChatwootWebhookHandler_Integration(t *testing.T) {
 			t.Errorf("expected body 'hello customer, this is agent', got %q", queueMsg.Body)
 		}
 
-		// Verify contact bot state was updated to inactive
-		updatedContact, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+		// Verify Chat on connection A has AI paused (~12h) while Chat on connection B for the same Contact remains IsEngaged()
+		now := time.Now().UTC()
+		snapA, _, err := actRec.Snapshot(ctx, ws.ID, activity.ChatOf(connectionID, contact.ID))
 		if err != nil {
-			t.Fatalf("failed to get updated contact: %v", err)
+			t.Fatalf("Snapshot chat A failed: %v", err)
 		}
-		if updatedContact.BotActive {
-			t.Error("expected bot_active to be false after agent reply")
+		if snapA.AI.Effective(now).IsEngaged() {
+			t.Errorf("expected chat A AI not engaged after Chatwoot reply, got %+v", snapA.AI)
 		}
-		if updatedContact.BotPausedAt == nil {
-			t.Error("expected bot_paused_at to be set after agent reply")
+		if snapA.AI.Mode != domain.AIModePaused || snapA.AI.PausedUntil == nil {
+			t.Errorf("expected chat A AI mode=paused with PausedUntil set, got %+v", snapA.AI)
+		}
+
+		snapB, _, err := actRec.Snapshot(ctx, ws.ID, activity.ChatOf(connB.ID, contact.ID))
+		if err != nil {
+			t.Fatalf("Snapshot chat B failed: %v", err)
+		}
+		if !snapB.AI.Effective(now).IsEngaged() {
+			t.Errorf("expected chat B AI for same contact to remain engaged, got %+v", snapB.AI)
 		}
 	})
 }

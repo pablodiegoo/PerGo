@@ -27,6 +27,13 @@ func NewChatRepository(pool *pgxpool.Pool) *ChatRepository {
 	return &ChatRepository{pool: pool}
 }
 
+func (r *ChatRepository) Pool() *pgxpool.Pool {
+	if r == nil {
+		return nil
+	}
+	return r.pool
+}
+
 // FindOrCreateChat retrieves an existing chat for the given (workspaceID, connectionID, contactID) or creates one.
 func (r *ChatRepository) FindOrCreateChat(
 	ctx context.Context,
@@ -42,11 +49,12 @@ func (r *ChatRepository) FindOrCreateChat(
 	}
 
 	var chat domain.Chat
+	var aiModeStr string
 	var metaBytes []byte
 
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
-		       tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
+		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at, last_message_at, metadata,
 		       created_at, updated_at
 		FROM chats
 		WHERE workspace_id = $1 AND contact_id = $2
@@ -55,11 +63,13 @@ func (r *ChatRepository) FindOrCreateChat(
 		LIMIT 1
 	`, workspaceID, contactID, connectionID).Scan(
 		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
-		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &chat.AIDisabled,
+		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &aiModeStr, &chat.AI.PausedUntil,
 		&chat.ServiceWindowExpiresAt, &chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
 
 	if err == nil {
+		chat.AI.Mode = domain.AIMode(aiModeStr)
+		chat.AIDisabled = !chat.EffectiveAI().IsEngaged()
 		if connectionID != nil && *connectionID != uuid.Nil && chat.ConnectionID == nil {
 			_, _ = r.pool.Exec(ctx, `
 				UPDATE chats SET connection_id = $3, updated_at = NOW()
@@ -86,16 +96,16 @@ func (r *ChatRepository) FindOrCreateChat(
 
 	// Insert on conflict
 	err = r.pool.QueryRow(ctx, `
-		INSERT INTO chats (workspace_id, connection_id, contact_id, status, tags, unread_count, ai_disabled, metadata)
-		VALUES ($1, $2, $3, 'open', '{}', 0, FALSE, '{}')
+		INSERT INTO chats (workspace_id, connection_id, contact_id, status, tags, unread_count, metadata)
+		VALUES ($1, $2, $3, 'open', '{}', 0, '{}')
 		ON CONFLICT (workspace_id, connection_id, contact_id)
 		DO UPDATE SET updated_at = NOW()
 		RETURNING id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
-		          tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
+		          tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at, last_message_at, metadata,
 		          created_at, updated_at
 	`, workspaceID, connectionID, contactID).Scan(
 		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
-		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &chat.AIDisabled,
+		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &aiModeStr, &chat.AI.PausedUntil,
 		&chat.ServiceWindowExpiresAt, &chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
 
@@ -103,6 +113,8 @@ func (r *ChatRepository) FindOrCreateChat(
 		return nil, fmt.Errorf("create chat: %w", err)
 	}
 
+	chat.AI.Mode = domain.AIMode(aiModeStr)
+	chat.AIDisabled = !chat.EffectiveAI().IsEngaged()
 	if len(metaBytes) > 0 {
 		_ = json.Unmarshal(metaBytes, &chat.Metadata)
 	}
@@ -120,17 +132,18 @@ func (r *ChatRepository) GetChat(ctx context.Context, workspaceID, chatID uuid.U
 		return nil, ErrInvalidWorkspaceID
 	}
 	var chat domain.Chat
+	var aiModeStr string
 	var metaBytes []byte
 
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
-		       tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
+		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at, last_message_at, metadata,
 		       created_at, updated_at
 		FROM chats
 		WHERE workspace_id = $1 AND id = $2
 	`, workspaceID, chatID).Scan(
 		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
-		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &chat.AIDisabled,
+		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &aiModeStr, &chat.AI.PausedUntil,
 		&chat.ServiceWindowExpiresAt, &chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
 
@@ -141,6 +154,8 @@ func (r *ChatRepository) GetChat(ctx context.Context, workspaceID, chatID uuid.U
 		return nil, fmt.Errorf("get chat: %w", err)
 	}
 
+	chat.AI.Mode = domain.AIMode(aiModeStr)
+	chat.AIDisabled = !chat.EffectiveAI().IsEngaged()
 	if len(metaBytes) > 0 {
 		_ = json.Unmarshal(metaBytes, &chat.Metadata)
 	}
@@ -162,11 +177,12 @@ func (r *ChatRepository) GetChatByContact(ctx context.Context, workspaceID, cont
 	}
 
 	var chat domain.Chat
+	var aiModeStr string
 	var metaBytes []byte
 
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
-		       tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
+		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at, last_message_at, metadata,
 		       created_at, updated_at
 		FROM chats
 		WHERE workspace_id = $1 AND contact_id = $2
@@ -174,7 +190,7 @@ func (r *ChatRepository) GetChatByContact(ctx context.Context, workspaceID, cont
 		LIMIT 1
 	`, workspaceID, contactID).Scan(
 		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
-		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &chat.AIDisabled,
+		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &aiModeStr, &chat.AI.PausedUntil,
 		&chat.ServiceWindowExpiresAt, &chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
 
@@ -185,6 +201,8 @@ func (r *ChatRepository) GetChatByContact(ctx context.Context, workspaceID, cont
 		return nil, fmt.Errorf("get chat by contact: %w", err)
 	}
 
+	chat.AI.Mode = domain.AIMode(aiModeStr)
+	chat.AIDisabled = !chat.EffectiveAI().IsEngaged()
 	if len(metaBytes) > 0 {
 		_ = json.Unmarshal(metaBytes, &chat.Metadata)
 	}
@@ -203,17 +221,18 @@ func (r *ChatRepository) GetChatByID(ctx context.Context, chatID uuid.UUID) (*do
 	}
 
 	var chat domain.Chat
+	var aiModeStr string
 	var metaBytes []byte
 
 	err := r.pool.QueryRow(ctx, `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
-		       tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
+		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at, last_message_at, metadata,
 		       created_at, updated_at
 		FROM chats
 		WHERE id = $1
 	`, chatID).Scan(
 		&chat.ID, &chat.WorkspaceID, &chat.ConnectionID, &chat.ContactID, &chat.Status, &chat.SnoozedUntil,
-		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &chat.AIDisabled,
+		&chat.AssignedUserID, &chat.AssignedEmail, &chat.Tags, &chat.UnreadCount, &aiModeStr, &chat.AI.PausedUntil,
 		&chat.ServiceWindowExpiresAt, &chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
 
@@ -224,6 +243,8 @@ func (r *ChatRepository) GetChatByID(ctx context.Context, chatID uuid.UUID) (*do
 		return nil, fmt.Errorf("get chat by id: %w", err)
 	}
 
+	chat.AI.Mode = domain.AIMode(aiModeStr)
+	chat.AIDisabled = !chat.EffectiveAI().IsEngaged()
 	if len(metaBytes) > 0 {
 		_ = json.Unmarshal(metaBytes, &chat.Metadata)
 	}
@@ -258,7 +279,7 @@ func (r *ChatRepository) ListChats(
 
 	query := `
 		SELECT id, workspace_id, connection_id, contact_id, status, snoozed_until, assigned_user_id, assigned_email,
-		       tags, unread_count, ai_disabled, service_window_expires_at, last_message_at, metadata,
+		       tags, unread_count, ai_mode, ai_paused_until, service_window_expires_at, last_message_at, metadata,
 		       created_at, updated_at
 		FROM chats
 		WHERE workspace_id = $1
@@ -338,14 +359,17 @@ func (r *ChatRepository) ListChats(
 	var chats []domain.Chat
 	for rows.Next() {
 		var c domain.Chat
+		var aiModeStr string
 		var metaBytes []byte
 		if err := rows.Scan(
 			&c.ID, &c.WorkspaceID, &c.ConnectionID, &c.ContactID, &c.Status, &c.SnoozedUntil,
-			&c.AssignedUserID, &c.AssignedEmail, &c.Tags, &c.UnreadCount, &c.AIDisabled,
+			&c.AssignedUserID, &c.AssignedEmail, &c.Tags, &c.UnreadCount, &aiModeStr, &c.AI.PausedUntil,
 			&c.ServiceWindowExpiresAt, &c.LastMessageAt, &metaBytes, &c.CreatedAt, &c.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan chat: %w", err)
 		}
+		c.AI.Mode = domain.AIMode(aiModeStr)
+		c.AIDisabled = !c.EffectiveAI().IsEngaged()
 		if len(metaBytes) > 0 {
 			_ = json.Unmarshal(metaBytes, &c.Metadata)
 		}
@@ -464,21 +488,6 @@ func (r *ChatRepository) TouchLastMessageAt(ctx context.Context, workspaceID, ch
 		UPDATE chats SET last_message_at = $3, updated_at = NOW()
 		WHERE workspace_id = $1 AND id = $2
 	`, workspaceID, chatID, t)
-	if err != nil {
-		return err
-	}
-	if res.RowsAffected() == 0 {
-		return ErrChatNotFound
-	}
-	return nil
-}
-
-// SetAIDisabled toggles AI responders on a chat.
-func (r *ChatRepository) SetAIDisabled(ctx context.Context, workspaceID, chatID uuid.UUID, disabled bool) error {
-	res, err := r.pool.Exec(ctx, `
-		UPDATE chats SET ai_disabled = $3, updated_at = NOW()
-		WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, chatID, disabled)
 	if err != nil {
 		return err
 	}
@@ -1243,7 +1252,7 @@ func (r *ChatRepository) ListThreadByContact(ctx context.Context, workspaceID uu
 			cm.direction,
 			COALESCE(cm.body, '') AS body,
 			cm.created_at,
-			CASE WHEN cm.direction = 'outbound' THEN md.status ELSE NULL END AS status,
+			CASE WHEN cm.direction = 'outbound' THEN COALESCE(md.status, NULLIF(cm.metadata->>'status', '')) ELSE NULL END AS status,
 			jsonb_strip_nulls(
 				jsonb_build_object(
 					'sender_name', NULLIF(cm.sender_name, ''),

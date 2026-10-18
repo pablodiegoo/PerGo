@@ -12,6 +12,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
@@ -42,13 +45,11 @@ type ChatRepository interface {
 	GetChat(ctx context.Context, workspaceID, chatID uuid.UUID) (*domain.Chat, error)
 	ListChats(ctx context.Context, workspaceID uuid.UUID, filter domain.ChatFilter, limit, offset int) ([]domain.Chat, error)
 	ListChatMessages(ctx context.Context, workspaceID, chatID uuid.UUID, beforeUID, afterUID string, limit int) ([]domain.ChatMessage, error)
-	AddChatMessage(ctx context.Context, msg *domain.ChatMessage) error
 	CreateInternalNote(ctx context.Context, workspaceID, chatID uuid.UUID, authorName, senderType, body string) (*domain.ChatMessage, error)
 	AssignChat(ctx context.Context, workspaceID, chatID uuid.UUID, memberID *uuid.UUID, email *string) error
 	SetChatTags(ctx context.Context, workspaceID, chatID uuid.UUID, tags []string) error
 	UpdateChatStatus(ctx context.Context, workspaceID, chatID uuid.UUID, status string) error
 	SnoozeChat(ctx context.Context, workspaceID, chatID uuid.UUID, snoozedUntil *time.Time) error
-	SetAIDisabled(ctx context.Context, workspaceID, chatID uuid.UUID, disabled bool) error
 	TouchLastMessageAt(ctx context.Context, workspaceID, chatID uuid.UUID, t time.Time) error
 	GetChatMessageByUID(ctx context.Context, workspaceID uuid.UUID, uid string) (*domain.ChatMessage, error)
 	GetReactions(ctx context.Context, workspaceID uuid.UUID, messageUID string) ([]domain.Reaction, error)
@@ -94,13 +95,16 @@ type messageMetadataUpdater interface {
 	UpdateMessageMetadata(ctx context.Context, workspaceID uuid.UUID, uid string, metadata map[string]interface{}) error
 }
 
+type poolProvider interface {
+	Pool() *pgxpool.Pool
+}
+
 // ContactRepository defines contact operations required by Engine.
 type ContactRepository interface {
 	GetByID(ctx context.Context, workspaceID, contactID uuid.UUID) (*domain.Contact, error)
 	SetTags(ctx context.Context, workspaceID, contactID uuid.UUID, tags []string) error
 	CloseThread(ctx context.Context, workspaceID, contactID uuid.UUID) error
 	ReopenThread(ctx context.Context, workspaceID, contactID uuid.UUID) error
-	UpdateBotState(ctx context.Context, workspaceID, contactID uuid.UUID, botActive bool, pausedAt *time.Time) error
 	MarkAsRead(ctx context.Context, workspaceID, contactID uuid.UUID) error
 }
 
@@ -140,9 +144,9 @@ type ReactionWebhookDispatcher interface {
 	DispatchReaction(ctx context.Context, workspaceID uuid.UUID, messageUID string, payload []byte, traceID string) error
 }
 
-// DebounceCanceller cancels any pending inbound debounce buffer for a contact.
+// DebounceCanceller cancels any pending inbound debounce buffer for a chat.
 type DebounceCanceller interface {
-	Cancel(ctx context.Context, workspaceID, contactID uuid.UUID) error
+	Cancel(ctx context.Context, workspaceID, chatID uuid.UUID) error
 }
 
 // ChatRef polymorphically identifies a chat thread within a workspace.
@@ -191,7 +195,6 @@ type SendRequest struct {
 	Media               *domain.Media
 	SenderName          string
 	SenderType          string
-	DisableAI           *bool
 	ReplyToUID          *string
 	TemplateName        string
 	Language            string
@@ -212,20 +215,20 @@ type SendRequest struct {
 
 // SendResult contains the result of a conversational outbound send.
 type SendResult struct {
-	TraceID        string              `json:"trace_id"`
-	Status         string              `json:"status"`
-	QueuedAt       time.Time           `json:"queued_at"`
-	ChatID         uuid.UUID           `json:"chat_id"`
-	ContactID      uuid.UUID           `json:"contact_id"`
-	ConnectionID   uuid.UUID           `json:"connection_id,omitempty"`
-	Channel        string              `json:"channel,omitempty"`
-	From           string              `json:"from,omitempty"`
-	To             string              `json:"to,omitempty"`
-	Body           string              `json:"body,omitempty"`
-	ReplyToUID     *string             `json:"reply_to_uid,omitempty"`
-	AIDisabled     bool                `json:"ai_disabled"`
-	MessageID      uuid.UUID           `json:"message_id"`
-	Message        *domain.ChatMessage `json:"message,omitempty"`
+	TraceID      string              `json:"trace_id"`
+	Status       string              `json:"status"`
+	QueuedAt     time.Time           `json:"queued_at"`
+	ChatID       uuid.UUID           `json:"chat_id"`
+	ContactID    uuid.UUID           `json:"contact_id"`
+	ConnectionID uuid.UUID           `json:"connection_id,omitempty"`
+	Channel      string              `json:"channel,omitempty"`
+	From         string              `json:"from,omitempty"`
+	To           string              `json:"to,omitempty"`
+	Body         string              `json:"body,omitempty"`
+	ReplyToUID   *string             `json:"reply_to_uid,omitempty"`
+	AIDisabled   bool                `json:"ai_disabled"`
+	MessageID    uuid.UUID           `json:"message_id"`
+	Message      *domain.ChatMessage `json:"message,omitempty"`
 }
 
 // NoteRequest describes an internal note creation request.
@@ -343,6 +346,15 @@ func WithDebounceCanceller(d DebounceCanceller) Option {
 	}
 }
 
+// WithActivity configures the Chat Activity recorder.
+func WithActivity(r *activity.Recorder) Option {
+	return func(e *Engine) {
+		if !isNilInterface(r) {
+			e.activity = r
+		}
+	}
+}
+
 // Config groups dependencies used to construct a Chat Engine.
 type Config struct {
 	ChatRepo          ChatRepository
@@ -354,6 +366,7 @@ type Config struct {
 	WebhookDispatcher ReactionWebhookDispatcher
 	Ingestor          outbound.OutboundProcessor
 	Debouncer         DebounceCanceller
+	Activity          *activity.Recorder
 }
 
 // NewEngineFromConfig constructs a Chat Engine from a Config struct, safely ignoring nil or typed-nil fields.
@@ -368,12 +381,13 @@ func NewEngineFromConfig(cfg Config) *Engine {
 		WithReactionWebhookDispatcher(cfg.WebhookDispatcher),
 		WithMessageIngestor(cfg.Ingestor),
 		WithDebounceCanceller(cfg.Debouncer),
+		WithActivity(cfg.Activity),
 	)
 }
 
 // Engine is the deep domain module owning chat resolution, lazy snooze reopen,
-// triage mutations, human takeover synchronization, note/draft management,
-// reactions, summarization, and conversational outbound sends across REST and MCP.
+// triage mutations, note/draft management, reactions, summarization, and
+// conversational outbound sends across REST and MCP.
 type Engine struct {
 	chatRepo          ChatRepository
 	contactRepo       ContactRepository
@@ -384,6 +398,7 @@ type Engine struct {
 	webhookDispatcher ReactionWebhookDispatcher
 	ingestor          outbound.OutboundProcessor
 	debouncer         DebounceCanceller
+	activity          *activity.Recorder
 }
 
 // NewEngine creates a new Chat Engine with the given ChatRepository and options.
@@ -429,6 +444,24 @@ func (e *Engine) SetMessageIngestor(i outbound.OutboundProcessor) {
 // SetDebounceCanceller updates the debounce canceller on the Engine.
 func (e *Engine) SetDebounceCanceller(d DebounceCanceller) {
 	e.debouncer = d
+}
+
+// SetActivity updates the Chat Activity recorder on the Engine.
+func (e *Engine) SetActivity(r *activity.Recorder) {
+	e.activity = r
+}
+
+func (e *Engine) ensureActivity() *activity.Recorder {
+	if e.activity != nil {
+		return e.activity
+	}
+	if e.chatRepo != nil {
+		if pp, ok := e.chatRepo.(poolProvider); ok && pp.Pool() != nil {
+			e.activity = activity.New(pp.Pool(), e.publisher, e.debouncer, slog.Default())
+			return e.activity
+		}
+	}
+	return nil
 }
 
 // EnforceWorkspaceScope checks that the given workspaceID matches any authenticated tenant context.
@@ -782,53 +815,6 @@ func (e *Engine) ListThread(ctx context.Context, workspaceID, contactID uuid.UUI
 		_ = e.ResetUnreadByContact(ctx, wsID, contactID)
 	}
 	return msgs, nil
-}
-
-// ToggleContactBot toggles the AI bot state for a contact, synchronizing chats.ai_disabled,
-// cancelling any pending inbound debounce buffer, and publishing handoff events when pausing.
-func (e *Engine) ToggleContactBot(ctx context.Context, workspaceID, contactID uuid.UUID) (*domain.Contact, error) {
-	if e.contactRepo == nil {
-		return nil, errors.New("contact repository not configured")
-	}
-	wsID, err := EnforceWorkspaceScope(ctx, workspaceID)
-	if err != nil || wsID == uuid.Nil {
-		return nil, ErrContactNotFound
-	}
-	contact, err := e.contactRepo.GetByID(ctx, wsID, contactID)
-	if err != nil || contact == nil {
-		return nil, ErrContactNotFound
-	}
-
-	newState := !contact.BotActive
-	now := time.Now().UTC()
-	var pausedAt *time.Time
-	if !newState {
-		pausedAt = &now
-	}
-
-	if err := e.contactRepo.UpdateBotState(ctx, wsID, contactID, newState, pausedAt); err != nil {
-		return nil, err
-	}
-	contact.BotActive = newState
-	contact.BotPausedAt = pausedAt
-
-	var chatID uuid.UUID
-	if e.chatRepo != nil {
-		if c, rErr := e.ResolveChat(ctx, wsID, ChatRef{ContactID: contactID}); rErr == nil && c != nil {
-			chatID = c.ID
-			_ = e.chatRepo.SetAIDisabled(ctx, wsID, c.ID, !newState)
-		}
-	}
-
-	if !newState {
-		if e.debouncer != nil {
-			_ = e.debouncer.Cancel(ctx, wsID, contactID)
-		}
-		traceID := fmt.Sprintf("handoff-%s", uuid.New().String())
-		e.publishHandoffEvents(ctx, wsID, chatID, contactID, "", traceID, now)
-	}
-
-	return contact, nil
 }
 
 // reopenIfSnoozeExpired lazily reopens a snoozed chat whose snooze timer has elapsed
@@ -1303,10 +1289,8 @@ func (e *Engine) Assign(ctx context.Context, workspaceID uuid.UUID, ref ChatRef,
 	return c, member, nil
 }
 
-// SetAIEnabled toggles AI auto-replies on a chat and synchronizes contact.BotActive.
-// When disabling AI (human takeover), it also cancels any pending inbound debounce buffer,
-// publishes handoff NATS events, and writes an audit log.
-func (e *Engine) SetAIEnabled(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, enabled bool) (*domain.Chat, error) {
+// SetAI transitions AI engagement on a chat via the Chat Activity recorder and writes an audit log.
+func (e *Engine) SetAI(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, change activity.AIChange) (*domain.Chat, error) {
 	c, err := e.ResolveChat(ctx, workspaceID, ref)
 	if errors.Is(err, ErrChatNotFound) && ref.ContactID != uuid.Nil {
 		c, err = e.EnsureChatForContact(ctx, workspaceID, ref.ContactID, false)
@@ -1315,35 +1299,28 @@ func (e *Engine) SetAIEnabled(ctx context.Context, workspaceID uuid.UUID, ref Ch
 		return nil, err
 	}
 
-	aiDisabled := !enabled
-	if err := e.chatRepo.SetAIDisabled(ctx, c.WorkspaceID, c.ID, aiDisabled); err != nil {
+	rec := e.ensureActivity()
+	if rec == nil {
+		return nil, errors.New("chat activity recorder not configured")
+	}
+
+	ai, err := rec.SetAI(ctx, c.WorkspaceID, activity.ChatID(c.ID), change)
+	if err != nil {
 		return nil, err
 	}
-	c.AIDisabled = aiDisabled
 
 	now := time.Now().UTC()
-	if e.contactRepo != nil && c.ContactID != uuid.Nil {
-		var pausedAt *time.Time
-		if aiDisabled {
-			pausedAt = &now
-		}
-		_ = e.contactRepo.UpdateBotState(ctx, c.WorkspaceID, c.ContactID, enabled, pausedAt)
-	}
-
-	if aiDisabled {
-		if e.debouncer != nil && c.ContactID != uuid.Nil {
-			_ = e.debouncer.Cancel(ctx, c.WorkspaceID, c.ContactID)
-		}
-		traceID := fmt.Sprintf("handoff-%s", uuid.New().String())
-		e.publishHandoffEvents(ctx, c.WorkspaceID, c.ID, c.ContactID, "", traceID, now)
-	}
+	engaged := ai.Effective(now).IsEngaged()
+	c.AI = ai
+	c.AIDisabled = !engaged
 
 	if e.auditRepo != nil {
 		auditPayload, _ := json.Marshal(map[string]interface{}{
 			"chat_id":     c.ID.String(),
 			"contact_id":  c.ContactID.String(),
-			"enabled":     enabled,
-			"ai_disabled": aiDisabled,
+			"enabled":     engaged,
+			"ai_disabled": !engaged,
+			"ai_mode":     string(ai.Mode),
 		})
 		_ = e.auditRepo.InsertAuditLog(ctx, &repository.AuditEntry{
 			ID:          uuid.New(),
@@ -1356,29 +1333,6 @@ func (e *Engine) SetAIEnabled(ctx context.Context, workspaceID uuid.UUID, ref Ch
 	}
 
 	return c, nil
-}
-
-func (e *Engine) publishHandoffEvents(ctx context.Context, workspaceID, chatID, contactID uuid.UUID, senderName, traceID string, ts time.Time) {
-	if e.publisher == nil {
-		return
-	}
-	handoffMap := map[string]interface{}{
-		"event":        "chat.handoff.human_takeover",
-		"workspace_id": workspaceID.String(),
-		"chat_id":      chatID.String(),
-		"contact_id":   contactID.String(),
-		"trace_id":     traceID,
-		"timestamp":    ts.Format(time.RFC3339),
-	}
-	if senderName != "" {
-		handoffMap["sender_name"] = senderName
-	}
-	handoffPayload, err := json.Marshal(handoffMap)
-	if err != nil {
-		return
-	}
-	_ = e.publisher.Publish(ctx, "chat.handoff.human_takeover", handoffPayload, traceID)
-	_ = e.publisher.Publish(ctx, fmt.Sprintf("chat.handoff.%s", workspaceID.String()), handoffPayload, traceID)
 }
 
 // CreateNote creates a private internal note (or AI whisper draft) on a chat thread and writes an audit entry.
@@ -1589,13 +1543,11 @@ func (e *Engine) PromoteDraft(ctx context.Context, workspaceID uuid.UUID, ref Ch
 		return nil, ErrEmptyBody
 	}
 
-	disableAI := true
 	res, err := e.SendMessage(ctx, c.WorkspaceID, SendRequest{
 		Ref:        ChatRef{ChatID: c.ID},
 		Body:       finalBody,
 		SenderType: string(domain.SenderTypeHumanAgent),
 		SenderName: "Operator (Approved AI Draft)",
-		DisableAI:  &disableAI,
 	})
 	if err != nil {
 		return nil, err
@@ -1618,10 +1570,10 @@ func (e *Engine) PromoteDraft(ctx context.Context, workspaceID uuid.UUID, ref Ch
 	return res, nil
 }
 
-// SendMessage dispatches an outbound message on a chat thread, delegating to
-// OutboundProcessor.Ingest when configured, enforcing WABA 24h window and queue backpressure,
-// synchronizing chats.ai_disabled and contacts.bot_active, cancelling pending inbound debounce,
-// publishing handoff events on human takeover, and recording an immutable audit entry.
+// SendMessage dispatches an outbound message on a chat thread, delegating
+// outbound turn persistence, AI state transition, debounce cancellation,
+// handoff event publishing, WABA 24h window enforcement, and queue backpressure
+// solely to OutboundProcessor.Ingest, and recording an immutable audit entry.
 func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req SendRequest) (*SendResult, error) {
 	body := strings.TrimSpace(req.Body)
 	if body == "" && req.Media == nil && strings.TrimSpace(req.TemplateName) == "" && req.Interactive == nil && req.Product == nil {
@@ -1636,40 +1588,12 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 	if errors.Is(err, ErrChatNotFound) && strings.TrimSpace(req.Ref.Phone) != "" {
 		c, err = e.findOrCreateChatByPhone(ctx, workspaceID, req.Ref, req.ConnectionID)
 	}
-	if err != nil && (e.chatRepo == nil || (e.contactRepo == nil && strings.TrimSpace(req.Ref.Phone) != "")) {
-		wsID, sErr := EnforceWorkspaceScope(ctx, workspaceID)
-		if sErr != nil || wsID == uuid.Nil {
-			return nil, ErrChatNotFound
-		}
-		if e.contactRepo != nil {
-			if req.Ref.ContactID != uuid.Nil {
-				contact, _ = e.contactRepo.GetByID(ctx, wsID, req.Ref.ContactID)
-			} else if phone := strings.TrimSpace(req.Ref.Phone); phone != "" {
-				if resolver, ok := e.contactRepo.(contactResolver); ok {
-					ch := strings.ToLower(strings.TrimSpace(req.Ref.Channel))
-					if ch == "" {
-						ch = "whatsapp"
-					}
-					contact, _ = resolver.ResolveContact(ctx, wsID, ch, phone, phone, "", "")
-				}
-			}
-		}
-		c = &domain.Chat{
-			ID:          uuid.New(),
-			WorkspaceID: wsID,
-			Status:      domain.ChatStatusOpen,
-		}
-		if contact != nil {
-			c.ContactID = contact.ID
-		}
-		err = nil
-	}
 	if err != nil {
 		return nil, err
 	}
 	wsID := c.WorkspaceID
 
-	if contact == nil && e.contactRepo != nil && c.ContactID != uuid.Nil {
+	if e.contactRepo != nil && c.ContactID != uuid.Nil {
 		contact, _ = e.contactRepo.GetByID(ctx, wsID, c.ContactID)
 	}
 
@@ -1757,15 +1681,11 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 		senderIdentity = req.SenderIdentity
 	}
 
-	if e.ingestor != nil && to == "" {
-		return nil, errors.New("contact has no phone number or channel identity")
+	if e.ingestor == nil {
+		return nil, errors.New("outbound message ingestor not configured")
 	}
-
-	// Enforce WABA 24h service window on free-form text (when ingestor is not configured)
-	if e.ingestor == nil && req.StrictServiceWindow && channel == "whatsapp_cloud" && strings.TrimSpace(req.TemplateName) == "" {
-		if !c.IsServiceWindowOpen() {
-			return nil, ErrServiceWindowExpired
-		}
+	if to == "" {
+		return nil, errors.New("contact has no phone number or channel identity")
 	}
 
 	senderName := strings.TrimSpace(req.SenderName)
@@ -1776,11 +1696,6 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 	senderType := domain.NormalizeSenderType(req.SenderType)
 	if senderType == "" {
 		senderType = domain.SenderTypeHumanAgent
-	}
-
-	disableAI := senderType == domain.SenderTypeHumanAgent
-	if req.DisableAI != nil {
-		disableAI = *req.DisableAI
 	}
 
 	prefix := strings.TrimSpace(req.TraceIDPrefix)
@@ -1799,114 +1714,84 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 		}
 	}
 
-	var persistedMsg *domain.ChatMessage
+	if channel == "" {
+		channel = "whatsapp"
+	}
+	meta := make(map[string]string)
+	for k, v := range req.Metadata {
+		meta[k] = v
+	}
+	meta["chat_id"] = c.ID.String()
+	meta["sender_type"] = string(senderType)
+	meta["sender_name"] = senderName
+	if connID != uuid.Nil {
+		meta["connection_id"] = connID.String()
+	}
+	if req.ReplyToUID != nil && *req.ReplyToUID != "" {
+		meta["reply_to_uid"] = *req.ReplyToUID
+	}
 
-	if e.ingestor != nil && to != "" {
-		if channel == "" {
-			channel = "whatsapp"
-		}
-		meta := make(map[string]string)
-		for k, v := range req.Metadata {
-			meta[k] = v
-		}
-		meta["chat_id"] = c.ID.String()
-		meta["sender_type"] = string(senderType)
-		meta["sender_name"] = senderName
-		if connID != uuid.Nil {
-			meta["connection_id"] = connID.String()
-		}
-		if req.ReplyToUID != nil && *req.ReplyToUID != "" {
-			meta["reply_to_uid"] = *req.ReplyToUID
-		}
+	createReq := &domain.CreateMessageRequest{
+		To:               to,
+		Channel:          channel,
+		From:             senderIdentity,
+		Body:             body,
+		Media:            req.Media,
+		Metadata:         meta,
+		FallbackChannels: req.FallbackChannels,
+		FallbackBehavior: req.FallbackBehavior,
+		TemplateName:     req.TemplateName,
+		Language:         req.Language,
+		Components:       req.Components,
+		Interactive:      req.Interactive,
+		ChannelOverrides: req.ChannelOverrides,
+		Type:             req.Type,
+		Product:          req.Product,
+		ConversationalIngestFields: domain.ConversationalIngestFields{
+			ChatID:              &c.ID,
+			ReplyToUID:          req.ReplyToUID,
+			SenderType:          string(senderType),
+			SenderName:          senderName,
+			StrictServiceWindow: req.StrictServiceWindow,
+		},
+	}
 
-		createReq := &domain.CreateMessageRequest{
-			To:               to,
-			Channel:          channel,
-			From:             senderIdentity,
-			Body:             body,
-			Media:            req.Media,
-			Metadata:         meta,
-			FallbackChannels: req.FallbackChannels,
-			FallbackBehavior: req.FallbackBehavior,
-			TemplateName:     req.TemplateName,
-			Language:         req.Language,
-			Components:       req.Components,
-			Interactive:      req.Interactive,
-			ChannelOverrides: req.ChannelOverrides,
-			Type:             req.Type,
-			Product:          req.Product,
-			ConversationalIngestFields: domain.ConversationalIngestFields{
-				ChatID:              &c.ID,
-				ReplyToUID:          req.ReplyToUID,
-				SenderType:          string(senderType),
-				SenderName:          senderName,
-				DisableAI:           disableAI,
-				StrictServiceWindow: req.StrictServiceWindow,
-			},
+	qMsg, ingestErr := e.ingestor.Ingest(ctx, wsID, traceID, createReq)
+	if ingestErr != nil {
+		var valErr *outbound.ValidationError
+		if errors.As(ingestErr, &valErr) && valErr.Response != nil && valErr.Response.Code == "SESSION_WINDOW_EXPIRED" {
+			return nil, fmt.Errorf("%w: %w", ErrServiceWindowExpired, ingestErr)
 		}
+		return nil, ingestErr
+	}
+	// If ingestor did not check the service window (e.g. mock ingestor without chatRepo/windowChecker),
+	// still enforce StrictServiceWindow after ingestor queue-depth checks pass.
+	if req.StrictServiceWindow && channel == "whatsapp_cloud" && strings.TrimSpace(req.TemplateName) == "" {
+		if !c.IsServiceWindowOpen() {
+			return nil, ErrServiceWindowExpired
+		}
+	}
+	if qMsg != nil && !qMsg.QueuedAt.IsZero() {
+		now = qMsg.QueuedAt
+	}
 
-		qMsg, ingestErr := e.ingestor.Ingest(ctx, wsID, traceID, createReq)
-		if ingestErr != nil {
-			var valErr *outbound.ValidationError
-			if errors.As(ingestErr, &valErr) && valErr.Response != nil && valErr.Response.Code == "SESSION_WINDOW_EXPIRED" {
-				return nil, fmt.Errorf("%w: %w", ErrServiceWindowExpired, ingestErr)
-			}
-			return nil, ingestErr
-		}
-		// If ingestor did not check the service window (e.g. mock ingestor without chatRepo/windowChecker),
-		// still enforce StrictServiceWindow after ingestor queue-depth checks pass.
-		if req.StrictServiceWindow && channel == "whatsapp_cloud" && strings.TrimSpace(req.TemplateName) == "" {
-			if !c.IsServiceWindowOpen() {
-				return nil, ErrServiceWindowExpired
-			}
-		}
-		if qMsg != nil && !qMsg.QueuedAt.IsZero() {
-			now = qMsg.QueuedAt
-		}
-
-		// Check if OutboundProcessor already persisted the ChatMessage (when its chatRepo is wired)
+	if c.Status == domain.ChatStatusSnoozed || c.Status == domain.ChatStatusClosed {
 		if e.chatRepo != nil {
-			persistedMsg, _ = e.chatRepo.GetChatMessageByUID(ctx, wsID, traceID)
+			_ = e.chatRepo.UpdateChatStatus(ctx, wsID, c.ID, string(domain.ChatStatusOpen))
 		}
-	} else if e.publisher != nil {
-		if disableAI {
-			e.publishHandoffEvents(ctx, wsID, c.ID, c.ContactID, senderName, traceID, now)
-		}
-		qMsg := domain.QueueMessage{
-			WorkspaceID:      wsID,
-			ConnectionID:     connID,
-			SenderIdentity:   senderIdentity,
-			TraceID:          traceID,
-			To:               to,
-			Channel:          channel,
-			Body:             body,
-			Media:            req.Media,
-			TemplateName:     req.TemplateName,
-			Language:         req.Language,
-			Components:       req.Components,
-			Interactive:      req.Interactive,
-			ChannelOverrides: req.ChannelOverrides,
-			FallbackChannels: req.FallbackChannels,
-			FallbackBehavior: req.FallbackBehavior,
-			Type:             req.Type,
-			Product:          req.Product,
-			QueuedAt:         now,
-		}
-		data, mErr := json.Marshal(qMsg)
-		if mErr != nil {
-			return nil, mErr
-		}
-		if pubErr := e.publisher.Publish(ctx, "messages.outbound", data, traceID); pubErr != nil {
-			return nil, pubErr
+		c.Status = domain.ChatStatusOpen
+		c.SnoozedUntil = nil
+		if e.contactRepo != nil && c.ContactID != uuid.Nil {
+			_ = e.contactRepo.ReopenThread(ctx, wsID, c.ContactID)
 		}
 	}
 
-	if persistedMsg == nil {
-		persistedMsg = e.persistOutboundChatMessage(ctx, wsID, c, traceID, senderType, senderName, senderIdentity, to, channel, displayBody, disableAI, now, req)
-	}
-
-	if disableAI && e.debouncer != nil && c.ContactID != uuid.Nil {
-		_ = e.debouncer.Cancel(ctx, wsID, c.ContactID)
+	var persistedMsg *domain.ChatMessage
+	if e.chatRepo != nil {
+		persistedMsg, _ = e.chatRepo.GetChatMessageByUID(ctx, wsID, traceID)
+		if updatedChat, gErr := e.chatRepo.GetChat(ctx, wsID, c.ID); gErr == nil && updatedChat != nil {
+			c = updatedChat
+		}
 	}
 
 	if e.auditRepo != nil {
@@ -1964,72 +1849,8 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 		To:           to,
 		Body:         displayBody,
 		ReplyToUID:   req.ReplyToUID,
-		AIDisabled:   disableAI || c.AIDisabled,
+		AIDisabled:   !c.EffectiveAI().IsEngaged() || senderType == domain.SenderTypeHumanAgent,
 		MessageID:    msgID,
 		Message:      persistedMsg,
 	}, nil
-}
-
-func (e *Engine) persistOutboundChatMessage(
-	ctx context.Context,
-	wsID uuid.UUID,
-	c *domain.Chat,
-	traceID string,
-	senderType domain.SenderType,
-	senderName, senderIdentity, to, channel, displayBody string,
-	disableAI bool,
-	now time.Time,
-	req SendRequest,
-) *domain.ChatMessage {
-	if c.Status == domain.ChatStatusSnoozed || c.Status == domain.ChatStatusClosed {
-		if e.chatRepo != nil {
-			_ = e.chatRepo.UpdateChatStatus(ctx, wsID, c.ID, string(domain.ChatStatusOpen))
-		}
-		c.Status = domain.ChatStatusOpen
-		c.SnoozedUntil = nil
-		if e.contactRepo != nil && c.ContactID != uuid.Nil {
-			_ = e.contactRepo.ReopenThread(ctx, wsID, c.ContactID)
-		}
-	}
-
-	chatMsg := domain.BuildOutboundChatMessage(domain.OutboundChatMessageParams{
-		ChatID:         c.ID,
-		WorkspaceID:    wsID,
-		UID:            traceID,
-		SenderType:     senderType,
-		SenderName:     senderName,
-		SenderIdentity: senderIdentity,
-		To:             to,
-		Channel:        channel,
-		Body:           displayBody,
-		TemplateName:   req.TemplateName,
-		Language:       req.Language,
-		Type:           req.Type,
-		Media:          req.Media,
-		Product:        req.Product,
-		ReplyToUID:     req.ReplyToUID,
-		Metadata:       req.Metadata,
-		CreatedAt:      now,
-	})
-	if e.chatRepo != nil {
-		if err := e.chatRepo.AddChatMessage(ctx, chatMsg); err != nil {
-			slog.ErrorContext(ctx, "failed to persist outbound chat message", "error", err, "chat_id", c.ID, "trace_id", traceID)
-		}
-	}
-
-	if disableAI {
-		if e.chatRepo != nil {
-			_ = e.chatRepo.SetAIDisabled(ctx, wsID, c.ID, true)
-		}
-		if e.contactRepo != nil && c.ContactID != uuid.Nil {
-			_ = e.contactRepo.UpdateBotState(ctx, wsID, c.ContactID, false, &now)
-		}
-		if e.ingestor != nil {
-			e.publishHandoffEvents(ctx, wsID, c.ID, c.ContactID, senderName, traceID, now)
-		}
-	}
-	if e.chatRepo != nil {
-		_ = e.chatRepo.TouchLastMessageAt(ctx, wsID, c.ID, now)
-	}
-	return chatMsg
 }

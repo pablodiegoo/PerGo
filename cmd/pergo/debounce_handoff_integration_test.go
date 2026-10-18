@@ -295,7 +295,7 @@ func TestDebounceHandoffIntegration(t *testing.T) {
 		t.Fatalf("expected HTTP 204 from SendMessage, got %d", sendRec.Code)
 	}
 
-	// Verify chat updated: ai_disabled = true
+	// Verify chat updated: ai_disabled = true and AI.Mode = paused
 	updatedChat, err := chatRepo.GetChat(ctx, ws.ID, chat.ID)
 	if err != nil {
 		t.Fatalf("failed to get updated chat: %v", err)
@@ -303,14 +303,8 @@ func TestDebounceHandoffIntegration(t *testing.T) {
 	if !updatedChat.AIDisabled {
 		t.Errorf("expected ai_disabled = true after human agent reply")
 	}
-
-	// Verify contact bot_active = false
-	updatedContact, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
-	if err != nil {
-		t.Fatalf("failed to get updated contact: %v", err)
-	}
-	if updatedContact.BotActive {
-		t.Errorf("expected contact bot_active = false after human takeover")
+	if updatedChat.AI.Mode != domain.AIModePaused || updatedChat.AI.PausedUntil == nil {
+		t.Errorf("expected chat AI mode paused with non-nil PausedUntil after human takeover, got mode=%q until=%v", updatedChat.AI.Mode, updatedChat.AI.PausedUntil)
 	}
 
 	// Verify handoff event was published

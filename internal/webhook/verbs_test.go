@@ -10,19 +10,47 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pablojhp.pergo/internal/chat/activity"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/webhook"
+	"github.com/testcontainers/testcontainers-go"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func getTestPoolWithMigrations(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("PERGO_DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"
+		bgCtx := context.Background()
+		pgContainer, err := tcpostgres.Run(bgCtx,
+			"postgres:16-alpine",
+			tcpostgres.WithDatabase("pergo_test"),
+			tcpostgres.WithUsername("postgres"),
+			tcpostgres.WithPassword("postgres"),
+			testcontainers.WithWaitStrategy(
+				wait.ForLog("database system is ready to accept connections").
+					WithOccurrence(2).
+					WithStartupTimeout(30*time.Second),
+			),
+		)
+		if err != nil {
+			t.Fatalf("failed to start postgres container: %v", err)
+		}
+		t.Cleanup(func() {
+			_ = pgContainer.Terminate(bgCtx)
+		})
+		connStr, err := pgContainer.ConnectionString(bgCtx, "sslmode=disable")
+		if err != nil {
+			t.Fatalf("failed to get connection string: %v", err)
+		}
+		dsn = connStr
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	pool, err := pgxpool.New(ctx, dsn)
@@ -279,7 +307,10 @@ func TestVerbsEngine(t *testing.T) {
 		}
 	})
 
-	t.Run("Pause bot indefinitely", func(t *testing.T) {
+	rec := activity.New(pool, nil, nil, nil)
+	engine.WithActivity(rec)
+
+	t.Run("Pause bot default duration (12h)", func(t *testing.T) {
 		c, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "sender-pause-indef", "", "", "")
 		if err != nil {
 			t.Fatalf("ResolveContact failed: %v", err)
@@ -307,27 +338,22 @@ func TestVerbsEngine(t *testing.T) {
 			},
 		}
 
+		before := time.Now().UTC()
 		err = engine.Execute(ctx, task, verbs)
 		if err != nil {
 			t.Fatalf("Execute failed: %v", err)
 		}
 
-		// Verify database state
-		var botActive bool
-		var botPausedAt *time.Time
-		err = pool.QueryRow(ctx, "SELECT bot_active, bot_paused_at FROM contacts WHERE id = $1", c.ID).Scan(&botActive, &botPausedAt)
+		state, _, err := rec.Snapshot(ctx, ws.ID, activity.ChatOf(uuid.Nil, c.ID))
 		if err != nil {
-			t.Fatalf("query contact failed: %v", err)
+			t.Fatalf("Snapshot failed: %v", err)
 		}
-
-		if botActive {
-			t.Error("expected bot_active to be false")
+		if state.AI.Mode != domain.AIModePaused {
+			t.Errorf("expected AI mode paused, got %q", state.AI.Mode)
 		}
-		if botPausedAt == nil {
-			t.Fatal("expected bot_paused_at to be set")
-		}
-		if time.Since(*botPausedAt) > 10*time.Second {
-			t.Errorf("expected bot_paused_at to be close to now, got %v", botPausedAt)
+		expected := before.Add(12 * time.Hour)
+		if diff := state.AI.PausedUntil.Sub(expected); diff < -10*time.Second || diff > 10*time.Second {
+			t.Errorf("expected PausedUntil ≈ now+12h (%v), got %v", expected, state.AI.PausedUntil)
 		}
 	})
 
@@ -355,32 +381,26 @@ func TestVerbsEngine(t *testing.T) {
 		verbs := []webhook.Verb{
 			{
 				Action: "pause_bot",
-				Params: json.RawMessage(`{"duration": "2h"}`),
+				Params: json.RawMessage(`{"duration": "30m"}`),
 			},
 		}
 
+		before := time.Now().UTC()
 		err = engine.Execute(ctx, task, verbs)
 		if err != nil {
 			t.Fatalf("Execute failed: %v", err)
 		}
 
-		// Verify database state
-		var botActive bool
-		var botPausedAt *time.Time
-		err = pool.QueryRow(ctx, "SELECT bot_active, bot_paused_at FROM contacts WHERE id = $1", c.ID).Scan(&botActive, &botPausedAt)
+		state, _, err := rec.Snapshot(ctx, ws.ID, activity.ChatOf(uuid.Nil, c.ID))
 		if err != nil {
-			t.Fatalf("query contact failed: %v", err)
+			t.Fatalf("Snapshot failed: %v", err)
 		}
-
-		if botActive {
-			t.Error("expected bot_active to be false")
+		if state.AI.Mode != domain.AIModePaused {
+			t.Errorf("expected AI mode paused, got %q", state.AI.Mode)
 		}
-		if botPausedAt == nil {
-			t.Fatal("expected bot_paused_at to be set")
-		}
-		elapsed := time.Since(*botPausedAt)
-		if elapsed < 9*time.Hour || elapsed > 11*time.Hour {
-			t.Errorf("expected bot_paused_at to be offset by ~10h (since 12h - 2h = 10h), got %v (elapsed: %v)", botPausedAt, elapsed)
+		expected := before.Add(30 * time.Minute)
+		if diff := state.AI.PausedUntil.Sub(expected); diff < -10*time.Second || diff > 10*time.Second {
+			t.Errorf("expected PausedUntil ≈ now+30m (%v), got %v", expected, state.AI.PausedUntil)
 		}
 	})
 

@@ -78,6 +78,43 @@ type ReactionUpdatedPayload struct {
 	Timestamp   string     `json:"timestamp"`
 }
 
+// AIMode represents the AI Engagement mode on a Chat.
+type AIMode string
+
+const (
+	AIModeActive AIMode = "active"
+	AIModePaused AIMode = "paused"
+	AIModeOff    AIMode = "off"
+)
+
+// AIEngagement holds the per-Chat AI automation engagement state: active, paused until T, or off.
+type AIEngagement struct {
+	Mode        AIMode     `json:"mode"`
+	PausedUntil *time.Time `json:"paused_until,omitempty"`
+}
+
+// Effective evaluates the effective AI Engagement at timestamp now without mutating storage.
+// Expired pauses return active with a nil PausedUntil.
+func (e AIEngagement) Effective(now time.Time) AIEngagement {
+	switch e.Mode {
+	case AIModeOff:
+		return AIEngagement{Mode: AIModeOff}
+	case AIModePaused:
+		if e.PausedUntil != nil && now.Before(*e.PausedUntil) {
+			u := e.PausedUntil.UTC()
+			return AIEngagement{Mode: AIModePaused, PausedUntil: &u}
+		}
+		return AIEngagement{Mode: AIModeActive}
+	default:
+		return AIEngagement{Mode: AIModeActive}
+	}
+}
+
+// IsEngaged reports whether this AIEngagement is in the active (engaged) mode.
+func (e AIEngagement) IsEngaged() bool {
+	return e.Mode == "" || e.Mode == AIModeActive
+}
+
 // Chat represents a conversational thread between a workspace connection and a contact.
 type Chat struct {
 	ID                     uuid.UUID              `json:"id"`
@@ -90,6 +127,7 @@ type Chat struct {
 	AssignedEmail          *string                `json:"assigned_email,omitempty"`
 	Tags                   []string               `json:"tags"`
 	UnreadCount            int                    `json:"unread_count"`
+	AI                     AIEngagement           `json:"ai"`
 	AIDisabled             bool                   `json:"ai_disabled"`
 	ServiceWindowExpiresAt *time.Time             `json:"service_window_expires_at,omitempty"`
 	ServiceWindowIsOpen    bool                   `json:"service_window_is_open"`
@@ -97,6 +135,21 @@ type Chat struct {
 	Metadata               map[string]interface{} `json:"metadata"`
 	CreatedAt              time.Time              `json:"created_at"`
 	UpdatedAt              time.Time              `json:"updated_at"`
+}
+
+// EffectiveAI returns the effective AIEngagement for this Chat at the given time (defaults to time.Now().UTC()).
+func (c *Chat) EffectiveAI(now ...time.Time) AIEngagement {
+	if c == nil {
+		return AIEngagement{Mode: AIModeActive}
+	}
+	t := time.Now().UTC()
+	if len(now) > 0 && !now[0].IsZero() {
+		t = now[0].UTC()
+	}
+	if c.AI.Mode == "" && c.AIDisabled {
+		return AIEngagement{Mode: AIModeOff}
+	}
+	return c.AI.Effective(t)
 }
 
 // IsServiceWindowOpen reports whether the customer service window is active.
@@ -360,4 +413,225 @@ func BuildOutboundChatMessage(p OutboundChatMessageParams) *ChatMessage {
 		CreatedAt:   p.CreatedAt,
 	}
 }
+
+// ChatState is the pure value snapshot of a Chat's activity-driven state.
+type ChatState struct {
+	ID                     uuid.UUID
+	WorkspaceID            uuid.UUID
+	ConnectionID           *uuid.UUID
+	ContactID              uuid.UUID
+	Status                 ChatStatus
+	SnoozedUntil           *time.Time
+	AI                     AIEngagement
+	ServiceWindowExpiresAt *time.Time
+	UnreadCount            int
+	LastMessageAt          time.Time
+}
+
+// Activity is a domain event applied to a ChatState via Apply.
+type Activity interface {
+	isActivity()
+}
+
+// OutboundActivity represents an outbound message turn on a Chat.
+type OutboundActivity struct {
+	ID           uuid.UUID
+	At           time.Time
+	UID          string
+	SenderType   SenderType
+	SenderName   string
+	SenderID     string
+	ReplyToUID   *string
+	Body         string
+	Media        *Media
+	Product      *ProductPayload
+	TemplateName string
+	Language     string
+	MessageType  string
+	Channel      string
+	To           string
+	Metadata     map[string]string
+}
+
+func (OutboundActivity) isActivity() {}
+
+// AIChangeActivity represents an explicit AI Engagement state transition on a Chat.
+type AIChangeActivity struct {
+	At          time.Time
+	Mode        AIMode
+	PausedUntil *time.Time
+	TraceID     string
+}
+
+func (AIChangeActivity) isActivity() {}
+
+// IntentKind identifies a post-commit side-effect produced by Apply.
+type IntentKind string
+
+const (
+	IntentCancelDebounce IntentKind = "cancel_debounce"
+	IntentPublishHandoff IntentKind = "publish_handoff"
+)
+
+// Intent describes a post-commit effect to execute after persisting a ChatState transition.
+type Intent struct {
+	Kind        IntentKind
+	WorkspaceID uuid.UUID
+	ChatID      uuid.UUID
+	ContactID   uuid.UUID
+	SenderName  string
+	TraceID     string
+	At          time.Time
+}
+
+// Apply is the pure state machine transition function for Chat Activity.
+// Given a ChatState snapshot and an Activity, it returns the next ChatState,
+// an optional ChatMessage to persist, and post-commit Intents.
+func Apply(s ChatState, a Activity) (ChatState, *ChatMessage, []Intent) {
+	next := s
+	if next.AI.Mode == "" {
+		next.AI.Mode = AIModeActive
+	}
+
+	switch act := a.(type) {
+	case OutboundActivity:
+		at := act.At.UTC()
+		if at.IsZero() {
+			at = time.Now().UTC()
+		}
+
+		if next.Status == ChatStatusSnoozed || next.Status == ChatStatusClosed || next.Status == "" {
+			next.Status = ChatStatusOpen
+			next.SnoozedUntil = nil
+		}
+		if at.After(next.LastMessageAt) {
+			next.LastMessageAt = at
+		}
+
+		senderType := NormalizeSenderType(string(act.SenderType))
+		if senderType == "" {
+			senderType = SenderTypeAIAgent
+		}
+
+		var intents []Intent
+		if senderType == SenderTypeHumanAgent {
+			eff := s.AI.Effective(at)
+			wasEngaged := eff.IsEngaged()
+
+			if eff.Mode == AIModeOff {
+				next.AI = AIEngagement{Mode: AIModeOff}
+			} else {
+				until := at.Add(12 * time.Hour)
+				if eff.Mode == AIModePaused && eff.PausedUntil != nil && eff.PausedUntil.After(until) {
+					until = *eff.PausedUntil
+				}
+				next.AI = AIEngagement{Mode: AIModePaused, PausedUntil: &until}
+			}
+
+			if wasEngaged && !next.AI.Effective(at).IsEngaged() {
+				intents = append(intents,
+					Intent{
+						Kind:        IntentCancelDebounce,
+						WorkspaceID: s.WorkspaceID,
+						ChatID:      s.ID,
+						ContactID:   s.ContactID,
+						SenderName:  act.SenderName,
+						TraceID:     act.UID,
+						At:          at,
+					},
+					Intent{
+						Kind:        IntentPublishHandoff,
+						WorkspaceID: s.WorkspaceID,
+						ChatID:      s.ID,
+						ContactID:   s.ContactID,
+						SenderName:  act.SenderName,
+						TraceID:     act.UID,
+						At:          at,
+					},
+				)
+			}
+		}
+
+		msg := BuildOutboundChatMessage(OutboundChatMessageParams{
+			ID:             act.ID,
+			ChatID:         s.ID,
+			WorkspaceID:    s.WorkspaceID,
+			UID:            act.UID,
+			SenderType:     senderType,
+			SenderName:     act.SenderName,
+			SenderIdentity: act.SenderID,
+			To:             act.To,
+			Channel:        act.Channel,
+			Body:           act.Body,
+			TemplateName:   act.TemplateName,
+			Language:       act.Language,
+			Type:           act.MessageType,
+			Media:          act.Media,
+			Product:        act.Product,
+			ReplyToUID:     act.ReplyToUID,
+			Metadata:       act.Metadata,
+			CreatedAt:      at,
+		})
+		if msg.Metadata == nil {
+			msg.Metadata = make(map[string]interface{})
+		}
+		msg.Metadata["status"] = "queued"
+
+		return next, msg, intents
+
+	case AIChangeActivity:
+		at := act.At.UTC()
+		if at.IsZero() {
+			at = time.Now().UTC()
+		}
+
+		eff := s.AI.Effective(at)
+		wasEngaged := eff.IsEngaged()
+
+		switch act.Mode {
+		case AIModeOff:
+			next.AI = AIEngagement{Mode: AIModeOff}
+		case AIModePaused:
+			if eff.Mode == AIModeOff {
+				next.AI = AIEngagement{Mode: AIModeOff}
+			} else if act.PausedUntil != nil {
+				u := act.PausedUntil.UTC()
+				next.AI = AIEngagement{Mode: AIModePaused, PausedUntil: &u}
+			} else {
+				u := at.Add(12 * time.Hour)
+				next.AI = AIEngagement{Mode: AIModePaused, PausedUntil: &u}
+			}
+		default:
+			next.AI = AIEngagement{Mode: AIModeActive}
+		}
+
+		var intents []Intent
+		nowEngaged := next.AI.Effective(at).IsEngaged()
+		if !nowEngaged {
+			intents = append(intents, Intent{
+				Kind:        IntentCancelDebounce,
+				WorkspaceID: s.WorkspaceID,
+				ChatID:      s.ID,
+				ContactID:   s.ContactID,
+				TraceID:     act.TraceID,
+				At:          at,
+			})
+			if wasEngaged {
+				intents = append(intents, Intent{
+					Kind:        IntentPublishHandoff,
+					WorkspaceID: s.WorkspaceID,
+					ChatID:      s.ID,
+					ContactID:   s.ContactID,
+					TraceID:     act.TraceID,
+					At:          at,
+				})
+			}
+		}
+		return next, nil, intents
+
+	default:
+		return next, nil, nil
+	}
+}
+
 

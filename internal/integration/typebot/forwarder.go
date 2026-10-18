@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -19,6 +21,7 @@ type Forwarder struct {
 	integRepo   *repository.IntegrationRepository
 	publisher   inbound.Publisher
 	client      *Client
+	activity    *activity.Recorder
 }
 
 func NewForwarder(
@@ -26,12 +29,25 @@ func NewForwarder(
 	integRepo *repository.IntegrationRepository,
 	publisher inbound.Publisher,
 ) *Forwarder {
+	var rec *activity.Recorder
+	if sessionRepo != nil && sessionRepo.Pool() != nil {
+		rec = activity.New(sessionRepo.Pool(), nil, nil, nil)
+	}
 	return &Forwarder{
 		sessionRepo: sessionRepo,
 		integRepo:   integRepo,
 		publisher:   publisher,
 		client:      NewClient(),
+		activity:    rec,
 	}
+}
+
+func (f *Forwarder) WithActivity(rec *activity.Recorder) *Forwarder {
+	if f == nil {
+		return nil
+	}
+	f.activity = rec
+	return f
 }
 
 func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Contact, event *inbound.InboundEvent) error {
@@ -40,10 +56,22 @@ func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Cont
 		return nil
 	}
 
-	if contact == nil || !contact.BotActive {
-		if contact != nil {
-			slog.Debug("Skipping Typebot forward: bot is inactive for contact", "contact_id", contact.ID)
+	if contact == nil || event == nil {
+		return nil
+	}
+
+	if f.activity != nil {
+		state, _, err := f.activity.Snapshot(ctx, event.WorkspaceID, activity.ChatOf(event.ConnectionID, contact.ID))
+		if err != nil {
+			return fmt.Errorf("failed to snapshot chat state for typebot: %w", err)
 		}
+		if !state.AI.Effective(time.Now().UTC()).IsEngaged() {
+			slog.Debug("Skipping Typebot forward: AI is not engaged for chat", "contact_id", contact.ID, "connection_id", event.ConnectionID)
+			return nil
+		}
+	}
+
+	if f.integRepo == nil {
 		return nil
 	}
 

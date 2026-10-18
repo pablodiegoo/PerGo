@@ -22,6 +22,7 @@ import (
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/chat"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/pkg/slug"
@@ -122,6 +123,7 @@ type Server struct {
 	httpClient        *http.Client
 	wabaTemplateRepo  *repository.WABATemplateRepository
 	debouncer         chat.DebounceCanceller
+	activity          *activity.Recorder
 	chatEngine        *chat.Engine
 }
 
@@ -129,6 +131,13 @@ type Server struct {
 func WithChatEngine(eng *chat.Engine) ServerOption {
 	return func(s *Server) {
 		s.chatEngine = eng
+	}
+}
+
+// WithActivity configures a shared activity.Recorder instance on the MCP Server.
+func WithActivity(rec *activity.Recorder) ServerOption {
+	return func(s *Server) {
+		s.activity = rec
 	}
 }
 
@@ -150,6 +159,18 @@ func (s *Server) engine() *chat.Engine {
 	if s.chatRepo != nil {
 		chatRepo = s.chatRepo
 	}
+	rec := s.activity
+	if rec == nil && s.chatRepo != nil && s.chatRepo.Pool() != nil {
+		rec = activity.New(s.chatRepo.Pool(), s.publisher, s.debouncer, nil)
+	}
+	ingestor := s.ingestor
+	if ingestor == nil && rec != nil {
+		ingestor = outbound.NewProcessor(nil, nil, s.connectionRepo, s.publisher).
+			SetActivity(rec).
+			SetChatRepository(s.chatRepo).
+			SetContactRepository(s.contactRepo).
+			SetDebounceCanceller(s.debouncer)
+	}
 	var opts []chat.Option
 	if s.contactRepo != nil {
 		opts = append(opts, chat.WithContactRepo(s.contactRepo))
@@ -169,11 +190,14 @@ func (s *Server) engine() *chat.Engine {
 	if s.webhookDispatcher != nil {
 		opts = append(opts, chat.WithReactionWebhookDispatcher(s.webhookDispatcher))
 	}
-	if s.ingestor != nil {
-		opts = append(opts, chat.WithMessageIngestor(s.ingestor))
+	if ingestor != nil {
+		opts = append(opts, chat.WithMessageIngestor(ingestor))
 	}
 	if s.debouncer != nil {
 		opts = append(opts, chat.WithDebounceCanceller(s.debouncer))
+	}
+	if rec != nil {
+		opts = append(opts, chat.WithActivity(rec))
 	}
 	return chat.NewEngine(chatRepo, opts...)
 }

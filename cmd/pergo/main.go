@@ -36,6 +36,7 @@ import (
 	"github.com/pablojhp.pergo/internal/channel/telegram"
 	"github.com/pablojhp.pergo/internal/channel/whatsapp"
 	"github.com/pablojhp.pergo/internal/chat"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/config"
 	"github.com/pablojhp.pergo/internal/inbound"
@@ -92,6 +93,7 @@ type CoreDeps struct {
 	TypebotForwarder     *typebot.Forwarder
 	InboundRouter        inbound.InboundRouter
 	Debouncer            *inbound.Debouncer
+	Activity             *activity.Recorder
 	InboundProcessor     *inbound.InboundProcessor
 	OutboundProcessor    *outbound.Processor
 	ChatEngine           *chat.Engine
@@ -392,6 +394,13 @@ func BootstrapCore(
 		deps.InboundProcessor.SetDebouncer(deps.Debouncer)
 	}
 
+	if pool != nil {
+		deps.Activity = activity.New(pool, deps.Publisher, deps.Debouncer, slog.Default())
+		deps.VerbsEngine.WithActivity(deps.Activity)
+		deps.TypebotForwarder.WithActivity(deps.Activity)
+		deps.InboundProcessor.SetActivity(deps.Activity)
+	}
+
 	deps.SessionManager = session.NewManager(deps.DB, deps.ConnectionRepo, deps.SessionRegistry, deps.DispatcherRegistry, cfg.WAVersion, deps.InboundProcessor)
 	if deps.JetStreamPublisher != nil {
 		deps.SessionManager.SetPublisher(deps.JetStreamPublisher)
@@ -405,6 +414,9 @@ func BootstrapCore(
 	deps.OutboundProcessor.SetTemplateRepository(deps.WABATemplateRepo)
 	deps.OutboundProcessor.SetChatRepository(deps.ChatRepo)
 	deps.OutboundProcessor.SetContactRepository(deps.ContactRepo)
+	if deps.Activity != nil {
+		deps.OutboundProcessor.SetActivity(deps.Activity)
+	}
 	if deps.Debouncer != nil {
 		deps.OutboundProcessor.SetDebounceCanceller(deps.Debouncer)
 	}
@@ -418,6 +430,9 @@ func BootstrapCore(
 		chat.WithMessagePublisher(deps.Publisher),
 		chat.WithReactionWebhookDispatcher(deps.WebhookDispatcher),
 		chat.WithMessageIngestor(deps.OutboundProcessor),
+	}
+	if deps.Activity != nil {
+		chatEngineOpts = append(chatEngineOpts, chat.WithActivity(deps.Activity))
 	}
 	if deps.Debouncer != nil {
 		chatEngineOpts = append(chatEngineOpts, chat.WithDebounceCanceller(deps.Debouncer))
@@ -443,6 +458,9 @@ func BootstrapCore(
 		mcp.WithPublisher(deps.Publisher),
 		mcp.WithJetStream(deps.JS),
 		mcp.WithNATSConn(nc),
+	}
+	if deps.Activity != nil {
+		mcpOpts = append(mcpOpts, mcp.WithActivity(deps.Activity))
 	}
 	if deps.Debouncer != nil {
 		mcpOpts = append(mcpOpts, mcp.WithDebounceCanceller(deps.Debouncer))
@@ -584,6 +602,7 @@ func BuildHTTPRouter(core *CoreDeps) *echo.Echo {
 		apipkg.WithChatWebhookDispatcher(core.WebhookDispatcher),
 		apipkg.WithChatMessageIngestor(core.OutboundProcessor),
 		apipkg.WithChatDebounceCanceller(core.Debouncer),
+		apipkg.WithChatActivity(core.Activity),
 	)
 	chatAPIHandler.RegisterRoutes(e, middleware.EnforceWorkspaceScope())
 
@@ -593,6 +612,7 @@ func BuildHTTPRouter(core *CoreDeps) *echo.Echo {
 
 	// --- Chatwoot Inbound Webhook handler ---
 	chatwootWebhookHandler := handler.NewChatwootWebhookHandler(core.Pool, core.ChatwootMappingRepo, core.ContactRepo, core.Publisher)
+	chatwootWebhookHandler.SetActivity(core.Activity)
 	e.POST("/api/integrations/chatwoot", chatwootWebhookHandler.Handle)
 
 	// --- Typebot Inbound Webhook handler ---
@@ -737,6 +757,7 @@ func BuildHTTPRouter(core *CoreDeps) *echo.Echo {
 		ChatEngine:        core.ChatEngine,
 		Ingestor:          core.OutboundProcessor,
 		Debouncer:         core.Debouncer,
+		Activity:          core.Activity,
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
 	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)

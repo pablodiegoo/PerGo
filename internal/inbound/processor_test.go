@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/media"
@@ -953,6 +954,7 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
+	rec := activity.New(pool, activity.NewMemoryPublisher(), activity.NewMemoryDebounceCanceller(), nil)
 
 	ws, err := wsRepo.Create(ctx, "cooldown_test_ws_"+uuid.New().String())
 	if err != nil {
@@ -960,7 +962,7 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 	}
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
 
-	t.Run("Reset bot when paused for > 12 hours", func(t *testing.T) {
+	t.Run("Engages AI when timed pause has expired", func(t *testing.T) {
 		pub := &fakePublisher{}
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
@@ -983,7 +985,6 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 		proc.SetChatRepository(chatRepo)
 		proc.SetDebouncer(deb)
 
-		// 1. Resolve contact & create chat with human takeover (bot_active=false, ai_disabled=true)
 		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "cooldown-gt-12", "Cooldown Greater", "", "")
 		if err != nil {
 			t.Fatalf("failed to resolve contact: %v", err)
@@ -993,18 +994,10 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create chat: %v", err)
 		}
-		if err := chatRepo.SetAIDisabled(ctx, ws.ID, chat.ID, true); err != nil {
-			t.Fatalf("failed to set chat ai_disabled=true: %v", err)
+		if _, err := rec.SetAI(ctx, ws.ID, activity.ChatID(chat.ID), activity.AIPauseUntil(time.Now().UTC().Add(-1*time.Hour))); err != nil {
+			t.Fatalf("failed to set expired AI pause: %v", err)
 		}
 
-		// 2. Set bot paused state to 13 hours ago
-		pausedAt := time.Now().UTC().Add(-13 * time.Hour)
-		err = contactRepo.UpdateBotState(ctx, ws.ID, contact.ID, false, &pausedAt)
-		if err != nil {
-			t.Fatalf("failed to update bot state: %v", err)
-		}
-
-		// 3. Process an inbound event
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
 			MessageID:   "msg-cooldown-gt-12",
@@ -1019,43 +1012,29 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 			t.Fatalf("Process failed: %v", err)
 		}
 
-		// 4. Verify contact in DB has bot_active = true and bot_paused_at = nil
-		updated, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
-		if err != nil {
-			t.Fatalf("failed to get contact: %v", err)
-		}
-
-		if !updated.BotActive {
-			t.Error("expected bot_active to be reset to true")
-		}
-		if updated.BotPausedAt != nil {
-			t.Errorf("expected bot_paused_at to be nil, got %v", updated.BotPausedAt)
-		}
-
-		// 5. Verify chat in DB also has ai_disabled = false
 		updatedChat, err := chatRepo.GetChat(ctx, ws.ID, chat.ID)
 		if err != nil {
 			t.Fatalf("failed to get chat: %v", err)
 		}
 		if updatedChat.AIDisabled {
-			t.Error("expected chat.ai_disabled to be reset to false after > 12h bot cooldown")
+			t.Error("expected chat.AIDisabled to be false when timed pause has expired")
 		}
 
-		// 6. Verify InboundRouter proceeded
+		// Verify InboundRouter proceeded
 		select {
 		case <-syncer.called:
 		case <-time.After(1 * time.Second):
-			t.Fatal("expected InboundRouter to route message after > 12h auto-reset")
+			t.Fatal("expected InboundRouter to route message after expired timed pause")
 		}
 
-		// 7. Verify Debouncer enqueued and flushed coalesced turn via auto-bound publisher
+		// Verify Debouncer enqueued and flushed coalesced turn via auto-bound publisher
 		select {
 		case ev := <-coalescedChan:
 			if ev.Body != "Hello, is bot active?" {
 				t.Errorf("unexpected coalesced body: %q", ev.Body)
 			}
 		case <-time.After(1 * time.Second):
-			t.Fatal("expected Debouncer to flush coalesced turn after > 12h auto-reset")
+			t.Fatal("expected Debouncer to flush coalesced turn after expired timed pause")
 		}
 
 		pub.mu.Lock()
@@ -1075,7 +1054,7 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 		}
 	})
 
-	t.Run("Do NOT reset bot when paused for < 12 hours", func(t *testing.T) {
+	t.Run("Does NOT engage AI when timed pause is still active or AI is off", func(t *testing.T) {
 		pub := &fakePublisher{}
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
@@ -1097,24 +1076,19 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 		proc.SetChatRepository(chatRepo)
 		proc.SetDebouncer(deb)
 
-		// 1. Resolve contact & create chat (leave chat.AIDisabled = false to prove contact.BotActive=false alone also gates AI!)
 		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "cooldown-lt-12", "Cooldown Less", "", "")
 		if err != nil {
 			t.Fatalf("failed to resolve contact: %v", err)
 		}
-		_, err = chatRepo.FindOrCreateChat(ctx, ws.ID, nil, contact.ID)
+		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, nil, contact.ID)
 		if err != nil {
 			t.Fatalf("failed to create chat: %v", err)
 		}
 
-		// 2. Set bot paused state to 1 hour ago
-		pausedAt := time.Now().UTC().Add(-1 * time.Hour)
-		err = contactRepo.UpdateBotState(ctx, ws.ID, contact.ID, false, &pausedAt)
-		if err != nil {
-			t.Fatalf("failed to update bot state: %v", err)
+		if _, err := rec.SetAI(ctx, ws.ID, activity.ChatID(chat.ID), activity.AIPauseUntil(time.Now().UTC().Add(11*time.Hour))); err != nil {
+			t.Fatalf("failed to set active AI pause: %v", err)
 		}
 
-		// 3. Process an inbound event
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
 			MessageID:   "msg-cooldown-lt-12",
@@ -1129,27 +1103,14 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 			t.Fatalf("Process failed: %v", err)
 		}
 
-		// 4. Verify contact in DB still has bot_active = false and bot_paused_at set
-		updated, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
-		if err != nil {
-			t.Fatalf("failed to get contact: %v", err)
-		}
-
-		if updated.BotActive {
-			t.Error("expected bot_active to remain false")
-		}
-		if updated.BotPausedAt == nil {
-			t.Error("expected bot_paused_at to remain set")
-		}
-
-		// 5. Verify both Debouncer and InboundRouter were gated off because contact.BotActive is false
+		// Verify both Debouncer and InboundRouter were gated off
 		time.Sleep(150 * time.Millisecond)
 		if len(coalescedChan) != 0 {
-			t.Errorf("expected Debouncer to be gated off when contact.BotActive is false, got %d events", len(coalescedChan))
+			t.Errorf("expected Debouncer to be gated off when AI is paused, got %d events", len(coalescedChan))
 		}
 		select {
 		case <-syncer.called:
-			t.Error("expected InboundRouter to be gated off when contact.BotActive is false")
+			t.Error("expected InboundRouter to be gated off when AI is paused")
 		default:
 		}
 	})

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -51,8 +53,8 @@ func TestDebouncer_RapidMessagesCoalesce(t *testing.T) {
 	chatID := uuid.New()
 
 	// Clear any old keys
-	rdb.Del(ctx, fmt.Sprintf("debounce:%s:%s", wsID, contactID))
-	rdb.Del(ctx, fmt.Sprintf("debounce:timer:%s:%s", wsID, contactID))
+	rdb.Del(ctx, fmt.Sprintf("debounce:%s:%s", wsID, chatID))
+	rdb.Del(ctx, fmt.Sprintf("debounce:timer:%s:%s", wsID, chatID))
 
 	coalescedChan := make(chan *CoalescedTurnEvent, 5)
 	pub := &testCapturePublisher{}
@@ -157,8 +159,8 @@ func TestDebouncer_ManualFlush(t *testing.T) {
 	contactID := uuid.New()
 	chatID := uuid.New()
 
-	rdb.Del(ctx, fmt.Sprintf("debounce:%s:%s", wsID, contactID))
-	rdb.Del(ctx, fmt.Sprintf("debounce:timer:%s:%s", wsID, contactID))
+	rdb.Del(ctx, fmt.Sprintf("debounce:%s:%s", wsID, chatID))
+	rdb.Del(ctx, fmt.Sprintf("debounce:timer:%s:%s", wsID, chatID))
 
 	deb := NewDebouncer(rdb, WithDebounceTTL(10*time.Second))
 	defer deb.Close()
@@ -179,7 +181,7 @@ func TestDebouncer_ManualFlush(t *testing.T) {
 		t.Fatalf("enqueue failed: %v", err)
 	}
 
-	ev, err := deb.Flush(ctx, wsID, contactID)
+	ev, err := deb.Flush(ctx, wsID, chatID)
 	if err != nil {
 		t.Fatalf("manual flush failed: %v", err)
 	}
@@ -191,7 +193,7 @@ func TestDebouncer_ManualFlush(t *testing.T) {
 	}
 
 	// Second flush returns nil (idempotent)
-	ev2, err := deb.Flush(ctx, wsID, contactID)
+	ev2, err := deb.Flush(ctx, wsID, chatID)
 	if err != nil {
 		t.Fatalf("second flush error: %v", err)
 	}
@@ -208,8 +210,8 @@ func TestDebouncer_SetPublisherAndProcessorAutoBinding(t *testing.T) {
 	contactID := uuid.New()
 	chatID := uuid.New()
 
-	rdb.Del(ctx, fmt.Sprintf("debounce:%s:%s", wsID, contactID))
-	rdb.Del(ctx, fmt.Sprintf("debounce:timer:%s:%s", wsID, contactID))
+	rdb.Del(ctx, fmt.Sprintf("debounce:%s:%s", wsID, chatID))
+	rdb.Del(ctx, fmt.Sprintf("debounce:timer:%s:%s", wsID, chatID))
 
 	procPub := &testCapturePublisher{}
 	proc := NewInboundProcessor(nil, nil, nil, procPub, nil, nil, nil, nil, nil)
@@ -273,12 +275,13 @@ func TestDebouncer_SetPublisherAndProcessorAutoBinding(t *testing.T) {
 
 	wsID2 := uuid.New()
 	contactID2 := uuid.New()
+	chatID2 := uuid.New()
 	if err := debExplicit.Enqueue(ctx, &DebouncedMessage{
 		MessageID:   "m-explicit",
 		TraceID:     "t-explicit",
 		WorkspaceID: wsID2,
 		ContactID:   contactID2,
-		ChatID:      chatID,
+		ChatID:      chatID2,
 		Channel:     "whatsapp",
 		From:        "+5511999990002",
 		To:          "+5511000000000",
@@ -287,7 +290,7 @@ func TestDebouncer_SetPublisherAndProcessorAutoBinding(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("enqueue explicit failed: %v", err)
 	}
-	if _, err := debExplicit.Flush(ctx, wsID2, contactID2); err != nil {
+	if _, err := debExplicit.Flush(ctx, wsID2, chatID2); err != nil {
 		t.Fatalf("flush explicit failed: %v", err)
 	}
 	explicitPub.mu.Lock()
@@ -305,9 +308,9 @@ func TestDebouncer_Cancel_ClearsBufferAndStopsTimer(t *testing.T) {
 	contactID := uuid.New()
 	chatID := uuid.New()
 
-	bufferKey := fmt.Sprintf("debounce:%s:%s", wsID, contactID)
-	msgsKey := fmt.Sprintf("debounce:msgs:%s:%s", wsID, contactID)
-	timerKey := fmt.Sprintf("debounce:timer:%s:%s", wsID, contactID)
+	bufferKey := fmt.Sprintf("debounce:%s:%s", wsID, chatID)
+	msgsKey := fmt.Sprintf("debounce:msgs:%s:%s", wsID, chatID)
+	timerKey := fmt.Sprintf("debounce:timer:%s:%s", wsID, chatID)
 
 	rdb.Del(ctx, bufferKey, msgsKey, timerKey)
 
@@ -342,7 +345,7 @@ func TestDebouncer_Cancel_ClearsBufferAndStopsTimer(t *testing.T) {
 			t.Fatalf("enqueue %d failed: %v", i, err)
 		}
 	}
-	// Also populate debounce:msgs:<ws>:<contact> to verify Cancel clears both buffer naming conventions
+	// Also populate debounce:msgs:<ws>:<chat> to verify Cancel clears both buffer naming conventions
 	_ = rdb.RPush(ctx, msgsKey, "legacy").Err()
 
 	// Verify keys exist in Redis prior to Cancel
@@ -353,8 +356,8 @@ func TestDebouncer_Cancel_ClearsBufferAndStopsTimer(t *testing.T) {
 		t.Fatalf("expected timer key to exist in Redis before Cancel, got %d (err=%v)", exists, err)
 	}
 
-	// Cancel mid-window (simulating Human Handoff Trigger)
-	if err := deb.Cancel(ctx, wsID, contactID); err != nil {
+	// Cancel mid-window by (wsID, chatID)
+	if err := deb.Cancel(ctx, wsID, chatID); err != nil {
 		t.Fatalf("Cancel failed: %v", err)
 	}
 
@@ -376,7 +379,7 @@ func TestDebouncer_Cancel_ClearsBufferAndStopsTimer(t *testing.T) {
 		t.Fatalf("expected 0 published events after Cancel, got %d", pubCount)
 	}
 
-	ev, err := deb.Flush(ctx, wsID, contactID)
+	ev, err := deb.Flush(ctx, wsID, chatID)
 	if err != nil {
 		t.Fatalf("Flush after Cancel failed: %v", err)
 	}
@@ -385,4 +388,107 @@ func TestDebouncer_Cancel_ClearsBufferAndStopsTimer(t *testing.T) {
 	}
 }
 
+func TestDebouncer_FlushDropsWhenAINotEngaged_And_PerChatIsolation(t *testing.T) {
+	rdb := getTestRedis(t)
+	dbURL := os.Getenv("PERGO_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("skipping: PERGO_DATABASE_URL not set")
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pgxpool.New: %v", err)
+	}
+	defer pool.Close()
 
+	wsID := uuid.New()
+	contactID := uuid.New()
+	connA := uuid.New()
+	connB := uuid.New()
+	chatA := uuid.New()
+	chatB := uuid.New()
+
+	if _, err := pool.Exec(ctx, `INSERT INTO workspaces (id, name) VALUES ($1, $2)`, wsID, "deb-"+wsID.String()[:8]); err != nil {
+		t.Fatalf("seed ws: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO contacts (id, workspace_id, name) VALUES ($1, $2, 'Test Contact')`, contactID, wsID); err != nil {
+		t.Fatalf("seed contact: %v", err)
+	}
+	for _, c := range []struct {
+		connID uuid.UUID
+		chatID uuid.UUID
+	}{{connA, chatA}, {connB, chatB}} {
+		if _, err := pool.Exec(ctx, `INSERT INTO connections (id, workspace_id, name, slug, channel, sender_identity, status) VALUES ($1, $2, 'Conn', $3, 'whatsapp_web', $4, 'connected')`, c.connID, wsID, c.connID.String(), c.connID.String()); err != nil {
+			t.Fatalf("seed conn: %v", err)
+		}
+		if _, err := pool.Exec(ctx, `INSERT INTO chats (id, workspace_id, connection_id, contact_id) VALUES ($1, $2, $3, $4)`, c.chatID, wsID, c.connID, contactID); err != nil {
+			t.Fatalf("seed chat: %v", err)
+		}
+	}
+
+	rec := activity.New(pool, activity.NewMemoryPublisher(), activity.NewMemoryDebounceCanceller(), nil)
+	pub := &testCapturePublisher{}
+	deb := NewDebouncer(
+		rdb,
+		WithDebounceTTL(5*time.Second),
+		WithDebouncePublisher(pub),
+		WithDebounceActivity(rec),
+	)
+	defer deb.Close()
+
+	now := time.Now().UTC()
+	// 1. Per-chat isolation for the same contact across two connections/chats
+	if err := deb.Enqueue(ctx, &DebouncedMessage{
+		MessageID:   "msg-a",
+		WorkspaceID: wsID,
+		ChatID:      chatA,
+		ContactID:   contactID,
+		Channel:     "whatsapp_web",
+		From:        "5511999990000",
+		Body:        "Hello on Conn A",
+		OccurredAt:  now,
+	}); err != nil {
+		t.Fatalf("enqueue chatA: %v", err)
+	}
+	if err := deb.Enqueue(ctx, &DebouncedMessage{
+		MessageID:   "msg-b",
+		WorkspaceID: wsID,
+		ChatID:      chatB,
+		ContactID:   contactID,
+		Channel:     "whatsapp_web",
+		From:        "5511999990000",
+		Body:        "Hello on Conn B",
+		OccurredAt:  now,
+	}); err != nil {
+		t.Fatalf("enqueue chatB: %v", err)
+	}
+
+	// Cancel chatA -> chatB remains buffered
+	if err := deb.Cancel(ctx, wsID, chatA); err != nil {
+		t.Fatalf("Cancel chatA: %v", err)
+	}
+	evA, err := deb.Flush(ctx, wsID, chatA)
+	if err != nil || evA != nil {
+		t.Fatalf("expected chatA flush nil after cancel, got ev=%+v err=%v", evA, err)
+	}
+
+	// 2. Cross-process safety net: turn AI off on chatB in Postgres without calling deb.Cancel
+	if _, err := rec.SetAI(ctx, wsID, activity.ChatID(chatB), activity.AIOff()); err != nil {
+		t.Fatalf("SetAI off on chatB: %v", err)
+	}
+
+	// Flushing chatB must re-check Snapshot and drop the turn
+	evB, err := deb.Flush(ctx, wsID, chatB)
+	if err != nil {
+		t.Fatalf("Flush chatB: %v", err)
+	}
+	if evB != nil {
+		t.Fatalf("expected Flush on chatB to drop turn when AI is not engaged, got %+v", evB)
+	}
+	pub.mu.Lock()
+	pubCount := len(pub.subjects)
+	pub.mu.Unlock()
+	if pubCount != 0 {
+		t.Fatalf("expected 0 published coalesced events when AI is off, got %d", pubCount)
+	}
+}

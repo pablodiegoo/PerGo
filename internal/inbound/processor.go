@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/platform/audit"
@@ -236,7 +237,6 @@ type Publisher interface {
 // ContactStore defines the contact repository operations used by InboundProcessor.
 type ContactStore interface {
 	ResolveContact(ctx context.Context, workspaceID uuid.UUID, channel, senderIdentity, name, username, phone string) (*domain.Contact, error)
-	UpdateBotState(ctx context.Context, workspaceID, contactID uuid.UUID, botActive bool, pausedAt *time.Time) error
 	ReopenThread(ctx context.Context, workspaceID, contactID uuid.UUID) error
 }
 
@@ -254,6 +254,7 @@ type InboundProcessor struct {
 	router                    InboundRouter
 	chatRepo                  *repository.ChatRepository
 	debouncer                 *Debouncer
+	activity                  *activity.Recorder
 	reactionWebhookDispatcher ReactionWebhookDispatcher
 }
 
@@ -297,9 +298,29 @@ func (p *InboundProcessor) SetContactStore(store ContactStore) *InboundProcessor
 	return p
 }
 
+// SetActivity configures the Chat Activity recorder used for AI engagement checks.
+func (p *InboundProcessor) SetActivity(rec *activity.Recorder) *InboundProcessor {
+	p.activity = rec
+	if p.debouncer != nil && rec != nil {
+		p.debouncer.SetActivity(rec)
+	}
+	return p
+}
+
 // SetChatRepository configures the ChatRepository for conversational inbox tracking.
 func (p *InboundProcessor) SetChatRepository(r *repository.ChatRepository) *InboundProcessor {
 	p.chatRepo = r
+	if p.activity == nil && r != nil && r.Pool() != nil {
+		p.activity = activity.New(r.Pool(), p.publisher, p.debouncer, nil)
+	}
+	if p.debouncer != nil && p.activity != nil {
+		p.debouncer.mu.Lock()
+		hasAct := p.debouncer.activity != nil
+		p.debouncer.mu.Unlock()
+		if !hasAct {
+			p.debouncer.SetActivity(p.activity)
+		}
+	}
 	return p
 }
 
@@ -314,6 +335,14 @@ func (p *InboundProcessor) SetDebouncer(d *Debouncer) *InboundProcessor {
 		d.mu.Unlock()
 		if !hasPub {
 			d.SetPublisher(p.publisher)
+		}
+	}
+	if d != nil && p.activity != nil {
+		d.mu.Lock()
+		hasAct := d.activity != nil
+		d.mu.Unlock()
+		if !hasAct {
+			d.SetActivity(p.activity)
 		}
 	}
 	return p
@@ -451,7 +480,6 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 
 	// Resolve/Create Contact Profile
 	var contact *domain.Contact
-	var botAutoReset bool
 	if p.contactRepo != nil {
 		var username, phone string
 		if ev.Metadata != nil {
@@ -465,20 +493,6 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		contact, err = p.contactRepo.ResolveContact(ctx, ev.WorkspaceID, ev.Channel, ev.From, ev.SenderName, username, phone)
 		if err != nil {
 			slog.Error("inbound processor: failed to resolve contact profile", "error", err, "from", ev.From, "trace_id", traceID)
-		}
-
-		if contact != nil && !contact.BotActive && contact.BotPausedAt != nil {
-			if time.Since(*contact.BotPausedAt) > 12*time.Hour {
-				slog.Info("inbound processor: bot inactive for > 12 hours, auto-resetting to active", "contact_id", contact.ID, "trace_id", traceID)
-				err := p.contactRepo.UpdateBotState(ctx, ev.WorkspaceID, contact.ID, true, nil)
-				if err != nil {
-					slog.Error("inbound processor: failed to reset bot state to active", "error", err, "contact_id", contact.ID, "trace_id", traceID)
-				} else {
-					contact.BotActive = true
-					contact.BotPausedAt = nil
-					botAutoReset = true
-				}
-			}
 		}
 	}
 
@@ -678,14 +692,6 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		if cErr != nil {
 			slog.Error("inbound processor: failed to find or create chat", "error", cErr, "contact_id", contact.ID, "trace_id", traceID)
 		} else if chat != nil {
-			if botAutoReset && chat.AIDisabled {
-				if err := p.chatRepo.SetAIDisabled(ctx, ev.WorkspaceID, chat.ID, false); err != nil {
-					slog.Error("inbound processor: failed to reset chat AI disabled flag after 12h bot cooldown", "error", err, "chat_id", chat.ID, "trace_id", traceID)
-				} else {
-					chat.AIDisabled = false
-				}
-			}
-
 			if chat.Status == domain.ChatStatusSnoozed || chat.Status == domain.ChatStatusClosed {
 				_ = p.chatRepo.UpdateChatStatus(ctx, ev.WorkspaceID, chat.ID, string(domain.ChatStatusOpen))
 				chat.Status = domain.ChatStatusOpen
@@ -774,7 +780,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 
 			// 8.6 Inbound Debounce Buffer & AI Handoff Gate
 			if p.debouncer != nil {
-				aiActive := contact.BotActive && (chat == nil || !chat.AIDisabled)
+				aiActive := chat.EffectiveAI().IsEngaged()
 				if !aiActive {
 					slog.Info("inbound processor: chat AI disabled by human takeover, bypassing automated AI dispatch",
 						"workspace_id", ev.WorkspaceID,
@@ -808,7 +814,12 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 
 	// 9. Route inbound event via InboundRouter
 	if p.router != nil && contact != nil {
-		aiActive := contact.BotActive && (chat == nil || !chat.AIDisabled)
+		aiActive := chat == nil || chat.EffectiveAI().IsEngaged()
+		if chat == nil && p.activity != nil {
+			if state, ok, sErr := p.activity.Snapshot(ctx, ev.WorkspaceID, activity.ChatOf(ev.ConnectionID, contact.ID)); sErr == nil && ok {
+				aiActive = state.AI.Effective(time.Now().UTC()).IsEngaged()
+			}
+		}
 		if !aiActive {
 			var chatID uuid.UUID
 			if chat != nil {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -336,65 +337,58 @@ func TestPauseBotHandler(t *testing.T) {
 		t.Fatalf("failed to resolve contact: %v", err)
 	}
 
-	handler := webhook.NewPauseBotHandler(contactRepo)
+	rec := activity.New(pool, nil, nil, nil)
+	handler := webhook.NewPauseBotHandlerWithActivity(rec)
 
-	t.Run("pauses indefinitely", func(t *testing.T) {
+	t.Run("pauses default 12h", func(t *testing.T) {
 		vc := webhook.VerbContext{
 			WorkspaceID: ws.ID,
 			ContactID:   c.ID,
 		}
 
+		before := time.Now().UTC()
 		err := handler.Execute(ctx, vc, json.RawMessage(`{}`))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		var botActive bool
-		var botPausedAt *time.Time
-		err = pool.QueryRow(ctx, "SELECT bot_active, bot_paused_at FROM contacts WHERE id = $1", c.ID).Scan(&botActive, &botPausedAt)
+		state, _, err := rec.Snapshot(ctx, ws.ID, activity.ChatOf(uuid.Nil, c.ID))
 		if err != nil {
-			t.Fatalf("failed to query contact: %v", err)
+			t.Fatalf("failed to snapshot chat: %v", err)
 		}
 
-		if botActive {
-			t.Error("expected bot_active to be false")
+		if state.AI.Mode != domain.AIModePaused {
+			t.Errorf("expected AI mode paused, got %q", state.AI.Mode)
 		}
-		if botPausedAt == nil {
-			t.Fatal("expected bot_paused_at to be set")
-		}
-		if time.Since(*botPausedAt) > 10*time.Second {
-			t.Errorf("expected bot_paused_at to be set to now, got %v", botPausedAt)
+		expected := before.Add(12 * time.Hour)
+		if diff := state.AI.PausedUntil.Sub(expected); diff < -10*time.Second || diff > 10*time.Second {
+			t.Errorf("expected PausedUntil ≈ now+12h (%v), got %v", expected, state.AI.PausedUntil)
 		}
 	})
 
-	t.Run("pauses with duration offset", func(t *testing.T) {
+	t.Run("pauses with custom duration", func(t *testing.T) {
 		vc := webhook.VerbContext{
 			WorkspaceID: ws.ID,
 			ContactID:   c.ID,
 		}
 
-		err := handler.Execute(ctx, vc, json.RawMessage(`{"duration": "2h"}`))
+		before := time.Now().UTC()
+		err := handler.Execute(ctx, vc, json.RawMessage(`{"duration": "30m"}`))
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		var botActive bool
-		var botPausedAt *time.Time
-		err = pool.QueryRow(ctx, "SELECT bot_active, bot_paused_at FROM contacts WHERE id = $1", c.ID).Scan(&botActive, &botPausedAt)
+		state, _, err := rec.Snapshot(ctx, ws.ID, activity.ChatOf(uuid.Nil, c.ID))
 		if err != nil {
-			t.Fatalf("failed to query contact: %v", err)
+			t.Fatalf("failed to snapshot chat: %v", err)
 		}
 
-		if botActive {
-			t.Error("expected bot_active to be false")
+		if state.AI.Mode != domain.AIModePaused {
+			t.Errorf("expected AI mode paused, got %q", state.AI.Mode)
 		}
-		if botPausedAt == nil {
-			t.Fatal("expected bot_paused_at to be set")
-		}
-
-		elapsed := time.Since(*botPausedAt)
-		if elapsed < 9*time.Hour || elapsed > 11*time.Hour {
-			t.Errorf("expected bot_paused_at to be offset by ~10h from now, got %v", elapsed)
+		expected := before.Add(30 * time.Minute)
+		if diff := state.AI.PausedUntil.Sub(expected); diff < -10*time.Second || diff > 10*time.Second {
+			t.Errorf("expected PausedUntil ≈ now+30m (%v), got %v", expected, state.AI.PausedUntil)
 		}
 	})
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -57,16 +58,19 @@ type VerbHandler interface {
 
 // VerbContext carries context shared across verbs in the same execution block.
 type VerbContext struct {
-	WorkspaceID uuid.UUID
-	ContactID   uuid.UUID
-	TraceID     string
-	Event       inbound.InboundEventPayload
+	WorkspaceID  uuid.UUID
+	ConnectionID uuid.UUID
+	ContactID    uuid.UUID
+	TraceID      string
+	Event        inbound.InboundEventPayload
 }
 
 type VerbsEngine struct {
 	handlers    map[string]VerbHandler
 	contactRepo *repository.ContactRepository
 	logsRepo    *repository.UserActionLogRepository
+	resolver    outbound.RouteResolver
+	activity    *activity.Recorder
 }
 
 func NewVerbsEngine(
@@ -75,19 +79,35 @@ func NewVerbsEngine(
 	logsRepo *repository.UserActionLogRepository,
 	resolver outbound.RouteResolver,
 ) *VerbsEngine {
+	var rec *activity.Recorder
+	if contactRepo != nil && contactRepo.Pool() != nil {
+		rec = activity.New(contactRepo.Pool(), nil, nil, nil)
+	}
 	handlers := map[string]VerbHandler{
 		"reply":     NewReplyHandler(publisher, resolver),
 		"wait":      NewWaitHandler(),
 		"forward":   NewForwardHandler(publisher, resolver),
 		"tag":       NewTagHandler(contactRepo),
 		"close":     NewCloseHandler(contactRepo),
-		"pause_bot": NewPauseBotHandler(contactRepo),
+		"pause_bot": NewPauseBotHandlerWithActivity(rec),
 	}
 	return &VerbsEngine{
 		handlers:    handlers,
 		contactRepo: contactRepo,
 		logsRepo:    logsRepo,
+		resolver:    resolver,
+		activity:    rec,
 	}
+}
+
+// WithActivity wires the shared Chat Activity recorder into the VerbsEngine.
+func (e *VerbsEngine) WithActivity(rec *activity.Recorder) *VerbsEngine {
+	if e == nil {
+		return nil
+	}
+	e.activity = rec
+	e.handlers["pause_bot"] = NewPauseBotHandlerWithActivity(rec)
+	return e
 }
 
 type ExecutedVerbLog struct {
@@ -123,7 +143,7 @@ func (e *VerbsEngine) Execute(ctx context.Context, task WebhookDeliveryTask, ver
 		return fmt.Errorf("invalid workspace ID: %w", err)
 	}
 
-	// 3. Resolve the Contact ID
+	// 3. Resolve the Contact ID and Connection ID
 	var contactID uuid.UUID
 	if e.contactRepo != nil {
 		c, err := e.contactRepo.ResolveContact(execCtx, wsID, evt.Channel, evt.From, "", "", "")
@@ -132,15 +152,30 @@ func (e *VerbsEngine) Execute(ctx context.Context, task WebhookDeliveryTask, ver
 		}
 	}
 
+	var connID uuid.UUID
+	if e.resolver != nil {
+		if evt.To != "" {
+			if conn, err := e.resolver.GetBySenderIdentity(execCtx, wsID, evt.To); err == nil && conn != nil {
+				connID = conn.ID
+			}
+		}
+		if connID == uuid.Nil && evt.Channel != "" {
+			if conn, err := e.resolver.GetDefaultChannelConnection(execCtx, wsID, evt.Channel); err == nil && conn != nil {
+				connID = conn.ID
+			}
+		}
+	}
+
 	// 4. Execution loop
 	var executedLogs []ExecutedVerbLog
 	var execErr error
 
 	vc := VerbContext{
-		WorkspaceID: wsID,
-		ContactID:   contactID,
-		TraceID:     task.TraceID,
-		Event:       evt,
+		WorkspaceID:  wsID,
+		ConnectionID: connID,
+		ContactID:    contactID,
+		TraceID:      task.TraceID,
+		Event:        evt,
 	}
 
 	for i, verb := range verbs {

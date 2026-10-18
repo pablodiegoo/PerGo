@@ -23,6 +23,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	"github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/i18n"
 	"github.com/pablojhp.pergo/internal/outbound"
@@ -804,15 +805,13 @@ func TestInboxHandler_SendMessage_SuccessAndPauseBot(t *testing.T) {
 		t.Fatalf("failed to save connection: %v", err)
 	}
 
-	// Resolve/create contact, initially active (default is true)
+	// Resolve/create contact
 	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511888880002", "Carlos", "", "")
 	if err != nil {
 		t.Fatalf("failed to resolve contact: %v", err)
 	}
-	if !contact.BotActive {
-		t.Fatalf("expected contact bot to be active initially")
-	}
 
+	actRec := activity.New(pool, nil, nil, nil)
 	pub := queue.NewJetStreamPublisher(nc)
 	h := &admin.InboxHandler{
 		Repo:        auditRepo,
@@ -846,16 +845,16 @@ func TestInboxHandler_SendMessage_SuccessAndPauseBot(t *testing.T) {
 		t.Errorf("expected StatusNoContent (204), got %d: %s", rec.Code, rec.Body.String())
 	}
 
-	// Assert database: contact's bot_active must be false
-	updatedContact, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+	// Assert database: chat's AI engagement must be paused after human_agent reply
+	state, _, err := actRec.Snapshot(ctx, ws.ID, activity.ChatOf(conn.ID, contact.ID))
 	if err != nil {
-		t.Fatalf("failed to get contact by ID: %v", err)
+		t.Fatalf("failed to snapshot chat: %v", err)
 	}
-	if updatedContact.BotActive {
-		t.Errorf("expected contact bot to be paused after sending message")
+	if state.AI.Mode != domain.AIModePaused {
+		t.Errorf("expected chat AI mode paused after sending message, got %q", state.AI.Mode)
 	}
-	if updatedContact.BotPausedAt == nil {
-		t.Errorf("expected bot_paused_at to be set")
+	if state.AI.PausedUntil == nil {
+		t.Errorf("expected ai_paused_until to be set")
 	}
 }
 
@@ -887,15 +886,13 @@ func TestInboxHandler_ToggleBot_HTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to resolve contact: %v", err)
 	}
-	if !contact.BotActive {
-		t.Fatalf("expected contact bot to be active initially")
-	}
 
+	actRec := activity.New(pool, nil, nil, nil)
 	h := &admin.InboxHandler{
 		ContactRepo: contactRepo,
 	}
 
-	// 1. Post to toggle bot status (Active -> Paused)
+	// 1. Post to toggle bot status (Active -> Off)
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodPost, "/admin/contacts/"+contact.ID.String()+"/toggle-bot", nil)
 	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
@@ -920,19 +917,16 @@ func TestInboxHandler_ToggleBot_HTTP(t *testing.T) {
 		t.Errorf("expected HTML response to contain 'Bot Pausado', got: %s", body)
 	}
 
-	// Check DB state
-	contact1, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+	// Check DB state via Chat Activity Snapshot
+	state1, _, err := actRec.Snapshot(ctx, ws.ID, activity.ChatOf(uuid.Nil, contact.ID))
 	if err != nil {
-		t.Fatalf("failed to load contact: %v", err)
+		t.Fatalf("failed to snapshot chat: %v", err)
 	}
-	if contact1.BotActive {
-		t.Errorf("expected BotActive to be false after toggle")
-	}
-	if contact1.BotPausedAt == nil {
-		t.Errorf("expected BotPausedAt to be set")
+	if state1.AI.Mode != domain.AIModeOff {
+		t.Errorf("expected AI mode off after toggle, got %q", state1.AI.Mode)
 	}
 
-	// 2. Toggle again (Paused -> Active)
+	// 2. Toggle again (Off -> Active)
 	req2 := httptest.NewRequest(http.MethodPost, "/admin/contacts/"+contact.ID.String()+"/toggle-bot", nil)
 	req2.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
 	req2 = withWorkspaceContext(req2, ws.ID)
@@ -957,15 +951,15 @@ func TestInboxHandler_ToggleBot_HTTP(t *testing.T) {
 	}
 
 	// Check DB state again
-	contact2, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
+	state2, _, err := actRec.Snapshot(ctx, ws.ID, activity.ChatOf(uuid.Nil, contact.ID))
 	if err != nil {
-		t.Fatalf("failed to load contact: %v", err)
+		t.Fatalf("failed to snapshot chat: %v", err)
 	}
-	if !contact2.BotActive {
-		t.Errorf("expected BotActive to be true after second toggle")
+	if state2.AI.Mode != domain.AIModeActive {
+		t.Errorf("expected AI mode active after second toggle, got %q", state2.AI.Mode)
 	}
-	if contact2.BotPausedAt != nil {
-		t.Errorf("expected BotPausedAt to be nil after second toggle")
+	if state2.AI.PausedUntil != nil {
+		t.Errorf("expected PausedUntil to be nil after second toggle")
 	}
 }
 
@@ -1159,10 +1153,38 @@ func (p *testMessagePublisher) Publish(ctx context.Context, subject string, data
 }
 
 func TestInboxHandler_NewMessageSend_TransmitsLanguageAndParams(t *testing.T) {
-	wsID := uuid.New()
+	pool := getTestPool(t)
+	if pool == nil {
+		t.Skip("skipping: PostgreSQL not available")
+	}
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, fmt.Sprintf("ws-new-msg-params-%s", uuid.New().String()[:8]))
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	if err := connRepo.Create(ctx, &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "WABA Params Conn",
+		Slug:           "waba-params-conn",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+5511999990000",
+		Status:         "connected",
+		IsDefault:      true,
+	}); err != nil {
+		t.Fatalf("save connection: %v", err)
+	}
+
 	pub := &testMessagePublisher{}
 	h := &admin.InboxHandler{
-		Publisher: pub,
+		ChatRepo:    repository.NewChatRepository(pool),
+		ContactRepo: repository.NewContactRepository(pool),
+		Connections: connRepo,
+		Publisher:   pub,
 	}
 
 	fv := url.Values{}
@@ -1179,12 +1201,12 @@ func TestInboxHandler_NewMessageSend_TransmitsLanguageAndParams(t *testing.T) {
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodPost, "/admin/inbox/new-message-send", strings.NewReader(fv.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: wsID.String()})
-	req = withWorkspaceContext(req, wsID)
+	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	req = withWorkspaceContext(req, ws.ID)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	err := h.NewMessageSend(c)
+	err = h.NewMessageSend(c)
 	if err != nil {
 		t.Fatalf("NewMessageSend error: %v", err)
 	}
@@ -1218,10 +1240,38 @@ func TestInboxHandler_NewMessageSend_TransmitsLanguageAndParams(t *testing.T) {
 }
 
 func TestInboxHandler_NewMessageSend_StaticTemplate(t *testing.T) {
-	wsID := uuid.New()
+	pool := getTestPool(t)
+	if pool == nil {
+		t.Skip("skipping: PostgreSQL not available")
+	}
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, fmt.Sprintf("ws-new-msg-static-%s", uuid.New().String()[:8]))
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	if err := connRepo.Create(ctx, &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "WABA Static Conn",
+		Slug:           "waba-static-conn",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+5511999990000",
+		Status:         "connected",
+		IsDefault:      true,
+	}); err != nil {
+		t.Fatalf("save connection: %v", err)
+	}
+
 	pub := &testMessagePublisher{}
 	h := &admin.InboxHandler{
-		Publisher: pub,
+		ChatRepo:    repository.NewChatRepository(pool),
+		ContactRepo: repository.NewContactRepository(pool),
+		Connections: connRepo,
+		Publisher:   pub,
 	}
 
 	fv := url.Values{}
@@ -1234,12 +1284,12 @@ func TestInboxHandler_NewMessageSend_StaticTemplate(t *testing.T) {
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodPost, "/admin/inbox/new-message-send", strings.NewReader(fv.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: wsID.String()})
-	req = withWorkspaceContext(req, wsID)
+	req.AddCookie(&http.Cookie{Name: "pergo-active-workspace", Value: ws.ID.String()})
+	req = withWorkspaceContext(req, ws.ID)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	err := h.NewMessageSend(c)
+	err = h.NewMessageSend(c)
 	if err != nil {
 		t.Fatalf("NewMessageSend error: %v", err)
 	}

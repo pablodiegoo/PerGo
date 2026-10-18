@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/pablojhp.pergo/internal/chat"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -724,7 +725,11 @@ func (s *Server) handleChatEnableAI(ctx context.Context, request mcp.CallToolReq
 		return mcp.NewToolResultError("missing or invalid enabled parameter: must be a boolean"), nil
 	}
 
-	if _, err := eng.SetAIEnabled(ctx, wsID, chat.ChatRef{ChatID: chatID}, enabled); err != nil {
+	change := activity.AIOff()
+	if enabled {
+		change = activity.AIResume()
+	}
+	if _, err := eng.SetAI(ctx, wsID, chat.ChatRef{ChatID: chatID}, change); err != nil {
 		if errors.Is(err, chat.ErrChatNotFound) || errors.Is(err, repository.ErrChatNotFound) {
 			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
 		}

@@ -118,10 +118,6 @@ func TestChatRepository(t *testing.T) {
 		if err := chatRepo.SetChatTags(ctx, ws.ID, chat.ID, []string{"vip", "support"}); err != nil {
 			t.Fatalf("failed to set tags: %v", err)
 		}
-		// AIDisabled
-		if err := chatRepo.SetAIDisabled(ctx, ws.ID, chat.ID, true); err != nil {
-			t.Fatalf("failed to set ai disabled: %v", err)
-		}
 		// UnreadCount
 		if err := chatRepo.UpdateChatUnreadCount(ctx, ws.ID, chat.ID, 5); err != nil {
 			t.Fatalf("failed to update unread: %v", err)
@@ -141,8 +137,8 @@ func TestChatRepository(t *testing.T) {
 		if len(updated.Tags) != 2 || updated.Tags[0] != "vip" {
 			t.Errorf("expected tags [vip support], got %v", updated.Tags)
 		}
-		if !updated.AIDisabled {
-			t.Errorf("expected ai disabled true, got false")
+		if updated.AIDisabled {
+			t.Errorf("expected ai disabled false by default, got true")
 		}
 		if updated.UnreadCount != 5 {
 			t.Errorf("expected unread count 5, got %d", updated.UnreadCount)

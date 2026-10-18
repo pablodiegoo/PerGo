@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/pkg/slug"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
@@ -138,9 +139,11 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 
 	// 5. Contacts, Identities & Tags
 	contactMap := make(map[string]*domain.Contact)
+	contactFixtureMap := make(map[string]ContactFixture)
 	var seededContacts []domain.Contact
 
 	for _, cf := range fixtures.Contacts {
+		contactFixtureMap[cf.Name] = cf
 		var contactID uuid.UUID
 		err := pool.QueryRow(ctx, `SELECT id FROM contacts WHERE workspace_id = $1 AND name = $2`, ws.ID, cf.Name).Scan(&contactID)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -150,10 +153,10 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 		attrsJSON, _ := json.Marshal(cf.Attributes)
 		if errors.Is(err, pgx.ErrNoRows) {
 			err = pool.QueryRow(ctx, `
-				INSERT INTO contacts (workspace_id, name, email, tags, bot_active, attributes)
-				VALUES ($1, $2, $3, $4, $5, $6)
+				INSERT INTO contacts (workspace_id, name, email, tags, attributes)
+				VALUES ($1, $2, $3, $4, $5)
 				RETURNING id
-			`, ws.ID, cf.Name, cf.Email, cf.Tags, cf.BotActive, attrsJSON).Scan(&contactID)
+			`, ws.ID, cf.Name, cf.Email, cf.Tags, attrsJSON).Scan(&contactID)
 			if err != nil {
 				return nil, fmt.Errorf("insert contact %s: %w", cf.Name, err)
 			}
@@ -319,6 +322,7 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 
 	// 8. Conversations, Chats, Chat Messages, Audit Logs, Dispatches, Sessions
 	chatRepo := repository.NewChatRepository(pool)
+	activityRec := activity.New(pool, nil, nil, slog.Default())
 	now := time.Now().UTC()
 	conversationCount := 0
 	messageCount := 0
@@ -463,23 +467,29 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 					}
 				}
 				if !chatMsgExists {
-					_ = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-						ChatID:      seededChat.ID,
-						WorkspaceID: ws.ID,
-						UID:         traceID,
-						Direction:   domain.DirectionOutbound,
-						SenderType:  domain.SenderTypeHumanAgent,
-						SenderName:  "Agent",
-						SenderID:    conv.RecipientIdentity,
-						Body:        msg.Body,
-						Metadata: map[string]interface{}{
+					_, _ = activityRec.Outbound(ctx, ws.ID, activity.OutboundTurn{
+						Chat:       activity.ChatID(seededChat.ID),
+						UID:        traceID,
+						SenderType: domain.SenderTypeHumanAgent,
+						SenderName: "Agent",
+						SenderID:   conv.RecipientIdentity,
+						Body:       msg.Body,
+						Metadata: map[string]string{
 							"channel":         conv.Channel,
 							"to":              contactPhone,
 							"sender_identity": conv.RecipientIdentity,
 						},
-						CreatedAt: msgTime,
+						At: msgTime,
 					})
 				}
+			}
+		}
+
+		if cf, hasCF := contactFixtureMap[conv.ContactName]; hasCF {
+			if cf.AIMode == domain.AIModeOff {
+				_, _ = activityRec.SetAI(ctx, ws.ID, activity.ChatID(seededChat.ID), activity.AIOff())
+			} else if cf.AIMode == domain.AIModeActive {
+				_, _ = activityRec.SetAI(ctx, ws.ID, activity.ChatID(seededChat.ID), activity.AIResume())
 			}
 		}
 

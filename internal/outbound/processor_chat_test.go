@@ -159,9 +159,6 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		debouncer.cancelled = nil
 
 		req := &domain.CreateMessageRequest{
-			ConversationalIngestFields: domain.ConversationalIngestFields{
-				DisableAI: true,
-			},
 			To:      "+5511999991111",
 			Channel: "whatsapp_cloud",
 			From:    "+551100000000",
@@ -181,30 +178,23 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 			t.Fatal("expected non-nil QueueMessage")
 		}
 
-		// Verify contact exists and bot_active is false
 		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999991111", "", "", "")
 		if err != nil {
 			t.Fatalf("failed to resolve contact: %v", err)
 		}
-		if contact.BotActive {
-			t.Errorf("expected contact.BotActive to be false after human takeover")
-		}
-		if contact.BotPausedAt == nil {
-			t.Errorf("expected contact.BotPausedAt to be non-nil after human takeover")
-		}
 
-		// Verify debounce buffer cancelled on handoff
-		if len(debouncer.cancelled) != 1 || debouncer.cancelled[0] != contact.ID {
-			t.Errorf("expected debouncer.Cancel called for contact %s, got %v", contact.ID, debouncer.cancelled)
-		}
-
-		// Verify chat exists and has ai_disabled = true
+		// Verify chat exists and has AI paused (ai_disabled = true)
 		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
 		if err != nil {
 			t.Fatalf("failed to get chat: %v", err)
 		}
-		if !chat.AIDisabled {
-			t.Errorf("expected AIDisabled to be true for human agent reply")
+		if !chat.AIDisabled || chat.AI.Effective(time.Now().UTC()).IsEngaged() {
+			t.Errorf("expected AI to be paused for human agent reply, got %+v", chat.AI)
+		}
+
+		// Verify debounce buffer cancelled on handoff by chat.ID
+		if len(debouncer.cancelled) != 1 || debouncer.cancelled[0] != chat.ID {
+			t.Errorf("expected debouncer.Cancel called for chat %s, got %v", chat.ID, debouncer.cancelled)
 		}
 
 		// Verify NATS handoff subjects published
@@ -241,21 +231,20 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		}
 	})
 
-	t.Run("Human agent outbound message with DisableAI false does NOT trigger handoff", func(t *testing.T) {
+	t.Run("AI agent outbound message does NOT trigger handoff", func(t *testing.T) {
 		pub.published = nil
 		pub.subjects = nil
 		debouncer.cancelled = nil
 
 		req := &domain.CreateMessageRequest{
 			ConversationalIngestFields: domain.ConversationalIngestFields{
-				SenderType: string(domain.SenderTypeHumanAgent),
-				SenderName: "Support Agent",
-				DisableAI:  false,
+				SenderType: string(domain.SenderTypeAIAgent),
+				SenderName: "AI Bot",
 			},
 			To:      "+5511999993333",
 			Channel: "whatsapp_cloud",
 			From:    "+551100000000",
-			Body:    "Quick check-in without disabling AI",
+			Body:    "Automated AI check-in",
 		}
 
 		if _, err := proc.Ingest(ctx, ws.ID, "outbound-trace-no-handoff", req); err != nil {
@@ -266,22 +255,19 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to resolve contact: %v", err)
 		}
-		if !contact.BotActive {
-			t.Errorf("expected contact.BotActive to remain true when DisableAI is false")
-		}
 		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
 		if err != nil {
 			t.Fatalf("failed to get chat: %v", err)
 		}
-		if chat.AIDisabled {
-			t.Errorf("expected chat.AIDisabled to remain false when DisableAI is false")
+		if chat.AIDisabled || !chat.EffectiveAI().IsEngaged() {
+			t.Errorf("expected chat AI to remain engaged on AI agent turn")
 		}
 		if len(debouncer.cancelled) != 0 {
-			t.Errorf("expected debouncer NOT to be called when DisableAI is false, got %v", debouncer.cancelled)
+			t.Errorf("expected debouncer NOT to be called on AI agent turn, got %v", debouncer.cancelled)
 		}
 		for _, subj := range pub.subjects {
 			if subj == "chat.handoff.human_takeover" || subj == "chat.handoff."+ws.ID.String() {
-				t.Errorf("unexpected handoff event published when DisableAI is false: %s", subj)
+				t.Errorf("unexpected handoff event published on AI agent turn: %s", subj)
 			}
 		}
 	})

@@ -146,9 +146,6 @@ func TestRepository_StrictTenantIsolation_RejectsNilUUID(t *testing.T) {
 		if err := repo.CloseThread(ctx, nilID, uuid.New()); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("CloseThread: expected ErrInvalidWorkspaceID, got %v", err)
 		}
-		if err := repo.UpdateBotState(ctx, nilID, uuid.New(), true, nil); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
-			t.Errorf("UpdateBotState: expected ErrInvalidWorkspaceID, got %v", err)
-		}
 		if _, _, err := repo.FindIdentityForChannel(ctx, nilID, "test@example.com", "email"); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("FindIdentityForChannel: expected ErrInvalidWorkspaceID, got %v", err)
 		}

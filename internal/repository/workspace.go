@@ -37,6 +37,13 @@ func NewWorkspaceRepository(pool *pgxpool.Pool) *WorkspaceRepository {
 	return &WorkspaceRepository{pool: pool}
 }
 
+func (r *WorkspaceRepository) Pool() *pgxpool.Pool {
+	if r == nil {
+		return nil
+	}
+	return r.pool
+}
+
 // Create inserts a new workspace and returns it.
 func (r *WorkspaceRepository) Create(ctx context.Context, name string) (*Workspace, error) {
 	var ws Workspace

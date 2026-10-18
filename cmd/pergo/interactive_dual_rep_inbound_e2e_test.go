@@ -257,11 +257,10 @@ func TestInteractiveDualRepresentation_Inbound_E2E(t *testing.T) {
 		natsSpy.clear()
 
 		btnPhone := "5511999990001"
-		btnContact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", btnPhone, "Btn User", "", btnPhone)
+		_, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", btnPhone, "Btn User", "", btnPhone)
 		if err != nil {
 			t.Fatalf("failed to resolve contact: %v", err)
 		}
-		_ = contactRepo.UpdateBotState(ctx, ws.ID, btnContact.ID, true, nil)
 
 		btnPayload := fmt.Sprintf(`{
 			"object": "whatsapp_business_account",
@@ -370,11 +369,10 @@ func TestInteractiveDualRepresentation_Inbound_E2E(t *testing.T) {
 		natsSpy.clear()
 
 		flowPhone := "5511999990002"
-		flowContact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", flowPhone, "Flow User", "", flowPhone)
+		_, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", flowPhone, "Flow User", "", flowPhone)
 		if err != nil {
 			t.Fatalf("failed to resolve contact: %v", err)
 		}
-		_ = contactRepo.UpdateBotState(ctx, ws.ID, flowContact.ID, true, nil)
 
 		// Encrypt response data using RSA + AES-128-GCM
 		aesKey := make([]byte, 16)

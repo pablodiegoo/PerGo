@@ -239,10 +239,6 @@ func (s *spyContactStore) ResolveContact(ctx context.Context, workspaceID uuid.U
 	return s.repo.ResolveContact(ctx, workspaceID, channel, senderIdentity, name, username, phone)
 }
 
-func (s *spyContactStore) UpdateBotState(ctx context.Context, workspaceID, contactID uuid.UUID, botActive bool, pausedAt *time.Time) error {
-	return s.repo.UpdateBotState(ctx, workspaceID, contactID, botActive, pausedAt)
-}
-
 func (s *spyContactStore) ReopenThread(ctx context.Context, workspaceID, contactID uuid.UUID) error {
 	s.reopenCalls++
 	return s.repo.ReopenThread(ctx, workspaceID, contactID)

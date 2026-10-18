@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -76,6 +77,7 @@ type Debouncer struct {
 	ttl       time.Duration
 	publisher Publisher
 	handler   CoalescedHandler
+	activity  *activity.Recorder
 
 	mu     sync.Mutex
 	timers map[string]*time.Timer
@@ -107,6 +109,13 @@ func WithDebounceHandler(h CoalescedHandler) DebouncerOption {
 	}
 }
 
+// WithDebounceActivity configures the Chat Activity recorder used to re-check AI engagement on Flush.
+func WithDebounceActivity(rec *activity.Recorder) DebouncerOption {
+	return func(deb *Debouncer) {
+		deb.activity = rec
+	}
+}
+
 // NewDebouncer creates and initializes a new Debouncer.
 func NewDebouncer(rdb redis.Cmdable, opts ...DebouncerOption) *Debouncer {
 	deb := &Debouncer{
@@ -130,18 +139,33 @@ func (d *Debouncer) SetPublisher(pub Publisher) {
 	d.publisher = pub
 }
 
+// SetActivity configures the Chat Activity recorder used to re-check AI engagement on Flush.
+func (d *Debouncer) SetActivity(rec *activity.Recorder) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.activity = rec
+}
+
 // Enqueue appends an incoming message to the Redis buffer and refreshes the sliding window timer.
 func (d *Debouncer) Enqueue(ctx context.Context, msg *DebouncedMessage) error {
 	if msg == nil {
 		return fmt.Errorf("debouncer: message is nil")
 	}
-	if msg.WorkspaceID == uuid.Nil || msg.ContactID == uuid.Nil {
-		return fmt.Errorf("debouncer: workspace_id and contact_id are required")
+	chatID := msg.ChatID
+	if chatID == uuid.Nil {
+		chatID = msg.ContactID
 	}
+	if msg.WorkspaceID == uuid.Nil || chatID == uuid.Nil {
+		return fmt.Errorf("debouncer: workspace_id and chat_id are required")
+	}
+	msg.ChatID = chatID
 
-	bufferKey := fmt.Sprintf("debounce:%s:%s", msg.WorkspaceID, msg.ContactID)
-	timerKey := fmt.Sprintf("debounce:timer:%s:%s", msg.WorkspaceID, msg.ContactID)
-	mapKey := fmt.Sprintf("%s:%s", msg.WorkspaceID, msg.ContactID)
+	bufferKey := fmt.Sprintf("debounce:%s:%s", msg.WorkspaceID, chatID)
+	timerKey := fmt.Sprintf("debounce:timer:%s:%s", msg.WorkspaceID, chatID)
+	mapKey := fmt.Sprintf("%s:%s", msg.WorkspaceID, chatID)
 
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -169,9 +193,8 @@ func (d *Debouncer) Enqueue(ctx context.Context, msg *DebouncedMessage) error {
 		t.Stop()
 	}
 	wsID := msg.WorkspaceID
-	contactID := msg.ContactID
 	d.timers[mapKey] = time.AfterFunc(d.ttl, func() {
-		d.checkAndFlush(context.Background(), wsID, contactID)
+		d.checkAndFlush(context.Background(), wsID, chatID)
 	})
 	d.mu.Unlock()
 
@@ -179,9 +202,9 @@ func (d *Debouncer) Enqueue(ctx context.Context, msg *DebouncedMessage) error {
 }
 
 // checkAndFlush verifies if the sliding window in Redis has expired before flushing.
-func (d *Debouncer) checkAndFlush(ctx context.Context, wsID, contactID uuid.UUID) {
-	timerKey := fmt.Sprintf("debounce:timer:%s:%s", wsID, contactID)
-	mapKey := fmt.Sprintf("%s:%s", wsID, contactID)
+func (d *Debouncer) checkAndFlush(ctx context.Context, wsID, chatID uuid.UUID) {
+	timerKey := fmt.Sprintf("debounce:timer:%s:%s", wsID, chatID)
+	mapKey := fmt.Sprintf("%s:%s", wsID, chatID)
 
 	remTTL, err := d.rdb.TTL(ctx, timerKey).Result()
 	if err == nil && remTTL > 0 {
@@ -189,7 +212,7 @@ func (d *Debouncer) checkAndFlush(ctx context.Context, wsID, contactID uuid.UUID
 		d.mu.Lock()
 		if _, exists := d.timers[mapKey]; exists {
 			d.timers[mapKey] = time.AfterFunc(remTTL, func() {
-				d.checkAndFlush(ctx, wsID, contactID)
+				d.checkAndFlush(ctx, wsID, chatID)
 			})
 		}
 		d.mu.Unlock()
@@ -201,23 +224,23 @@ func (d *Debouncer) checkAndFlush(ctx context.Context, wsID, contactID uuid.UUID
 	delete(d.timers, mapKey)
 	d.mu.Unlock()
 
-	if _, err := d.Flush(ctx, wsID, contactID); err != nil {
-		slog.Error("debouncer: error flushing expired buffer", "error", err, "workspace_id", wsID, "contact_id", contactID)
+	if _, err := d.Flush(ctx, wsID, chatID); err != nil {
+		slog.Error("debouncer: error flushing expired buffer", "error", err, "workspace_id", wsID, "chat_id", chatID)
 	}
 }
 
-// Cancel stops any active in-memory debounce timer for the given workspace and contact
+// Cancel stops any active in-memory debounce timer for the given workspace and chat
 // and deletes the pending Redis buffer and timer keys so mid-window buffered messages
 // are never flushed after a Human Handoff Trigger.
-func (d *Debouncer) Cancel(ctx context.Context, wsID, contactID uuid.UUID) error {
+func (d *Debouncer) Cancel(ctx context.Context, wsID, chatID uuid.UUID) error {
 	if d == nil {
 		return nil
 	}
-	if wsID == uuid.Nil || contactID == uuid.Nil {
-		return fmt.Errorf("debouncer: workspace_id and contact_id are required")
+	if wsID == uuid.Nil || chatID == uuid.Nil {
+		return fmt.Errorf("debouncer: workspace_id and chat_id are required")
 	}
 
-	mapKey := fmt.Sprintf("%s:%s", wsID, contactID)
+	mapKey := fmt.Sprintf("%s:%s", wsID, chatID)
 	d.mu.Lock()
 	if t, ok := d.timers[mapKey]; ok {
 		t.Stop()
@@ -229,9 +252,9 @@ func (d *Debouncer) Cancel(ctx context.Context, wsID, contactID uuid.UUID) error
 		return nil
 	}
 
-	bufferKey := fmt.Sprintf("debounce:%s:%s", wsID, contactID)
-	msgsKey := fmt.Sprintf("debounce:msgs:%s:%s", wsID, contactID)
-	timerKey := fmt.Sprintf("debounce:timer:%s:%s", wsID, contactID)
+	bufferKey := fmt.Sprintf("debounce:%s:%s", wsID, chatID)
+	msgsKey := fmt.Sprintf("debounce:msgs:%s:%s", wsID, chatID)
+	timerKey := fmt.Sprintf("debounce:timer:%s:%s", wsID, chatID)
 
 	if err := d.rdb.Del(ctx, bufferKey, msgsKey, timerKey).Err(); err != nil {
 		return fmt.Errorf("debouncer: cancel redis del: %w", err)
@@ -241,16 +264,19 @@ func (d *Debouncer) Cancel(ctx context.Context, wsID, contactID uuid.UUID) error
 
 // Flush atomically extracts all messages currently in the buffer, coalesces them chronologically,
 // publishes the chat.inbound.coalesced event, and invokes the registered handler.
-func (d *Debouncer) Flush(ctx context.Context, wsID, contactID uuid.UUID) (*CoalescedTurnEvent, error) {
-	bufferKey := fmt.Sprintf("debounce:%s:%s", wsID, contactID)
-	timerKey := fmt.Sprintf("debounce:timer:%s:%s", wsID, contactID)
-	mapKey := fmt.Sprintf("%s:%s", wsID, contactID)
+// If an activity.Recorder is configured, Flush re-checks Snapshot(wsID, ChatID(chatID)) and drops
+// the turn if AI is no longer engaged (cross-process safety net against a human turn committed on another replica).
+func (d *Debouncer) Flush(ctx context.Context, wsID, chatID uuid.UUID) (*CoalescedTurnEvent, error) {
+	bufferKey := fmt.Sprintf("debounce:%s:%s", wsID, chatID)
+	timerKey := fmt.Sprintf("debounce:timer:%s:%s", wsID, chatID)
+	mapKey := fmt.Sprintf("%s:%s", wsID, chatID)
 
 	d.mu.Lock()
 	if t, ok := d.timers[mapKey]; ok {
 		t.Stop()
 		delete(d.timers, mapKey)
 	}
+	rec := d.activity
 	d.mu.Unlock()
 
 	res, err := flushScript.Run(ctx, d.rdb, []string{bufferKey, timerKey}).StringSlice()
@@ -259,6 +285,13 @@ func (d *Debouncer) Flush(ctx context.Context, wsID, contactID uuid.UUID) (*Coal
 	}
 	if len(res) == 0 {
 		return nil, nil
+	}
+
+	if rec != nil && chatID != uuid.Nil {
+		state, ok, sErr := rec.Snapshot(ctx, wsID, activity.ChatID(chatID))
+		if sErr == nil && ok && !state.AI.Effective(time.Now().UTC()).IsEngaged() {
+			return nil, nil
+		}
 	}
 
 	var messages []DebouncedMessage
@@ -297,12 +330,17 @@ func (d *Debouncer) Flush(ctx context.Context, wsID, contactID uuid.UUID) (*Coal
 		connIDStr = lastMsg.ConnectionID.String()
 	}
 
+	contactIDStr := lastMsg.ContactID.String()
+	if lastMsg.ContactID == uuid.Nil {
+		contactIDStr = chatID.String()
+	}
+
 	coalesced := &CoalescedTurnEvent{
 		Event:        EventChatInboundCoalesced,
 		WorkspaceID:  wsID.String(),
-		ContactID:    contactID.String(),
+		ContactID:    contactIDStr,
 		ConnectionID: connIDStr,
-		ChatID:       lastMsg.ChatID.String(),
+		ChatID:       chatID.String(),
 		Channel:      lastMsg.Channel,
 		From:         lastMsg.From,
 		To:           lastMsg.To,
@@ -329,7 +367,7 @@ func (d *Debouncer) Flush(ctx context.Context, wsID, contactID uuid.UUID) (*Coal
 
 	if d.handler != nil {
 		if hErr := d.handler(ctx, coalesced); hErr != nil {
-			slog.Error("debouncer: handler error", "error", hErr, "workspace_id", wsID, "contact_id", contactID)
+			slog.Error("debouncer: handler error", "error", hErr, "workspace_id", wsID, "chat_id", chatID)
 		}
 	}
 

@@ -13,6 +13,7 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/chat"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
@@ -53,6 +54,7 @@ type ChatAPIHandler struct {
 	webhookDispatcher ChatReactionWebhookDispatcher
 	ingestor          outbound.OutboundProcessor
 	debouncer         chat.DebounceCanceller
+	activity          *activity.Recorder
 	eng               *chat.Engine
 }
 
@@ -104,6 +106,11 @@ func WithChatDebounceCanceller(d chat.DebounceCanceller) ChatAPIOption {
 	return func(h *ChatAPIHandler) { h.debouncer = d }
 }
 
+// WithChatActivity sets the Chat Activity recorder.
+func WithChatActivity(rec *activity.Recorder) ChatAPIOption {
+	return func(h *ChatAPIHandler) { h.activity = rec }
+}
+
 // SetWebhookDispatcher configures the reaction webhook dispatcher on ChatAPIHandler.
 func (h *ChatAPIHandler) SetWebhookDispatcher(d ChatReactionWebhookDispatcher) *ChatAPIHandler {
 	h.webhookDispatcher = d
@@ -139,6 +146,7 @@ func (h *ChatAPIHandler) engine() *chat.Engine {
 			WebhookDispatcher: h.webhookDispatcher,
 			Ingestor:          h.ingestor,
 			Debouncer:         h.debouncer,
+			Activity:          h.activity,
 		})
 	}
 	return h.eng
@@ -170,6 +178,8 @@ func (h *ChatAPIHandler) RegisterRoutes(e *echo.Echo, m ...echo.MiddlewareFunc) 
 	chatGroup.PATCH("/:id/labels/", h.UpdateLabels)
 	chatGroup.PATCH("/:id/status", h.UpdateStatus)
 	chatGroup.PATCH("/:id/status/", h.UpdateStatus)
+	chatGroup.PATCH("/:id/ai", h.ToggleAI)
+	chatGroup.PATCH("/:id/ai/", h.ToggleAI)
 
 	// Workspace-scoped canonical routes (/api/v1/workspaces/:workspace_id/chats)
 	wsChatGroup := e.Group("/api/v1/workspaces/:workspace_id/chats", m...)
@@ -195,6 +205,8 @@ func (h *ChatAPIHandler) RegisterRoutes(e *echo.Echo, m ...echo.MiddlewareFunc) 
 	wsChatGroup.PATCH("/:id/labels/", h.UpdateLabels)
 	wsChatGroup.PATCH("/:id/status", h.UpdateStatus)
 	wsChatGroup.PATCH("/:id/status/", h.UpdateStatus)
+	wsChatGroup.PATCH("/:id/ai", h.ToggleAI)
+	wsChatGroup.PATCH("/:id/ai/", h.ToggleAI)
 }
 
 // resolveWorkspaceID resolves the workspace UUID from route parameter, tenant context, or domain scope,
@@ -477,7 +489,6 @@ type SendMessageRequest struct {
 	Message      string                     `json:"message"` // alias for body
 	SenderName   string                     `json:"sender_name,omitempty"`
 	SenderType   string                     `json:"sender_type,omitempty"`
-	DisableAI    *bool                      `json:"disable_ai,omitempty"`
 	ReplyToUID   *string                    `json:"reply_to_uid,omitempty"`
 	TemplateName string                     `json:"template_name,omitempty"`
 	Language     string                     `json:"language,omitempty"`
@@ -559,13 +570,17 @@ func (h *ChatAPIHandler) SendMessage(c *echo.Context) error {
 		}
 	}
 
+	senderType := strings.TrimSpace(req.SenderType)
+	if senderType == "" {
+		senderType = string(domain.SenderTypeAIAgent)
+	}
+
 	res, err := eng.SendMessage(ctx, wsID, chat.SendRequest{
 		Ref:                 chat.ChatRef{ChatID: chatID},
 		Body:                body,
 		Media:               req.Media,
 		SenderName:          req.SenderName,
-		SenderType:          req.SenderType,
-		DisableAI:           req.DisableAI,
+		SenderType:          senderType,
 		ReplyToUID:          req.ReplyToUID,
 		TemplateName:        req.TemplateName,
 		Language:            req.Language,
@@ -1041,5 +1056,114 @@ func (h *ChatAPIHandler) UpdateStatus(c *echo.Context) error {
 		"chat_id":       chatID,
 		"chat_status":   string(updatedChat.Status),
 		"snoozed_until": resolvedUntil,
+	})
+}
+
+// ToggleAIRequest defines the JSON payload for updating AI engagement on a chat thread.
+type ToggleAIRequest struct {
+	Disabled    *bool   `json:"disabled,omitempty"`
+	Enabled     *bool   `json:"enabled,omitempty"`
+	Mode        string  `json:"mode,omitempty"`
+	PausedUntil *string `json:"paused_until,omitempty"`
+}
+
+// ToggleAI handles PATCH /api/v1/chats/:id/ai — updates AI engagement on a chat thread.
+func (h *ChatAPIHandler) ToggleAI(c *echo.Context) error {
+	wsID, err := h.resolveWorkspaceID(c)
+	if err != nil {
+		return h.handleWorkspaceError(c, err)
+	}
+
+	chatID, err := chatIDFromParam(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "BAD_REQUEST",
+			"message": err.Error(),
+		})
+	}
+
+	eng := h.engine()
+	if eng == nil {
+		return c.JSON(http.StatusServiceUnavailable, map[string]string{
+			"code":    "SERVICE_UNAVAILABLE",
+			"message": "chat repository not configured",
+		})
+	}
+
+	var req ToggleAIRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "BAD_REQUEST",
+			"message": "invalid request body",
+		})
+	}
+
+	var change activity.AIChange
+	switch {
+	case req.Disabled != nil:
+		if *req.Disabled {
+			change = activity.AIOff()
+		} else {
+			change = activity.AIResume()
+		}
+	case req.Enabled != nil:
+		if *req.Enabled {
+			change = activity.AIResume()
+		} else {
+			change = activity.AIOff()
+		}
+	case strings.TrimSpace(req.Mode) != "":
+		mode := strings.ToLower(strings.TrimSpace(req.Mode))
+		switch mode {
+		case string(domain.AIModeOff):
+			change = activity.AIOff()
+		case string(domain.AIModeActive), "engaged":
+			change = activity.AIResume()
+		case string(domain.AIModePaused):
+			if req.PausedUntil == nil || strings.TrimSpace(*req.PausedUntil) == "" {
+				change = activity.AIPauseUntil(time.Now().UTC().Add(12 * time.Hour))
+			} else {
+				parsed, pErr := time.Parse(time.RFC3339, strings.TrimSpace(*req.PausedUntil))
+				if pErr != nil {
+					return c.JSON(http.StatusBadRequest, map[string]string{
+						"code":    "BAD_REQUEST",
+						"message": "invalid paused_until timestamp: must be RFC3339",
+					})
+				}
+				change = activity.AIPauseUntil(parsed)
+			}
+		default:
+			return c.JSON(http.StatusBadRequest, map[string]string{
+				"code":    "BAD_REQUEST",
+				"message": "invalid mode: must be engaged, paused, or off",
+			})
+		}
+	default:
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "BAD_REQUEST",
+			"message": "disabled, enabled, or mode is required",
+		})
+	}
+
+	ctx := c.Request().Context()
+	updatedChat, err := eng.SetAI(ctx, wsID, chat.ChatRef{ChatID: chatID}, change)
+	if err != nil {
+		if errors.Is(err, chat.ErrChatNotFound) || errors.Is(err, repository.ErrChatNotFound) || strings.Contains(err.Error(), "not found") {
+			return c.JSON(http.StatusNotFound, map[string]string{
+				"code":    "NOT_FOUND",
+				"message": fmt.Sprintf("chat %s not found", chatID),
+			})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]string{
+			"code":    "INTERNAL_ERROR",
+			"message": "failed to update chat AI state: " + err.Error(),
+		})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"status":      "success",
+		"chat_id":     chatID,
+		"ai_disabled": updatedChat.AIDisabled,
+		"ai":          updatedChat.AI,
 	})
 }
