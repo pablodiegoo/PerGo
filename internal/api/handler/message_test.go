@@ -21,9 +21,17 @@ import (
 )
 
 type mockConnectionRepo struct {
+	GetByIDFunc                     func(ctx context.Context, id uuid.UUID) (*repository.Connection, error)
 	GetBySlugFunc                   func(ctx context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error)
 	GetBySenderIdentityFunc         func(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error)
 	GetDefaultChannelConnectionFunc func(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error)
+}
+
+func (m *mockConnectionRepo) GetByID(ctx context.Context, id uuid.UUID) (*repository.Connection, error) {
+	if m.GetByIDFunc != nil {
+		return m.GetByIDFunc(ctx, id)
+	}
+	return nil, repository.ErrConnectionNotFound
 }
 
 func (m *mockConnectionRepo) GetBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error) {

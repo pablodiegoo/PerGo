@@ -187,10 +187,14 @@ type ProductPayload struct {
 
 // ConversationalIngestFields carries optional conversational context for outbound message ingestion.
 type ConversationalIngestFields struct {
-	ChatID     *uuid.UUID `json:"chat_id,omitempty"`
-	ReplyToUID *string    `json:"reply_to_uid,omitempty"`
-	SenderType string     `json:"sender_type,omitempty"`
-	SenderName string     `json:"sender_name,omitempty"`
+	ChatID        *uuid.UUID        `json:"chat_id,omitempty"`
+	ConnectionID  *uuid.UUID        `json:"connection_id,omitempty"`
+	ContactID     *uuid.UUID        `json:"contact_id,omitempty"`
+	ReplyToUID    *string           `json:"reply_to_uid,omitempty"`
+	SenderType    string            `json:"sender_type,omitempty"`
+	SenderName    string            `json:"sender_name,omitempty"`
+	CampaignID    *uuid.UUID        `json:"campaign_id,omitempty"`
+	VariablesJSON map[string]string `json:"variables_json,omitempty"`
 }
 
 // CreateMessageRequest is the JSON payload for POST /messages.

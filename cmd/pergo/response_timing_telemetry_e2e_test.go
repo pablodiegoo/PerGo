@@ -20,6 +20,7 @@ import (
 	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -126,7 +127,9 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 
 	orchestrator := queue.NewDispatchOrchestrator(channelRegistry, dispatchRepo, nil, nil, nil, contactRepo, 5, 60*time.Second)
 	orchestrator.SetContactRepository(contactRepo)
-	orchestrator.SetActivity(actRec)
+	outboundProc := outbound.NewProcessor(nil, nil, connRepo, nil).
+		SetContactRepository(contactRepo).
+		SetActivity(actRec)
 
 	// 4. Setup Webhook Dispatcher
 	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, webhookServer.Client(), nil)
@@ -178,26 +181,33 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 		deliveriesMu.Unlock()
 
 		contactPhone := "5511999995555"
-		senderPhone := "+5511888887777"
-
-		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", contactPhone, "Timing Customer", "", contactPhone)
+		campRepo := repository.NewCampaignRepository(pool)
+		camp, err := campRepo.Create(ctx, &domain.Campaign{
+			WorkspaceID: ws.ID,
+			Name:        "Research Campaign",
+			Status:      domain.CampaignStatusSending,
+		})
 		if err != nil {
-			t.Fatalf("failed to resolve contact: %v", err)
-		}
-		if _, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &wabaConn.ID, contact.ID); err != nil {
-			t.Fatalf("failed to create chat: %v", err)
+			t.Fatalf("failed to create campaign: %v", err)
 		}
 
-		// Step A: Send outbound message to contact
+		// Step A: Ingest and dispatch first-touch campaign outbound message to contact (no pre-existing Chat)
 		outboundTraceID := "outbound_turn_trace_" + uuid.New().String()
-		qMsg := &domain.QueueMessage{
-			WorkspaceID:    ws.ID,
-			ConnectionID:   wabaConn.ID,
-			TraceID:        outboundTraceID,
-			To:             contactPhone,
-			Channel:        "whatsapp_cloud",
-			SenderIdentity: senderPhone,
-			Body:           "Olá! Você consome produtos orgânicos regularmente?",
+		qMsg, err := outboundProc.Ingest(ctx, ws.ID, outboundTraceID, &domain.CreateMessageRequest{
+			To:           contactPhone,
+			Channel:      "whatsapp_cloud",
+			TemplateName: "organic_survey",
+			Language:     "pt_BR",
+			Body:         "Olá! Você consome produtos orgânicos regularmente?",
+			ConversationalIngestFields: domain.ConversationalIngestFields{
+				SenderType:   string(domain.SenderTypeSystem),
+				SenderName:   "Research Campaign",
+				ConnectionID: &wabaConn.ID,
+				CampaignID:   &camp.ID,
+			},
+		})
+		if err != nil {
+			t.Fatalf("outbound ingest failed: %v", err)
 		}
 
 		msg := &fakeTimingDispatchMsg{}
@@ -206,13 +216,28 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 			t.Fatalf("outbound dispatch failed: %v", err)
 		}
 
-		// Verify chat record has last_outbound_at
+		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", contactPhone, "", "", "")
+		if err != nil {
+			t.Fatalf("failed to resolve contact: %v", err)
+		}
+
+		// Verify first-touch campaign message created a closed Chat with LastOutboundAt and ChatMessage
 		state, exists, err := actRec.Snapshot(ctx, ws.ID, activity.ChatOf(wabaConn.ID, contact.ID))
 		if err != nil {
 			t.Fatalf("failed to snapshot chat: %v", err)
 		}
 		if !exists || state.LastOutboundAt == nil {
 			t.Fatal("expected LastOutboundAt on chat")
+		}
+		if state.Status != domain.ChatStatusClosed {
+			t.Fatalf("expected first-touch campaign Chat to be created as closed, got %q", state.Status)
+		}
+		persistedMsg, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, outboundTraceID)
+		if err != nil || persistedMsg == nil {
+			t.Fatalf("expected outbound ChatMessage persisted, err=%v", err)
+		}
+		if persistedMsg.SenderType != domain.SenderTypeSystem || persistedMsg.Direction != domain.DirectionOutbound {
+			t.Fatalf("unexpected ChatMessage: sender_type=%q direction=%q", persistedMsg.SenderType, persistedMsg.Direction)
 		}
 
 		simulatedInboundAt := state.LastOutboundAt.Add(4 * time.Second)
@@ -259,6 +284,15 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 		}
 		if rec.Code != http.StatusOK {
 			t.Errorf("status = %d, want 200", rec.Code)
+		}
+
+		// Verify inbound reply reopened the Chat from closed to open
+		stateAfter, _, err := actRec.Snapshot(ctx, ws.ID, activity.ChatOf(wabaConn.ID, contact.ID))
+		if err != nil {
+			t.Fatalf("failed to snapshot chat after inbound: %v", err)
+		}
+		if stateAfter.Status != domain.ChatStatusOpen {
+			t.Fatalf("expected inbound reply to reopen Chat to open, got %q", stateAfter.Status)
 		}
 
 		// Step C: Verify delivery to Subscriber HTTP webhook server

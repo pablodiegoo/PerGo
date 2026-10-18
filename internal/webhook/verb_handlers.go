@@ -16,12 +16,19 @@ import (
 )
 
 type replyHandler struct {
-	publisher outbound.Publisher
-	resolver  outbound.RouteResolver
+	ingestor outbound.OutboundProcessor
 }
 
 func NewReplyHandler(publisher outbound.Publisher, resolver outbound.RouteResolver) VerbHandler {
-	return &replyHandler{publisher: publisher, resolver: resolver}
+	var ingestor outbound.OutboundProcessor
+	if publisher != nil && resolver != nil {
+		ingestor = outbound.NewProcessor(nil, nil, resolver, publisher)
+	}
+	return &replyHandler{ingestor: ingestor}
+}
+
+func NewReplyHandlerWithIngestor(ingestor outbound.OutboundProcessor) VerbHandler {
+	return &replyHandler{ingestor: ingestor}
 }
 
 func (h *replyHandler) Execute(ctx context.Context, vc VerbContext, params json.RawMessage) error {
@@ -29,31 +36,30 @@ func (h *replyHandler) Execute(ctx context.Context, vc VerbContext, params json.
 	if err := json.Unmarshal(params, &p); err != nil {
 		return fmt.Errorf("invalid params: %w", err)
 	}
-	if h.publisher == nil || h.resolver == nil {
+	if h.ingestor == nil {
 		return nil
 	}
-	conn, err := h.resolver.GetBySenderIdentity(ctx, vc.WorkspaceID, vc.Event.To)
-	if err != nil {
-		conn, err = h.resolver.GetDefaultChannelConnection(ctx, vc.WorkspaceID, vc.Event.Channel)
-		if err != nil {
-			return fmt.Errorf("cannot resolve connection for reply: %w", err)
-		}
+	req := &domain.CreateMessageRequest{
+		To:      vc.Event.From,
+		Channel: vc.Event.Channel,
+		Body:    p.Body,
+		ConversationalIngestFields: domain.ConversationalIngestFields{
+			SenderType: string(domain.SenderTypeAIAgent),
+			SenderName: "Webhook Verb",
+		},
 	}
-	qMsg := &domain.QueueMessage{
-		WorkspaceID:    vc.WorkspaceID,
-		ConnectionID:   conn.ID,
-		SenderIdentity: conn.SenderIdentity,
-		TraceID:        vc.TraceID,
-		To:             vc.Event.From,
-		Channel:        vc.Event.Channel,
-		Body:           p.Body,
-		QueuedAt:       time.Now().UTC(),
+	if vc.ConnectionID != uuid.Nil {
+		connID := vc.ConnectionID
+		req.ConnectionID = &connID
+	} else {
+		req.From = vc.Event.To
 	}
-	payload, err := json.Marshal(qMsg)
-	if err != nil {
-		return err
+	if vc.ContactID != uuid.Nil {
+		contactID := vc.ContactID
+		req.ContactID = &contactID
 	}
-	return h.publisher.Publish(ctx, "messages.outbound", payload, vc.TraceID)
+	_, err := h.ingestor.Ingest(ctx, vc.WorkspaceID, vc.TraceID, req)
+	return err
 }
 
 type waitHandler struct{}
@@ -86,12 +92,19 @@ func (h *waitHandler) Execute(ctx context.Context, vc VerbContext, params json.R
 }
 
 type forwardHandler struct {
-	publisher outbound.Publisher
-	resolver  outbound.RouteResolver
+	ingestor outbound.OutboundProcessor
 }
 
 func NewForwardHandler(publisher outbound.Publisher, resolver outbound.RouteResolver) VerbHandler {
-	return &forwardHandler{publisher: publisher, resolver: resolver}
+	var ingestor outbound.OutboundProcessor
+	if publisher != nil && resolver != nil {
+		ingestor = outbound.NewProcessor(nil, nil, resolver, publisher)
+	}
+	return &forwardHandler{ingestor: ingestor}
+}
+
+func NewForwardHandlerWithIngestor(ingestor outbound.OutboundProcessor) VerbHandler {
+	return &forwardHandler{ingestor: ingestor}
 }
 
 func (h *forwardHandler) Execute(ctx context.Context, vc VerbContext, params json.RawMessage) error {
@@ -99,28 +112,20 @@ func (h *forwardHandler) Execute(ctx context.Context, vc VerbContext, params jso
 	if err := json.Unmarshal(params, &p); err != nil {
 		return fmt.Errorf("invalid params: %w", err)
 	}
-	if h.publisher == nil || h.resolver == nil {
+	if h.ingestor == nil {
 		return nil
 	}
-	conn, err := h.resolver.GetDefaultChannelConnection(ctx, vc.WorkspaceID, p.Channel)
-	if err != nil {
-		return fmt.Errorf("cannot resolve default connection for forward channel '%s': %w", p.Channel, err)
+	req := &domain.CreateMessageRequest{
+		To:      p.To,
+		Channel: p.Channel,
+		Body:    vc.Event.Body,
+		ConversationalIngestFields: domain.ConversationalIngestFields{
+			SenderType: string(domain.SenderTypeAIAgent),
+			SenderName: "Webhook Verb",
+		},
 	}
-	qMsg := &domain.QueueMessage{
-		WorkspaceID:    vc.WorkspaceID,
-		ConnectionID:   conn.ID,
-		SenderIdentity: conn.SenderIdentity,
-		TraceID:        vc.TraceID,
-		To:             p.To,
-		Channel:        p.Channel,
-		Body:           vc.Event.Body,
-		QueuedAt:       time.Now().UTC(),
-	}
-	payload, err := json.Marshal(qMsg)
-	if err != nil {
-		return err
-	}
-	return h.publisher.Publish(ctx, "messages.outbound", payload, vc.TraceID)
+	_, err := h.ingestor.Ingest(ctx, vc.WorkspaceID, vc.TraceID, req)
+	return err
 }
 
 type tagHandler struct {

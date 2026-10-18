@@ -890,17 +890,33 @@ func TestEngine_ProcessBatchTask_AtomicCompletion(t *testing.T) {
 	ctx := context.Background()
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	campRepo := repository.NewCampaignRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
 
 	ws, _ := wsRepo.Create(ctx, "ws_atomic_comp_"+uuid.New().String())
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
 
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "WA Atomic Conn",
+		Slug:           "whatsapp",
+		Channel:        "whatsapp",
+		SenderIdentity: "+5511888880001",
+		Status:         "active",
+		IsDefault:      true,
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("create connection: %v", err)
+	}
+
 	fakePub := NewFakePublisher()
-	engine := NewBroadcasterEngine(campRepo, nil, nil, fakePub, nil, nil)
+	engine := NewBroadcasterEngine(campRepo, connRepo, nil, fakePub, nil, nil)
 
 	channel := "whatsapp"
 	body := "Hi {{name}}"
 	camp, err := campRepo.Create(ctx, &domain.Campaign{
 		WorkspaceID:  ws.ID,
+		ConnectionID: &conn.ID,
 		Name:         "Out of Order Batches Camp",
 		Status:       domain.CampaignStatusSending,
 		Channel:      &channel,
@@ -983,18 +999,34 @@ func TestEngine_ProcessBatchTask_DuplicateDispatch(t *testing.T) {
 	ctx := context.Background()
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	campRepo := repository.NewCampaignRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 
 	ws, _ := wsRepo.Create(ctx, "ws_dup_disp_"+uuid.New().String())
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
 
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "WA Dup Conn",
+		Slug:           "whatsapp",
+		Channel:        "whatsapp",
+		SenderIdentity: "+5511888880002",
+		Status:         "active",
+		IsDefault:      true,
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("create connection: %v", err)
+	}
+
 	fakePub := NewFakePublisher()
-	engine := NewBroadcasterEngine(campRepo, nil, dispatchRepo, fakePub, nil, nil)
+	engine := NewBroadcasterEngine(campRepo, connRepo, dispatchRepo, fakePub, nil, nil)
 
 	channel := "whatsapp"
 	body := "Hello {{name}}"
 	camp, err := campRepo.Create(ctx, &domain.Campaign{
 		WorkspaceID:  ws.ID,
+		ConnectionID: &conn.ID,
 		Name:         "Duplicate Dispatch Camp",
 		Status:       domain.CampaignStatusSending,
 		Channel:      &channel,
@@ -1070,6 +1102,110 @@ func TestEngine_ProcessBatchTask_DuplicateDispatch(t *testing.T) {
 	outboundMsgs := fakePub.MessagesBySubject("messages.outbound")
 	if len(outboundMsgs) != 1 {
 		t.Errorf("expected 1 outbound message published, got %d", len(outboundMsgs))
+	}
+}
+
+func TestEngine_ProcessBatchTask_IngestsSystemOutboundAndCreatesClosedChat(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	campRepo := repository.NewCampaignRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	chatRepo := repository.NewChatRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+
+	ws, err := wsRepo.Create(ctx, "ws_camp_chat_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "WABA Campaign Conn",
+		Slug:           "whatsapp_cloud",
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+5511888880099",
+		Status:         "active",
+		IsDefault:      true,
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("create connection: %v", err)
+	}
+
+	fakePub := NewFakePublisher()
+	engine := NewBroadcasterEngine(campRepo, connRepo, nil, fakePub, nil, nil)
+
+	channel := "whatsapp_cloud"
+	tmplName := "promo_welcome"
+	camp, err := campRepo.Create(ctx, &domain.Campaign{
+		WorkspaceID:  ws.ID,
+		ConnectionID: &conn.ID,
+		Name:         "Black Friday Launch",
+		Status:       domain.CampaignStatusSending,
+		Channel:      &channel,
+		TemplateName: &tmplName,
+		DelaySeconds: 0,
+	})
+	if err != nil {
+		t.Fatalf("create campaign: %v", err)
+	}
+
+	recipPhone := "+5511999990777"
+	if err := campRepo.AddRecipients(ctx, camp.ID, []domain.CampaignRecipientRecord{
+		{Phone: recipPhone, Status: domain.RecipientStatusPending, Variables: map[string]string{"1": "Lucas"}},
+	}); err != nil {
+		t.Fatalf("add recipients: %v", err)
+	}
+
+	batchTask := domain.CampaignBatchTask{
+		CampaignID:   camp.ID,
+		WorkspaceID:  ws.ID,
+		BatchIndex:   1,
+		TotalBatches: 1,
+		Recipients: []domain.CampaignRecipient{
+			{To: recipPhone, Variables: map[string]string{"1": "Lucas"}},
+		},
+		DelaySeconds: 0,
+	}
+
+	if err := engine.ProcessBatchTask(ctx, batchTask); err != nil {
+		t.Fatalf("ProcessBatchTask: %v", err)
+	}
+
+	// Verify ChatMessage was recorded with SenderTypeSystem and SenderName = camp.Name
+	expectedTraceID := fmt.Sprintf("campaign_%s_%s", camp.ID.String(), recipPhone)
+	chatMsg, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, expectedTraceID)
+	if err != nil || chatMsg == nil {
+		t.Fatalf("expected ChatMessage persisted for campaign recipient, got err=%v msg=%v", err, chatMsg)
+	}
+	if chatMsg.SenderType != domain.SenderTypeSystem {
+		t.Errorf("expected SenderType %q, got %q", domain.SenderTypeSystem, chatMsg.SenderType)
+	}
+	if chatMsg.SenderName != "Black Friday Launch" {
+		t.Errorf("expected SenderName 'Black Friday Launch', got %q", chatMsg.SenderName)
+	}
+
+	// Verify brand-new Chat was created in 'closed' status (so inbox is not flooded) with LastOutboundAt populated
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", recipPhone, "", "", recipPhone)
+	if err != nil {
+		t.Fatalf("ResolveContact: %v", err)
+	}
+	chat, err := chatRepo.GetChat(ctx, ws.ID, chatMsg.ChatID)
+	if err != nil {
+		t.Fatalf("GetChat: %v", err)
+	}
+	if chat.ContactID != contact.ID {
+		t.Errorf("expected Chat.ContactID=%s, got %s", contact.ID, chat.ContactID)
+	}
+	if chat.Status != domain.ChatStatusClosed {
+		t.Errorf("expected new campaign Chat status = 'closed', got %q", chat.Status)
+	}
+	if chat.LastOutboundAt == nil {
+		t.Errorf("expected Chat.LastOutboundAt to be set on campaign send")
 	}
 }
 

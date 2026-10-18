@@ -29,6 +29,7 @@ type QueueDepthChecker interface {
 
 // RouteResolver defines the port for connection routing resolution.
 type RouteResolver interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*repository.Connection, error)
 	GetBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error)
 	GetBySenderIdentity(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error)
 	GetDefaultChannelConnection(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error)
@@ -129,6 +130,18 @@ func (p *Processor) SetDebounceCanceller(dc DebounceCanceller) *Processor {
 	return p
 }
 
+func validateConnectionChannelMatch(conn *repository.Connection, reqChannel string) error {
+	if conn.Channel != "" && conn.Channel != reqChannel && conn.Slug != reqChannel {
+		return &ValidationError{
+			Response: &domain.ErrorResponse{
+				Code:    "route_not_found",
+				Message: "connection channel does not match request channel",
+			},
+		}
+	}
+	return nil
+}
+
 // Ingest runs the outbound message ingestion pipeline: backpressure, validation, S3 caching, routing, NATS publishing.
 func (p *Processor) Ingest(
 	ctx context.Context,
@@ -140,6 +153,36 @@ func (p *Processor) Ingest(
 	if p.tracker != nil && workspaceID != uuid.Nil {
 		if p.tracker.Exceeds(workspaceID, 1000) {
 			return nil, ErrQueueFull
+		}
+	}
+
+	var conn *repository.Connection
+	var err error
+
+	// 1.5 If an explicit ConnectionID is provided, resolve it up front so req.Channel can default to conn.Channel before validation.
+	if req.ConnectionID != nil && *req.ConnectionID != uuid.Nil {
+		if p.resolver == nil {
+			return nil, &RouteError{
+				Message: "route resolver is not configured",
+			}
+		}
+		conn, err = p.resolver.GetByID(ctx, *req.ConnectionID)
+		if err != nil || conn == nil {
+			return nil, &RouteError{
+				Message: "no matching connection route resolved for connection_id",
+				Err:     err,
+			}
+		}
+		if conn.WorkspaceID != workspaceID {
+			return nil, &RouteError{
+				Message: "connection does not belong to workspace",
+				Err:     repository.ErrConnectionNotFound,
+			}
+		}
+		if req.Channel == "" {
+			req.Channel = conn.Channel
+		} else if err := validateConnectionChannelMatch(conn, req.Channel); err != nil {
+			return nil, err
 		}
 	}
 
@@ -159,7 +202,6 @@ func (p *Processor) Ingest(
 			}
 		}
 	}
-
 
 	// 3. Process Media if present
 	if req.Media != nil {
@@ -193,47 +235,41 @@ func (p *Processor) Ingest(
 		req.Media.MediaURL = mediaURL
 	}
 
-	// 4. Resolve connection routing
-	if p.resolver == nil {
-		return nil, &RouteError{
-			Message: "route resolver is not configured",
-		}
-	}
-
-	var conn *repository.Connection
-	var err error
-
-	if req.From != "" {
-		conn, err = p.resolver.GetBySenderIdentity(ctx, workspaceID, req.From)
-		if err != nil {
+	// 4. Resolve connection routing if not already resolved by ConnectionID
+	if conn == nil {
+		if p.resolver == nil {
 			return nil, &RouteError{
-				Message: "no matching connection route resolved for the specified sender identity",
-				Err:     err,
+				Message: "route resolver is not configured",
 			}
 		}
-		if conn.Channel != req.Channel && conn.Slug != req.Channel {
-			return nil, &ValidationError{
-				Response: &domain.ErrorResponse{
-					Code:    "route_not_found",
-					Message: "connection channel does not match request channel",
-				},
+
+		if req.From != "" {
+			conn, err = p.resolver.GetBySenderIdentity(ctx, workspaceID, req.From)
+			if err != nil {
+				return nil, &RouteError{
+					Message: "no matching connection route resolved for the specified sender identity",
+					Err:     err,
+				}
 			}
-		}
-	} else {
-		conn, err = p.resolver.GetBySlug(ctx, workspaceID, req.Channel)
-		if err != nil {
-			if errors.Is(err, repository.ErrConnectionNotFound) {
-				conn, err = p.resolver.GetDefaultChannelConnection(ctx, workspaceID, req.Channel)
-				if err != nil {
+			if err := validateConnectionChannelMatch(conn, req.Channel); err != nil {
+				return nil, err
+			}
+		} else {
+			conn, err = p.resolver.GetBySlug(ctx, workspaceID, req.Channel)
+			if err != nil {
+				if errors.Is(err, repository.ErrConnectionNotFound) {
+					conn, err = p.resolver.GetDefaultChannelConnection(ctx, workspaceID, req.Channel)
+					if err != nil {
+						return nil, &RouteError{
+							Message: "no connection route resolved for channel or slug",
+							Err:     err,
+						}
+					}
+				} else {
 					return nil, &RouteError{
-						Message: "no connection route resolved for channel or slug",
+						Message: "failed to resolve connection route by slug",
 						Err:     err,
 					}
-				}
-			} else {
-				return nil, &RouteError{
-					Message: "failed to resolve connection route by slug",
-					Err:     err,
 				}
 			}
 		}
@@ -331,6 +367,11 @@ func (p *Processor) Ingest(
 		fallbackBehavior = string(domain.FallbackBehaviorDegrade)
 	}
 
+	channelName := conn.Channel
+	if channelName == "" {
+		channelName = req.Channel
+	}
+
 	// 5. Construct QueueMessage, record Chat Activity (single outbound writer), and Publish
 	qMsg := &domain.QueueMessage{
 		WorkspaceID:      workspaceID,
@@ -338,7 +379,7 @@ func (p *Processor) Ingest(
 		SenderIdentity:   conn.SenderIdentity,
 		TraceID:          traceID,
 		To:               req.To,
-		Channel:          conn.Channel,
+		Channel:          channelName,
 		Body:             req.Body,
 		Media:            req.Media,
 		Metadata:         req.Metadata,
@@ -348,6 +389,8 @@ func (p *Processor) Ingest(
 		TemplateName:     req.TemplateName,
 		Language:         req.Language,
 		Components:       req.Components,
+		CampaignID:       req.CampaignID,
+		VariablesJSON:    req.VariablesJSON,
 		Interactive:      req.Interactive,
 		ChannelOverrides: req.ChannelOverrides,
 		FallbackBehavior: fallbackBehavior,
@@ -421,23 +464,30 @@ func (p *Processor) recordOutboundTurn(
 		}
 	}
 
+	channelName := qMsg.Channel
+	if channelName == "" {
+		channelName = conn.Channel
+	}
+
 	isTemplate := strings.TrimSpace(qMsg.TemplateName) != "" || strings.EqualFold(strings.TrimSpace(qMsg.Type), "template")
 
 	var ref activity.ChatRef
 	if req.ChatID != nil && *req.ChatID != uuid.Nil {
-		ref = activity.ChatID(*req.ChatID).WithChannel(conn.Channel)
-	} else if conn.Channel == "whatsapp_cloud" && !isTemplate {
+		ref = activity.ChatID(*req.ChatID).WithChannel(channelName)
+	} else if req.ContactID != nil && *req.ContactID != uuid.Nil {
+		ref = activity.ChatOf(conn.ID, *req.ContactID).WithChannel(channelName)
+	} else if channelName == "whatsapp_cloud" && !isTemplate {
 		// Read-only ChatAt: never creates a Contact or Chat when none exists.
-		ref = activity.ChatAt(conn.ID, qMsg.To).WithChannel(conn.Channel)
+		ref = activity.ChatAt(conn.ID, qMsg.To).WithChannel(channelName)
 	} else if p.contactRepo != nil && qMsg.To != "" {
-		contact, cErr := p.contactRepo.ResolveContact(ctx, workspaceID, conn.Channel, qMsg.To, "", "", qMsg.To)
+		contact, cErr := p.contactRepo.ResolveContact(ctx, workspaceID, channelName, qMsg.To, "", "", qMsg.To)
 		if cErr == nil && contact != nil && contact.ID != uuid.Nil {
-			ref = activity.ChatOf(conn.ID, contact.ID).WithChannel(conn.Channel)
+			ref = activity.ChatOf(conn.ID, contact.ID).WithChannel(channelName)
 		} else {
-			ref = activity.ChatAt(conn.ID, qMsg.To).WithChannel(conn.Channel)
+			ref = activity.ChatAt(conn.ID, qMsg.To).WithChannel(channelName)
 		}
 	} else {
-		ref = activity.ChatAt(conn.ID, qMsg.To).WithChannel(conn.Channel)
+		ref = activity.ChatAt(conn.ID, qMsg.To).WithChannel(channelName)
 	}
 
 	uid := traceID
@@ -457,7 +507,7 @@ func (p *Processor) recordOutboundTurn(
 		TemplateName: qMsg.TemplateName,
 		Language:     qMsg.Language,
 		MessageType:  qMsg.Type,
-		Channel:      conn.Channel,
+		Channel:      channelName,
 		To:           qMsg.To,
 		Metadata:     req.Metadata,
 		At:           qMsg.QueuedAt,

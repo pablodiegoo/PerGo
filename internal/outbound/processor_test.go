@@ -129,6 +129,16 @@ func (f *fakeRouteResolver) GetDefaultChannelConnection(ctx context.Context, wor
 	return f.conn, nil
 }
 
+func (f *fakeRouteResolver) GetByID(ctx context.Context, id uuid.UUID) (*repository.Connection, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.conn != nil && f.conn.ID == id {
+		return f.conn, nil
+	}
+	return nil, repository.ErrConnectionNotFound
+}
+
 // fakePublisher tracks NATS publishes.
 type fakePublisher struct {
 	published [][]byte

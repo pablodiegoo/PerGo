@@ -588,25 +588,32 @@ type mockRouteResolver struct {
 	conn *repository.Connection
 }
 
+func (m *mockRouteResolver) GetByID(ctx context.Context, id uuid.UUID) (*repository.Connection, error) {
+	if m.conn != nil && m.conn.ID == id {
+		return m.conn, nil
+	}
+	return nil, repository.ErrConnectionNotFound
+}
+
 func (m *mockRouteResolver) GetBySenderIdentity(ctx context.Context, workspaceID uuid.UUID, senderIdentity string) (*repository.Connection, error) {
 	if m.conn != nil {
 		return m.conn, nil
 	}
-	return nil, errors.New("connection not found")
+	return nil, repository.ErrConnectionNotFound
 }
 
 func (m *mockRouteResolver) GetBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (*repository.Connection, error) {
-	if m.conn != nil && m.conn.Slug == slug {
+	if m.conn != nil && m.conn.Slug != "" && m.conn.Slug == slug {
 		return m.conn, nil
 	}
-	return nil, errors.New("connection not found by slug")
+	return nil, repository.ErrConnectionNotFound
 }
 
 func (m *mockRouteResolver) GetDefaultChannelConnection(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error) {
 	if m.conn != nil {
 		return m.conn, nil
 	}
-	return nil, errors.New("default connection not found")
+	return nil, repository.ErrConnectionNotFound
 }
 
 func TestDefaultDispatcher_VerbsIntegration(t *testing.T) {
@@ -663,14 +670,23 @@ func TestDefaultDispatcher_VerbsIntegration(t *testing.T) {
 
 	// Setup mocks
 	connID := uuid.New()
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	testConn := &repository.Connection{
+		ID:             connID,
+		WorkspaceID:    ws.ID,
+		Name:           "Telegram Bot 1",
+		Slug:           "tg-bot-1-" + uuid.New().String()[:8],
+		Channel:        "telegram",
+		SenderIdentity: "bot-1",
+		Status:         "active",
+		IsDefault:      true,
+	}
+	if err := connRepo.Create(ctx, testConn); err != nil {
+		t.Fatalf("create test connection: %v", err)
+	}
 	mPublisher := &mockPublisher{}
 	mResolver := &mockRouteResolver{
-		conn: &repository.Connection{
-			ID:             connID,
-			WorkspaceID:    ws.ID,
-			Channel:        "telegram",
-			SenderIdentity: "bot-1",
-		},
+		conn: testConn,
 	}
 
 	// Instantiate the VerbsEngine

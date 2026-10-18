@@ -526,6 +526,25 @@ func TestDeviceHandler_RunTest_TemplateDynamicParamsAndLanguage(t *testing.T) {
 		if params[0].Text != "Alice" || params[1].Text != "TRACK-999" || params[2].Text != "Arriving Monday" || params[3].Text != "Express" {
 			t.Errorf("unexpected parameters: %+v", params)
 		}
+
+		chatRepo := repository.NewChatRepository(pool)
+		chatMsg, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, qMsg.TraceID)
+		if err != nil || chatMsg == nil {
+			t.Fatalf("expected ChatMessage persisted for RunTest via OutboundProcessor.Ingest, got err=%v msg=%v", err, chatMsg)
+		}
+		if chatMsg.SenderType != domain.SenderTypeSystem {
+			t.Errorf("expected SenderType %q, got %q", domain.SenderTypeSystem, chatMsg.SenderType)
+		}
+		if chatMsg.SenderName != "System Test" {
+			t.Errorf("expected SenderName 'System Test', got %q", chatMsg.SenderName)
+		}
+		chat, err := chatRepo.GetChat(ctx, ws.ID, chatMsg.ChatID)
+		if err != nil {
+			t.Fatalf("GetChat failed: %v", err)
+		}
+		if chat.Status != domain.ChatStatusClosed {
+			t.Errorf("expected new Chat created by system test to be closed, got %q", chat.Status)
+		}
 	})
 
 	t.Run("Dispatches static template with zero parameters", func(t *testing.T) {

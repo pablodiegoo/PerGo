@@ -14,6 +14,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -55,6 +56,7 @@ type BroadcasterEngine interface {
 	TriggerDue(ctx context.Context) ([]uuid.UUID, error)
 	ProcessStartTask(ctx context.Context, task domain.CampaignStartTask) error
 	ProcessBatchTask(ctx context.Context, task domain.CampaignBatchTask) error
+	SetIngestor(ingestor outbound.OutboundProcessor)
 }
 
 type defaultEngine struct {
@@ -62,6 +64,7 @@ type defaultEngine struct {
 	connectionRepo *repository.ConnectionRepository
 	dispatchRepo   *repository.MessageDispatchRepository
 	publisher      Publisher
+	ingestor       outbound.OutboundProcessor
 	auditWriter    audit.Writer
 	tagLister      domain.TagContactLister
 }
@@ -75,14 +78,24 @@ func NewBroadcasterEngine(
 	auditWriter audit.Writer,
 	tagLister domain.TagContactLister,
 ) BroadcasterEngine {
+	var ingestor outbound.OutboundProcessor
+	if connectionRepo != nil && publisher != nil {
+		ingestor = outbound.NewProcessor(nil, nil, connectionRepo, publisher)
+	}
 	return &defaultEngine{
 		campaignRepo:   campaignRepo,
 		connectionRepo: connectionRepo,
 		dispatchRepo:   dispatchRepo,
 		publisher:      publisher,
+		ingestor:       ingestor,
 		auditWriter:    auditWriter,
 		tagLister:      tagLister,
 	}
+}
+
+// SetIngestor configures the OutboundProcessor used for campaign batch dispatch.
+func (e *defaultEngine) SetIngestor(ingestor outbound.OutboundProcessor) {
+	e.ingestor = ingestor
 }
 
 // Create validates scope, connection, parameters, defaults, and creates a campaign in draft (or scheduled).
@@ -631,15 +644,6 @@ func (e *defaultEngine) ProcessBatchTask(ctx context.Context, task domain.Campai
 		channel = *camp.Channel
 	}
 
-	var connID uuid.UUID
-	var senderIdentity string
-	if camp.ConnectionID != nil && e.connectionRepo != nil {
-		connID = *camp.ConnectionID
-		if conn, err := e.connectionRepo.GetByID(ctx, connID); err == nil && conn != nil {
-			senderIdentity = conn.SenderIdentity
-		}
-	}
-
 	rateLimit := task.RateLimitPerMin
 	if camp.RateLimitPerMin != nil && *camp.RateLimitPerMin > 0 {
 		rateLimit = camp.RateLimitPerMin
@@ -675,41 +679,46 @@ func (e *defaultEngine) ProcessBatchTask(ctx context.Context, task domain.Campai
 			fallbackBehavior = *camp.FallbackBehavior
 		}
 
-		qMsg := domain.QueueMessage{
-			WorkspaceID:      task.WorkspaceID,
-			ConnectionID:     connID,
-			SenderIdentity:   senderIdentity,
-			TraceID:          traceID,
+		senderName := camp.Name
+		if senderName == "" {
+			senderName = "Campaign"
+		}
+
+		req := domain.CreateMessageRequest{
 			To:               recipient.To,
 			Channel:          channel,
-			QueuedAt:         time.Now(),
 			FallbackChannels: fallbackChannels,
-			CampaignID:       &task.CampaignID,
-			VariablesJSON:    variablesJSON,
 			FallbackBehavior: fallbackBehavior,
+			ConversationalIngestFields: domain.ConversationalIngestFields{
+				SenderType:    string(domain.SenderTypeSystem),
+				SenderName:    senderName,
+				ConnectionID:  camp.ConnectionID,
+				CampaignID:    &task.CampaignID,
+				VariablesJSON: variablesJSON,
+			},
 		}
 
 		if camp.Interactive != nil {
 			interpolated := domain.InterpolateInteractive(camp.Interactive, recipient.Variables)
 			if limitErr := domain.ValidateInteractiveLimits(interpolated); limitErr != nil {
 				if fallbackBehavior == string(domain.FallbackBehaviorFail) {
-					qMsg.Interactive = interpolated
-					qMsg.Body = interpolated.DegradeToText()
+					req.Interactive = interpolated
+					req.Body = interpolated.DegradeToText()
 				} else {
-					qMsg.Body = interpolated.DegradeToText()
-					qMsg.Interactive = nil
+					req.Body = interpolated.DegradeToText()
+					req.Interactive = nil
 				}
 			} else {
-				qMsg.Interactive = interpolated
-				if qMsg.Body == "" {
-					qMsg.Body = interpolated.Body.Text
+				req.Interactive = interpolated
+				if req.Body == "" {
+					req.Body = interpolated.Body.Text
 				}
 			}
 		} else {
 			if channel == "whatsapp_cloud" && camp.TemplateName != nil {
 				templateName = camp.TemplateName
-				qMsg.TemplateName = *camp.TemplateName
-				qMsg.Language = "pt_BR"
+				req.TemplateName = *camp.TemplateName
+				req.Language = "pt_BR"
 
 				var params []domain.TemplateParameter
 				for i := 1; ; i++ {
@@ -723,7 +732,7 @@ func (e *defaultEngine) ProcessBatchTask(ctx context.Context, task domain.Campai
 					})
 				}
 				if len(params) > 0 {
-					qMsg.Components = []domain.TemplateComponent{
+					req.Components = []domain.TemplateComponent{
 						{
 							Type:       "body",
 							Parameters: params,
@@ -733,9 +742,9 @@ func (e *defaultEngine) ProcessBatchTask(ctx context.Context, task domain.Campai
 			}
 
 			if camp.MessageBody != nil {
-				qMsg.Body = domain.ResolveVariables(*camp.MessageBody, recipient.Variables)
+				req.Body = domain.ResolveVariables(*camp.MessageBody, recipient.Variables)
 			} else if camp.TemplateName != nil {
-				qMsg.Body = domain.ResolveVariables(*camp.TemplateName, recipient.Variables)
+				req.Body = domain.ResolveVariables(*camp.TemplateName, recipient.Variables)
 			}
 		}
 
@@ -769,13 +778,12 @@ func (e *defaultEngine) ProcessBatchTask(ctx context.Context, task domain.Campai
 			}
 		}
 
-		payload, err := json.Marshal(qMsg)
-		if err != nil {
-			e.recordRecipientFailure(ctx, task.WorkspaceID, task.CampaignID, recipient.To, channel, traceID, err)
+		if e.ingestor == nil {
+			e.recordRecipientFailure(ctx, task.WorkspaceID, task.CampaignID, recipient.To, channel, traceID, errors.New("outbound ingestor is not configured"))
 			continue
 		}
 
-		if err := e.publisher.Publish(ctx, "messages.outbound", payload, traceID); err != nil {
+		if _, err := e.ingestor.Ingest(ctx, task.WorkspaceID, traceID, &req); err != nil {
 			e.recordRecipientFailure(ctx, task.WorkspaceID, task.CampaignID, recipient.To, channel, traceID, err)
 			continue
 		}

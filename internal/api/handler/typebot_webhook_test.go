@@ -187,6 +187,18 @@ func TestTypebotWebhookHandler_HappyPath(t *testing.T) {
 		if qmsg.TraceID == "" {
 			t.Error("expected non-empty TraceID")
 		}
+
+		chatRepo := repository.NewChatRepository(pool)
+		chatMsg, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, qmsg.TraceID)
+		if err != nil || chatMsg == nil {
+			t.Fatalf("expected ChatMessage persisted for Typebot webhook, got err=%v msg=%v", err, chatMsg)
+		}
+		if chatMsg.SenderType != domain.SenderTypeAIAgent {
+			t.Errorf("expected SenderType %q, got %q", domain.SenderTypeAIAgent, chatMsg.SenderType)
+		}
+		if chatMsg.SenderName != "Typebot" {
+			t.Errorf("expected SenderName 'Typebot', got %q", chatMsg.SenderName)
+		}
 	})
 
 	t.Run("MissingRequiredField_Returns400", func(t *testing.T) {

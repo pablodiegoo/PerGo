@@ -19,6 +19,7 @@ import (
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/pkg/slug"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
@@ -33,6 +34,7 @@ type DeviceHandler struct {
 	Manager       *session.Manager
 	Connections   *repository.ConnectionRepository
 	Publisher     MessagePublisher
+	Ingestor      outbound.OutboundProcessor
 	NC            *nats.Conn
 	TemplatesRepo *repository.WABATemplateRepository
 	ExternalURL   string
@@ -552,39 +554,44 @@ func (h *DeviceHandler) RunTest(c *echo.Context) error {
 		body, componentsList = ExtractFormTemplateParams(c, templateName)
 	}
 
-	traceID := "test-" + uuid.New().String()
-	qMsg := domain.QueueMessage{
-		WorkspaceID:    conn.WorkspaceID,
-		ConnectionID:   conn.ID,
-		SenderIdentity: conn.SenderIdentity,
-		TraceID:        traceID,
-		To:             to,
-		Channel:        conn.Channel,
-		Body:           body,
-		QueuedAt:       time.Now().UTC(),
-	}
-
-	if isTemplate {
-		qMsg.TemplateName = templateName
-		qMsg.Language = language
-		qMsg.Components = componentsList
-	}
-
-	payload, err := json.Marshal(qMsg)
-	if err != nil {
-		return c.HTML(http.StatusOK, fmt.Sprintf(`<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Erro ao serializar mensagem: %v</div>`, err))
-	}
-
-	if h.Publisher == nil {
+	if h.Ingestor == nil && h.Publisher == nil {
 		return c.HTML(http.StatusServiceUnavailable, `<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Publisher não disponível</div>`)
 	}
 
-	if h.ContactRepo != nil {
-		_, _ = h.ContactRepo.ResolveContact(c.Request().Context(), workspaceID, conn.Channel, to, to, "", "")
+	ingestor := h.Ingestor
+	if ingestor == nil {
+		proc := outbound.NewProcessor(nil, nil, h.Connections, h.Publisher)
+		if h.ContactRepo != nil {
+			proc.SetContactRepository(h.ContactRepo)
+		} else if h.Connections != nil && h.Connections.Pool() != nil {
+			proc.SetContactRepository(repository.NewContactRepository(h.Connections.Pool()))
+		}
+		if h.TemplatesRepo != nil {
+			proc.SetTemplateRepository(h.TemplatesRepo)
+		}
+		ingestor = proc
 	}
 
-	err = h.Publisher.Publish(c.Request().Context(), "messages.outbound", payload, traceID)
-	if err != nil {
+	traceID := "test-" + uuid.New().String()
+	connIDVal := conn.ID
+	req := &domain.CreateMessageRequest{
+		To:      to,
+		Channel: conn.Channel,
+		Body:    body,
+		ConversationalIngestFields: domain.ConversationalIngestFields{
+			SenderType:   string(domain.SenderTypeSystem),
+			SenderName:   "System Test",
+			ConnectionID: &connIDVal,
+		},
+	}
+
+	if isTemplate {
+		req.TemplateName = templateName
+		req.Language = language
+		req.Components = componentsList
+	}
+
+	if _, err := ingestor.Ingest(c.Request().Context(), workspaceID, traceID, req); err != nil {
 		return c.HTML(http.StatusOK, fmt.Sprintf(`<div class="p-3 bg-red-50 text-red-800 border border-red-200 rounded-md text-sm mb-4">Erro ao publicar no NATS: %v</div>`, err))
 	}
 

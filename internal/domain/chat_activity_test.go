@@ -257,6 +257,95 @@ func TestApply_OutboundActivity_AIEngagementAndStateTransitions(t *testing.T) {
 			t.Fatalf("msg.ReplyToUID = %v, want %q", msg.ReplyToUID, replyUID)
 		}
 	})
+
+	t.Run("system sender creates brand-new chat as closed and preserves existing effective status", func(t *testing.T) {
+		futureSnooze := t0.Add(4 * time.Hour)
+		pastSnooze := t0.Add(-1 * time.Hour)
+
+		cases := []struct {
+			name           string
+			inStatus       domain.ChatStatus
+			inSnoozedUntil *time.Time
+			wantStatus     domain.ChatStatus
+			wantSnoozedNil bool
+		}{
+			{
+				name:           "brand-new chat (empty status) starts closed",
+				inStatus:       "",
+				wantStatus:     domain.ChatStatusClosed,
+				wantSnoozedNil: true,
+			},
+			{
+				name:           "existing closed chat stays closed",
+				inStatus:       domain.ChatStatusClosed,
+				wantStatus:     domain.ChatStatusClosed,
+				wantSnoozedNil: true,
+			},
+			{
+				name:           "existing active snoozed chat stays snoozed",
+				inStatus:       domain.ChatStatusSnoozed,
+				inSnoozedUntil: &futureSnooze,
+				wantStatus:     domain.ChatStatusSnoozed,
+				wantSnoozedNil: false,
+			},
+			{
+				name:           "existing expired snoozed chat normalizes to open",
+				inStatus:       domain.ChatStatusSnoozed,
+				inSnoozedUntil: &pastSnooze,
+				wantStatus:     domain.ChatStatusOpen,
+				wantSnoozedNil: true,
+			},
+			{
+				name:           "existing open chat stays open",
+				inStatus:       domain.ChatStatusOpen,
+				wantStatus:     domain.ChatStatusOpen,
+				wantSnoozedNil: true,
+			},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				st := baseState
+				st.Status = tc.inStatus
+				st.SnoozedUntil = tc.inSnoozedUntil
+
+				next, msg, intents := domain.Apply(st, domain.OutboundActivity{
+					At:           t0,
+					UID:          "trace-sys-" + tc.name,
+					SenderType:   domain.SenderTypeSystem,
+					SenderName:   "Campaign Broadcast",
+					TemplateName: "promo_launch",
+					Language:     "pt_BR",
+					MessageType:  "template",
+				})
+
+				if next.Status != tc.wantStatus {
+					t.Fatalf("next.Status = %q, want %q", next.Status, tc.wantStatus)
+				}
+				if tc.wantSnoozedNil && next.SnoozedUntil != nil {
+					t.Fatalf("expected nil SnoozedUntil, got %v", next.SnoozedUntil)
+				}
+				if !tc.wantSnoozedNil && (next.SnoozedUntil == nil || !next.SnoozedUntil.Equal(*tc.inSnoozedUntil)) {
+					t.Fatalf("expected SnoozedUntil = %v, got %v", tc.inSnoozedUntil, next.SnoozedUntil)
+				}
+				if !next.LastMessageAt.Equal(t0) {
+					t.Fatalf("expected LastMessageAt = %v, got %v", t0, next.LastMessageAt)
+				}
+				if next.LastOutboundAt == nil || !next.LastOutboundAt.Equal(t0) {
+					t.Fatalf("expected LastOutboundAt = %v, got %v", t0, next.LastOutboundAt)
+				}
+				if !next.AI.Effective(t0).IsEngaged() {
+					t.Fatalf("expected AI to remain engaged on system send, got %+v", next.AI)
+				}
+				if len(intents) != 0 {
+					t.Fatalf("expected no intents on system send, got %+v", intents)
+				}
+				if msg == nil || msg.SenderType != domain.SenderTypeSystem {
+					t.Fatalf("expected ChatMessage with SenderTypeSystem, got %+v", msg)
+				}
+			})
+		}
+	})
 }
 
 func TestApply_AIChangeActivity(t *testing.T) {

@@ -13,7 +13,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/pablojhp.pergo/internal/channel"
-	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -40,7 +39,6 @@ type DispatchOrchestrator struct {
 	queueDepth   QueueDepthTracker
 	auditWriter  audit.Writer
 	contactRepo  *repository.ContactRepository
-	activity     *activity.Recorder
 
 	maxRetries int
 	maxBackoff time.Duration
@@ -67,11 +65,6 @@ func NewDispatchOrchestrator(
 		maxBackoff = orchDefaultMaxBackoff
 	}
 
-	var act *activity.Recorder
-	if contactRepo != nil && contactRepo.Pool() != nil {
-		act = activity.New(contactRepo.Pool(), nil, nil, nil)
-	}
-
 	return &DispatchOrchestrator{
 		dispatchers:  dispatchers,
 		dispatchRepo: dispatchRepo,
@@ -79,7 +72,6 @@ func NewDispatchOrchestrator(
 		queueDepth:   queueDepth,
 		auditWriter:  auditWriter,
 		contactRepo:  contactRepo,
-		activity:     act,
 		maxRetries:   maxRetries,
 		maxBackoff:   maxBackoff,
 	}
@@ -240,11 +232,6 @@ func (o *DispatchOrchestrator) Process(
 		slog.Info("orchestrator: attempting dispatch", "channel", channelName, "trace_id", traceID, "index", i, "attempt", attempt, "to", resolvedTo)
 		respStr, err := o.dispatchToChannel(ctx, channelName, &qMsgForChannel)
 		if err == nil {
-			if o.activity != nil && workspaceID != (uuid.UUID{}) {
-				if errTouch := o.activity.TouchOutbound(ctx, workspaceID, activity.ChatAt(qMsg.ConnectionID, resolvedTo).WithChannel(channelName), time.Now().UTC()); errTouch != nil {
-					slog.Error("orchestrator: failed to touch chat outbound timestamp", "error", errTouch, "recipient", resolvedTo, "channel", channelName, "trace_id", traceID)
-				}
-			}
 			if o.dispatchRepo != nil && dispatch != nil {
 				_ = o.dispatchRepo.UpdateDispatchStatus(ctx, dispatch.ID, "sent", channelName, i, nil)
 				if channelName == "whatsapp_cloud" && respStr != "" {
@@ -394,14 +381,6 @@ func isNumericIdentifier(s string) bool {
 // SetContactRepository registers the Contact repository.
 func (o *DispatchOrchestrator) SetContactRepository(repo *repository.ContactRepository) {
 	o.contactRepo = repo
-	if o.activity == nil && repo != nil && repo.Pool() != nil {
-		o.activity = activity.New(repo.Pool(), nil, nil, nil)
-	}
-}
-
-// SetActivity registers the Chat Activity recorder used to touch last_outbound_at on dispatch.
-func (o *DispatchOrchestrator) SetActivity(rec *activity.Recorder) {
-	o.activity = rec
 }
 
 func (o *DispatchOrchestrator) dispatchToChannel(ctx context.Context, channelName string, qMsg *domain.QueueMessage) (string, error) {

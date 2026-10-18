@@ -455,7 +455,17 @@ func TestInboundProcessor_Process(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create chat: %v", err)
 		}
-		if err := act.TouchOutbound(ctx, ws.ID, activity.ChatID(chat.ID), outboundTime); err != nil {
+		if _, err := act.Outbound(ctx, ws.ID, activity.OutboundTurn{
+			Chat:         activity.ChatID(chat.ID).WithChannel("whatsapp_cloud"),
+			UID:          uuid.NewString(),
+			SenderType:   domain.SenderTypeAIAgent,
+			TemplateName: "seed_template",
+			Language:     "pt_BR",
+			MessageType:  "template",
+			Channel:      "whatsapp_cloud",
+			To:           recipient,
+			At:           outboundTime,
+		}); err != nil {
 			t.Fatalf("failed to seed outbound timestamp on chat: %v", err)
 		}
 	}

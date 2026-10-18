@@ -194,6 +194,140 @@ func TestForwardHandler(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
+
+	t.Run("records ai_agent ChatMessage and enforces WABA 24h window via OutboundProcessor.Ingest", func(t *testing.T) {
+		pool := getTestPoolWithMigrations(t)
+		if pool == nil {
+			t.Skip("Postgres not available")
+			return
+		}
+		defer pool.Close()
+
+		wsRepo := repository.NewWorkspaceRepository(pool)
+		connRepo := repository.NewConnectionRepository(pool, nil)
+		contactRepo := repository.NewContactRepository(pool)
+		chatRepo := repository.NewChatRepository(pool)
+
+		ws, err := wsRepo.Create(ctx, "verb_ingest_ws_"+uuid.New().String())
+		if err != nil {
+			t.Fatalf("create workspace: %v", err)
+		}
+		defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+		tgConn := &repository.Connection{
+			ID:             uuid.New(),
+			WorkspaceID:    ws.ID,
+			Name:           "TG Verb Conn",
+			Slug:           "tg-verb-" + uuid.New().String()[:8],
+			Channel:        "telegram",
+			SenderIdentity: "bot-verb",
+			Status:         "active",
+			IsDefault:      true,
+		}
+		if err := connRepo.Create(ctx, tgConn); err != nil {
+			t.Fatalf("create tg connection: %v", err)
+		}
+
+		wabaConn := &repository.Connection{
+			ID:             uuid.New(),
+			WorkspaceID:    ws.ID,
+			Name:           "WABA Verb Conn",
+			Slug:           "waba-verb-" + uuid.New().String()[:8],
+			Channel:        "whatsapp_cloud",
+			SenderIdentity: "+5511888887777",
+			Status:         "active",
+			IsDefault:      true,
+		}
+		if err := connRepo.Create(ctx, wabaConn); err != nil {
+			t.Fatalf("create waba connection: %v", err)
+		}
+
+		tgContact, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "+5511900001111", "", "", "")
+		if err != nil {
+			t.Fatalf("resolve tg contact: %v", err)
+		}
+
+		pub := &mockPublisher{}
+		engine := webhook.NewVerbsEngine(pub, contactRepo, nil, connRepo)
+
+		// 1. Reply on telegram records ChatMessage with SenderTypeAIAgent and SenderName "Webhook Verb"
+		evt := inbound.InboundEventPayload{
+			Event:       "message.received",
+			TraceID:     "trace-verb-ingest-1",
+			MessageID:   "msg-verb-ingest-1",
+			Channel:     "telegram",
+			WorkspaceID: ws.ID.String(),
+			From:        "+5511900001111",
+			To:          "bot-verb",
+			Body:        "User question",
+		}
+		evtBytes, _ := json.Marshal(evt)
+		task := webhook.WebhookDeliveryTask{
+			ID:          uuid.New(),
+			WorkspaceID: ws.ID,
+			TraceID:     "trace-verb-ingest-1",
+			Payload:     evtBytes,
+		}
+		err = engine.Execute(ctx, task, []webhook.Verb{
+			{Action: "reply", Params: json.RawMessage(`{"body":"Bot verb reply"}`)},
+			{Action: "forward", Params: json.RawMessage(`{"to":"+5511900002222","channel":"telegram"}`)},
+		})
+		if err != nil {
+			t.Fatalf("engine.Execute reply+forward failed: %v", err)
+		}
+
+		replyMsg, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, "trace-verb-ingest-1")
+		if err != nil || replyMsg == nil {
+			t.Fatalf("expected ChatMessage for reply verb, got err=%v msg=%v", err, replyMsg)
+		}
+		if replyMsg.SenderType != domain.SenderTypeAIAgent {
+			t.Errorf("expected SenderType %q, got %q", domain.SenderTypeAIAgent, replyMsg.SenderType)
+		}
+		if replyMsg.SenderName != "Webhook Verb" {
+			t.Errorf("expected SenderName 'Webhook Verb', got %q", replyMsg.SenderName)
+		}
+
+		fwdMsg, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, "trace-verb-ingest-1-1")
+		if err != nil || fwdMsg == nil {
+			t.Fatalf("expected ChatMessage for forward verb (UID trace-verb-ingest-1-1), got err=%v msg=%v", err, fwdMsg)
+		}
+		if fwdMsg.SenderType != domain.SenderTypeAIAgent {
+			t.Errorf("expected forward SenderType %q, got %q", domain.SenderTypeAIAgent, fwdMsg.SenderType)
+		}
+		if fwdMsg.Body != "User question" {
+			t.Errorf("expected forward Body 'User question', got %q", fwdMsg.Body)
+		}
+		_ = tgContact
+
+		// 2. Reply on WABA without open 24h window is rejected with TemplateRequiredError
+		wabaEvt := inbound.InboundEventPayload{
+			Event:       "message.received",
+			TraceID:     "trace-verb-waba-closed",
+			MessageID:   "msg-verb-waba-closed",
+			Channel:     "whatsapp_cloud",
+			WorkspaceID: ws.ID.String(),
+			From:        "+5511900003333",
+			To:          "+5511888887777",
+			Body:        "Late reply",
+		}
+		wabaEvtBytes, _ := json.Marshal(wabaEvt)
+		wabaTask := webhook.WebhookDeliveryTask{
+			ID:          uuid.New(),
+			WorkspaceID: ws.ID,
+			TraceID:     "trace-verb-waba-closed",
+			Payload:     wabaEvtBytes,
+		}
+		err = engine.Execute(ctx, wabaTask, []webhook.Verb{
+			{Action: "reply", Params: json.RawMessage(`{"body":"Should be blocked by 24h window"}`)},
+		})
+		if err == nil {
+			t.Fatalf("expected WABA reply outside 24h window to fail, got nil")
+		}
+		var tmplErr *domain.TemplateRequiredError
+		if !errors.As(err, &tmplErr) {
+			t.Errorf("expected TemplateRequiredError, got %T: %v", err, err)
+		}
+	})
 }
 
 func TestTagHandler(t *testing.T) {

@@ -353,6 +353,22 @@ func TestTypebotForwarder_PopulatesRoutingFields(t *testing.T) {
 	if outMsg.TraceID != pub.traceID {
 		t.Errorf("expected QueueMessage TraceID (%s) to match published traceID (%s)", outMsg.TraceID, pub.traceID)
 	}
+
+	// 4. Verify ChatMessage was recorded via OutboundProcessor.Ingest
+	chatRepo := repository.NewChatRepository(pool)
+	chatMsg, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, outMsg.TraceID)
+	if err != nil || chatMsg == nil {
+		t.Fatalf("expected ChatMessage persisted for Typebot bubble, got err=%v msg=%v", err, chatMsg)
+	}
+	if chatMsg.SenderType != domain.SenderTypeAIAgent {
+		t.Errorf("expected SenderType %q, got %q", domain.SenderTypeAIAgent, chatMsg.SenderType)
+	}
+	if chatMsg.SenderName != "Typebot" {
+		t.Errorf("expected SenderName 'Typebot', got %q", chatMsg.SenderName)
+	}
+	if chatMsg.Body != "Hello from typebot" {
+		t.Errorf("expected Body 'Hello from typebot', got %q", chatMsg.Body)
+	}
 }
 
 func TestTypebotForwarder_GroupMessage_WithActiveBot_SkipsExecution(t *testing.T) {

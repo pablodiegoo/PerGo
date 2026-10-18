@@ -763,7 +763,19 @@ func Apply(s ChatState, a Activity) (ChatState, *ChatMessage, []Intent) {
 			at = time.Now().UTC()
 		}
 
-		if next.Status == ChatStatusSnoozed || next.Status == ChatStatusClosed || next.Status == "" {
+		senderType := NormalizeSenderType(string(act.SenderType))
+		if senderType == "" {
+			senderType = SenderTypeAIAgent
+		}
+
+		if senderType == SenderTypeSystem {
+			if next.Status == "" {
+				next.Status = ChatStatusClosed
+				next.SnoozedUntil = nil
+			} else {
+				next.Status, next.SnoozedUntil = NormalizeSnooze(next.Status, next.SnoozedUntil, at)
+			}
+		} else if next.Status == ChatStatusSnoozed || next.Status == ChatStatusClosed || next.Status == "" {
 			next.Status = ChatStatusOpen
 			next.SnoozedUntil = nil
 		}
@@ -776,11 +788,6 @@ func Apply(s ChatState, a Activity) (ChatState, *ChatMessage, []Intent) {
 		}
 		if act.Channel != "" {
 			next.Channel = act.Channel
-		}
-
-		senderType := NormalizeSenderType(string(act.SenderType))
-		if senderType == "" {
-			senderType = SenderTypeAIAgent
 		}
 
 		var intents []Intent

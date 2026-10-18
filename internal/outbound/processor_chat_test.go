@@ -465,4 +465,129 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 			t.Fatalf("expected *domain.TemplateRequiredError, got %T: %v", err, err)
 		}
 	})
+
+	t.Run("System sender with ConnectionID, ContactID, CampaignID, and VariablesJSON creates closed Chat, preserves existing status, and reopens on customer reply", func(t *testing.T) {
+		pub.published = nil
+		pub.subjects = nil
+
+		// 1. Cross-workspace ConnectionID is rejected with *RouteError
+		otherWS, err := wsRepo.Create(ctx, "other_ws_"+uuid.New().String())
+		if err != nil {
+			t.Fatalf("failed to create other workspace: %v", err)
+		}
+		defer func() { _ = wsRepo.Delete(ctx, otherWS.ID) }()
+
+		_, err = proc.Ingest(ctx, otherWS.ID, "cross-ws-conn-trace", &domain.CreateMessageRequest{
+			ConversationalIngestFields: domain.ConversationalIngestFields{
+				ConnectionID: &connID,
+				SenderType:   string(domain.SenderTypeSystem),
+			},
+			To:           "+5511999995555",
+			TemplateName: "promo_launch",
+			Language:     "pt_BR",
+		})
+		var routeErr *outbound.RouteError
+		if !errors.As(err, &routeErr) {
+			t.Fatalf("expected *outbound.RouteError for cross-workspace ConnectionID, got %T: %v", err, err)
+		}
+
+		// 2. First-touch system outbound (e.g. campaign) with ConnectionID (Channel omitted), ContactID, CampaignID, VariablesJSON
+		sysPhone := "+5511999995555"
+		sysContact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", sysPhone, "System Recipient", "", sysPhone)
+		if err != nil {
+			t.Fatalf("failed to resolve contact: %v", err)
+		}
+		campID := uuid.New()
+		vars := map[string]string{"1": "Maria", "2": "20% OFF"}
+		sysTrace := "sys-campaign-trace-500"
+
+		qMsg, err := proc.Ingest(ctx, ws.ID, sysTrace, &domain.CreateMessageRequest{
+			ConversationalIngestFields: domain.ConversationalIngestFields{
+				ConnectionID:  &connID,
+				ContactID:     &sysContact.ID,
+				SenderType:    string(domain.SenderTypeSystem),
+				SenderName:    "Spring Campaign",
+				CampaignID:    &campID,
+				VariablesJSON: vars,
+			},
+			To:           sysPhone,
+			TemplateName: "promo_launch",
+			Language:     "pt_BR",
+			Type:         "template",
+		})
+		if err != nil {
+			t.Fatalf("system Ingest failed: %v", err)
+		}
+		if qMsg.ConnectionID != connID || qMsg.Channel != "whatsapp_cloud" {
+			t.Fatalf("unexpected qMsg routing: conn=%s channel=%q", qMsg.ConnectionID, qMsg.Channel)
+		}
+		if qMsg.CampaignID == nil || *qMsg.CampaignID != campID {
+			t.Fatalf("expected CampaignID %s on QueueMessage, got %v", campID, qMsg.CampaignID)
+		}
+		if qMsg.VariablesJSON["1"] != "Maria" || qMsg.VariablesJSON["2"] != "20% OFF" {
+			t.Fatalf("expected VariablesJSON propagated on QueueMessage, got %+v", qMsg.VariablesJSON)
+		}
+
+		// Verify brand-new Chat was created in 'closed' status with LastOutboundAt set
+		snap, exists, err := act.Snapshot(ctx, ws.ID, activity.ChatOf(connID, sysContact.ID).WithChannel("whatsapp_cloud"))
+		if err != nil || !exists {
+			t.Fatalf("expected Chat to exist after system outbound, exists=%v err=%v", exists, err)
+		}
+		if snap.Status != domain.ChatStatusClosed {
+			t.Fatalf("expected brand-new system Chat status = 'closed', got %q", snap.Status)
+		}
+		if snap.LastOutboundAt == nil {
+			t.Fatal("expected LastOutboundAt to be recorded on system Chat")
+		}
+
+		// Verify ChatMessage persisted with SenderTypeSystem
+		sysMsg, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, sysTrace)
+		if err != nil {
+			t.Fatalf("GetChatMessageByUID failed: %v", err)
+		}
+		if sysMsg.SenderType != domain.SenderTypeSystem || sysMsg.SenderName != "Spring Campaign" {
+			t.Fatalf("unexpected ChatMessage sender: type=%q name=%q", sysMsg.SenderType, sysMsg.SenderName)
+		}
+
+		// 3. Customer replies inbound -> Chat transitions from closed to open and PrevLastOutboundAt is returned
+		replyAt := snap.LastOutboundAt.Add(5 * time.Second)
+		inRec, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:     activity.ChatOf(connID, sysContact.ID).WithChannel("whatsapp_cloud"),
+			UID:      "wamid.customer.reply.500",
+			SenderID: sysPhone,
+			Body:     "Quero aproveitar o cupom!",
+			Channel:  "whatsapp_cloud",
+			At:       replyAt,
+		})
+		if err != nil {
+			t.Fatalf("Inbound reply failed: %v", err)
+		}
+		if inRec.Chat.Status != domain.ChatStatusOpen {
+			t.Fatalf("expected Chat to transition from closed to open on customer reply, got %q", inRec.Chat.Status)
+		}
+		if inRec.PrevLastOutboundAt == nil || !inRec.PrevLastOutboundAt.Equal(*snap.LastOutboundAt) {
+			t.Fatalf("expected PrevLastOutboundAt=%v for first-touch latency, got %v", snap.LastOutboundAt, inRec.PrevLastOutboundAt)
+		}
+
+		// 4. Subsequent system send on now-open Chat preserves 'open' status
+		sysTrace2 := "sys-test-trace-501"
+		if _, err := proc.Ingest(ctx, ws.ID, sysTrace2, &domain.CreateMessageRequest{
+			ConversationalIngestFields: domain.ConversationalIngestFields{
+				ConnectionID: &connID,
+				SenderType:   string(domain.SenderTypeSystem),
+				SenderName:   "System Test",
+			},
+			To:   sysPhone,
+			Body: "System diagnostic ping",
+		}); err != nil {
+			t.Fatalf("second system Ingest failed: %v", err)
+		}
+		snapAfter, _, err := act.Snapshot(ctx, ws.ID, activity.ChatID(inRec.Chat.ID))
+		if err != nil {
+			t.Fatalf("Snapshot failed: %v", err)
+		}
+		if snapAfter.Status != domain.ChatStatusOpen {
+			t.Fatalf("expected system send on open Chat to preserve 'open' status, got %q", snapAfter.Status)
+		}
+	})
 }

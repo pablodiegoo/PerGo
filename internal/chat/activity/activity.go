@@ -586,70 +586,6 @@ func (r *Recorder) Outbound(ctx context.Context, ws uuid.UUID, turn OutboundTurn
 	}, nil
 }
 
-// TouchOutbound updates last_outbound_at on an existing Chat.
-// If no Contact or Chat exists for ref, TouchOutbound is a no-op and never creates a Contact or Chat.
-func (r *Recorder) TouchOutbound(ctx context.Context, ws uuid.UUID, ref ChatRef, at time.Time) error {
-	if r == nil || r.pool == nil {
-		return nil
-	}
-	if ws == uuid.Nil {
-		return ErrInvalidWorkspaceID
-	}
-	at = at.UTC()
-	if at.IsZero() {
-		at = time.Now().UTC()
-	}
-
-	if ref.id != uuid.Nil {
-		_, err := r.pool.Exec(ctx, `
-			UPDATE chats
-			SET last_outbound_at = GREATEST(COALESCE(last_outbound_at, $3), $3),
-			    updated_at = $3
-			WHERE workspace_id = $1 AND id = $2
-		`, ws, ref.id, at)
-		return err
-	}
-
-	contactID := ref.contactID
-	if contactID == uuid.Nil && ref.address != "" {
-		channel := ref.channel
-		if channel == "" && ref.connID != uuid.Nil {
-			err := r.pool.QueryRow(ctx, `SELECT channel FROM connections WHERE workspace_id = $1 AND id = $2`, ws, ref.connID).Scan(&channel)
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				return err
-			}
-		}
-		var err error
-		contactID, err = lookupContactIDByAddress(ctx, r.pool, ws, channel, ref.address)
-		if err != nil {
-			return err
-		}
-	}
-	if contactID == uuid.Nil {
-		return nil
-	}
-
-	var connPtr *uuid.UUID
-	if ref.connID != uuid.Nil {
-		c := ref.connID
-		connPtr = &c
-	}
-
-	_, err := r.pool.Exec(ctx, `
-		UPDATE chats
-		SET last_outbound_at = GREATEST(COALESCE(last_outbound_at, $4), $4),
-		    updated_at = $4
-		WHERE id = (
-			SELECT id FROM chats
-			WHERE workspace_id = $1 AND contact_id = $2
-			  AND ($3::uuid IS NULL OR connection_id = $3 OR connection_id IS NULL)
-			ORDER BY (connection_id = $3) DESC NULLS LAST, (connection_id IS NOT NULL) DESC, last_message_at DESC
-			LIMIT 1
-		)
-	`, ws, contactID, connPtr, at)
-	return err
-}
-
 // ClaimExpiring claims up to limit whatsapp_cloud Chats whose customer service window expires within
 // (now, now+within] and have not yet been notified for the current window.
 func (r *Recorder) ClaimExpiring(ctx context.Context, now time.Time, within time.Duration, limit int) ([]ExpiringChat, error) {
@@ -1063,8 +999,10 @@ func (r *Recorder) resolveAndLockChat(ctx context.Context, tx pgx.Tx, ws uuid.UU
 		VALUES ($1, $2, $3, 'open', 0, 'active', 'standard', '{}')
 		ON CONFLICT (workspace_id, connection_id, contact_id)
 		DO UPDATE SET updated_at = NOW()
-		RETURNING id, workspace_id, connection_id, contact_id, ''::text, status, snoozed_until,
-		          ai_mode, ai_paused_until, service_window_expires_at, COALESCE(entry_point_type, 'standard'),
+		RETURNING id, workspace_id, connection_id, contact_id, ''::text,
+		          CASE WHEN xmax = 0 THEN '' ELSE status END,
+		          snoozed_until, ai_mode, ai_paused_until, service_window_expires_at,
+		          COALESCE(entry_point_type, 'standard'),
 		          unread_count, last_message_at, last_inbound_at, last_outbound_at
 	`, ws, connPtr, contactID)
 

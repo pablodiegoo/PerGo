@@ -328,7 +328,7 @@ func BootstrapCore(
 	}
 
 	// --- Channel Adapters & Session Manager ---
-	wabaAdapter := whatsapp.NewWABAAdapter(deps.ConnectionRepo, nil, nil, cfg.ExternalURL)
+	wabaAdapter := whatsapp.NewWABAAdapter(deps.ConnectionRepo, nil, cfg.ExternalURL)
 	telegramAdapter := telegram.NewTelegramAdapter(deps.ConnectionRepo, nil, s3Client)
 	whatsAppAdapter := whatsapp.NewWhatsAppAdapter(nil, s3Client)
 	instagramAdapter := instagram.NewAdapter(deps.ConnectionRepo, nil, cfg.ExternalURL)
@@ -390,7 +390,6 @@ func BootstrapCore(
 
 	if pool != nil {
 		deps.Activity = activity.New(pool, deps.Publisher, deps.Debouncer, slog.Default())
-		wabaAdapter.WithActivity(deps.Activity)
 		deps.VerbsEngine.WithActivity(deps.Activity)
 		deps.TypebotForwarder.WithActivity(deps.Activity)
 		deps.InboundProcessor.SetActivity(deps.Activity)
@@ -414,6 +413,8 @@ func BootstrapCore(
 	if deps.Debouncer != nil {
 		deps.OutboundProcessor.SetDebounceCanceller(deps.Debouncer)
 	}
+	deps.VerbsEngine.WithIngestor(deps.OutboundProcessor)
+	deps.TypebotForwarder.WithIngestor(deps.OutboundProcessor)
 
 	// --- ChatEngine ---
 	chatEngineOpts := []chat.Option{
@@ -442,6 +443,7 @@ func BootstrapCore(
 		deps.AuditWriter,
 		deps.TagRepo,
 	)
+	deps.CampaignEngine.SetIngestor(deps.OutboundProcessor)
 
 	// --- MCPServer ---
 	mcpOpts := []mcp.ServerOption{
@@ -606,11 +608,12 @@ func BuildHTTPRouter(core *CoreDeps) *echo.Echo {
 
 	// --- Chatwoot Inbound Webhook handler ---
 	chatwootWebhookHandler := handler.NewChatwootWebhookHandler(core.Pool, core.ChatwootMappingRepo, core.ContactRepo, core.Publisher)
-	chatwootWebhookHandler.SetActivity(core.Activity)
+	chatwootWebhookHandler.SetIngestor(core.OutboundProcessor)
 	e.POST("/api/integrations/chatwoot", chatwootWebhookHandler.Handle)
 
 	// --- Typebot Inbound Webhook handler ---
 	typebotWebhookHandler := handler.NewTypebotWebhookHandler(core.Pool, core.Publisher)
+	typebotWebhookHandler.SetIngestor(core.OutboundProcessor)
 	e.POST("/api/integrations/typebot", typebotWebhookHandler.Handle)
 
 	// --- Email Tracking & Webhook handler ---
@@ -784,6 +787,7 @@ func BuildHTTPRouter(core *CoreDeps) *echo.Echo {
 		Manager:       core.SessionManager,
 		Connections:   core.ConnectionRepo,
 		Publisher:     core.Publisher,
+		Ingestor:      core.OutboundProcessor,
 		NC:            core.NC,
 		TemplatesRepo: core.WABATemplateRepo,
 		ExternalURL:   cfg.ExternalURL,
@@ -1226,7 +1230,6 @@ func main() {
 		60*time.Second,
 	)
 	orchestrator.SetContactRepository(core.ContactRepo)
-	orchestrator.SetActivity(core.Activity)
 	worker := queue.NewWorker(ctx, consumer, orchestrator)
 	slog.Info("message worker started", "consumer", "worker-1")
 

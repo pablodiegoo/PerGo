@@ -5,14 +5,15 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // TypebotWebhookPayload represents the incoming JSON payload from a Typebot Webhook block.
@@ -23,15 +24,29 @@ type TypebotWebhookPayload struct {
 }
 
 type TypebotWebhookHandler struct {
-	pool      *pgxpool.Pool
-	publisher Publisher
+	pool     *pgxpool.Pool
+	ingestor outbound.OutboundProcessor
 }
 
 func NewTypebotWebhookHandler(pool *pgxpool.Pool, publisher Publisher) *TypebotWebhookHandler {
-	return &TypebotWebhookHandler{
-		pool:      pool,
-		publisher: publisher,
+	var ingestor outbound.OutboundProcessor
+	if pool != nil && publisher != nil {
+		connRepo := repository.NewConnectionRepository(pool, nil)
+		contactRepo := repository.NewContactRepository(pool)
+		ingestor = outbound.NewProcessor(nil, nil, connRepo, publisher).SetContactRepository(contactRepo)
 	}
+	return &TypebotWebhookHandler{
+		pool:     pool,
+		ingestor: ingestor,
+	}
+}
+
+func (h *TypebotWebhookHandler) SetIngestor(ingestor outbound.OutboundProcessor) *TypebotWebhookHandler {
+	if h == nil {
+		return nil
+	}
+	h.ingestor = ingestor
+	return h
 }
 
 func (h *TypebotWebhookHandler) Handle(c *echo.Context) error {
@@ -105,30 +120,29 @@ func (h *TypebotWebhookHandler) Handle(c *echo.Context) error {
 		})
 	}
 
-	traceID := uuid.New().String()
-	msg := domain.QueueMessage{
-		WorkspaceID:    workspaceID,
-		ConnectionID:   connectionID,
-		SenderIdentity: senderIdentity,
-		TraceID:        traceID,
-		To:             customerIdentity,
-		Channel:        channel,
-		Body:           payload.Message,
-		QueuedAt:       time.Now().UTC(),
-	}
-
-	payloadBytes, err := json.Marshal(msg)
+	contactID, err := uuid.Parse(payload.ContactID)
 	if err != nil {
-		slog.Error("failed to marshal outbound message", "error", err)
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"code":    "internal_error",
-			"message": "failed to serialize message",
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"code":    "bad_request",
+			"message": "invalid contact_id format",
 		})
 	}
 
-	err = h.publisher.Publish(c.Request().Context(), "messages.outbound", payloadBytes, traceID)
-	if err != nil {
-		slog.Error("failed to publish outbound message to NATS", "error", err)
+	traceID := uuid.New().String()
+	req := &domain.CreateMessageRequest{
+		To:      customerIdentity,
+		Channel: channel,
+		Body:    payload.Message,
+		ConversationalIngestFields: domain.ConversationalIngestFields{
+			SenderType:   string(domain.SenderTypeAIAgent),
+			SenderName:   "Typebot",
+			ConnectionID: &connectionID,
+			ContactID:    &contactID,
+		},
+	}
+
+	if _, err := h.ingestor.Ingest(c.Request().Context(), workspaceID, traceID, req); err != nil {
+		slog.Error("failed to ingest outbound message from typebot webhook", "error", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"code":    "internal_error",
 			"message": "failed to publish message",

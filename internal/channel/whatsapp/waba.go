@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/pablojhp.pergo/internal/channel"
-	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
@@ -27,7 +26,6 @@ type WABAAdapter struct {
 	connectionsRepo *repository.ConnectionRepository
 	client          *http.Client
 	baseURL         string
-	activity        *activity.Recorder
 	externalBaseURL string
 }
 
@@ -161,7 +159,7 @@ type MetaErrorResponse struct {
 }
 
 // NewWABAAdapter creates a new WABAAdapter.
-func NewWABAAdapter(connectionsRepo *repository.ConnectionRepository, client *http.Client, activityRec *activity.Recorder, externalBaseURL string) *WABAAdapter {
+func NewWABAAdapter(connectionsRepo *repository.ConnectionRepository, client *http.Client, externalBaseURL string) *WABAAdapter {
 	if client == nil {
 		client = netpolicy.NewPublicHTTPClient()
 	}
@@ -169,15 +167,8 @@ func NewWABAAdapter(connectionsRepo *repository.ConnectionRepository, client *ht
 		connectionsRepo: connectionsRepo,
 		client:          client,
 		baseURL:         "https://graph.facebook.com/v18.0",
-		activity:        activityRec,
 		externalBaseURL: externalBaseURL,
 	}
-}
-
-// WithActivity configures the Chat Activity recorder used for dispatch-time window checks.
-func (a *WABAAdapter) WithActivity(rec *activity.Recorder) *WABAAdapter {
-	a.activity = rec
-	return a
 }
 
 // SetBaseURL overrides the base API URL (useful for testing).
@@ -226,21 +217,6 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 	templateName := m.TemplateName
 	if templateName == "" && m.Metadata != nil {
 		templateName = m.Metadata["template_name"]
-	}
-
-	if templateName == "" && a.activity != nil {
-		state, exists, err := a.activity.Snapshot(ctx, workspaceID, activity.ChatAt(conn.ID, m.To).WithChannel("whatsapp_cloud"))
-		if err != nil {
-			return "", err
-		}
-		w := domain.Window(state, exists, time.Now().UTC())
-		if reqErr := domain.RequireOpenWindow(w, "text"); reqErr != nil {
-			var tmplErr *domain.TemplateRequiredError
-			if errors.As(reqErr, &tmplErr) {
-				tmplErr.Source = "dispatch"
-			}
-			return "", channel.NewTerminalError(reqErr)
-		}
 	}
 
 	if templateName != "" {

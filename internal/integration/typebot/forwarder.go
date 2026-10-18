@@ -13,13 +13,14 @@ import (
 	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
 type Forwarder struct {
 	sessionRepo *repository.TypebotSessionRepository
 	integRepo   *repository.IntegrationRepository
-	publisher   inbound.Publisher
+	ingestor    outbound.OutboundProcessor
 	client      *Client
 	activity    *activity.Recorder
 }
@@ -30,13 +31,21 @@ func NewForwarder(
 	publisher inbound.Publisher,
 ) *Forwarder {
 	var rec *activity.Recorder
+	var ingestor outbound.OutboundProcessor
 	if sessionRepo != nil && sessionRepo.Pool() != nil {
 		rec = activity.New(sessionRepo.Pool(), nil, nil, nil)
+		if publisher != nil {
+			connRepo := repository.NewConnectionRepository(sessionRepo.Pool(), nil)
+			contactRepo := repository.NewContactRepository(sessionRepo.Pool())
+			ingestor = outbound.NewProcessor(nil, nil, connRepo, publisher).
+				SetContactRepository(contactRepo).
+				SetActivity(rec)
+		}
 	}
 	return &Forwarder{
 		sessionRepo: sessionRepo,
 		integRepo:   integRepo,
-		publisher:   publisher,
+		ingestor:    ingestor,
 		client:      NewClient(),
 		activity:    rec,
 	}
@@ -47,6 +56,17 @@ func (f *Forwarder) WithActivity(rec *activity.Recorder) *Forwarder {
 		return nil
 	}
 	f.activity = rec
+	if proc, ok := f.ingestor.(*outbound.Processor); ok && proc != nil {
+		proc.SetActivity(rec)
+	}
+	return f
+}
+
+func (f *Forwarder) WithIngestor(ingestor outbound.OutboundProcessor) *Forwarder {
+	if f == nil {
+		return nil
+	}
+	f.ingestor = ingestor
 	return f
 }
 
@@ -268,32 +288,29 @@ func (f *Forwarder) SyncInboundMessage(ctx context.Context, contact *domain.Cont
 		}
 	}
 
-	// 5. Publish returned messages from Typebot to messages.outbound
+	// 5. Route returned messages from Typebot through OutboundProcessor.Ingest
 	for _, m := range messages {
-		traceID := uuid.New().String()
-
-		// Create an outbound QueueMessage
-		outMsg := domain.QueueMessage{
-			WorkspaceID:    event.WorkspaceID,
-			Channel:        event.Channel,
-			To:             event.From,
-			Body:           extractText(m),
-			ConnectionID:   event.ConnectionID,
-			SenderIdentity: event.To,
-			TraceID:        traceID,
+		body := extractText(m)
+		if body == "" {
+			continue
 		}
-
-		// Ensure body is not empty before sending
-		if outMsg.Body != "" {
-			b, err := json.Marshal(outMsg)
-			if err != nil {
-				slog.Error("failed to marshal outbound message from typebot", "error", err)
-				continue
-			}
-
-			err = f.publisher.Publish(ctx, "messages.outbound", b, traceID)
-			if err != nil {
-				slog.Error("failed to publish outbound message from typebot", "error", err)
+		traceID := uuid.New().String()
+		connID := event.ConnectionID
+		contactID := contact.ID
+		req := &domain.CreateMessageRequest{
+			To:      event.From,
+			Channel: event.Channel,
+			Body:    body,
+			ConversationalIngestFields: domain.ConversationalIngestFields{
+				SenderType:   string(domain.SenderTypeAIAgent),
+				SenderName:   "Typebot",
+				ConnectionID: &connID,
+				ContactID:    &contactID,
+			},
+		}
+		if f.ingestor != nil {
+			if _, err := f.ingestor.Ingest(ctx, event.WorkspaceID, traceID, req); err != nil {
+				slog.Error("failed to ingest outbound message from typebot", "error", err)
 			}
 		}
 	}

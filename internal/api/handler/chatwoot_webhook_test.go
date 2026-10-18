@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -47,25 +48,28 @@ func getTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
 	ctx := context.Background()
-	pgC, err := tcpostgres.Run(ctx,
-		"postgres:16-alpine",
-		tcpostgres.WithDatabase("pergo_test"),
-		tcpostgres.WithUsername("pergo"),
-		tcpostgres.WithPassword("secret"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(30*time.Second),
-		),
-	)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	t.Cleanup(func() { _ = pgC.Terminate(context.Background()) })
+	dsn := os.Getenv("PERGO_DATABASE_URL")
+	if dsn == "" {
+		pgC, err := tcpostgres.Run(ctx,
+			"postgres:16-alpine",
+			tcpostgres.WithDatabase("pergo_test"),
+			tcpostgres.WithUsername("pergo"),
+			tcpostgres.WithPassword("secret"),
+			testcontainers.WithWaitStrategy(
+				wait.ForLog("database system is ready to accept connections").
+					WithOccurrence(2).
+					WithStartupTimeout(30*time.Second),
+			),
+		)
+		if err != nil {
+			t.Fatalf("start postgres: %v", err)
+		}
+		t.Cleanup(func() { _ = pgC.Terminate(context.Background()) })
 
-	dsn, err := pgC.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("conn string: %v", err)
+		dsn, err = pgC.ConnectionString(ctx, "sslmode=disable")
+		if err != nil {
+			t.Fatalf("conn string: %v", err)
+		}
 	}
 
 	pool, err := pgxpool.New(ctx, dsn)
@@ -243,7 +247,6 @@ func TestChatwootWebhookHandler_Integration(t *testing.T) {
 	pub := &fakePublisher{}
 	actRec := activity.New(pool, pub, nil, nil)
 	h := handler.NewChatwootWebhookHandler(pool, mappingRepo, contactRepo, pub)
-	h.SetActivity(actRec)
 
 	e := echo.New()
 	e.Use(middleware.AuthMiddleware(apiKeyRepo))
@@ -372,6 +375,18 @@ func TestChatwootWebhookHandler_Integration(t *testing.T) {
 		}
 		if queueMsg.Body != "hello customer, this is agent" {
 			t.Errorf("expected body 'hello customer, this is agent', got %q", queueMsg.Body)
+		}
+
+		// Verify ChatMessage was recorded via OutboundProcessor.Ingest with SenderTypeHumanAgent
+		chatMsg, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, queueMsg.TraceID)
+		if err != nil || chatMsg == nil {
+			t.Fatalf("expected ChatMessage persisted for Chatwoot agent reply, got err=%v msg=%v", err, chatMsg)
+		}
+		if chatMsg.SenderType != domain.SenderTypeHumanAgent {
+			t.Errorf("expected SenderType %q, got %q", domain.SenderTypeHumanAgent, chatMsg.SenderType)
+		}
+		if chatMsg.SenderName != "Chatwoot Agent" {
+			t.Errorf("expected SenderName 'Chatwoot Agent', got %q", chatMsg.SenderName)
 		}
 
 		// Verify Chat on connection A has AI paused (~12h) while Chat on connection B for the same Contact remains IsEngaged()

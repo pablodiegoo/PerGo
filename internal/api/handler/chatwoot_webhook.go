@@ -6,14 +6,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
-	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
 )
@@ -38,8 +37,7 @@ type ChatwootWebhookHandler struct {
 	pool        *pgxpool.Pool
 	mappingRepo *repository.ChatwootMappingRepository
 	contactRepo *repository.ContactRepository
-	publisher   Publisher
-	activity    *activity.Recorder
+	ingestor    outbound.OutboundProcessor
 }
 
 // NewChatwootWebhookHandler creates a new ChatwootWebhookHandler.
@@ -49,22 +47,26 @@ func NewChatwootWebhookHandler(
 	contactRepo *repository.ContactRepository,
 	publisher Publisher,
 ) *ChatwootWebhookHandler {
-	var rec *activity.Recorder
-	if pool != nil {
-		rec = activity.New(pool, publisher, nil, slog.Default())
+	var ingestor outbound.OutboundProcessor
+	if pool != nil && publisher != nil {
+		connRepo := repository.NewConnectionRepository(pool, nil)
+		ingestor = outbound.NewProcessor(nil, nil, connRepo, publisher).SetContactRepository(contactRepo)
 	}
 	return &ChatwootWebhookHandler{
 		pool:        pool,
 		mappingRepo: mappingRepo,
 		contactRepo: contactRepo,
-		publisher:   publisher,
-		activity:    rec,
+		ingestor:    ingestor,
 	}
 }
 
-// SetActivity sets the Chat Activity recorder on the handler.
-func (h *ChatwootWebhookHandler) SetActivity(rec *activity.Recorder) {
-	h.activity = rec
+// SetIngestor configures the OutboundProcessor on the handler.
+func (h *ChatwootWebhookHandler) SetIngestor(ingestor outbound.OutboundProcessor) *ChatwootWebhookHandler {
+	if h == nil {
+		return nil
+	}
+	h.ingestor = ingestor
+	return h
 }
 
 // Handle processes the incoming Chatwoot webhook request.
@@ -112,19 +114,6 @@ func (h *ChatwootWebhookHandler) Handle(c *echo.Context) error {
 		})
 	}
 
-	if h.activity != nil {
-		now := time.Now().UTC()
-		_, err = h.activity.SetAI(
-			c.Request().Context(),
-			workspaceID,
-			activity.ChatOf(mapping.ConnectionID, mapping.ContactID),
-			activity.AIPauseUntil(now.Add(12*time.Hour)),
-		)
-		if err != nil {
-			slog.Error("failed to pause chat AI on Chatwoot reply", "error", err, "contact_id", mapping.ContactID, "connection_id", mapping.ConnectionID)
-		}
-	}
-
 	// Resolve customer's channel identity (sender_identity column in contact_identities represents customer destination)
 	var customerIdentity string
 	err = h.pool.QueryRow(c.Request().Context(), `
@@ -141,32 +130,23 @@ func (h *ChatwootWebhookHandler) Handle(c *echo.Context) error {
 		})
 	}
 
-	// Construct outbound queue message
 	traceID := uuid.New().String()
-	msg := domain.QueueMessage{
-		WorkspaceID:    workspaceID,
-		ConnectionID:   mapping.ConnectionID,
-		SenderIdentity: mapping.SenderIdentity,
-		TraceID:        traceID,
-		To:             customerIdentity,
-		Channel:        mapping.Channel,
-		Body:           payload.Content,
-		QueuedAt:       time.Now().UTC(),
+	connID := mapping.ConnectionID
+	contactID := mapping.ContactID
+	req := &domain.CreateMessageRequest{
+		To:      customerIdentity,
+		Channel: mapping.Channel,
+		Body:    payload.Content,
+		ConversationalIngestFields: domain.ConversationalIngestFields{
+			SenderType:   string(domain.SenderTypeHumanAgent),
+			SenderName:   "Chatwoot Agent",
+			ConnectionID: &connID,
+			ContactID:    &contactID,
+		},
 	}
 
-	payloadBytes, err := json.Marshal(msg)
-	if err != nil {
-		slog.Error("failed to marshal outbound message", "error", err)
-		return c.JSON(http.StatusInternalServerError, map[string]string{
-			"code":    "internal_error",
-			"message": "failed to serialize message",
-		})
-	}
-
-	// Enqueue/Publish payload
-	err = h.publisher.Publish(c.Request().Context(), "messages.outbound", payloadBytes, traceID)
-	if err != nil {
-		slog.Error("failed to publish outbound message to NATS", "error", err)
+	if _, err := h.ingestor.Ingest(c.Request().Context(), workspaceID, traceID, req); err != nil {
+		slog.Error("failed to ingest outbound message from Chatwoot webhook", "error", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"code":    "internal_error",
 			"message": "failed to publish message",

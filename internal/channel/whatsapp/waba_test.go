@@ -15,7 +15,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pablojhp.pergo/internal/channel"
-	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
@@ -141,7 +140,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -185,7 +184,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -234,7 +233,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -266,7 +265,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 		adapter.SetBaseURL(server.URL)
 
 		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
@@ -290,7 +289,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 		adapter.SetBaseURL(server.URL)
 
 		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
@@ -314,7 +313,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 		adapter.SetBaseURL(server.URL)
 
 		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
@@ -328,65 +327,6 @@ func TestWABADispatch(t *testing.T) {
 		}
 		if channel.IsTerminal(err) {
 			t.Errorf("expected error to be transient, got terminal: %v", err)
-		}
-	})
-
-	t.Run("Local Window Check - Expired/Missing", func(t *testing.T) {
-		rec := activity.New(pool, nil, nil, nil)
-		adapter := NewWABAAdapter(connectionsRepo, nil, rec, "")
-
-		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
-			ConnectionID:   connID,
-			SenderIdentity: "+12345_phone_id",
-			To:             "+12345999",
-			Body:           "hi",
-		})
-		if err == nil {
-			t.Fatal("expected error, got nil")
-		}
-		if !channel.IsTerminal(err) {
-			t.Fatalf("expected terminal error, got: %v", err)
-		}
-		if !strings.Contains(err.Error(), "customer service window expired") {
-			t.Errorf("expected error message containing 'customer service window expired', got: %v", err)
-		}
-	})
-
-	t.Run("Local Window Check - Open", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.HBgL..."}]}`))
-		}))
-		defer server.Close()
-
-		rec := activity.New(pool, nil, nil, nil)
-		contactRepo := repository.NewContactRepository(pool)
-		contact, err := contactRepo.ResolveContact(tenantCtx, ws.ID, "whatsapp_cloud", "+12345888", "User", "", "+12345888")
-		if err != nil {
-			t.Fatalf("ResolveContact failed: %v", err)
-		}
-		if _, err := rec.Inbound(tenantCtx, ws.ID, activity.InboundTurn{
-			Chat:       activity.ChatOf(connID, contact.ID).WithChannel("whatsapp_cloud"),
-			UID:        "in-waba-open-1",
-			SenderName: "User",
-			SenderID:   "+12345888",
-			Body:       "hello",
-			Channel:    "whatsapp_cloud",
-			At:         time.Now().UTC(),
-		}); err != nil {
-			t.Fatalf("Inbound failed: %v", err)
-		}
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), rec, "")
-		adapter.SetBaseURL(server.URL)
-
-		_, err = adapter.Dispatch(tenantCtx, &channel.MessagePayload{
-			ConnectionID:   connID,
-			SenderIdentity: "+12345_phone_id",
-			To:             "+12345888",
-			Body:           "hi",
-		})
-		if err != nil {
-			t.Fatalf("expected nil error, got: %v", err)
 		}
 	})
 
@@ -427,7 +367,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -477,7 +417,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -527,7 +467,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "https://cdn.example.com")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "https://cdn.example.com")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -587,7 +527,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -637,7 +577,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -669,7 +609,7 @@ func TestWABADispatch(t *testing.T) {
 	})
 
 	t.Run("WABA Interactive Button Fail (>3 buttons & fallback_behavior fail)", func(t *testing.T) {
-		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, nil, "")
 
 		payload := &channel.MessagePayload{
 			ConnectionID:     connID,
@@ -722,7 +662,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 		adapter.SetBaseURL(server.URL)
 
 		var rows []domain.Row
@@ -763,7 +703,7 @@ func TestWABADispatch(t *testing.T) {
 	})
 
 	t.Run("WABA Interactive List Fail (>10 list rows & fallback_behavior fail)", func(t *testing.T) {
-		adapter := NewWABAAdapter(connectionsRepo, nil, nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, nil, "")
 
 		var rows []domain.Row
 		for i := 1; i <= 11; i++ {
@@ -813,7 +753,7 @@ func TestWABADispatch(t *testing.T) {
 		}))
 		defer server.Close()
 
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 		adapter.SetBaseURL(server.URL)
 
 		payload := &channel.MessagePayload{
@@ -892,7 +832,7 @@ func TestWABA_MediaExternalURL(t *testing.T) {
 	}))
 	defer server.Close()
 
-	adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "https://example.com")
+	adapter := NewWABAAdapter(connectionsRepo, server.Client(), "https://example.com")
 	adapter.SetBaseURL(server.URL)
 
 	payload := &channel.MessagePayload{
@@ -1014,7 +954,7 @@ func TestWABAInboundAdapterStatuses(t *testing.T) {
 }
 
 func TestWABAAdapter_MetaErrorClassification(t *testing.T) {
-	adapter := NewWABAAdapter(nil, nil, nil, "")
+	adapter := NewWABAAdapter(nil, nil, "")
 
 	tests := []struct {
 		name       string
@@ -1261,7 +1201,7 @@ func TestWABAAdapter_ProductPayloads(t *testing.T) {
 		})
 
 		tenantCtx := tenant.WithWorkspaceID(context.Background(), ws.ID)
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 		adapter.SetBaseURL(server.URL)
 
 		// 1. Dispatch Single Product
@@ -1649,7 +1589,7 @@ func TestWABAAdapter_DispatchFlowMessage(t *testing.T) {
 		t.Fatalf("failed to create connection: %v", err)
 	}
 
-	adapter := NewWABAAdapter(connectionsRepo, server.Client(), nil, "")
+	adapter := NewWABAAdapter(connectionsRepo, server.Client(), "")
 	adapter.SetBaseURL(server.URL)
 
 	payload := &channel.MessagePayload{

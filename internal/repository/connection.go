@@ -452,7 +452,7 @@ func (r *ConnectionRepository) scanAndDecrypt(row pgx.Row) (*Connection, error) 
 		c.ProxyURL = &proxyURL.String
 	}
 
-	if len(ciphertext) > 0 {
+	if len(ciphertext) > 0 && r.provider != nil {
 		plaintext, err := r.provider.Decrypt(ciphertext)
 		if err != nil {
 			slog.Error("failed to decrypt connection credentials", "connection_id", c.ID, "error", err)

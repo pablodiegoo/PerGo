@@ -73,6 +73,7 @@ type VerbsEngine struct {
 	resolver    outbound.RouteResolver
 	activity    *activity.Recorder
 	chatEngine  *chat.Engine
+	ingestor    outbound.OutboundProcessor
 }
 
 func NewVerbsEngine(
@@ -83,15 +84,23 @@ func NewVerbsEngine(
 ) *VerbsEngine {
 	var rec *activity.Recorder
 	var chatEng *chat.Engine
+	var ingestor outbound.OutboundProcessor
 	if contactRepo != nil && contactRepo.Pool() != nil {
 		rec = activity.New(contactRepo.Pool(), nil, nil, nil)
 		chatRepo := repository.NewChatRepository(contactRepo.Pool())
 		chatEng = chat.NewEngine(chatRepo, chat.WithContactRepo(contactRepo), chat.WithActivity(rec))
+		if publisher != nil && resolver != nil {
+			ingestor = outbound.NewProcessor(nil, nil, resolver, publisher).
+				SetContactRepository(contactRepo).
+				SetActivity(rec)
+		}
+	} else if publisher != nil && resolver != nil {
+		ingestor = outbound.NewProcessor(nil, nil, resolver, publisher)
 	}
 	handlers := map[string]VerbHandler{
-		"reply":     NewReplyHandler(publisher, resolver),
+		"reply":     NewReplyHandlerWithIngestor(ingestor),
 		"wait":      NewWaitHandler(),
-		"forward":   NewForwardHandler(publisher, resolver),
+		"forward":   NewForwardHandlerWithIngestor(ingestor),
 		"tag":       NewTagHandler(contactRepo),
 		"close":     NewCloseHandlerWithEngine(chatEng),
 		"pause_bot": NewPauseBotHandlerWithActivity(rec),
@@ -103,6 +112,7 @@ func NewVerbsEngine(
 		resolver:    resolver,
 		activity:    rec,
 		chatEngine:  chatEng,
+		ingestor:    ingestor,
 	}
 }
 
@@ -113,6 +123,9 @@ func (e *VerbsEngine) WithActivity(rec *activity.Recorder) *VerbsEngine {
 	}
 	e.activity = rec
 	e.handlers["pause_bot"] = NewPauseBotHandlerWithActivity(rec)
+	if proc, ok := e.ingestor.(*outbound.Processor); ok && proc != nil {
+		proc.SetActivity(rec)
+	}
 	return e
 }
 
@@ -123,6 +136,17 @@ func (e *VerbsEngine) WithChatEngine(eng *chat.Engine) *VerbsEngine {
 	}
 	e.chatEngine = eng
 	e.handlers["close"] = NewCloseHandlerWithEngine(eng)
+	return e
+}
+
+// WithIngestor wires the shared OutboundProcessor into the VerbsEngine for reply and forward verbs.
+func (e *VerbsEngine) WithIngestor(ingestor outbound.OutboundProcessor) *VerbsEngine {
+	if e == nil {
+		return nil
+	}
+	e.ingestor = ingestor
+	e.handlers["reply"] = NewReplyHandlerWithIngestor(ingestor)
+	e.handlers["forward"] = NewForwardHandlerWithIngestor(ingestor)
 	return e
 }
 
@@ -214,7 +238,12 @@ func (e *VerbsEngine) Execute(ctx context.Context, task WebhookDeliveryTask, ver
 			break
 		}
 
-		if err := handler.Execute(execCtx, vc, verb.Params); err != nil {
+		verbVC := vc
+		if i > 0 && task.TraceID != "" {
+			verbVC.TraceID = fmt.Sprintf("%s-%d", task.TraceID, i)
+		}
+
+		if err := handler.Execute(execCtx, verbVC, verb.Params); err != nil {
 			log.Status, log.Error = "failed", err.Error()
 			execErr = fmt.Errorf("verb %d (%s): %w", i, verb.Action, err)
 			executedLogs = append(executedLogs, log)

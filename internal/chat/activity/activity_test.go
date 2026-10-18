@@ -792,13 +792,10 @@ func TestRecorder_S3_ServiceWindow_IndependentConnections_CTWA_TouchOutbound_And
 	t.Run("ChatAt is strictly read-only and campaign/template dispatch to new number does not open window", func(t *testing.T) {
 		unknownPhone := "+5511933334444"
 
-		// 1. Snapshot(ChatAt) and TouchOutbound(ChatAt) for unknown phone never create a Contact or Chat
+		// 1. Snapshot(ChatAt) for unknown phone never creates a Contact or Chat
 		_, exists, err := rec.Snapshot(ctx, wsID, activity.ChatAt(connA, unknownPhone).WithChannel("whatsapp_cloud"))
 		if err != nil || exists {
 			t.Fatalf("expected exists=false err=nil, got exists=%v err=%v", exists, err)
-		}
-		if err := rec.TouchOutbound(ctx, wsID, activity.ChatAt(connA, unknownPhone).WithChannel("whatsapp_cloud"), t0); err != nil {
-			t.Fatalf("TouchOutbound for unknown phone should be no-op, got %v", err)
 		}
 
 		var count int
@@ -845,24 +842,33 @@ func TestRecorder_S3_ServiceWindow_IndependentConnections_CTWA_TouchOutbound_And
 			t.Fatalf("expected *domain.TemplateRequiredError after template-only initiation, got %T: %v", err, err)
 		}
 
-		// TouchOutbound on existing Chat updates last_outbound_at, and Inbound exposes PrevLastOutboundAt
-		tTouch := t0.Add(10 * time.Minute)
-		if err := rec.TouchOutbound(ctx, wsID, activity.ChatAt(connA, tmplPhone).WithChannel("whatsapp_cloud"), tTouch); err != nil {
-			t.Fatalf("TouchOutbound on existing chat failed: %v", err)
+		// Second template Outbound on existing Chat updates last_outbound_at, and Inbound exposes PrevLastOutboundAt
+		tSecond := t0.Add(10 * time.Minute)
+		if _, err := rec.Outbound(ctx, wsID, activity.OutboundTurn{
+			Chat:         activity.ChatOf(connA, tmplContactID).WithChannel("whatsapp_cloud"),
+			UID:          "uid-tmpl-new-num-2",
+			SenderType:   domain.SenderTypeSystem,
+			Channel:      "whatsapp_cloud",
+			TemplateName: "welcome_offer",
+			Language:     "pt_BR",
+			MessageType:  "template",
+			At:           tSecond,
+		}); err != nil {
+			t.Fatalf("second template Outbound on existing chat failed: %v", err)
 		}
-		inAfterTouch, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+		inAfterOut, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
 			Chat:     activity.ChatOf(connA, tmplContactID).WithChannel("whatsapp_cloud"),
 			UID:      "wamid.reply.after.touch",
 			SenderID: tmplPhone,
 			Body:     "Customer replied!",
 			Channel:  "whatsapp_cloud",
-			At:       tTouch.Add(3 * time.Second),
+			At:       tSecond.Add(3 * time.Second),
 		})
 		if err != nil {
-			t.Fatalf("Inbound after TouchOutbound failed: %v", err)
+			t.Fatalf("Inbound after Outbound failed: %v", err)
 		}
-		if inAfterTouch.PrevLastOutboundAt == nil || !inAfterTouch.PrevLastOutboundAt.Equal(tTouch) {
-			t.Fatalf("expected PrevLastOutboundAt=%v, got %v", tTouch, inAfterTouch.PrevLastOutboundAt)
+		if inAfterOut.PrevLastOutboundAt == nil || !inAfterOut.PrevLastOutboundAt.Equal(tSecond) {
+			t.Fatalf("expected PrevLastOutboundAt=%v, got %v", tSecond, inAfterOut.PrevLastOutboundAt)
 		}
 	})
 
@@ -978,9 +984,6 @@ func TestRecorder_S3_ServiceWindow_IndependentConnections_CTWA_TouchOutbound_And
 		}
 		if err := rec.DispatchFailed(ctx, uuid.Nil, "wamid.exp.2"); !errors.Is(err, activity.ErrInvalidWorkspaceID) {
 			t.Fatalf("DispatchFailed with nil ws: got %v, want ErrInvalidWorkspaceID", err)
-		}
-		if err := rec.TouchOutbound(ctx, uuid.Nil, refByID, baseNow); !errors.Is(err, activity.ErrInvalidWorkspaceID) {
-			t.Fatalf("TouchOutbound with nil ws: got %v, want ErrInvalidWorkspaceID", err)
 		}
 		if _, _, err := rec.Snapshot(ctx, uuid.Nil, refByID); !errors.Is(err, activity.ErrInvalidWorkspaceID) {
 			t.Fatalf("Snapshot with nil ws: got %v, want ErrInvalidWorkspaceID", err)

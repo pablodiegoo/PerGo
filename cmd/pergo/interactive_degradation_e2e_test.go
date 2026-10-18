@@ -138,7 +138,7 @@ func TestInteractiveDegradation_E2E(t *testing.T) {
 	}
 
 	// 4. Setup Adapters
-	wabaAdapter := wapkg.NewWABAAdapter(connRepo, wabaServer.Client(), nil, "")
+	wabaAdapter := wapkg.NewWABAAdapter(connRepo, wabaServer.Client(), "")
 	wabaAdapter.SetBaseURL(wabaServer.URL)
 
 	tgAdapter := tgpkg.NewTelegramAdapter(connRepo, tgServer.Client(), nil)
