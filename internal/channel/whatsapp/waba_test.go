@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
@@ -330,14 +331,14 @@ func TestWABADispatch(t *testing.T) {
 		}
 	})
 
-	t.Run("Local Window Checker - Expired/Missing", func(t *testing.T) {
-		mockChecker := &mockWABAWindowChecker{open: false}
-		adapter := NewWABAAdapter(connectionsRepo, nil, mockChecker, "")
+	t.Run("Local Window Check - Expired/Missing", func(t *testing.T) {
+		rec := activity.New(pool, nil, nil, nil)
+		adapter := NewWABAAdapter(connectionsRepo, nil, rec, "")
 
 		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
 			ConnectionID:   connID,
 			SenderIdentity: "+12345_phone_id",
-			To:             "+12345",
+			To:             "+12345999",
 			Body:           "hi",
 		})
 		if err == nil {
@@ -346,26 +347,42 @@ func TestWABADispatch(t *testing.T) {
 		if !channel.IsTerminal(err) {
 			t.Fatalf("expected terminal error, got: %v", err)
 		}
-		if err.Error() != "terminal: customer service window expired" {
-			t.Errorf("expected error message 'terminal: customer service window expired', got: %v", err)
+		if !strings.Contains(err.Error(), "customer service window expired") {
+			t.Errorf("expected error message containing 'customer service window expired', got: %v", err)
 		}
 	})
 
-	t.Run("Local Window Checker - Open", func(t *testing.T) {
+	t.Run("Local Window Check - Open", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"messages":[{"id":"wamid.HBgL..."}]}`))
 		}))
 		defer server.Close()
 
-		mockChecker := &mockWABAWindowChecker{open: true}
-		adapter := NewWABAAdapter(connectionsRepo, server.Client(), mockChecker, "")
+		rec := activity.New(pool, nil, nil, nil)
+		contactRepo := repository.NewContactRepository(pool)
+		contact, err := contactRepo.ResolveContact(tenantCtx, ws.ID, "whatsapp_cloud", "+12345888", "User", "", "+12345888")
+		if err != nil {
+			t.Fatalf("ResolveContact failed: %v", err)
+		}
+		if _, err := rec.Inbound(tenantCtx, ws.ID, activity.InboundTurn{
+			Chat:       activity.ChatOf(connID, contact.ID).WithChannel("whatsapp_cloud"),
+			UID:        "in-waba-open-1",
+			SenderName: "User",
+			SenderID:   "+12345888",
+			Body:       "hello",
+			Channel:    "whatsapp_cloud",
+			At:         time.Now().UTC(),
+		}); err != nil {
+			t.Fatalf("Inbound failed: %v", err)
+		}
+		adapter := NewWABAAdapter(connectionsRepo, server.Client(), rec, "")
 		adapter.SetBaseURL(server.URL)
 
-		_, err := adapter.Dispatch(tenantCtx, &channel.MessagePayload{
+		_, err = adapter.Dispatch(tenantCtx, &channel.MessagePayload{
 			ConnectionID:   connID,
 			SenderIdentity: "+12345_phone_id",
-			To:             "+12345",
+			To:             "+12345888",
 			Body:           "hi",
 		})
 		if err != nil {
@@ -816,15 +833,6 @@ func TestWABADispatch(t *testing.T) {
 			t.Errorf("expected wamid 'wamid.override_123', got %q", resp)
 		}
 	})
-}
-
-type mockWABAWindowChecker struct {
-	open bool
-	err  error
-}
-
-func (m *mockWABAWindowChecker) IsWindowOpenBool(ctx context.Context, key domain.SessionKey, safetyBuffer time.Duration) (bool, error) {
-	return m.open, m.err
 }
 
 func TestWABA_MediaExternalURL(t *testing.T) {

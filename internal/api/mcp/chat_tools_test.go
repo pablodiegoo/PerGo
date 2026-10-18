@@ -76,6 +76,8 @@ func TestMCPChatTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create chat: %v", err)
 	}
+	openExp := time.Now().UTC().Add(24 * time.Hour)
+	_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &openExp)
 	_ = chatRepo.IncrementUnreadCount(ctx, ws.ID, chat.ID)
 	_ = chatRepo.SetChatTags(ctx, ws.ID, chat.ID, []string{"vip", "priority"})
 
@@ -874,6 +876,16 @@ func TestMCPChatTools(t *testing.T) {
 	})
 
 	t.Run("whatsapp_account_send_message", func(t *testing.T) {
+		c2, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999990000", "Order Customer", "", "+5511999990000")
+		if err != nil {
+			t.Fatalf("resolve contact: %v", err)
+		}
+		chat2, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, c2.ID)
+		if err != nil {
+			t.Fatalf("find or create chat: %v", err)
+		}
+		_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat2.ID, &openExp)
+
 		res, err := srv.CallTool(ctx, "whatsapp_account_send_message", map[string]any{
 			"workspace_id":  ws.ID.String(),
 			"connection_id": connID.String(),

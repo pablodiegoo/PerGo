@@ -114,7 +114,7 @@ func TestDraftFirstInternalNotesIntegration(t *testing.T) {
 	connID := conn.ID
 
 	// 2. Setup InboundProcessor
-	inboundProc := inbound.NewInboundProcessor(nil, wsRepo, nil, nil, nil, nil, contactRepo, nil, nil)
+	inboundProc := inbound.NewInboundProcessor(nil, wsRepo, nil, nil, nil, contactRepo, nil, nil)
 	inboundProc.SetChatRepository(chatRepo)
 
 	// 3. Setup Tracking Publisher

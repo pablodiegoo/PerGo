@@ -92,7 +92,6 @@ func TestInteractiveDualRepresentation_Inbound_E2E(t *testing.T) {
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	connRepo := repository.NewConnectionRepository(pool, enc)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
@@ -233,7 +232,6 @@ func TestInteractiveDualRepresentation_Inbound_E2E(t *testing.T) {
 		nil,
 		natsSpy,
 		nil,
-		sessRepo,
 		contactRepo,
 		dispatchRepo,
 		inboundRouter,

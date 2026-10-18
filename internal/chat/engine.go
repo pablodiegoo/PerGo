@@ -188,27 +188,26 @@ type TagMutation struct {
 
 // SendRequest describes an outbound message dispatch request on a chat thread.
 type SendRequest struct {
-	Ref                 ChatRef
-	Body                string
-	Media               *domain.Media
-	SenderName          string
-	SenderType          string
-	ReplyToUID          *string
-	TemplateName        string
-	Language            string
-	Components          []domain.TemplateComponent
-	Interactive         *domain.Interactive
-	ChannelOverrides    map[string]json.RawMessage
-	FallbackChannels    []string
-	FallbackBehavior    string
-	Type                string
-	Product             *domain.ProductPayload
-	ConnectionID        *uuid.UUID
-	SenderIdentity      string
-	StrictServiceWindow bool
-	TraceIDPrefix       string
-	AuditEventType      string
-	Metadata            map[string]string
+	Ref              ChatRef
+	Body             string
+	Media            *domain.Media
+	SenderName       string
+	SenderType       string
+	ReplyToUID       *string
+	TemplateName     string
+	Language         string
+	Components       []domain.TemplateComponent
+	Interactive      *domain.Interactive
+	ChannelOverrides map[string]json.RawMessage
+	FallbackChannels []string
+	FallbackBehavior string
+	Type             string
+	Product          *domain.ProductPayload
+	ConnectionID     *uuid.UUID
+	SenderIdentity   string
+	TraceIDPrefix    string
+	AuditEventType   string
+	Metadata         map[string]string
 }
 
 // SendResult contains the result of a conversational outbound send.
@@ -1531,20 +1530,25 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 	}
 
 	var contact *domain.Contact
+	var wsID uuid.UUID
 	c, err := e.ResolveChat(ctx, workspaceID, req.Ref)
-	if errors.Is(err, ErrChatNotFound) && req.Ref.ContactID != uuid.Nil {
-		c, err = e.EnsureChatForContact(ctx, workspaceID, req.Ref.ContactID, false)
-	}
-	if errors.Is(err, ErrChatNotFound) && strings.TrimSpace(req.Ref.Phone) != "" {
-		c, err = e.findOrCreateChatByPhone(ctx, workspaceID, req.Ref, req.ConnectionID)
-	}
 	if err != nil {
-		return nil, err
-	}
-	wsID := c.WorkspaceID
-
-	if e.contactRepo != nil && c.ContactID != uuid.Nil {
-		contact, _ = e.contactRepo.GetByID(ctx, wsID, c.ContactID)
+		if !errors.Is(err, ErrChatNotFound) || (req.Ref.ContactID == uuid.Nil && strings.TrimSpace(req.Ref.Phone) == "") {
+			return nil, err
+		}
+		var sErr error
+		wsID, sErr = EnforceWorkspaceScope(ctx, workspaceID)
+		if sErr != nil || wsID == uuid.Nil {
+			return nil, ErrChatNotFound
+		}
+		if e.contactRepo != nil && req.Ref.ContactID != uuid.Nil {
+			contact, _ = e.contactRepo.GetByID(ctx, wsID, req.Ref.ContactID)
+		}
+	} else {
+		wsID = c.WorkspaceID
+		if e.contactRepo != nil && c.ContactID != uuid.Nil {
+			contact, _ = e.contactRepo.GetByID(ctx, wsID, c.ContactID)
+		}
 	}
 
 	// Resolve channel and connection
@@ -1562,7 +1566,7 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 			}
 		}
 	}
-	if connID == uuid.Nil && c.ConnectionID != nil && *c.ConnectionID != uuid.Nil {
+	if connID == uuid.Nil && c != nil && c.ConnectionID != nil && *c.ConnectionID != uuid.Nil {
 		connID = *c.ConnectionID
 		if e.connRepo != nil {
 			if conn, cErr := e.connRepo.GetByID(ctx, *c.ConnectionID); cErr == nil && conn != nil {
@@ -1617,15 +1621,14 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 			}
 		}
 	}
+	if channel == "" && req.Ref.Channel != "" {
+		channel = req.Ref.Channel
+	}
 	if connID == uuid.Nil && e.connRepo != nil && channel != "" {
 		if defaultConn, cErr := e.connRepo.GetDefaultChannelConnection(ctx, wsID, channel); cErr == nil && defaultConn != nil {
 			connID = defaultConn.ID
 			senderIdentity = defaultConn.SenderIdentity
 		}
-	}
-
-	if channel == "" && req.Ref.Channel != "" {
-		channel = req.Ref.Channel
 	}
 	if senderIdentity == "" && req.SenderIdentity != "" {
 		senderIdentity = req.SenderIdentity
@@ -1636,6 +1639,24 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 	}
 	if to == "" {
 		return nil, errors.New("contact has no phone number or channel identity")
+	}
+
+	if channel == "" {
+		channel = "whatsapp"
+	}
+
+	if c == nil {
+		isFreeformWABA := channel == "whatsapp_cloud" && strings.TrimSpace(req.TemplateName) == "" && !strings.EqualFold(strings.TrimSpace(req.Type), "template")
+		if !isFreeformWABA {
+			if req.Ref.ContactID != uuid.Nil {
+				c, err = e.EnsureChatForContact(ctx, wsID, req.Ref.ContactID, false)
+			} else if strings.TrimSpace(req.Ref.Phone) != "" {
+				c, err = e.findOrCreateChatByPhone(ctx, wsID, req.Ref, req.ConnectionID)
+			}
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	senderName := strings.TrimSpace(req.SenderName)
@@ -1664,14 +1685,15 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 		}
 	}
 
-	if channel == "" {
-		channel = "whatsapp"
-	}
 	meta := make(map[string]string)
 	for k, v := range req.Metadata {
 		meta[k] = v
 	}
-	meta["chat_id"] = c.ID.String()
+	var chatIDPtr *uuid.UUID
+	if c != nil {
+		meta["chat_id"] = c.ID.String()
+		chatIDPtr = &c.ID
+	}
 	meta["sender_type"] = string(senderType)
 	meta["sender_name"] = senderName
 	if connID != uuid.Nil {
@@ -1698,28 +1720,31 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 		Type:             req.Type,
 		Product:          req.Product,
 		ConversationalIngestFields: domain.ConversationalIngestFields{
-			ChatID:              &c.ID,
-			ReplyToUID:          req.ReplyToUID,
-			SenderType:          string(senderType),
-			SenderName:          senderName,
-			StrictServiceWindow: req.StrictServiceWindow,
+			ChatID:     chatIDPtr,
+			ReplyToUID: req.ReplyToUID,
+			SenderType: string(senderType),
+			SenderName: senderName,
 		},
 	}
 
 	qMsg, ingestErr := e.ingestor.Ingest(ctx, wsID, traceID, createReq)
 	if ingestErr != nil {
+		var tmplErr *domain.TemplateRequiredError
+		if errors.As(ingestErr, &tmplErr) {
+			return nil, fmt.Errorf("%w: %w", ErrServiceWindowExpired, ingestErr)
+		}
 		var valErr *outbound.ValidationError
 		if errors.As(ingestErr, &valErr) && valErr.Response != nil && valErr.Response.Code == "SESSION_WINDOW_EXPIRED" {
 			return nil, fmt.Errorf("%w: %w", ErrServiceWindowExpired, ingestErr)
 		}
 		return nil, ingestErr
 	}
-	// If ingestor did not check the service window (e.g. mock ingestor without chatRepo/windowChecker),
-	// still enforce StrictServiceWindow after ingestor queue-depth checks pass.
-	if req.StrictServiceWindow && channel == "whatsapp_cloud" && strings.TrimSpace(req.TemplateName) == "" {
-		if !c.IsServiceWindowOpen() {
-			return nil, ErrServiceWindowExpired
+	if c == nil {
+		tmplErr := &domain.TemplateRequiredError{
+			Window: domain.Window(domain.ChatState{Channel: channel}, false, now),
+			Source: "ingestion",
 		}
+		return nil, fmt.Errorf("%w: %w", ErrServiceWindowExpired, tmplErr)
 	}
 	if qMsg != nil && !qMsg.QueuedAt.IsZero() {
 		now = qMsg.QueuedAt

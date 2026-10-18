@@ -43,7 +43,7 @@ func (p *recordingPublisher) Publish(_ context.Context, subject string, data []b
 
 // TestBootstrapCore_StdioAndHTTPParity verifies that the shared core bootstrap
 // initializes both HTTP mode and `pergo mcp` stdio mode with the exact same
-// fully configured domain graph (ChatEngine, OutboundProcessor with WindowChecker,
+// fully configured domain graph (ChatEngine, OutboundProcessor with Activity,
 // WABATemplateRepo, ChatRepo, ContactRepo, MediaEngine, QueueDepthTracker, and
 // WebhookDispatcher).
 func TestBootstrapCore_StdioAndHTTPParity(t *testing.T) {
@@ -77,8 +77,8 @@ func TestBootstrapCore_StdioAndHTTPParity(t *testing.T) {
 	if core.InboundProcessor == nil {
 		t.Fatal("expected core.InboundProcessor to be non-nil")
 	}
-	if core.WindowChecker == nil {
-		t.Fatal("expected core.WindowChecker to be non-nil")
+	if core.Activity == nil {
+		t.Fatal("expected core.Activity to be non-nil")
 	}
 	if core.MediaEngine == nil {
 		t.Fatal("expected core.MediaEngine to be non-nil")
@@ -160,7 +160,7 @@ func TestBootstrapCore_StdioAndHTTPParity(t *testing.T) {
 		t.Errorf("expected Customer Service Window error message, got: %s", errText)
 	}
 
-	// Also verify `send_message` tool invokes OutboundProcessor.Ingest with WindowChecker wired
+	// Also verify `send_message` tool invokes OutboundProcessor.Ingest with Chat Activity service window wired
 	resSendClosed, err := core.MCPServer.CallTool(ctx, "send_message", map[string]any{
 		"workspace_id": ws.ID.String(),
 		"channel":      "whatsapp_cloud",
@@ -171,7 +171,7 @@ func TestBootstrapCore_StdioAndHTTPParity(t *testing.T) {
 		t.Fatalf("CallTool send_message error: %v", err)
 	}
 	if !resSendClosed.IsError {
-		t.Fatalf("expected send_message on whatsapp_cloud without open recipient_session to be rejected by WindowChecker, got success: %+v", resSendClosed.Content)
+		t.Fatalf("expected send_message on whatsapp_cloud without open service window to be rejected, got success: %+v", resSendClosed.Content)
 	}
 
 	// 2. Verify stdio-bootstrapped MCPServer `waba_start_chat` validates template parameters via OutboundProcessor.SetTemplateRepository

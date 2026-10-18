@@ -46,7 +46,6 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 	contactRepo := repository.NewContactRepository(pool)
 	tmplRepo := repository.NewWABATemplateRepository(pool)
 	campaignRepo := repository.NewCampaignRepository(pool)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 
 	// 1. Workspace
 	wsName := opts.WorkspaceName
@@ -500,16 +499,10 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 				UPDATE chats SET service_window_expires_at = $1 WHERE workspace_id = $2 AND id = $3
 			`, expiresAt, ws.ID, seededChat.ID)
 		}
-
-		// Upsert recipient session
-		sessKey := domain.NewSessionKey(ws.ID, contactPhone, conv.Channel, conv.RecipientIdentity)
-		_ = sessRepo.Upsert(ctx, sessKey, lastInboundAt, "standard")
 		if !lastOutboundAt.IsZero() {
 			_, _ = pool.Exec(ctx, `
-				UPDATE recipient_sessions 
-				SET last_outbound_at = $1 
-				WHERE workspace_id = $2 AND recipient_phone = $3 AND channel = $4 AND recipient_identity = $5
-			`, lastOutboundAt, ws.ID, contactPhone, conv.Channel, conv.RecipientIdentity)
+				UPDATE chats SET last_outbound_at = $1 WHERE workspace_id = $2 AND id = $3
+			`, lastOutboundAt, ws.ID, seededChat.ID)
 		}
 	}
 

@@ -22,7 +22,6 @@ import (
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/storage"
 	"github.com/pablojhp.pergo/internal/repository"
-	"github.com/pablojhp.pergo/internal/session"
 )
 
 // Publisher defines the interface for publishing messages to a queue.
@@ -45,7 +44,6 @@ type MessageHandler struct {
 	QueueDepth      *middleware.QueueDepthTracker
 	S3Client        *storage.S3Client
 	ConnectionRepo  ConnectionFinder
-	WindowChecker   *session.WindowChecker
 	IdempotencyRepo *repository.IdempotencyRepository
 }
 
@@ -109,9 +107,6 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 			tracker = h.QueueDepth
 		}
 		proc := outbound.NewProcessor(tracker, mediaEngine, h.ConnectionRepo, h.Publisher)
-		if h.WindowChecker != nil {
-			proc.SetWindowChecker(h.WindowChecker)
-		}
 		ingestor = proc
 	}
 
@@ -127,21 +122,19 @@ func (h *MessageHandler) Create(c *echo.Context) error {
 			})
 		}
 
-		var sessionErr *session.SessionWindowError
-		if errors.As(err, &sessionErr) {
+		var tmplErr *domain.TemplateRequiredError
+		if errors.As(err, &tmplErr) {
 			expiredAtStr := ""
 			windowDurStr := "24h"
 			sourceStr := "ingestion"
-			if sessionErr.Status != nil {
-				if !sessionErr.Status.ExpiresAt.IsZero() {
-					expiredAtStr = sessionErr.Status.ExpiresAt.Format(time.RFC3339)
-				}
-				if sessionErr.Status.WindowDuration > 0 {
-					windowDurStr = sessionErr.Status.WindowDuration.String()
-				}
+			if !tmplErr.Window.ExpiresAt.IsZero() {
+				expiredAtStr = tmplErr.Window.ExpiresAt.Format(time.RFC3339)
 			}
-			if sessionErr.Source != "" {
-				sourceStr = sessionErr.Source
+			if tmplErr.Window.WindowDuration > 0 {
+				windowDurStr = tmplErr.Window.WindowDuration.String()
+			}
+			if tmplErr.Source != "" {
+				sourceStr = tmplErr.Source
 			}
 
 			return c.JSON(http.StatusUnprocessableEntity, map[string]any{

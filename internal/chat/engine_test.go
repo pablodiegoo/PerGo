@@ -1543,28 +1543,28 @@ func TestEngine_SendMessage_QueueDepthPrecedenceOverServiceWindow(t *testing.T) 
 	// 1. When queue is full AND service window is expired, ErrQueueFull takes precedence over ErrServiceWindowExpired
 	ingestor.err = outbound.ErrQueueFull
 	_, err := eng.SendMessage(ctx, wsID, chat.SendRequest{
-		Ref:                 chat.ChatRef{ChatID: c.ID},
-		Body:                "Freeform message on expired chat when queue is full",
-		StrictServiceWindow: true,
+		Ref:  chat.ChatRef{ChatID: c.ID},
+		Body: "Freeform message on expired chat when queue is full",
 	})
 	if !errors.Is(err, outbound.ErrQueueFull) {
 		t.Fatalf("expected ErrQueueFull to take precedence over ErrServiceWindowExpired, got %v", err)
 	}
 
-	// 2. When queue has capacity, expired service window returns ErrServiceWindowExpired
-	ingestor.err = &outbound.ValidationError{
-		Response: &domain.ErrorResponse{
-			Code:    "SESSION_WINDOW_EXPIRED",
-			Message: "free-form message blocked: 24h customer service window is closed",
-		},
+	// 2. When queue has capacity, expired service window returns ErrServiceWindowExpired wrapping TemplateRequiredError
+	ingestor.err = &domain.TemplateRequiredError{
+		Window: domain.Window(domain.ChatState{Channel: "whatsapp_cloud", ServiceWindowExpiresAt: &past}, true, time.Now().UTC()),
+		Source: "ingestion",
 	}
 	_, err = eng.SendMessage(ctx, wsID, chat.SendRequest{
-		Ref:                 chat.ChatRef{ChatID: c.ID},
-		Body:                "Freeform message on expired chat",
-		StrictServiceWindow: true,
+		Ref:  chat.ChatRef{ChatID: c.ID},
+		Body: "Freeform message on expired chat",
 	})
 	if !errors.Is(err, chat.ErrServiceWindowExpired) {
 		t.Fatalf("expected ErrServiceWindowExpired when window is closed, got %v", err)
+	}
+	var tmplErr *domain.TemplateRequiredError
+	if !errors.As(err, &tmplErr) {
+		t.Fatalf("expected errors.As(*domain.TemplateRequiredError), got %v", err)
 	}
 }
 

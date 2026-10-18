@@ -17,6 +17,7 @@ import (
 
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
@@ -68,12 +69,13 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	connRepo := repository.NewConnectionRepository(pool, enc)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	subRepo := repository.NewWebhookSubscriptionRepository(pool, enc)
 	dlqRepo := repository.NewWebhookDLQRepository(pool, enc)
+	actRec := activity.New(pool, nil, nil, nil)
 
 	ws, err := wsRepo.Create(ctx, "timing_e2e_ws_"+uuid.New().String())
 	if err != nil {
@@ -124,7 +126,7 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 
 	orchestrator := queue.NewDispatchOrchestrator(channelRegistry, dispatchRepo, nil, nil, nil, contactRepo, 5, 60*time.Second)
 	orchestrator.SetContactRepository(contactRepo)
-	orchestrator.SetRecipientSessionRepository(sessRepo)
+	orchestrator.SetActivity(actRec)
 
 	// 4. Setup Webhook Dispatcher
 	dispatcher := webhook.NewDefaultDispatcher(subRepo, dlqRepo, wsRepo, webhookServer.Client(), nil)
@@ -141,11 +143,11 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 		nil,
 		directPublisher,
 		nil,
-		sessRepo,
 		contactRepo,
 		dispatchRepo,
 		nil,
 	)
+	inboundProc.SetChatRepository(chatRepo)
 
 	wabaCreds, _ := json.Marshal(map[string]string{
 		"token":           "waba_token_123",
@@ -178,10 +180,20 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 		contactPhone := "5511999995555"
 		senderPhone := "+5511888887777"
 
+		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", contactPhone, "Timing Customer", "", contactPhone)
+		if err != nil {
+			t.Fatalf("failed to resolve contact: %v", err)
+		}
+		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &wabaConn.ID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to create chat: %v", err)
+		}
+
 		// Step A: Send outbound message to contact
 		outboundTraceID := "outbound_turn_trace_" + uuid.New().String()
 		qMsg := &domain.QueueMessage{
 			WorkspaceID:    ws.ID,
+			ConnectionID:   wabaConn.ID,
 			TraceID:        outboundTraceID,
 			To:             contactPhone,
 			Channel:        "whatsapp_cloud",
@@ -190,23 +202,23 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 		}
 
 		msg := &fakeTimingDispatchMsg{}
-		err := orchestrator.Process(ctx, msg, qMsg, 0)
+		err = orchestrator.Process(ctx, msg, qMsg, 0)
 		if err != nil {
 			t.Fatalf("outbound dispatch failed: %v", err)
 		}
 
-		// Verify session record has last_outbound_at
-		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", senderPhone))
+		// Verify chat record has last_outbound_at
+		state, exists, err := actRec.Snapshot(ctx, ws.ID, activity.ChatOf(wabaConn.ID, contact.ID))
 		if err != nil {
-			t.Fatalf("failed to get recipient session: %v", err)
+			t.Fatalf("failed to snapshot chat: %v", err)
 		}
-		if sess.LastOutboundAt == nil {
-			t.Fatal("expected LastOutboundAt on recipient session")
+		if !exists || state.LastOutboundAt == nil {
+			t.Fatal("expected LastOutboundAt on chat")
 		}
 
 		// Adjust LastOutboundAt in database to simulate a 3200ms thinking/reading time
 		simulatedOutboundAt := time.Now().UTC().Add(-3200 * time.Millisecond).Truncate(time.Second)
-		err = sessRepo.RecordOutbound(ctx, domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", senderPhone), simulatedOutboundAt)
+		_, err = pool.Exec(ctx, `UPDATE chats SET last_outbound_at = $1 WHERE workspace_id = $2 AND id = $3`, simulatedOutboundAt, ws.ID, chat.ID)
 		if err != nil {
 			t.Fatalf("failed to update simulated outbound time: %v", err)
 		}
@@ -393,13 +405,21 @@ func TestResponseTimingTelemetry_E2E(t *testing.T) {
 		deliveriesMu.Unlock()
 
 		lagPhone := "5511999998888"
-		senderPhone := "+5511888887777"
+
+		lagContact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", lagPhone, "Lag Customer", "", lagPhone)
+		if err != nil {
+			t.Fatalf("failed to resolve lag contact: %v", err)
+		}
+		lagChat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &wabaConn.ID, lagContact.ID)
+		if err != nil {
+			t.Fatalf("failed to create lag chat: %v", err)
+		}
 
 		// Outbound sent at fixed past time T0
 		fixedOutboundAt := time.Date(2026, 8, 28, 20, 0, 0, 0, time.UTC)
-		err = sessRepo.RecordOutbound(ctx, domain.NewSessionKey(ws.ID, lagPhone, "whatsapp_cloud", senderPhone), fixedOutboundAt)
+		_, err = pool.Exec(ctx, `UPDATE chats SET last_outbound_at = $1 WHERE workspace_id = $2 AND id = $3`, fixedOutboundAt, ws.ID, lagChat.ID)
 		if err != nil {
-			t.Fatalf("failed to record outbound session: %v", err)
+			t.Fatalf("failed to record outbound timestamp on chat: %v", err)
 		}
 
 		// Contact replied at T0 + 4s upstream at Meta

@@ -18,7 +18,6 @@ import (
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
-	"github.com/pablojhp.pergo/internal/session"
 )
 
 // ChatRepo defines the chat data access methods required by ChatAPIHandler.
@@ -576,17 +575,16 @@ func (h *ChatAPIHandler) SendMessage(c *echo.Context) error {
 	}
 
 	res, err := eng.SendMessage(ctx, wsID, chat.SendRequest{
-		Ref:                 chat.ChatRef{ChatID: chatID},
-		Body:                body,
-		Media:               req.Media,
-		SenderName:          req.SenderName,
-		SenderType:          senderType,
-		ReplyToUID:          req.ReplyToUID,
-		TemplateName:        req.TemplateName,
-		Language:            req.Language,
-		Components:          req.Components,
-		StrictServiceWindow: true,
-		TraceIDPrefix:       "api-chat",
+		Ref:           chat.ChatRef{ChatID: chatID},
+		Body:          body,
+		Media:         req.Media,
+		SenderName:    req.SenderName,
+		SenderType:    senderType,
+		ReplyToUID:    req.ReplyToUID,
+		TemplateName:  req.TemplateName,
+		Language:      req.Language,
+		Components:    req.Components,
+		TraceIDPrefix: "api-chat",
 	})
 	if err != nil {
 		if errors.Is(err, chat.ErrContactNotFound) || strings.Contains(err.Error(), "no phone number or channel identity") {
@@ -601,9 +599,9 @@ func (h *ChatAPIHandler) SendMessage(c *echo.Context) error {
 				"message": err.Error(),
 			})
 		}
-		var winErr *session.SessionWindowError
-		if errors.Is(err, chat.ErrServiceWindowExpired) || errors.As(err, &winErr) || strings.Contains(err.Error(), "24-hour") || strings.Contains(err.Error(), "24h") {
-			return c.JSON(http.StatusForbidden, map[string]string{
+		var tmplErr *domain.TemplateRequiredError
+		if errors.Is(err, chat.ErrServiceWindowExpired) || errors.As(err, &tmplErr) {
+			return c.JSON(http.StatusUnprocessableEntity, map[string]string{
 				"code":    "SERVICE_WINDOW_EXPIRED",
 				"message": "Meta WhatsApp 24-hour customer service window expired. A pre-approved template message is required.",
 			})

@@ -491,20 +491,21 @@ func (a *WABAInboundAdapter) Parse(
 				msgOccurredAt := inbound.ParseUnixTimestamp(msg.Timestamp)
 
 				events = append(events, &inbound.InboundEvent{
-					WorkspaceID:  conn.WorkspaceID,
-					ConnectionID: conn.ID,
-					MessageID:    msg.ID,
-					Channel:      "whatsapp_cloud",
-					From:         msg.From,
-					To:           recipientIdentity,
-					Body:         body,
-					Media:        inboundMedia,
-					Location:     inboundLocation,
-					Contacts:     inboundContacts,
-					Interactive:  inboundInteractive,
-					Reaction:     inboundReaction,
-					OccurredAt:   msgOccurredAt,
-					Metadata:     metadata,
+					WorkspaceID:    conn.WorkspaceID,
+					ConnectionID:   conn.ID,
+					MessageID:      msg.ID,
+					Channel:        "whatsapp_cloud",
+					From:           msg.From,
+					To:             recipientIdentity,
+					Body:           body,
+					Media:          inboundMedia,
+					Location:       inboundLocation,
+					Contacts:       inboundContacts,
+					Interactive:    inboundInteractive,
+					Reaction:       inboundReaction,
+					OccurredAt:     msgOccurredAt,
+					EntryPointType: entryPointType,
+					Metadata:       metadata,
 				})
 			}
 		}

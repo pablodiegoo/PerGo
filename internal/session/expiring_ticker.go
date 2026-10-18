@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/pablojhp.pergo/internal/repository"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 )
 
 // Publisher defines the port for publishing events to NATS.
@@ -20,6 +20,9 @@ type ExpiringSessionEvent struct {
 	Event          string `json:"event"`
 	TraceID        string `json:"trace_id"`
 	WorkspaceID    string `json:"workspace_id"`
+	ChatID         string `json:"chat_id,omitempty"`
+	ContactID      string `json:"contact_id,omitempty"`
+	ConnectionID   string `json:"connection_id,omitempty"`
 	RecipientPhone string `json:"recipient_phone"`
 	Channel        string `json:"channel"`
 	EntryPointType string `json:"entry_point_type"`
@@ -27,17 +30,17 @@ type ExpiringSessionEvent struct {
 	Timestamp      string `json:"timestamp"`
 }
 
-// SessionTicker periodically queries for sessions approaching window expiration and emits session.expiring_soon webhook events.
+// SessionTicker periodically claims chats approaching service window expiration and emits session.expiring_soon webhook events.
 type SessionTicker struct {
-	repo      *repository.RecipientSessionRepository
+	activity  *activity.Recorder
 	publisher Publisher
 	interval  time.Duration
 }
 
 // NewSessionTicker creates a new SessionTicker instance.
-func NewSessionTicker(repo *repository.RecipientSessionRepository, publisher Publisher) *SessionTicker {
+func NewSessionTicker(act *activity.Recorder, publisher Publisher) *SessionTicker {
 	return &SessionTicker{
-		repo:      repo,
+		activity:  act,
 		publisher: publisher,
 		interval:  5 * time.Minute,
 	}
@@ -69,55 +72,41 @@ func (st *SessionTicker) Run(ctx context.Context) {
 }
 
 func (st *SessionTicker) checkExpiringSessions(ctx context.Context) {
-	if st.repo == nil || st.publisher == nil {
-		return
-	}
-
-	now := time.Now().UTC()
-
-	// Check standard (24h) sessions that are at 23h (23h to 24h window)
-	standardStart := now.Add(-24 * time.Hour)
-	standardEnd := now.Add(-23 * time.Hour)
-
-	// Check CTWA (72h) sessions that are at 71h (71h to 72h window)
-	ctwaStart := now.Add(-72 * time.Hour)
-	ctwaEnd := now.Add(-71 * time.Hour)
-
-	// Query standard expiring sessions
-	st.processRange(ctx, standardStart, standardEnd, "standard", 24*time.Hour)
-
-	// Query CTWA expiring sessions
-	st.processRange(ctx, ctwaStart, ctwaEnd, "ctwa", 72*time.Hour)
+	st.CheckExpiringSessionsAt(ctx, time.Now().UTC())
 }
 
-func (st *SessionTicker) processRange(ctx context.Context, start, end time.Time, expectedType string, duration time.Duration) {
-	sessions, err := st.repo.GetExpiringSessions(ctx, start, end)
-	if err != nil {
-		slog.Error("session ticker: failed to query expiring sessions", "error", err)
+// CheckExpiringSessionsAt claims chats whose service window expires within 1 hour of now and publishes session.expiring_soon events.
+func (st *SessionTicker) CheckExpiringSessionsAt(ctx context.Context, now time.Time) {
+	if st == nil || st.activity == nil || st.publisher == nil {
 		return
 	}
 
-	for _, sess := range sessions {
-		entryPoint := sess.EntryPointType
-		if entryPoint == "" {
-			entryPoint = "standard"
-		}
-		if entryPoint != expectedType {
-			continue
-		}
+	now = now.UTC()
+	claimed, err := st.activity.ClaimExpiring(ctx, now, 1*time.Hour, 50)
+	if err != nil {
+		slog.Error("session ticker: failed to claim expiring chats", "error", err)
+		return
+	}
 
-		expiresAt := sess.LastInboundAt.Add(duration)
+	for _, c := range claimed {
 		traceID := uuid.New().String()
+		var connIDStr string
+		if c.ConnectionID != uuid.Nil {
+			connIDStr = c.ConnectionID.String()
+		}
 
 		evt := ExpiringSessionEvent{
 			Event:          "session.expiring_soon",
 			TraceID:        traceID,
-			WorkspaceID:    sess.WorkspaceID.String(),
-			RecipientPhone: sess.RecipientPhone,
-			Channel:        sess.Channel,
-			EntryPointType: entryPoint,
-			ExpiresAt:      expiresAt.Format(time.RFC3339),
-			Timestamp:      time.Now().UTC().Format(time.RFC3339),
+			WorkspaceID:    c.WorkspaceID.String(),
+			ChatID:         c.ChatID.String(),
+			ContactID:      c.ContactID.String(),
+			ConnectionID:   connIDStr,
+			RecipientPhone: c.RecipientPhone,
+			Channel:        c.Channel,
+			EntryPointType: c.EntryPointType,
+			ExpiresAt:      c.ExpiresAt.UTC().Format(time.RFC3339),
+			Timestamp:      now.Format(time.RFC3339),
 		}
 
 		payload, err := json.Marshal(evt)
@@ -129,10 +118,6 @@ func (st *SessionTicker) processRange(ctx context.Context, start, end time.Time,
 		if err := st.publisher.Publish(ctx, "webhooks.events", payload, traceID); err != nil {
 			slog.Error("session ticker: failed to publish expiring event", "error", err, "trace_id", traceID)
 			continue
-		}
-
-		if err := st.repo.MarkNotifiedExpiring(ctx, sess.SessionKey, time.Now().UTC()); err != nil {
-			slog.Error("session ticker: failed to mark notified expiring", "error", err, "recipient", sess.RecipientPhone, "trace_id", traceID)
 		}
 	}
 }

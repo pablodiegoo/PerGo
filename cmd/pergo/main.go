@@ -80,43 +80,41 @@ type CoreDeps struct {
 	MediaEngine          media.Engine
 	RateLimiter          *middleware.RateLimiter
 	QueueDepth           *middleware.QueueDepthTracker
-	AuditWriter          audit.Writer
-	AuditQuerier         *audit.Querier
-	WindowChecker        *session.WindowChecker
-	VerbsEngine          *webhook.VerbsEngine
-	WebhookAllowlist     []string
-	WebhookDispatcher    webhook.WebhookDispatcher
-	SessionRegistry      *session.ActiveSession
-	DispatcherRegistry   *channel.Registry
-	SessionManager       *session.Manager
-	ChatwootSyncer       *chatwoot.ChatwootSyncer
-	TypebotForwarder     *typebot.Forwarder
-	InboundRouter        inbound.InboundRouter
-	Debouncer            *inbound.Debouncer
-	Activity             *activity.Recorder
-	InboundProcessor     *inbound.InboundProcessor
-	OutboundProcessor    *outbound.Processor
-	ChatEngine           *chat.Engine
-	CampaignEngine       campaign.BroadcasterEngine
-	MCPServer            *mcp.Server
-	WorkspaceRepo        *repository.WorkspaceRepository
-	APIKeyRepo           *repository.APIKeyRepository
-	ConnectionRepo       *repository.ConnectionRepository
-	RecipientSessionRepo *repository.RecipientSessionRepository
-	ContactRepo          *repository.ContactRepository
-	ChatRepo             *repository.ChatRepository
-	AuditRepo            *repository.AuditRepository
-	DispatchRepo         *repository.MessageDispatchRepository
-	DedupRepo            *repository.InboundDedupRepository
-	UserActionLogRepo    *repository.UserActionLogRepository
-	WABATemplateRepo     *repository.WABATemplateRepository
-	WebhookSubRepo       *repository.WebhookSubscriptionRepository
-	WebhookDLQRepo       *repository.WebhookDLQRepository
-	CampaignRepo         *repository.CampaignRepository
-	TagRepo              *repository.TagRepository
-	IntegrationRepo      *repository.IntegrationRepository
-	ChatwootMappingRepo  *repository.ChatwootMappingRepository
-	TypebotSessionRepo   *repository.TypebotSessionRepository
+	AuditWriter         audit.Writer
+	AuditQuerier        *audit.Querier
+	VerbsEngine         *webhook.VerbsEngine
+	WebhookAllowlist    []string
+	WebhookDispatcher   webhook.WebhookDispatcher
+	SessionRegistry     *session.ActiveSession
+	DispatcherRegistry  *channel.Registry
+	SessionManager      *session.Manager
+	ChatwootSyncer      *chatwoot.ChatwootSyncer
+	TypebotForwarder    *typebot.Forwarder
+	InboundRouter       inbound.InboundRouter
+	Debouncer           *inbound.Debouncer
+	Activity            *activity.Recorder
+	InboundProcessor    *inbound.InboundProcessor
+	OutboundProcessor   *outbound.Processor
+	ChatEngine          *chat.Engine
+	CampaignEngine      campaign.BroadcasterEngine
+	MCPServer           *mcp.Server
+	WorkspaceRepo       *repository.WorkspaceRepository
+	APIKeyRepo          *repository.APIKeyRepository
+	ConnectionRepo      *repository.ConnectionRepository
+	ContactRepo         *repository.ContactRepository
+	ChatRepo            *repository.ChatRepository
+	AuditRepo           *repository.AuditRepository
+	DispatchRepo        *repository.MessageDispatchRepository
+	DedupRepo           *repository.InboundDedupRepository
+	UserActionLogRepo   *repository.UserActionLogRepository
+	WABATemplateRepo    *repository.WABATemplateRepository
+	WebhookSubRepo      *repository.WebhookSubscriptionRepository
+	WebhookDLQRepo      *repository.WebhookDLQRepository
+	CampaignRepo        *repository.CampaignRepository
+	TagRepo             *repository.TagRepository
+	IntegrationRepo     *repository.IntegrationRepository
+	ChatwootMappingRepo *repository.ChatwootMappingRepository
+	TypebotSessionRepo  *repository.TypebotSessionRepository
 
 	ownsDB    bool
 	closeOnce sync.Once
@@ -292,7 +290,6 @@ func BootstrapCore(
 	deps.WorkspaceRepo = repository.NewWorkspaceRepository(pool)
 	deps.APIKeyRepo = repository.NewAPIKeyRepository(pool)
 	deps.ConnectionRepo = repository.NewConnectionRepository(pool, encryptor)
-	deps.RecipientSessionRepo = repository.NewRecipientSessionRepository(pool)
 	deps.ContactRepo = repository.NewContactRepository(pool)
 	deps.ChatRepo = repository.NewChatRepository(pool)
 	deps.AuditRepo = repository.NewAuditRepository(pool)
@@ -320,8 +317,6 @@ func BootstrapCore(
 		deps.AuditQuerier = audit.NewQuerier(pool)
 	}
 
-	deps.WindowChecker = session.NewWindowChecker(deps.RecipientSessionRepo)
-
 	// --- Webhook Dispatcher ---
 	deps.VerbsEngine = webhook.NewVerbsEngine(deps.Publisher, deps.ContactRepo, deps.UserActionLogRepo, deps.ConnectionRepo)
 	if !cfg.IsProduction() || os.Getenv("PERGO_ALLOW_LOCAL_WEBHOOKS") == "true" {
@@ -333,7 +328,7 @@ func BootstrapCore(
 	}
 
 	// --- Channel Adapters & Session Manager ---
-	wabaAdapter := whatsapp.NewWABAAdapter(deps.ConnectionRepo, nil, deps.WindowChecker, cfg.ExternalURL)
+	wabaAdapter := whatsapp.NewWABAAdapter(deps.ConnectionRepo, nil, nil, cfg.ExternalURL)
 	telegramAdapter := telegram.NewTelegramAdapter(deps.ConnectionRepo, nil, s3Client)
 	whatsAppAdapter := whatsapp.NewWhatsAppAdapter(nil, s3Client)
 	instagramAdapter := instagram.NewAdapter(deps.ConnectionRepo, nil, cfg.ExternalURL)
@@ -367,7 +362,6 @@ func BootstrapCore(
 		deps.MediaEngine,
 		deps.Publisher,
 		deps.AuditWriter,
-		deps.RecipientSessionRepo,
 		deps.ContactRepo,
 		deps.DispatchRepo,
 		deps.InboundRouter,
@@ -396,6 +390,7 @@ func BootstrapCore(
 
 	if pool != nil {
 		deps.Activity = activity.New(pool, deps.Publisher, deps.Debouncer, slog.Default())
+		wabaAdapter.WithActivity(deps.Activity)
 		deps.VerbsEngine.WithActivity(deps.Activity)
 		deps.TypebotForwarder.WithActivity(deps.Activity)
 		deps.InboundProcessor.SetActivity(deps.Activity)
@@ -410,7 +405,6 @@ func BootstrapCore(
 
 	// --- OutboundProcessor ---
 	deps.OutboundProcessor = outbound.NewProcessor(deps.QueueDepth, deps.MediaEngine, deps.ConnectionRepo, deps.Publisher)
-	deps.OutboundProcessor.SetWindowChecker(deps.WindowChecker)
 	deps.OutboundProcessor.SetTemplateRepository(deps.WABATemplateRepo)
 	deps.OutboundProcessor.SetChatRepository(deps.ChatRepo)
 	deps.OutboundProcessor.SetContactRepository(deps.ContactRepo)
@@ -745,7 +739,6 @@ func BuildHTTPRouter(core *CoreDeps) *echo.Echo {
 	inboxHandler := &admin.InboxHandler{
 		Repo:              core.AuditRepo,
 		ChatRepo:          core.ChatRepo,
-		Sessions:          core.RecipientSessionRepo,
 		Workspaces:        core.WorkspaceRepo,
 		Connections:       core.ConnectionRepo,
 		Publisher:         core.Publisher,
@@ -1233,7 +1226,7 @@ func main() {
 		60*time.Second,
 	)
 	orchestrator.SetContactRepository(core.ContactRepo)
-	orchestrator.SetRecipientSessionRepository(core.RecipientSessionRepo)
+	orchestrator.SetActivity(core.Activity)
 	worker := queue.NewWorker(ctx, consumer, orchestrator)
 	slog.Info("message worker started", "consumer", "worker-1")
 
@@ -1264,7 +1257,7 @@ func main() {
 	webhookWorker.SetWorkspaceRepository(core.WorkspaceRepo)
 
 	// --- Session Expiration Ticker ---
-	sessionTicker := session.NewSessionTicker(core.RecipientSessionRepo, core.JetStreamPublisher)
+	sessionTicker := session.NewSessionTicker(core.Activity, core.JetStreamPublisher)
 	go sessionTicker.Run(ctx)
 	slog.Info("session expiration ticker started", "interval", "5m")
 

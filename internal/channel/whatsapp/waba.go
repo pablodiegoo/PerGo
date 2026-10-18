@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/netpolicy"
@@ -21,17 +22,12 @@ import (
 // ErrSessionWindowExpired is returned when a customer service window has expired.
 var ErrSessionWindowExpired = errors.New("customer service window expired")
 
-// WindowChecker defines the interface for checking if a customer service window is open.
-type WindowChecker interface {
-	IsWindowOpenBool(ctx context.Context, key domain.SessionKey, safetyBuffer time.Duration) (bool, error)
-}
-
 // WABAAdapter implements channel.Dispatcher for WhatsApp Cloud (WABA) REST API.
 type WABAAdapter struct {
 	connectionsRepo *repository.ConnectionRepository
 	client          *http.Client
 	baseURL         string
-	windowChecker   WindowChecker
+	activity        *activity.Recorder
 	externalBaseURL string
 }
 
@@ -165,7 +161,7 @@ type MetaErrorResponse struct {
 }
 
 // NewWABAAdapter creates a new WABAAdapter.
-func NewWABAAdapter(connectionsRepo *repository.ConnectionRepository, client *http.Client, windowChecker WindowChecker, externalBaseURL string) *WABAAdapter {
+func NewWABAAdapter(connectionsRepo *repository.ConnectionRepository, client *http.Client, activityRec *activity.Recorder, externalBaseURL string) *WABAAdapter {
 	if client == nil {
 		client = netpolicy.NewPublicHTTPClient()
 	}
@@ -173,9 +169,15 @@ func NewWABAAdapter(connectionsRepo *repository.ConnectionRepository, client *ht
 		connectionsRepo: connectionsRepo,
 		client:          client,
 		baseURL:         "https://graph.facebook.com/v18.0",
-		windowChecker:   windowChecker,
+		activity:        activityRec,
 		externalBaseURL: externalBaseURL,
 	}
+}
+
+// WithActivity configures the Chat Activity recorder used for dispatch-time window checks.
+func (a *WABAAdapter) WithActivity(rec *activity.Recorder) *WABAAdapter {
+	a.activity = rec
+	return a
 }
 
 // SetBaseURL overrides the base API URL (useful for testing).
@@ -226,20 +228,18 @@ func (a *WABAAdapter) Dispatch(ctx context.Context, m *channel.MessagePayload) (
 		templateName = m.Metadata["template_name"]
 	}
 
-	if templateName == "" {
-		if a.windowChecker != nil {
-			open, err := a.windowChecker.IsWindowOpenBool(ctx, domain.SessionKey{
-				WorkspaceID:       workspaceID,
-				RecipientPhone:    m.To,
-				Channel:           "whatsapp_cloud",
-				RecipientIdentity: conn.SenderIdentity,
-			}, 5*time.Minute)
-			if err != nil {
-				return "", err
+	if templateName == "" && a.activity != nil {
+		state, exists, err := a.activity.Snapshot(ctx, workspaceID, activity.ChatAt(conn.ID, m.To).WithChannel("whatsapp_cloud"))
+		if err != nil {
+			return "", err
+		}
+		w := domain.Window(state, exists, time.Now().UTC())
+		if reqErr := domain.RequireOpenWindow(w, "text"); reqErr != nil {
+			var tmplErr *domain.TemplateRequiredError
+			if errors.As(reqErr, &tmplErr) {
+				tmplErr.Source = "dispatch"
 			}
-			if !open {
-				return "", channel.NewTerminalError(ErrSessionWindowExpired)
-			}
+			return "", channel.NewTerminalError(reqErr)
 		}
 	}
 

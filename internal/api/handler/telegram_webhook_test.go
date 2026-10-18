@@ -16,7 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
 
-	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/platform/audit"
@@ -76,7 +76,6 @@ func TestTelegramWebhookHandler(t *testing.T) {
 		t.Fatalf("failed to create encryptor: %v", err)
 	}
 	connRepo := repository.NewConnectionRepository(pool, enc)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 
@@ -114,7 +113,7 @@ func TestTelegramWebhookHandler(t *testing.T) {
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	mediaEngine := media.NewDefaultEngine(nil)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
-	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, nil, nil, sessRepo, contactRepo, dispatchRepo, nil)
+	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, nil, nil, contactRepo, dispatchRepo, nil)
 	h := NewTelegramWebhookHandler(connRepo, inboundProcessor, mediaEngine)
 
 	t.Run("Missing Secret Token Header -> 401", func(t *testing.T) {
@@ -196,13 +195,14 @@ func TestTelegramWebhookHandler(t *testing.T) {
 			t.Errorf("got status %d, want 200", rec.Code)
 		}
 
-		// Verify upsert in DB
-		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, "987654321", "telegram", "@testbot"))
+		// Verify chat in DB
+		actRec := activity.New(pool, nil, nil, nil)
+		_, exists, err := actRec.Snapshot(ctx, ws.ID, activity.ChatAt(conn.ID, "987654321").WithChannel("telegram"))
 		if err != nil {
-			t.Fatalf("failed to retrieve upserted session: %v", err)
+			t.Fatalf("failed to snapshot chat: %v", err)
 		}
-		if time.Since(sess.LastInboundAt) > 10*time.Second {
-			t.Errorf("expected LastInboundAt to be recent, got: %v", sess.LastInboundAt)
+		if !exists {
+			t.Errorf("expected telegram chat for 987654321 to exist")
 		}
 	})
 
@@ -236,7 +236,7 @@ func TestTelegramWebhookHandler(t *testing.T) {
 
 		mediaEngineLocal := media.NewDefaultEngine(s3Client)
 		dispatchRepoLocal := repository.NewMessageDispatchRepository(pool)
-		inboundProcessorLocal := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngineLocal, nil, nil, sessRepo, contactRepo, dispatchRepoLocal, nil)
+		inboundProcessorLocal := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngineLocal, nil, nil, contactRepo, dispatchRepoLocal, nil)
 		hLocal := NewTelegramWebhookHandler(connRepo, inboundProcessorLocal, mediaEngineLocal)
 		hLocal.telegramBaseURL = tgMockServer.URL
 

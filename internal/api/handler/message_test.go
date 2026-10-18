@@ -13,11 +13,11 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/pablojhp.pergo/internal/api/middleware"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
-	"github.com/pablojhp.pergo/internal/session"
 )
 
 type mockConnectionRepo struct {
@@ -785,24 +785,20 @@ func TestMessageHandler_ProductValidation(t *testing.T) {
 	})
 }
 
-type mockSessionReaderForHandler struct {
-	sess *repository.RecipientSession
-	err  error
-}
-
-func (m *mockSessionReaderForHandler) Get(ctx context.Context, key domain.SessionKey) (*repository.RecipientSession, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	if m.sess != nil {
-		return m.sess, nil
-	}
-	return nil, repository.ErrSessionNotFound
-}
-
 func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "msg_window_test_"+uuid.New().String())
+	if err != nil {
+		t.Fatalf("failed to create workspace: %v", err)
+	}
+	wsID := ws.ID
+	defer func() { _ = wsRepo.Delete(ctx, wsID) }()
+
 	traceID := uuid.New().String()
-	wsID := uuid.New()
 	senderIdentity := "+5511888880000"
 	contactPhone := "+5511999990000"
 
@@ -836,6 +832,13 @@ func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
 		IsDefault:      true,
 	}
 
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	for _, c := range []*repository.Connection{wabaConn, waWebConn, telegramConn} {
+		if err := connRepo.Create(ctx, c); err != nil {
+			t.Fatalf("failed to create connection %s: %v", c.Name, err)
+		}
+	}
+
 	mockRepo := &mockConnectionRepo{
 		GetDefaultChannelConnectionFunc: func(ctx context.Context, workspaceID uuid.UUID, channel string) (*repository.Connection, error) {
 			switch channel {
@@ -863,23 +866,31 @@ func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
 		},
 	}
 
+	actRec := activity.New(pool, nil, nil, nil)
+	contactRepo := repository.NewContactRepository(pool)
+	contact, err := contactRepo.ResolveContact(ctx, wsID, "whatsapp_cloud", contactPhone, "Test Contact", "", contactPhone)
+	if err != nil {
+		t.Fatalf("failed to resolve contact: %v", err)
+	}
+	ingestor := outbound.NewProcessor(nil, nil, mockRepo, nil).SetActivity(actRec).SetContactRepository(contactRepo)
+
 	t.Run("WABA freeform within 24h standard session returns 202", func(t *testing.T) {
-		e := echo.New()
-		sessReader := &mockSessionReaderForHandler{
-			sess: &repository.RecipientSession{
-				SessionKey: domain.SessionKey{
-					WorkspaceID:       wsID,
-					RecipientPhone:    contactPhone,
-					Channel:           "whatsapp_cloud",
-					RecipientIdentity: senderIdentity,
-				},
-				LastInboundAt:  time.Now().Add(-2 * time.Hour),
-				EntryPointType: "standard",
-			},
+		_, _ = pool.Exec(ctx, "DELETE FROM chats WHERE workspace_id = $1", wsID)
+		_, err := actRec.Inbound(ctx, wsID, activity.InboundTurn{
+			Chat:           activity.ChatOf(wabaConn.ID, contact.ID).WithChannel("whatsapp_cloud"),
+			UID:            uuid.NewString(),
+			Channel:        "whatsapp_cloud",
+			At:             time.Now().UTC().Add(-2 * time.Hour),
+			EntryPointType: domain.EntryPointStandard,
+		})
+		if err != nil {
+			t.Fatalf("failed to seed inbound window: %v", err)
 		}
+
+		e := echo.New()
 		h := &MessageHandler{
 			ConnectionRepo: mockRepo,
-			WindowChecker:  session.NewWindowChecker(sessReader),
+			Ingestor:       ingestor,
 		}
 		h.RegisterRoutes(e)
 
@@ -897,22 +908,22 @@ func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
 	})
 
 	t.Run("WABA freeform within 72h CTWA session returns 202", func(t *testing.T) {
-		e := echo.New()
-		sessReader := &mockSessionReaderForHandler{
-			sess: &repository.RecipientSession{
-				SessionKey: domain.SessionKey{
-					WorkspaceID:       wsID,
-					RecipientPhone:    contactPhone,
-					Channel:           "whatsapp_cloud",
-					RecipientIdentity: senderIdentity,
-				},
-				LastInboundAt:  time.Now().Add(-48 * time.Hour),
-				EntryPointType: "ctwa",
-			},
+		_, _ = pool.Exec(ctx, "DELETE FROM chats WHERE workspace_id = $1", wsID)
+		_, err := actRec.Inbound(ctx, wsID, activity.InboundTurn{
+			Chat:           activity.ChatOf(wabaConn.ID, contact.ID).WithChannel("whatsapp_cloud"),
+			UID:            uuid.NewString(),
+			Channel:        "whatsapp_cloud",
+			At:             time.Now().UTC().Add(-48 * time.Hour),
+			EntryPointType: domain.EntryPointCTWA,
+		})
+		if err != nil {
+			t.Fatalf("failed to seed CTWA inbound window: %v", err)
 		}
+
+		e := echo.New()
 		h := &MessageHandler{
 			ConnectionRepo: mockRepo,
-			WindowChecker:  session.NewWindowChecker(sessReader),
+			Ingestor:       ingestor,
 		}
 		h.RegisterRoutes(e)
 
@@ -930,23 +941,23 @@ func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
 	})
 
 	t.Run("WABA freeform outside window returns 422 SESSION_WINDOW_EXPIRED with schema compliance", func(t *testing.T) {
-		e := echo.New()
-		lastInbound := time.Now().Add(-26 * time.Hour)
-		sessReader := &mockSessionReaderForHandler{
-			sess: &repository.RecipientSession{
-				SessionKey: domain.SessionKey{
-					WorkspaceID:       wsID,
-					RecipientPhone:    contactPhone,
-					Channel:           "whatsapp_cloud",
-					RecipientIdentity: senderIdentity,
-				},
-				LastInboundAt:  lastInbound,
-				EntryPointType: "standard",
-			},
+		_, _ = pool.Exec(ctx, "DELETE FROM chats WHERE workspace_id = $1", wsID)
+		lastInbound := time.Now().UTC().Truncate(time.Second).Add(-26 * time.Hour)
+		_, err := actRec.Inbound(ctx, wsID, activity.InboundTurn{
+			Chat:           activity.ChatOf(wabaConn.ID, contact.ID).WithChannel("whatsapp_cloud"),
+			UID:            uuid.NewString(),
+			Channel:        "whatsapp_cloud",
+			At:             lastInbound,
+			EntryPointType: domain.EntryPointStandard,
+		})
+		if err != nil {
+			t.Fatalf("failed to seed expired inbound window: %v", err)
 		}
+
+		e := echo.New()
 		h := &MessageHandler{
 			ConnectionRepo: mockRepo,
-			WindowChecker:  session.NewWindowChecker(sessReader),
+			Ingestor:       ingestor,
 		}
 		h.RegisterRoutes(e)
 
@@ -996,13 +1007,11 @@ func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
 	})
 
 	t.Run("WhatsApp Web (whatsmeow) ignores window restrictions and returns 202", func(t *testing.T) {
+		_, _ = pool.Exec(ctx, "DELETE FROM chats WHERE workspace_id = $1", wsID)
 		e := echo.New()
-		sessReader := &mockSessionReaderForHandler{
-			sess: nil, // no session at all
-		}
 		h := &MessageHandler{
 			ConnectionRepo: mockRepo,
-			WindowChecker:  session.NewWindowChecker(sessReader),
+			Ingestor:       ingestor,
 		}
 		h.RegisterRoutes(e)
 
@@ -1020,13 +1029,11 @@ func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
 	})
 
 	t.Run("Telegram ignores window restrictions and returns 202", func(t *testing.T) {
+		_, _ = pool.Exec(ctx, "DELETE FROM chats WHERE workspace_id = $1", wsID)
 		e := echo.New()
-		sessReader := &mockSessionReaderForHandler{
-			sess: nil, // no session at all
-		}
 		h := &MessageHandler{
 			ConnectionRepo: mockRepo,
-			WindowChecker:  session.NewWindowChecker(sessReader),
+			Ingestor:       ingestor,
 		}
 		h.RegisterRoutes(e)
 

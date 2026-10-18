@@ -18,13 +18,13 @@ import (
 	"github.com/pablojhp.pergo/internal/api/handler/admin"
 	mw "github.com/pablojhp.pergo/internal/api/middleware"
 	whatsapp "github.com/pablojhp.pergo/internal/channel/whatsapp"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/repository"
-	"github.com/pablojhp.pergo/internal/session"
 )
 
 type mockQueuePublisher struct {
@@ -54,11 +54,12 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	connRepo := repository.NewConnectionRepository(pool, enc)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	tmplRepo := repository.NewWABATemplateRepository(pool)
+	actRec := activity.New(pool, nil, nil, nil)
 
 	ws, err := wsRepo.Create(ctx, "window_e2e_ws_"+uuid.New().String())
 	if err != nil {
@@ -143,21 +144,20 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 		nil,
 		publisher,
 		nil,
-		sessRepo,
 		contactRepo,
 		dispatchRepo,
 		nil,
 	)
+	inboundProc.SetChatRepository(chatRepo)
 
-	windowChecker := session.NewWindowChecker(sessRepo)
 	outboundProc := outbound.NewProcessor(nil, nil, connRepo, publisher)
-	outboundProc.SetWindowChecker(windowChecker)
+	outboundProc.SetChatRepository(chatRepo)
+	outboundProc.SetContactRepository(contactRepo)
 	outboundProc.SetTemplateRepository(tmplRepo)
 
 	msgHandler := &handler.MessageHandler{
 		ConnectionRepo: connRepo,
 		Publisher:      publisher,
-		WindowChecker:  windowChecker,
 		Ingestor:       outboundProc,
 	}
 
@@ -279,11 +279,12 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 			t.Fatalf("failed to process inbound event: %v", err)
 		}
 
-		// Verify WindowChecker confirms window is now open
-		status, err := windowChecker.IsWindowOpen(ctx, domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", wabaSenderIdentity), 0)
+		// Verify Chat Activity confirms window is now open
+		state, exists, err := actRec.Snapshot(ctx, ws.ID, activity.ChatAt(wabaConn.ID, contactPhone).WithChannel("whatsapp_cloud"))
 		if err != nil {
 			t.Fatalf("failed to check window: %v", err)
 		}
+		status := domain.Window(state, exists, time.Now().UTC())
 		if !status.Open {
 			t.Fatalf("expected window to be open after inbound message")
 		}
@@ -354,17 +355,23 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 			t.Fatalf("failed to process CTWA event: %v", err)
 		}
 
-		// Update LastInboundAt to 48 hours ago to simulate time passage
-		err = sessRepo.Upsert(ctx, domain.NewSessionKey(ws.ID, "5511999992222", "whatsapp_cloud", wabaSenderIdentity), time.Now().Add(-48*time.Hour), "ctwa")
+		// Simulate 48 hours elapsed on the 72h CTWA window (24h remaining)
+		ctwaState, exists, err := actRec.Snapshot(ctx, ws.ID, activity.ChatAt(wabaConn.ID, "5511999992222").WithChannel("whatsapp_cloud"))
+		if err != nil || !exists {
+			t.Fatalf("failed to snapshot CTWA chat: %v (exists=%v)", err, exists)
+		}
+		ctwaExp := time.Now().UTC().Add(24 * time.Hour)
+		_, err = pool.Exec(ctx, `UPDATE chats SET service_window_expires_at = $1, entry_point_type = 'ctwa' WHERE workspace_id = $2 AND id = $3`, ctwaExp, ws.ID, ctwaState.ID)
 		if err != nil {
-			t.Fatalf("failed to update CTWA session: %v", err)
+			t.Fatalf("failed to update CTWA chat window: %v", err)
 		}
 
 		// Window should still be open at 48 hours because CTWA is 72h
-		status, err := windowChecker.IsWindowOpen(ctx, domain.NewSessionKey(ws.ID, "5511999992222", "whatsapp_cloud", wabaSenderIdentity), 0)
+		ctwaState, exists, err = actRec.Snapshot(ctx, ws.ID, activity.ChatAt(wabaConn.ID, "5511999992222").WithChannel("whatsapp_cloud"))
 		if err != nil {
 			t.Fatalf("failed to check CTWA window: %v", err)
 		}
+		status := domain.Window(ctwaState, exists, time.Now().UTC())
 		if !status.Open {
 			t.Fatalf("expected CTWA window to be open at 48 hours")
 		}
@@ -390,10 +397,15 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 	// Scenario 5: Template Message Dispatched Outside Window
 	// =========================================================================
 	t.Run("Approved template message dispatches successfully outside 24h window", func(t *testing.T) {
-		// Set session to expired
-		err := sessRepo.Upsert(ctx, domain.NewSessionKey(ws.ID, contactPhone, "whatsapp_cloud", wabaSenderIdentity), time.Now().Add(-30*time.Hour), "standard")
+		// Set chat service window to expired
+		stdState, exists, err := actRec.Snapshot(ctx, ws.ID, activity.ChatAt(wabaConn.ID, contactPhone).WithChannel("whatsapp_cloud"))
+		if err != nil || !exists {
+			t.Fatalf("failed to snapshot standard chat: %v (exists=%v)", err, exists)
+		}
+		exp := time.Now().UTC().Add(-6 * time.Hour)
+		_, err = pool.Exec(ctx, `UPDATE chats SET service_window_expires_at = $1, entry_point_type = 'standard' WHERE workspace_id = $2 AND id = $3`, exp, ws.ID, stdState.ID)
 		if err != nil {
-			t.Fatalf("failed to expire session: %v", err)
+			t.Fatalf("failed to expire chat window: %v", err)
 		}
 
 		body := `{

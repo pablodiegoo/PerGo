@@ -134,23 +134,24 @@ type InboundReaction struct {
 
 // InboundEvent is the channel-agnostic inbound payload.
 type InboundEvent struct {
-	WorkspaceID  uuid.UUID
-	ConnectionID uuid.UUID
-	MessageID    string // Provider-specific unique message/update ID
-	TraceID      string
-	Channel      string // "whatsapp", "whatsapp_cloud", "telegram"
-	From         string // Sender JID/phone/chat ID
-	To           string // Recipient identity (our bot/phone)
-	Body         string
-	Media        *InboundMedia
-	Location     *InboundLocation
-	Contacts     []InboundContact
-	Interactive  *InboundInteractive
-	Story        *InboundStoryEvent
-	Reaction     *InboundReaction
-	SenderName   string
-	OccurredAt   time.Time
-	Metadata     map[string]string
+	WorkspaceID    uuid.UUID
+	ConnectionID   uuid.UUID
+	MessageID      string // Provider-specific unique message/update ID
+	TraceID        string
+	Channel        string // "whatsapp", "whatsapp_cloud", "telegram"
+	From           string // Sender JID/phone/chat ID
+	To             string // Recipient identity (our bot/phone)
+	Body           string
+	Media          *InboundMedia
+	Location       *InboundLocation
+	Contacts       []InboundContact
+	Interactive    *InboundInteractive
+	Story          *InboundStoryEvent
+	Reaction       *InboundReaction
+	SenderName     string
+	OccurredAt     time.Time
+	EntryPointType string
+	Metadata       map[string]string
 }
 
 // IsGroup reports whether the inbound event represents a group chat.
@@ -247,7 +248,6 @@ type InboundProcessor struct {
 	mediaEngine               media.Engine
 	publisher                 Publisher
 	auditWriter               audit.Writer
-	recipientSessionRepo      *repository.RecipientSessionRepository
 	contactRepo               ContactStore
 	dispatchRepo              *repository.MessageDispatchRepository
 	router                    InboundRouter
@@ -269,7 +269,6 @@ func NewInboundProcessor(
 	mediaEngine media.Engine,
 	publisher Publisher,
 	auditWriter audit.Writer,
-	recipientSessionRepo *repository.RecipientSessionRepository,
 	contactRepo *repository.ContactRepository,
 	dispatchRepo *repository.MessageDispatchRepository,
 	router InboundRouter,
@@ -283,16 +282,15 @@ func NewInboundProcessor(
 		}
 	}
 	return &InboundProcessor{
-		dedupRepo:            dedupRepo,
-		wsRepo:               wsRepo,
-		mediaEngine:          mediaEngine,
-		publisher:            publisher,
-		auditWriter:          auditWriter,
-		recipientSessionRepo: recipientSessionRepo,
-		contactRepo:          cs,
-		dispatchRepo:         dispatchRepo,
-		router:               router,
-		activity:             act,
+		dedupRepo:    dedupRepo,
+		wsRepo:       wsRepo,
+		mediaEngine:  mediaEngine,
+		publisher:    publisher,
+		auditWriter:  auditWriter,
+		contactRepo:  cs,
+		dispatchRepo: dispatchRepo,
+		router:       router,
+		activity:     act,
 	}
 }
 
@@ -558,18 +556,24 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 			}
 		}
 
+		entryPointType := ev.EntryPointType
+		if entryPointType == "" && ev.Metadata != nil {
+			entryPointType = ev.Metadata["entry_point_type"]
+		}
+
 		var aErr error
 		receipt, aErr = p.activity.Inbound(ctx, ev.WorkspaceID, activity.InboundTurn{
-			Chat:       activity.ChatOf(ev.ConnectionID, contact.ID),
-			UID:        msgUID,
-			SenderName: ev.SenderDisplayName(),
-			SenderID:   ev.From,
-			Body:       msgBody,
-			MediaURL:   mediaURL,
-			MediaType:  mediaType,
-			Channel:    ev.Channel,
-			Metadata:   msgMetadata,
-			At:         occurredAt,
+			Chat:           activity.ChatOf(ev.ConnectionID, contact.ID),
+			UID:            msgUID,
+			SenderName:     ev.SenderDisplayName(),
+			SenderID:       ev.From,
+			Body:           msgBody,
+			MediaURL:       mediaURL,
+			MediaType:      mediaType,
+			Channel:        ev.Channel,
+			EntryPointType: entryPointType,
+			Metadata:       msgMetadata,
+			At:             occurredAt,
 		})
 		if aErr != nil {
 			slog.Error("inbound processor: failed to record chat inbound activity", "error", aErr, "contact_id", contact.ID, "trace_id", traceID)
@@ -582,38 +586,17 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		}
 	}
 
-	// 1. Recipient Session Tracking & Timing Telemetry
+	// 1. Response Timing Telemetry (derived from Chat's previous last_outbound_at)
 	var timing *EventTiming
-	if p.recipientSessionRepo != nil {
-		sessKey := domain.SessionKey{
-			WorkspaceID:       ev.WorkspaceID,
-			RecipientPhone:    ev.From,
-			Channel:           ev.Channel,
-			RecipientIdentity: ev.To,
+	if hasReceipt && receipt.PrevLastOutboundAt != nil && !receipt.PrevLastOutboundAt.IsZero() {
+		diff := occurredAt.Sub(*receipt.PrevLastOutboundAt)
+		var latencyMS int64
+		if diff > 0 {
+			latencyMS = diff.Milliseconds()
 		}
-		if sess, err := p.recipientSessionRepo.Get(ctx, sessKey); err == nil && sess != nil {
-			if sess.LastOutboundAt != nil && !sess.LastOutboundAt.IsZero() {
-				diff := occurredAt.Sub(*sess.LastOutboundAt)
-				var latencyMS int64
-				if diff > 0 {
-					latencyMS = diff.Milliseconds()
-				}
-				timing = &EventTiming{
-					ResponseLatencyMS: &latencyMS,
-					LastOutboundAt:    sess.LastOutboundAt.UTC().Format(time.RFC3339),
-				}
-			}
-		}
-
-		entryPointType := "standard"
-		if ev.Metadata != nil {
-			if ept, ok := ev.Metadata["entry_point_type"]; ok && ept != "" {
-				entryPointType = ept
-			}
-		}
-		err := p.recipientSessionRepo.Upsert(ctx, sessKey, occurredAt, entryPointType)
-		if err != nil {
-			slog.Error("inbound processor: failed to upsert recipient session", "error", err, "from", ev.From, "trace_id", traceID)
+		timing = &EventTiming{
+			ResponseLatencyMS: &latencyMS,
+			LastOutboundAt:    receipt.PrevLastOutboundAt.UTC().Format(time.RFC3339),
 		}
 	}
 

@@ -154,7 +154,6 @@ func TestAdminContactMerge(t *testing.T) {
 	ctx := t.Context()
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
-	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
 	userActionLogRepo := repository.NewUserActionLogRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
@@ -201,7 +200,7 @@ func TestAdminContactMerge(t *testing.T) {
 	publisher := queue.NewJetStreamPublisher(nc)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
-	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, publisher, auditWriter, recipientSessionRepo, contactRepo, dispatchRepo, nil)
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, publisher, auditWriter, contactRepo, dispatchRepo, nil)
 	proc.SetChatRepository(chatRepo)
 
 	// 1. Simulate inbound events to create distinct contacts
@@ -264,7 +263,6 @@ func TestAdminContactMerge(t *testing.T) {
 	inboxHandler := &admin.InboxHandler{
 		Repo:           auditRepo,
 		ChatRepo:       chatRepo,
-		Sessions:       recipientSessionRepo,
 		Workspaces:     wsRepo,
 		Connections:    nil,
 		Publisher:      publisher,

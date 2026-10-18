@@ -47,7 +47,6 @@ func setupBootstrapE2EServer(t *testing.T, pool *pgxpool.Pool, adminPassword str
 	tmplRepo := repository.NewWABATemplateRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
 	auditQuerier := audit.NewQuerier(pool)
-	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
 	userActionLogRepo := repository.NewUserActionLogRepository(pool)
@@ -106,7 +105,6 @@ func setupBootstrapE2EServer(t *testing.T, pool *pgxpool.Pool, adminPassword str
 
 	inboxHandler := &admin.InboxHandler{
 		Repo:           auditRepo,
-		Sessions:       recipientSessionRepo,
 		Workspaces:     wsRepo,
 		Connections:    connRepo,
 		Templates:      tmplRepo,

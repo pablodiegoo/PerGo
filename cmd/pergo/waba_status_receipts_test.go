@@ -60,7 +60,6 @@ func TestWABAStatusReceiptsEndToEnd(t *testing.T) {
 	kek := make([]byte, 32)
 	enc, _ := crypto.NewEncryptor(kek)
 	connRepo := repository.NewConnectionRepository(pool, enc)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	publisher := queue.NewJetStreamPublisher(nc)
 	contactRepo := repository.NewContactRepository(pool)
@@ -138,7 +137,7 @@ func TestWABAStatusReceiptsEndToEnd(t *testing.T) {
 	auditWriter := audit.NewWriter(pool, 10, 1)
 	defer auditWriter.Close()
 
-	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, publisher, auditWriter, sessRepo, contactRepo, dispatchRepo, nil)
+	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, publisher, auditWriter, contactRepo, dispatchRepo, nil)
 	inboundProcessor.SetChatRepository(chatRepo)
 	h := handler.NewWABAWebhookHandler(connRepo, inboundProcessor, nil)
 	h.SetVerifySignature(false)

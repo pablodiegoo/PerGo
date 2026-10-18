@@ -611,23 +611,11 @@ func (r *ContactRepository) SetTags(ctx context.Context, workspaceID, contactID 
 	return err
 }
 
-// MarkAsRead updates the contact's read timestamp across recipient sessions and contact metadata.
+// MarkAsRead updates the contact's read timestamp.
 func (r *ContactRepository) MarkAsRead(ctx context.Context, workspaceID, contactID uuid.UUID) error {
 	if workspaceID == uuid.Nil {
 		return ErrInvalidWorkspaceID
 	}
-	_, _ = r.pool.Exec(ctx, `
-		UPDATE recipient_sessions rs
-		SET last_read_at = NOW(), updated_at = NOW()
-		FROM contact_identities ci
-		WHERE rs.workspace_id = $1
-		  AND ci.workspace_id = $1
-		  AND ci.contact_id = $2
-		  AND (
-		      rs.recipient_phone = ci.sender_identity
-		      OR TRIM(LEADING '+' FROM rs.recipient_phone) = TRIM(LEADING '+' FROM ci.sender_identity)
-		  )
-	`, workspaceID, contactID)
 	_, err := r.pool.Exec(ctx, `
 		UPDATE contacts
 		SET updated_at = NOW()

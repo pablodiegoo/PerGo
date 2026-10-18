@@ -143,6 +143,9 @@ type Chat struct {
 	AIDisabled             bool                   `json:"ai_disabled"`
 	ServiceWindowExpiresAt *time.Time             `json:"service_window_expires_at,omitempty"`
 	ServiceWindowIsOpen    bool                   `json:"service_window_is_open"`
+	EntryPointType         string                 `json:"entry_point_type,omitempty"`
+	LastOutboundAt         *time.Time             `json:"last_outbound_at,omitempty"`
+	NotifiedExpiringAt     *time.Time             `json:"notified_expiring_at,omitempty"`
 	LastMessageAt          time.Time              `json:"last_message_at"`
 	Metadata               map[string]interface{} `json:"metadata"`
 	CreatedAt              time.Time              `json:"created_at"`
@@ -438,19 +441,150 @@ func BuildOutboundChatMessage(p OutboundChatMessageParams) *ChatMessage {
 	}
 }
 
+// EntryPointType constants and service window durations.
+type EntryPointType = string
+
+const (
+	EntryPointStandard EntryPointType = "standard"
+	EntryPointCTWA     EntryPointType = "ctwa"
+
+	StandardWindowDuration = 24 * time.Hour
+	CTWAWindowDuration     = 72 * time.Hour
+)
+
+// NormalizeEntryPointType normalizes raw entry point values to "ctwa" or "standard".
+func NormalizeEntryPointType(entryPoint string) string {
+	if strings.EqualFold(strings.TrimSpace(entryPoint), EntryPointCTWA) {
+		return EntryPointCTWA
+	}
+	return EntryPointStandard
+}
+
+// WindowDurationFor returns 72h for "ctwa" and 24h for "standard" (or any other value).
+func WindowDurationFor(entryPoint string) time.Duration {
+	if NormalizeEntryPointType(entryPoint) == EntryPointCTWA {
+		return CTWAWindowDuration
+	}
+	return StandardWindowDuration
+}
+
+// ExtendServiceWindow computes the new customer service window expiration from an inbound turn.
+// Standard entry points grant 24h; CTWA entry points grant 72h. The window never shortens:
+// if prev is already further in the future than at + duration, prev is returned.
+func ExtendServiceWindow(prev *time.Time, at time.Time, entryPoint string) time.Time {
+	candidate := at.UTC().Add(WindowDurationFor(entryPoint))
+	if prev != nil && prev.UTC().After(candidate) {
+		return prev.UTC()
+	}
+	return candidate
+}
+
+// ServiceWindow describes the evaluated customer service window status of a Chat at a point in time.
+type ServiceWindow struct {
+	Channel        string
+	Open           bool
+	ExpiresAt      time.Time
+	EntryPointType string
+	WindowDuration time.Duration
+	Remaining      time.Duration
+}
+
+// WindowStatus is an alias for ServiceWindow.
+type WindowStatus = ServiceWindow
+
+// TemplateRequiredError is returned when an outbound free-form WABA message is attempted
+// while the Chat's customer service window is closed or when no Chat exists yet.
+type TemplateRequiredError struct {
+	Window ServiceWindow
+	Source string
+}
+
+func (e *TemplateRequiredError) Error() string {
+	return "Meta WhatsApp 24-hour customer service window is closed; a pre-approved template message is required"
+}
+
+// Window evaluates the customer service window status for a ChatState snapshot at now.
+// When exists is false (no Chat exists yet), the window is closed on whatsapp_cloud.
+// Non-whatsapp_cloud channels are always treated as open.
+func Window(state ChatState, exists bool, now time.Time) ServiceWindow {
+	ep := NormalizeEntryPointType(state.EntryPointType)
+	dur := WindowDurationFor(ep)
+	ch := strings.ToLower(strings.TrimSpace(state.Channel))
+
+	if ch != "" && ch != "whatsapp_cloud" {
+		return ServiceWindow{
+			Channel:        ch,
+			Open:           true,
+			EntryPointType: ep,
+			WindowDuration: dur,
+		}
+	}
+
+	if !exists || state.ServiceWindowExpiresAt == nil {
+		return ServiceWindow{
+			Channel:        ch,
+			Open:           false,
+			EntryPointType: ep,
+			WindowDuration: dur,
+		}
+	}
+
+	exp := state.ServiceWindowExpiresAt.UTC()
+	nowUTC := now.UTC()
+	if nowUTC.Before(exp) {
+		return ServiceWindow{
+			Channel:        ch,
+			Open:           true,
+			ExpiresAt:      exp,
+			EntryPointType: ep,
+			WindowDuration: dur,
+			Remaining:      exp.Sub(nowUTC),
+		}
+	}
+	return ServiceWindow{
+		Channel:        ch,
+		Open:           false,
+		ExpiresAt:      exp,
+		EntryPointType: ep,
+		WindowDuration: dur,
+		Remaining:      0,
+	}
+}
+
+// RequireOpenWindow returns *TemplateRequiredError when w is closed and msgType is not "template".
+// Only applies to whatsapp_cloud; templates are always exempt.
+func RequireOpenWindow(w ServiceWindow, msgType string) error {
+	if w.Channel != "" && !strings.EqualFold(w.Channel, "whatsapp_cloud") {
+		return nil
+	}
+	if strings.EqualFold(strings.TrimSpace(msgType), "template") {
+		return nil
+	}
+	if w.Open {
+		return nil
+	}
+	return &TemplateRequiredError{
+		Window: w,
+		Source: "ingestion",
+	}
+}
+
 // ChatState is the pure value snapshot of a Chat's activity-driven state.
 type ChatState struct {
 	ID                     uuid.UUID
 	WorkspaceID            uuid.UUID
 	ConnectionID           *uuid.UUID
 	ContactID              uuid.UUID
+	Channel                string
 	Status                 ChatStatus
 	SnoozedUntil           *time.Time
 	AI                     AIEngagement
 	ServiceWindowExpiresAt *time.Time
+	EntryPointType         string
 	UnreadCount            int
 	LastMessageAt          time.Time
 	LastInboundAt          *time.Time
+	LastOutboundAt         *time.Time
 }
 
 // Activity is a domain event applied to a ChatState via Apply.
@@ -460,17 +594,18 @@ type Activity interface {
 
 // InboundTurn represents an inbound customer message turn on a Chat.
 type InboundTurn struct {
-	ID         uuid.UUID
-	At         time.Time
-	UID        string
-	SenderName string
-	SenderID   string
-	ReplyToUID *string
-	Body       string
-	MediaURL   *string
-	MediaType  *string
-	Channel    string
-	Metadata   map[string]interface{}
+	ID             uuid.UUID
+	At             time.Time
+	UID            string
+	SenderName     string
+	SenderID       string
+	ReplyToUID     *string
+	Body           string
+	MediaURL       *string
+	MediaType      *string
+	Channel        string
+	EntryPointType string
+	Metadata       map[string]interface{}
 }
 
 func (InboundTurn) isActivity() {}
@@ -557,14 +692,25 @@ func Apply(s ChatState, a Activity) (ChatState, *ChatMessage, []Intent) {
 			inAt := at
 			next.LastInboundAt = &inAt
 		}
-		duration := 24 * time.Hour
-		if act.Metadata != nil && (act.Metadata["entry_point_type"] == "ctwa" || act.Metadata["is_referral"] == "true") {
-			duration = 72 * time.Hour
+		if act.Channel != "" {
+			next.Channel = act.Channel
 		}
-		windowEnd := at.Add(duration)
-		if next.ServiceWindowExpiresAt == nil || windowEnd.After(*next.ServiceWindowExpiresAt) {
-			next.ServiceWindowExpiresAt = &windowEnd
+
+		ep := act.EntryPointType
+		if ep == "" && act.Metadata != nil {
+			if metaEP, ok := act.Metadata["entry_point_type"].(string); ok {
+				ep = metaEP
+			}
 		}
+		normalizedEP := NormalizeEntryPointType(ep)
+		prevExp := next.ServiceWindowExpiresAt
+		newExp := ExtendServiceWindow(prevExp, at, normalizedEP)
+		if prevExp != nil && newExp.Equal(prevExp.UTC()) && next.EntryPointType == EntryPointCTWA {
+			// Prior CTWA window was further in the future and preserved; keep EntryPointType as ctwa.
+		} else {
+			next.EntryPointType = normalizedEP
+		}
+		next.ServiceWindowExpiresAt = &newExp
 
 		msgID := act.ID
 		if msgID == uuid.Nil {
@@ -612,6 +758,13 @@ func Apply(s ChatState, a Activity) (ChatState, *ChatMessage, []Intent) {
 		}
 		if at.After(next.LastMessageAt) {
 			next.LastMessageAt = at
+		}
+		if next.LastOutboundAt == nil || at.After(*next.LastOutboundAt) {
+			outAt := at
+			next.LastOutboundAt = &outAt
+		}
+		if act.Channel != "" {
+			next.Channel = act.Channel
 		}
 
 		senderType := NormalizeSenderType(string(act.SenderType))

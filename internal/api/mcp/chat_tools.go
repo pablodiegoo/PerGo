@@ -1418,6 +1418,10 @@ func (s *Server) handleChatSendMessage(ctx context.Context, request mcp.CallTool
 		if strings.Contains(err.Error(), "workspace_id") {
 			return mcp.NewToolResultError("workspace_id does not match authenticated context"), nil
 		}
+		var tmplErr *domain.TemplateRequiredError
+		if errors.Is(err, chat.ErrServiceWindowExpired) || errors.As(err, &tmplErr) {
+			return mcp.NewToolResultError("Meta WhatsApp 24-hour customer service window is closed for this chat. Freeform text messages cannot be sent. You must use 'waba_chat_send_template' to initiate contact with an approved HSM template."), nil
+		}
 		if errors.Is(err, chat.ErrChatNotFound) || errors.Is(err, repository.ErrChatNotFound) || strings.Contains(err.Error(), "not found") {
 			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
 		}

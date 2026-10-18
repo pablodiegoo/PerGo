@@ -564,7 +564,6 @@ func setupFullAdminEcho(t *testing.T) (*echo.Echo, *pgxpool.Pool, *repository.Wo
 	webhookSubRepo := repository.NewWebhookSubscriptionRepository(pool, encryptor)
 	apiKeyRepo := repository.NewAPIKeyRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
-	recipientSessionRepo := repository.NewRecipientSessionRepository(pool)
 	userActionLogRepo := repository.NewUserActionLogRepository(pool)
 
 	e := echo.New()
@@ -647,7 +646,6 @@ func setupFullAdminEcho(t *testing.T) (*echo.Echo, *pgxpool.Pool, *repository.Wo
 	// Inbox
 	inboxHandler := &admin.InboxHandler{
 		Repo:           auditRepo,
-		Sessions:       recipientSessionRepo,
 		Workspaces:     wsRepo,
 		Connections:    connRepo,
 		ContactRepo:    contactRepo,

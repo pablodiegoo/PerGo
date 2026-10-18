@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -736,8 +737,8 @@ func TestOrchestrator_AutomatedCascadingAndIdentityVerification(t *testing.T) {
 		}
 	})
 
-	t.Run("Records outbound timestamp in recipient session on successful dispatch", func(t *testing.T) {
-		sessRepo := repository.NewRecipientSessionRepository(pool)
+	t.Run("Records outbound timestamp on existing Chat via TouchOutbound and does not create Chat on stateless dispatch", func(t *testing.T) {
+		rec := activity.New(pool, nil, nil, nil)
 		dispWA := &fakeDispatcher{err: nil}
 
 		registry := channel.NewRegistry(map[string]channel.Dispatcher{
@@ -745,9 +746,27 @@ func TestOrchestrator_AutomatedCascadingAndIdentityVerification(t *testing.T) {
 		})
 
 		orchestrator := NewDispatchOrchestrator(registry, dispatchRepo, nil, nil, nil, contactRepo, 5, 60*time.Second)
-		orchestrator.SetRecipientSessionRepository(sessRepo)
+		orchestrator.SetActivity(rec)
 
+		// 1. Existing chat gets LastOutboundAt updated
 		recipient := "+5511977770003"
+		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", recipient, "Recipient", "", recipient)
+		if err != nil {
+			t.Fatalf("ResolveContact failed: %v", err)
+		}
+		in, err := rec.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:       activity.ChatOf(uuid.Nil, contact.ID).WithChannel("whatsapp_cloud"),
+			UID:        "in-worker-touch",
+			SenderName: "Recipient",
+			SenderID:   recipient,
+			Body:       "Hi",
+			Channel:    "whatsapp_cloud",
+			At:         time.Now().UTC().Add(-time.Hour),
+		})
+		if err != nil {
+			t.Fatalf("Inbound failed: %v", err)
+		}
+
 		traceID := "session_outbound_trace_" + uuid.New().String()
 		qMsg := &domain.QueueMessage{
 			WorkspaceID:    ws.ID,
@@ -759,20 +778,40 @@ func TestOrchestrator_AutomatedCascadingAndIdentityVerification(t *testing.T) {
 		}
 
 		msg := &fakeDispatchMsg{}
-		err := orchestrator.Process(ctx, msg, qMsg, 0)
-		if err != nil {
+		if err := orchestrator.Process(ctx, msg, qMsg, 0); err != nil {
 			t.Fatalf("expected successful dispatch, got error: %v", err)
 		}
 
-		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, recipient, "whatsapp_cloud", "+5511888880000"))
+		snap, _, err := rec.Snapshot(ctx, ws.ID, activity.ChatID(in.Chat.ID))
 		if err != nil {
-			t.Fatalf("failed to retrieve session: %v", err)
+			t.Fatalf("Snapshot failed: %v", err)
 		}
-		if sess.LastOutboundAt == nil {
-			t.Fatal("expected LastOutboundAt to be recorded on recipient session, got nil")
+		if snap.LastOutboundAt == nil {
+			t.Fatal("expected LastOutboundAt to be recorded on chat, got nil")
 		}
-		if time.Since(*sess.LastOutboundAt) > 10*time.Second {
-			t.Errorf("expected LastOutboundAt to be recent, got %v", *sess.LastOutboundAt)
+		if time.Since(*snap.LastOutboundAt) > 10*time.Second {
+			t.Errorf("expected LastOutboundAt to be recent, got %v", *snap.LastOutboundAt)
+		}
+
+		// 2. Stateless dispatch to unknown phone does not create a Contact or Chat
+		statelessPhone := "+5511977770099"
+		qMsgStateless := &domain.QueueMessage{
+			WorkspaceID:    ws.ID,
+			TraceID:        "stateless_trace_" + uuid.New().String(),
+			To:             statelessPhone,
+			Channel:        "whatsapp_cloud",
+			SenderIdentity: "+5511888880000",
+			Body:           "Stateless template dispatch",
+		}
+		if err := orchestrator.Process(ctx, &fakeDispatchMsg{}, qMsgStateless, 0); err != nil {
+			t.Fatalf("expected stateless dispatch to succeed, got: %v", err)
+		}
+		_, exists, err := rec.Snapshot(ctx, ws.ID, activity.ChatAt(uuid.Nil, statelessPhone).WithChannel("whatsapp_cloud"))
+		if err != nil {
+			t.Fatalf("Snapshot stateless failed: %v", err)
+		}
+		if exists {
+			t.Fatalf("expected no chat created on stateless dispatch")
 		}
 	})
 }

@@ -55,6 +55,14 @@ func NewConnectionRepository(pool *pgxpool.Pool, provider CredentialProvider) *C
 	}
 }
 
+// Pool returns the underlying database connection pool.
+func (r *ConnectionRepository) Pool() *pgxpool.Pool {
+	if r == nil {
+		return nil
+	}
+	return r.pool
+}
+
 // Create inserts a new connection into the database, encrypting credentials if present.
 func (r *ConnectionRepository) Create(ctx context.Context, c *Connection) error {
 	if c == nil || c.WorkspaceID == uuid.Nil {

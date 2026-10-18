@@ -158,6 +158,17 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		pub.subjects = nil
 		debouncer.cancelled = nil
 
+		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999991111", "", "", "+5511999991111")
+		if err != nil {
+			t.Fatalf("failed to resolve contact: %v", err)
+		}
+		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to create chat: %v", err)
+		}
+		openExp := time.Now().UTC().Add(20 * time.Hour)
+		_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &openExp)
+
 		req := &domain.CreateMessageRequest{
 			To:      "+5511999991111",
 			Channel: "whatsapp_cloud",
@@ -178,13 +189,8 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 			t.Fatal("expected non-nil QueueMessage")
 		}
 
-		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999991111", "", "", "")
-		if err != nil {
-			t.Fatalf("failed to resolve contact: %v", err)
-		}
-
 		// Verify chat exists and has AI paused (ai_disabled = true)
-		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
+		chat, err = chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
 		if err != nil {
 			t.Fatalf("failed to get chat: %v", err)
 		}
@@ -236,6 +242,17 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		pub.subjects = nil
 		debouncer.cancelled = nil
 
+		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999993333", "", "", "+5511999993333")
+		if err != nil {
+			t.Fatalf("failed to resolve contact: %v", err)
+		}
+		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to create chat: %v", err)
+		}
+		openExp := time.Now().UTC().Add(20 * time.Hour)
+		_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &openExp)
+
 		req := &domain.CreateMessageRequest{
 			ConversationalIngestFields: domain.ConversationalIngestFields{
 				SenderType: string(domain.SenderTypeAIAgent),
@@ -251,11 +268,7 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 			t.Fatalf("failed to ingest outbound message: %v", err)
 		}
 
-		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511999993333", "", "", "")
-		if err != nil {
-			t.Fatalf("failed to resolve contact: %v", err)
-		}
-		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
+		chat, err = chatRepo.FindOrCreateChat(ctx, ws.ID, &connID, contact.ID)
 		if err != nil {
 			t.Fatalf("failed to get chat: %v", err)
 		}
@@ -281,6 +294,8 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		if err != nil {
 			t.Fatalf("failed to create chat: %v", err)
 		}
+		openExp := time.Now().UTC().Add(20 * time.Hour)
+		_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &openExp)
 
 		// Snooze the chat first
 		snoozeUntil := time.Now().UTC().Add(2 * time.Hour)
@@ -394,14 +409,13 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 			t.Errorf("got metadata type %v, want 'template'", persistedTmpl.Metadata["type"])
 		}
 
-		// Verify StrictServiceWindow against chat's expired ServiceWindowExpiresAt
+		// Verify service window enforcement against chat's expired ServiceWindowExpiresAt
 		expiredAt := time.Now().UTC().Add(-1 * time.Hour)
 		_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &expiredAt)
 
 		strictReq := &domain.CreateMessageRequest{
 			ConversationalIngestFields: domain.ConversationalIngestFields{
-				ChatID:              &chatIDCopy,
-				StrictServiceWindow: true,
+				ChatID: &chatIDCopy,
 			},
 			To:      "+5511999992222",
 			Channel: "whatsapp_cloud",
@@ -410,11 +424,11 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 		}
 		_, err = proc.Ingest(ctx, ws.ID, "outbound-strict-blocked-400", strictReq)
 		if err == nil {
-			t.Fatalf("expected StrictServiceWindow to block freeform message on expired chat")
+			t.Fatalf("expected expired service window to block freeform message on expired chat")
 		}
-		var valErr *domain.ValidationError
-		if !errors.As(err, &valErr) {
-			t.Fatalf("expected *domain.ValidationError, got %T: %v", err, err)
+		var tmplErr *domain.TemplateRequiredError
+		if !errors.As(err, &tmplErr) {
+			t.Fatalf("expected *domain.TemplateRequiredError, got %T: %v", err, err)
 		}
 	})
 }

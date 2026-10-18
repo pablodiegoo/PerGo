@@ -52,7 +52,6 @@ func TestConnectionRepository(t *testing.T) {
 	// Clean up all tables to ensure a clean slate and avoid decrypting dirty rows with mock KEK
 	_, _ = pool.Exec(ctx, "DELETE FROM audit_logs")
 	_, _ = pool.Exec(ctx, "DELETE FROM waba_templates")
-	_, _ = pool.Exec(ctx, "DELETE FROM recipient_sessions")
 	_, _ = pool.Exec(ctx, "DELETE FROM message_dispatches")
 	_, _ = pool.Exec(ctx, "DELETE FROM webhooks_dlq")
 	_, _ = pool.Exec(ctx, "DELETE FROM webhooks")

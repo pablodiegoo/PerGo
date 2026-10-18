@@ -58,7 +58,7 @@ func TestInboundProcessor_ChatIngress(t *testing.T) {
 
 	pub := &fakePublisher{}
 	router := &spyInboundRouter{}
-	proc := inbound.NewInboundProcessor(nil, wsRepo, nil, pub, nil, nil, contactRepo, nil, router)
+	proc := inbound.NewInboundProcessor(nil, wsRepo, nil, pub, nil, contactRepo, nil, router)
 	proc.SetChatRepository(chatRepo)
 	proc.SetActivity(rec)
 

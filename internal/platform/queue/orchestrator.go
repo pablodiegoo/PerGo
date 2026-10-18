@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/pablojhp.pergo/internal/channel"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -33,13 +34,13 @@ const (
 // TTL enforcement, fallback routing, channel dispatch, audit, and
 // webhook events. Tests exercise the full pipeline through Process.
 type DispatchOrchestrator struct {
-	dispatchers          *channel.Registry
-	dispatchRepo         *repository.MessageDispatchRepository
-	publisher            *JetStreamPublisher
-	queueDepth           QueueDepthTracker
-	auditWriter          audit.Writer
-	contactRepo          *repository.ContactRepository
-	recipientSessionRepo *repository.RecipientSessionRepository
+	dispatchers  *channel.Registry
+	dispatchRepo *repository.MessageDispatchRepository
+	publisher    *JetStreamPublisher
+	queueDepth   QueueDepthTracker
+	auditWriter  audit.Writer
+	contactRepo  *repository.ContactRepository
+	activity     *activity.Recorder
 
 	maxRetries int
 	maxBackoff time.Duration
@@ -66,6 +67,11 @@ func NewDispatchOrchestrator(
 		maxBackoff = orchDefaultMaxBackoff
 	}
 
+	var act *activity.Recorder
+	if contactRepo != nil && contactRepo.Pool() != nil {
+		act = activity.New(contactRepo.Pool(), nil, nil, nil)
+	}
+
 	return &DispatchOrchestrator{
 		dispatchers:  dispatchers,
 		dispatchRepo: dispatchRepo,
@@ -73,6 +79,7 @@ func NewDispatchOrchestrator(
 		queueDepth:   queueDepth,
 		auditWriter:  auditWriter,
 		contactRepo:  contactRepo,
+		activity:     act,
 		maxRetries:   maxRetries,
 		maxBackoff:   maxBackoff,
 	}
@@ -233,18 +240,9 @@ func (o *DispatchOrchestrator) Process(
 		slog.Info("orchestrator: attempting dispatch", "channel", channelName, "trace_id", traceID, "index", i, "attempt", attempt, "to", resolvedTo)
 		respStr, err := o.dispatchToChannel(ctx, channelName, &qMsgForChannel)
 		if err == nil {
-			if o.contactRepo != nil && workspaceID != (uuid.UUID{}) {
-				_, _ = o.contactRepo.ResolveContact(ctx, workspaceID, channelName, resolvedTo, "", "", "")
-			}
-			if o.recipientSessionRepo != nil && workspaceID != (uuid.UUID{}) {
-				sessKey := domain.SessionKey{
-					WorkspaceID:       workspaceID,
-					RecipientPhone:    resolvedTo,
-					Channel:           channelName,
-					RecipientIdentity: qMsg.SenderIdentity,
-				}
-				if errRec := o.recipientSessionRepo.RecordOutbound(ctx, sessKey, time.Now().UTC()); errRec != nil {
-					slog.Error("orchestrator: failed to record recipient session outbound timestamp", "error", errRec, "recipient", resolvedTo, "channel", channelName, "trace_id", traceID)
+			if o.activity != nil && workspaceID != (uuid.UUID{}) {
+				if errTouch := o.activity.TouchOutbound(ctx, workspaceID, activity.ChatAt(qMsg.ConnectionID, resolvedTo).WithChannel(channelName), time.Now().UTC()); errTouch != nil {
+					slog.Error("orchestrator: failed to touch chat outbound timestamp", "error", errTouch, "recipient", resolvedTo, "channel", channelName, "trace_id", traceID)
 				}
 			}
 			if o.dispatchRepo != nil && dispatch != nil {
@@ -396,11 +394,14 @@ func isNumericIdentifier(s string) bool {
 // SetContactRepository registers the Contact repository.
 func (o *DispatchOrchestrator) SetContactRepository(repo *repository.ContactRepository) {
 	o.contactRepo = repo
+	if o.activity == nil && repo != nil && repo.Pool() != nil {
+		o.activity = activity.New(repo.Pool(), nil, nil, nil)
+	}
 }
 
-// SetRecipientSessionRepository registers the RecipientSession repository.
-func (o *DispatchOrchestrator) SetRecipientSessionRepository(repo *repository.RecipientSessionRepository) {
-	o.recipientSessionRepo = repo
+// SetActivity registers the Chat Activity recorder used to touch last_outbound_at on dispatch.
+func (o *DispatchOrchestrator) SetActivity(rec *activity.Recorder) {
+	o.activity = rec
 }
 
 func (o *DispatchOrchestrator) dispatchToChannel(ctx context.Context, channelName string, qMsg *domain.QueueMessage) (string, error) {

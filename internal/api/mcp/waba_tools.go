@@ -893,27 +893,14 @@ func (s *Server) handleWABAChatSendMessage(ctx context.Context, request mcp.Call
 		return mcp.NewToolResultError("chat engine is not configured on this server"), nil
 	}
 
-	// Pre-check service window before invoking mock/real ingestor so expired chats are never enqueued
-	c, err := eng.ResolveChat(ctx, wsID, chat.ChatRef{ChatID: chatID})
-	if err != nil {
-		if errors.Is(err, chat.ErrChatNotFound) {
-			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
-		}
-		return mcp.NewToolResultError(fmt.Sprintf("failed to get chat: %v", err)), nil
-	}
-	if !c.IsServiceWindowOpen() {
-		return mcp.NewToolResultError("Meta WhatsApp 24-hour customer service window is closed for this chat. Freeform text messages cannot be sent. You must use 'waba_chat_send_template' to initiate contact with an approved HSM template."), nil
-	}
-
 	sendRes, err := eng.SendMessage(ctx, wsID, chat.SendRequest{
-		Ref:                 chat.ChatRef{ChatID: chatID, Channel: "whatsapp_cloud"},
-		Body:                messageText,
-		Type:                "text",
-		SenderType:          string(domain.SenderTypeAIAgent),
-		SenderName:          senderName,
-		StrictServiceWindow: true,
-		TraceIDPrefix:       "mcp-waba",
-		AuditEventType:      "chat.message.sent",
+		Ref:            chat.ChatRef{ChatID: chatID, Channel: "whatsapp_cloud"},
+		Body:           messageText,
+		Type:           "text",
+		SenderType:     string(domain.SenderTypeAIAgent),
+		SenderName:     senderName,
+		TraceIDPrefix:  "mcp-waba",
+		AuditEventType: "chat.message.sent",
 		Metadata: map[string]string{
 			"source": "mcp_gateway",
 		},
@@ -922,7 +909,8 @@ func (s *Server) handleWABAChatSendMessage(ctx context.Context, request mcp.Call
 		if errors.Is(err, chat.ErrChatNotFound) {
 			return mcp.NewToolResultError(fmt.Sprintf("chat not found: %s", chatID)), nil
 		}
-		if errors.Is(err, chat.ErrServiceWindowExpired) || strings.Contains(err.Error(), "SESSION_WINDOW_EXPIRED") || strings.Contains(err.Error(), "24-hour") {
+		var tmplErr *domain.TemplateRequiredError
+		if errors.Is(err, chat.ErrServiceWindowExpired) || errors.As(err, &tmplErr) {
 			return mcp.NewToolResultError("Meta WhatsApp 24-hour customer service window is closed for this chat. Freeform text messages cannot be sent. You must use 'waba_chat_send_template' to initiate contact with an approved HSM template."), nil
 		}
 		return mcp.NewToolResultError(fmt.Sprintf("failed to dispatch message: %v", err)), nil

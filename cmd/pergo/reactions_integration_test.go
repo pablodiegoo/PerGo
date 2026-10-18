@@ -141,7 +141,7 @@ func TestMessageReactionsIntegration(t *testing.T) {
 	customerName := "Diana Prince"
 	messageText := "This is a message to react to!"
 
-	inboundProc := inbound.NewInboundProcessor(nil, wsRepo, nil, nil, nil, nil, contactRepo, nil, nil)
+	inboundProc := inbound.NewInboundProcessor(nil, wsRepo, nil, nil, nil, contactRepo, nil, nil)
 	inboundProc.SetChatRepository(chatRepo)
 
 	inboundEv := &inbound.InboundEvent{

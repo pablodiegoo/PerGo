@@ -214,7 +214,7 @@ func TestDebouncer_SetPublisherAndProcessorAutoBinding(t *testing.T) {
 	rdb.Del(ctx, fmt.Sprintf("debounce:timer:%s:%s", wsID, chatID))
 
 	procPub := &testCapturePublisher{}
-	proc := NewInboundProcessor(nil, nil, nil, procPub, nil, nil, nil, nil, nil)
+	proc := NewInboundProcessor(nil, nil, nil, procPub, nil, nil, nil, nil)
 
 	// Create Debouncer WITHOUT WithDebouncePublisher
 	deb := NewDebouncer(rdb, WithDebounceTTL(80*time.Millisecond))

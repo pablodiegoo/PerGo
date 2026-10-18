@@ -672,7 +672,8 @@ func TestInboxHandler_NewMessageSend_HTTP(t *testing.T) {
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	connRepo := repository.NewConnectionRepository(pool, encryptor)
-	sessionRepo := repository.NewRecipientSessionRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
 
 	ws, err := wsRepo.Create(ctx, "NewMessageSend HTTP Test Workspace")
@@ -700,7 +701,8 @@ func TestInboxHandler_NewMessageSend_HTTP(t *testing.T) {
 	pub := queue.NewJetStreamPublisher(nc)
 	h := &admin.InboxHandler{
 		Repo:        auditRepo,
-		Sessions:    sessionRepo,
+		ChatRepo:    chatRepo,
+		ContactRepo: contactRepo,
 		Workspaces:  wsRepo,
 		Connections: connRepo,
 		Publisher:   pub,
@@ -738,13 +740,14 @@ func TestInboxHandler_NewMessageSend_HTTP(t *testing.T) {
 		t.Errorf("expected HX-Trigger header to contain success message, got %q", triggerHeader)
 	}
 
-	// Verify session was upserted
-	sess, err := sessionRepo.Get(ctx, domain.NewSessionKey(ws.ID, "+5511888880002", "whatsapp_cloud", "+5511999990001"))
+	// Verify chat was created
+	actRec := activity.New(pool, nil, nil, nil)
+	_, exists, err := actRec.Snapshot(ctx, ws.ID, activity.ChatAt(conn.ID, "+5511888880002").WithChannel("whatsapp_cloud"))
 	if err != nil {
-		t.Errorf("expected session to be upserted: %v", err)
+		t.Errorf("expected chat snapshot to succeed: %v", err)
 	}
-	if sess == nil || sess.RecipientPhone != "+5511888880002" {
-		t.Errorf("invalid session upserted: %+v", sess)
+	if !exists {
+		t.Errorf("expected chat to exist for +5511888880002")
 	}
 }
 
@@ -812,6 +815,15 @@ func TestInboxHandler_SendMessage_SuccessAndPauseBot(t *testing.T) {
 	}
 
 	actRec := activity.New(pool, nil, nil, nil)
+	_, err = actRec.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:    activity.ChatOf(conn.ID, contact.ID),
+		UID:     uuid.NewString(),
+		Channel: "whatsapp_cloud",
+		At:      time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("failed to open service window via Inbound: %v", err)
+	}
 	pub := queue.NewJetStreamPublisher(nc)
 	h := &admin.InboxHandler{
 		Repo:        auditRepo,
@@ -994,7 +1006,6 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	auditRepo := repository.NewAuditRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
-	sessionRepo := repository.NewRecipientSessionRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
 	encryptor, _ := crypto.NewEncryptor([]byte("dev-development-key-32-bytes-kek"))
 	connRepo := repository.NewConnectionRepository(pool, encryptor)
@@ -1037,7 +1048,6 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 	h := &admin.InboxHandler{
 		Repo:        auditRepo,
 		ChatRepo:    chatRepo,
-		Sessions:    sessionRepo,
 		Workspaces:  wsRepo,
 		Connections: connRepo,
 		ContactRepo: contactRepo,

@@ -16,6 +16,7 @@ import (
 )
 
 type mockOutboundIngestor struct {
+	realProc    *outbound.Processor
 	lastReq     *domain.CreateMessageRequest
 	lastTraceID string
 	lastWsID    uuid.UUID
@@ -25,6 +26,9 @@ func (m *mockOutboundIngestor) Ingest(ctx context.Context, workspaceID uuid.UUID
 	m.lastWsID = workspaceID
 	m.lastTraceID = traceID
 	m.lastReq = req
+	if m.realProc != nil {
+		return m.realProc.Ingest(ctx, workspaceID, traceID, req)
+	}
 	return &domain.QueueMessage{
 		WorkspaceID:  workspaceID,
 		TraceID:      traceID,
@@ -155,7 +159,11 @@ func TestMCPWABATools(t *testing.T) {
 		t.Fatalf("failed to create template: %v", err)
 	}
 
-	mockIng := &mockOutboundIngestor{}
+	baseProc := outbound.NewProcessor(nil, nil, connRepo, nil)
+	baseProc.SetChatRepository(chatRepo)
+	baseProc.SetContactRepository(contactRepo)
+	baseProc.SetTemplateRepository(tmplRepo)
+	mockIng := &mockOutboundIngestor{realProc: baseProc}
 
 	srv := NewServer(
 		wsRepo,
@@ -415,9 +423,6 @@ func TestMCPWABATools(t *testing.T) {
 
 		if mockIng.lastReq == nil || mockIng.lastReq.Body != "Valid message inside window!" {
 			t.Errorf("expected message dispatched to ingestor, got %+v", mockIng.lastReq)
-		}
-		if !mockIng.lastReq.StrictServiceWindow {
-			t.Errorf("expected StrictServiceWindow to be true on waba_chat_send_message")
 		}
 		if mockIng.lastReq.ChatID == nil || *mockIng.lastReq.ChatID != chatActive.ID {
 			t.Errorf("expected ChatID %s on waba_chat_send_message request, got %v", chatActive.ID, mockIng.lastReq.ChatID)

@@ -19,16 +19,17 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/media"
+	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/audit"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
 	"github.com/pablojhp.pergo/internal/platform/storage"
 	"github.com/pablojhp.pergo/internal/repository"
-	"github.com/pablojhp.pergo/internal/session"
 )
 
 func connectNATS(t *testing.T) *nats.Conn {
@@ -84,7 +85,6 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	connRepo := repository.NewConnectionRepository(pool, enc)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
 	publisher := queue.NewJetStreamPublisher(nc)
 	contactRepo := repository.NewContactRepository(pool)
@@ -123,7 +123,7 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 
 	mediaEngine := media.NewDefaultEngine(s3Client)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
-	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, sessRepo, contactRepo, dispatchRepo, nil)
+	inboundProcessor := inbound.NewInboundProcessor(dedupRepo, wsRepo, mediaEngine, publisher, auditWriter, contactRepo, dispatchRepo, nil)
 	h := NewWABAWebhookHandler(connRepo, inboundProcessor, mediaEngine)
 	h.SetVerifySignature(false)
 
@@ -608,24 +608,22 @@ func TestWABAWebhook_Inbound(t *testing.T) {
 			t.Fatalf("status = %d, want 200", recInbound.Code)
 		}
 
-		// 1. Verify session is registered under connection's SenderIdentity "123456789"
-		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, customerPhone, "whatsapp_cloud", "123456789"))
+		// 1. Verify chat service window is registered under connection
+		actRec := activity.New(pool, nil, nil, nil)
+		state, exists, err := actRec.Snapshot(ctx, ws.ID, activity.ChatAt(conn.ID, customerPhone).WithChannel("whatsapp_cloud"))
 		if err != nil {
-			t.Fatalf("failed to get recipient session: %v", err)
+			t.Fatalf("failed to snapshot chat: %v", err)
 		}
-		if sess.RecipientPhone != customerPhone {
-			t.Errorf("expected session phone %s, got %s", customerPhone, sess.RecipientPhone)
-		}
-		if sess.RecipientIdentity != "123456789" {
-			t.Errorf("expected session recipient identity '123456789', got %s", sess.RecipientIdentity)
+		win := domain.Window(state, exists, time.Now().UTC())
+		if !exists || !win.Open {
+			t.Errorf("expected open service window for %s on connection %s, got exists=%v window=%+v", customerPhone, conn.ID, exists, win)
 		}
 
 		// 2. Outbound Freeform Message API Call
-		windowChecker := session.NewWindowChecker(sessRepo)
 		msgHandler := &MessageHandler{
 			Publisher:      publisher,
 			ConnectionRepo: connRepo,
-			WindowChecker:  windowChecker,
+			Ingestor:       outbound.NewProcessor(nil, nil, connRepo, publisher).SetActivity(actRec),
 		}
 
 		outboundBody := fmt.Sprintf(`{

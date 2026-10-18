@@ -75,7 +75,6 @@ func TestConnectionMigration(t *testing.T) {
 	// Clean up existing migration test workspaces/devices/credentials to avoid conflicts
 	_, _ = db.ExecContext(ctx, "DELETE FROM audit_logs")
 	_, _ = db.ExecContext(ctx, "DELETE FROM waba_templates")
-	_, _ = db.ExecContext(ctx, "DELETE FROM recipient_sessions")
 	_, _ = db.ExecContext(ctx, "DELETE FROM message_dispatches")
 	_, _ = db.ExecContext(ctx, "DELETE FROM webhooks_dlq")
 	_, _ = db.ExecContext(ctx, "DELETE FROM webhooks")

@@ -123,7 +123,7 @@ func TestDebounceHandoffIntegration(t *testing.T) {
 	defer debouncer.Close()
 
 	// 3. Setup InboundProcessor
-	inboundProc := inbound.NewInboundProcessor(nil, wsRepo, nil, nil, nil, nil, contactRepo, nil, nil)
+	inboundProc := inbound.NewInboundProcessor(nil, wsRepo, nil, nil, nil, contactRepo, nil, nil)
 	inboundProc.SetChatRepository(chatRepo)
 	inboundProc.SetDebouncer(debouncer)
 

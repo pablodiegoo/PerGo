@@ -126,6 +126,23 @@ func seedWorkspaceAndConn(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 	return wsID, connID
 }
 
+func seedContactWithIdentity(t *testing.T, ctx context.Context, pool *pgxpool.Pool, wsID uuid.UUID, channel, phone string) uuid.UUID {
+	t.Helper()
+	contactID := uuid.New()
+	_, err := pool.Exec(ctx, `INSERT INTO contacts (id, workspace_id, name) VALUES ($1, $2, $3)`, contactID, wsID, phone)
+	if err != nil {
+		t.Fatalf("insert contact: %v", err)
+	}
+	_, err = pool.Exec(ctx, `
+		INSERT INTO contact_identities (contact_id, workspace_id, channel, sender_identity)
+		VALUES ($1, $2, $3, $4)
+	`, contactID, wsID, channel, phone)
+	if err != nil {
+		t.Fatalf("insert contact identity: %v", err)
+	}
+	return contactID
+}
+
 func TestRecorder_Outbound_HumanHandoff_SlidingWindow_And_Idempotency(t *testing.T) {
 	pool := getTestPool(t)
 	defer pool.Close()
@@ -139,6 +156,21 @@ func TestRecorder_Outbound_HumanHandoff_SlidingWindow_And_Idempotency(t *testing
 
 	t0 := time.Now().UTC().Truncate(time.Millisecond)
 	customerPhone := "+5511999991111"
+	contactID := seedContactWithIdentity(t, ctx, pool, wsID, "whatsapp_cloud", customerPhone)
+
+	// Open the 24h WABA window via an inbound turn first
+	inReceipt, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+		Chat:       activity.ChatOf(connID, contactID).WithChannel("whatsapp_cloud"),
+		UID:        "uid-inbound-open-1",
+		SenderName: "Customer",
+		SenderID:   customerPhone,
+		Body:       "Hi, I need support",
+		Channel:    "whatsapp_cloud",
+		At:         t0.Add(-5 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("Inbound failed: %v", err)
+	}
 
 	// 1. First human_agent outbound turn pauses AI for 12h, cancels debounce by ChatID, and publishes handoff events
 	receipt1, err := rec.Outbound(ctx, wsID, activity.OutboundTurn{
@@ -159,8 +191,8 @@ func TestRecorder_Outbound_HumanHandoff_SlidingWindow_And_Idempotency(t *testing
 		t.Fatal("expected Duplicate=false on first Outbound")
 	}
 	chatID := receipt1.Chat.ID
-	if chatID == uuid.Nil {
-		t.Fatal("expected valid ChatID")
+	if chatID != inReceipt.Chat.ID {
+		t.Fatalf("expected ChatID %s, got %s", inReceipt.Chat.ID, chatID)
 	}
 
 	wantPause1 := t0.Add(12 * time.Hour)
@@ -249,22 +281,22 @@ func TestRecorder_PerChatIsolation_SameContactTwoConnections(t *testing.T) {
 
 	t0 := time.Now().UTC().Truncate(time.Millisecond)
 	phone := "+5511988887777"
+	contactID := seedContactWithIdentity(t, ctx, pool, wsID, "whatsapp_cloud", phone)
 
-	// Create Chat A (connA) and Chat B (connB) for the same contact via AI outbound turns
-	resA, err := rec.Outbound(ctx, wsID, activity.OutboundTurn{
-		Chat:       activity.ChatAt(connA, phone),
-		UID:        "uid-connA-init",
-		SenderType: domain.SenderTypeAIAgent,
-		Channel:    "whatsapp_cloud",
-		To:         phone,
-		Body:       "Welcome on Line A",
-		At:         t0,
+	// Open window on Chat A (connA, whatsapp_cloud) via Inbound; create Chat B (connB, whatsapp) via ChatOf
+	resA, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+		Chat:     activity.ChatOf(connA, contactID).WithChannel("whatsapp_cloud"),
+		UID:      "uid-connA-in",
+		SenderID: phone,
+		Body:     "Inbound on Line A",
+		Channel:  "whatsapp_cloud",
+		At:       t0,
 	})
 	if err != nil {
 		t.Fatalf("init Chat A: %v", err)
 	}
 	resB, err := rec.Outbound(ctx, wsID, activity.OutboundTurn{
-		Chat:       activity.ChatAt(connB, phone),
+		Chat:       activity.ChatOf(connB, contactID).WithChannel("whatsapp"),
 		UID:        "uid-connB-init",
 		SenderType: domain.SenderTypeAIAgent,
 		Channel:    "whatsapp",
@@ -329,10 +361,22 @@ func TestRecorder_SetAI_And_DispatchFailed(t *testing.T) {
 
 	t0 := time.Now().UTC().Truncate(time.Millisecond)
 	phone := "+5511977776666"
+	contactID := seedContactWithIdentity(t, ctx, pool, wsID, "whatsapp_cloud", phone)
 
-	// Create chat via AI outbound
+	// Open chat & window via Inbound, then send AI outbound
+	inRes, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+		Chat:     activity.ChatOf(connID, contactID).WithChannel("whatsapp_cloud"),
+		UID:      "uid-in-dispatch-test",
+		SenderID: phone,
+		Body:     "Hello",
+		Channel:  "whatsapp_cloud",
+		At:       t0.Add(-time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("Inbound failed: %v", err)
+	}
 	initRes, err := rec.Outbound(ctx, wsID, activity.OutboundTurn{
-		Chat:       activity.ChatAt(connID, phone),
+		Chat:       activity.ChatID(inRes.Chat.ID),
 		UID:        "uid-dispatch-test",
 		SenderType: domain.SenderTypeAIAgent,
 		Channel:    "whatsapp_cloud",
@@ -407,23 +451,23 @@ func TestRecorder_SetAI_And_DispatchFailed(t *testing.T) {
 		t.Fatalf("expected AI engaged after AIResume, got %+v", aiResumed)
 	}
 
-	// 5. StrictServiceWindow enforcement on expired WABA window
+	// 5. Service window enforcement on expired WABA window returns *domain.TemplateRequiredError
 	expiredAt := t0.Add(-1 * time.Hour)
 	_, err = pool.Exec(ctx, `UPDATE chats SET service_window_expires_at = $3 WHERE workspace_id = $1 AND id = $2`, wsID, chatID, expiredAt)
 	if err != nil {
 		t.Fatalf("set expired window: %v", err)
 	}
 	_, err = rec.Outbound(ctx, wsID, activity.OutboundTurn{
-		Chat:                activity.ChatID(chatID),
-		UID:                 "uid-blocked-window",
-		SenderType:          domain.SenderTypeHumanAgent,
-		Channel:             "whatsapp_cloud",
-		Body:                "Blocked freeform",
-		StrictServiceWindow: true,
-		At:                  t0,
+		Chat:       activity.ChatID(chatID),
+		UID:        "uid-blocked-window",
+		SenderType: domain.SenderTypeHumanAgent,
+		Channel:    "whatsapp_cloud",
+		Body:       "Blocked freeform",
+		At:         t0,
 	})
-	if !errors.Is(err, activity.ErrServiceWindowClosed) {
-		t.Fatalf("expected ErrServiceWindowClosed, got %v", err)
+	var tmplErr *domain.TemplateRequiredError
+	if !errors.As(err, &tmplErr) {
+		t.Fatalf("expected *domain.TemplateRequiredError, got %T: %v", err, err)
 	}
 }
 
@@ -591,6 +635,323 @@ func TestRecorder_Inbound(t *testing.T) {
 	if rAfterExpiry.Chat.Status != domain.ChatStatusOpen || rAfterExpiry.Chat.SnoozedUntil != nil {
 		t.Fatalf("expected snoozed chat to reopen and clear snoozed_until, got status=%q snoozed=%v", rAfterExpiry.Chat.Status, rAfterExpiry.Chat.SnoozedUntil)
 	}
+}
+
+func TestRecorder_S3_ServiceWindow_IndependentConnections_CTWA_TouchOutbound_And_ClaimExpiring(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+	ctx := context.Background()
+
+	wsID, connA := seedWorkspaceAndConn(t, ctx, pool, "whatsapp_cloud", "+551100001001")
+	connB := uuid.New()
+	_, err := pool.Exec(ctx, `
+		INSERT INTO connections (id, workspace_id, name, slug, channel, sender_identity, status, credentials, is_default)
+		VALUES ($1, $2, 'WABA B', 'waba-b', 'whatsapp_cloud', '+551100001002', 'active', '{}', false)
+	`, connB, wsID)
+	if err != nil {
+		t.Fatalf("insert connB: %v", err)
+	}
+
+	connWeb := uuid.New()
+	_, err = pool.Exec(ctx, `
+		INSERT INTO connections (id, workspace_id, name, slug, channel, sender_identity, status, credentials, is_default)
+		VALUES ($1, $2, 'WA Web', 'wa-web', 'whatsapp', '+551100001003', 'active', '{}', false)
+	`, connWeb, wsID)
+	if err != nil {
+		t.Fatalf("insert connWeb: %v", err)
+	}
+
+	rec := activity.New(pool, activity.NewMemoryPublisher(), activity.NewMemoryDebounceCanceller(), nil)
+	t0 := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+
+	t.Run("Two WABA connections chatting with same Contact have independent windows", func(t *testing.T) {
+		phone := "+5511911112222"
+		contactID := seedContactWithIdentity(t, ctx, pool, wsID, "whatsapp_cloud", phone)
+
+		// Inbound on connA opens 24h window on connA ONLY
+		_, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+			Chat:       activity.ChatOf(connA, contactID).WithChannel("whatsapp_cloud"),
+			UID:        "wamid.indep.1",
+			SenderName: "Customer",
+			SenderID:   phone,
+			Body:       "Hello Line A",
+			Channel:    "whatsapp_cloud",
+			At:         t0,
+		})
+		if err != nil {
+			t.Fatalf("Inbound connA: %v", err)
+		}
+
+		// Snapshot on connA is open; Snapshot on connB is closed (does not exist)
+		snapA, existsA, err := rec.Snapshot(ctx, wsID, activity.ChatAt(connA, phone).WithChannel("whatsapp_cloud"))
+		if err != nil || !existsA {
+			t.Fatalf("Snapshot connA: exists=%v err=%v", existsA, err)
+		}
+		if !domain.Window(snapA, existsA, t0.Add(time.Hour)).Open {
+			t.Fatal("expected connA window to be open")
+		}
+
+		snapB, existsB, err := rec.Snapshot(ctx, wsID, activity.ChatAt(connB, phone).WithChannel("whatsapp_cloud"))
+		if err != nil {
+			t.Fatalf("Snapshot connB: %v", err)
+		}
+		if existsB || domain.Window(snapB, existsB, t0.Add(time.Hour)).Open {
+			t.Fatalf("expected connB to have no chat and closed window, got exists=%v window=%+v", existsB, domain.Window(snapB, existsB, t0.Add(time.Hour)))
+		}
+
+		// Freeform Outbound on connA succeeds; freeform Outbound on connB fails with *domain.TemplateRequiredError
+		if _, err := rec.Outbound(ctx, wsID, activity.OutboundTurn{
+			Chat:       activity.ChatAt(connA, phone),
+			UID:        "uid-indep-connA-out",
+			SenderType: domain.SenderTypeAIAgent,
+			Channel:    "whatsapp_cloud",
+			Body:       "Reply on Line A",
+			At:         t0.Add(time.Hour),
+		}); err != nil {
+			t.Fatalf("expected Outbound on connA to succeed, got %v", err)
+		}
+
+		_, err = rec.Outbound(ctx, wsID, activity.OutboundTurn{
+			Chat:       activity.ChatOf(connB, contactID).WithChannel("whatsapp_cloud"),
+			UID:        "uid-indep-connB-out",
+			SenderType: domain.SenderTypeAIAgent,
+			Channel:    "whatsapp_cloud",
+			Body:       "Blocked on Line B",
+			At:         t0.Add(time.Hour),
+		})
+		var tmplErr *domain.TemplateRequiredError
+		if !errors.As(err, &tmplErr) {
+			t.Fatalf("expected *domain.TemplateRequiredError on connB, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("CTWA inbound (72h) then standard inbound 1h later keeps 72h window", func(t *testing.T) {
+		phone := "+5511922223333"
+		contactID := seedContactWithIdentity(t, ctx, pool, wsID, "whatsapp_cloud", phone)
+
+		rCTWA, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+			Chat:           activity.ChatOf(connA, contactID).WithChannel("whatsapp_cloud"),
+			UID:            "wamid.ctwa.100",
+			SenderID:       phone,
+			Body:           "Ad click",
+			Channel:        "whatsapp_cloud",
+			EntryPointType: domain.EntryPointCTWA,
+			At:             t0,
+		})
+		if err != nil {
+			t.Fatalf("CTWA Inbound: %v", err)
+		}
+		want72 := t0.Add(72 * time.Hour)
+		if rCTWA.Chat.ServiceWindowExpiresAt == nil || !rCTWA.Chat.ServiceWindowExpiresAt.Equal(want72) {
+			t.Fatalf("expected 72h expiry %v, got %v", want72, rCTWA.Chat.ServiceWindowExpiresAt)
+		}
+
+		// Standard inbound 1h later
+		rStd, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+			Chat:           activity.ChatOf(connA, contactID).WithChannel("whatsapp_cloud"),
+			UID:            "wamid.std.101",
+			SenderID:       phone,
+			Body:           "Follow-up",
+			Channel:        "whatsapp_cloud",
+			EntryPointType: domain.EntryPointStandard,
+			At:             t0.Add(1 * time.Hour),
+		})
+		if err != nil {
+			t.Fatalf("Standard Inbound: %v", err)
+		}
+		if rStd.Chat.ServiceWindowExpiresAt == nil || !rStd.Chat.ServiceWindowExpiresAt.Equal(want72) {
+			t.Fatalf("expected 72h expiry %v preserved after standard turn, got %v", want72, rStd.Chat.ServiceWindowExpiresAt)
+		}
+		if rStd.Chat.EntryPointType != domain.EntryPointCTWA {
+			t.Fatalf("expected entry_point_type 'ctwa' preserved, got %q", rStd.Chat.EntryPointType)
+		}
+
+		// Outbound freeform at t0 + 48h succeeds because 72h window is still open
+		if _, err := rec.Outbound(ctx, wsID, activity.OutboundTurn{
+			Chat:       activity.ChatID(rCTWA.Chat.ID),
+			UID:        "uid-ctwa-48h-reply",
+			SenderType: domain.SenderTypeAIAgent,
+			Channel:    "whatsapp_cloud",
+			Body:       "Still open at 48h",
+			At:         t0.Add(48 * time.Hour),
+		}); err != nil {
+			t.Fatalf("expected freeform reply at 48h to succeed in CTWA window, got %v", err)
+		}
+	})
+
+	t.Run("ChatAt is strictly read-only and campaign/template dispatch to new number does not open window", func(t *testing.T) {
+		unknownPhone := "+5511933334444"
+
+		// 1. Snapshot(ChatAt) and TouchOutbound(ChatAt) for unknown phone never create a Contact or Chat
+		_, exists, err := rec.Snapshot(ctx, wsID, activity.ChatAt(connA, unknownPhone).WithChannel("whatsapp_cloud"))
+		if err != nil || exists {
+			t.Fatalf("expected exists=false err=nil, got exists=%v err=%v", exists, err)
+		}
+		if err := rec.TouchOutbound(ctx, wsID, activity.ChatAt(connA, unknownPhone).WithChannel("whatsapp_cloud"), t0); err != nil {
+			t.Fatalf("TouchOutbound for unknown phone should be no-op, got %v", err)
+		}
+
+		var count int
+		_ = pool.QueryRow(ctx, `SELECT COUNT(*) FROM contact_identities WHERE workspace_id = $1 AND sender_identity = $2`, wsID, unknownPhone).Scan(&count)
+		if count != 0 {
+			t.Fatalf("expected 0 contact_identities created by read-only ChatAt, got %d", count)
+		}
+
+		// 2. Template Outbound via ChatOf creates Chat and sets last_outbound_at, but does NOT open service window
+		tmplPhone := "+5511944445555"
+		tmplContactID := seedContactWithIdentity(t, ctx, pool, wsID, "whatsapp_cloud", tmplPhone)
+
+		tmplOut, err := rec.Outbound(ctx, wsID, activity.OutboundTurn{
+			Chat:         activity.ChatOf(connA, tmplContactID).WithChannel("whatsapp_cloud"),
+			UID:          "uid-tmpl-new-num",
+			SenderType:   domain.SenderTypeAIAgent,
+			Channel:      "whatsapp_cloud",
+			TemplateName: "welcome_offer",
+			Language:     "pt_BR",
+			MessageType:  "template",
+			At:           t0,
+		})
+		if err != nil {
+			t.Fatalf("template Outbound failed: %v", err)
+		}
+		if tmplOut.Chat.ServiceWindowExpiresAt != nil {
+			t.Fatalf("expected template dispatch not to open window, got %v", tmplOut.Chat.ServiceWindowExpiresAt)
+		}
+		if tmplOut.Chat.LastOutboundAt == nil || !tmplOut.Chat.LastOutboundAt.Equal(t0) {
+			t.Fatalf("expected LastOutboundAt=%v, got %v", t0, tmplOut.Chat.LastOutboundAt)
+		}
+
+		// Subsequent freeform Outbound to that Chat is rejected because window is still closed
+		_, err = rec.Outbound(ctx, wsID, activity.OutboundTurn{
+			Chat:       activity.ChatID(tmplOut.Chat.ID),
+			UID:        "uid-freeform-after-tmpl",
+			SenderType: domain.SenderTypeAIAgent,
+			Channel:    "whatsapp_cloud",
+			Body:       "Freeform without customer reply",
+			At:         t0.Add(5 * time.Minute),
+		})
+		var tmplErr *domain.TemplateRequiredError
+		if !errors.As(err, &tmplErr) {
+			t.Fatalf("expected *domain.TemplateRequiredError after template-only initiation, got %T: %v", err, err)
+		}
+
+		// TouchOutbound on existing Chat updates last_outbound_at, and Inbound exposes PrevLastOutboundAt
+		tTouch := t0.Add(10 * time.Minute)
+		if err := rec.TouchOutbound(ctx, wsID, activity.ChatAt(connA, tmplPhone).WithChannel("whatsapp_cloud"), tTouch); err != nil {
+			t.Fatalf("TouchOutbound on existing chat failed: %v", err)
+		}
+		inAfterTouch, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+			Chat:     activity.ChatOf(connA, tmplContactID).WithChannel("whatsapp_cloud"),
+			UID:      "wamid.reply.after.touch",
+			SenderID: tmplPhone,
+			Body:     "Customer replied!",
+			Channel:  "whatsapp_cloud",
+			At:       tTouch.Add(3 * time.Second),
+		})
+		if err != nil {
+			t.Fatalf("Inbound after TouchOutbound failed: %v", err)
+		}
+		if inAfterTouch.PrevLastOutboundAt == nil || !inAfterTouch.PrevLastOutboundAt.Equal(tTouch) {
+			t.Fatalf("expected PrevLastOutboundAt=%v, got %v", tTouch, inAfterTouch.PrevLastOutboundAt)
+		}
+	})
+
+	t.Run("ClaimExpiring claims whatsapp_cloud chat once per window and Inbound resets claim", func(t *testing.T) {
+		// Clean any prior expiring chats in other workspaces by using a specific horizon
+		baseNow := time.Date(2030, 5, 1, 12, 0, 0, 0, time.UTC)
+		expPhone := "+5511955556666"
+		expContactID := seedContactWithIdentity(t, ctx, pool, wsID, "whatsapp_cloud", expPhone)
+
+		// Inbound at baseNow - 23h30m -> window expires at baseNow + 30m (within 1h horizon)
+		inRes, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+			Chat:     activity.ChatOf(connA, expContactID).WithChannel("whatsapp_cloud"),
+			UID:      "wamid.exp.1",
+			SenderID: expPhone,
+			Body:     "Opening window",
+			Channel:  "whatsapp_cloud",
+			At:       baseNow.Add(-23*time.Hour - 30*time.Minute),
+		})
+		if err != nil {
+			t.Fatalf("Inbound for expiring test: %v", err)
+		}
+
+		// Also create a WhatsApp Web chat with service_window_expires_at in the same horizon -> must NOT be claimed
+		webPhone := "+5511966667777"
+		webContactID := seedContactWithIdentity(t, ctx, pool, wsID, "whatsapp", webPhone)
+		_, err = rec.Inbound(ctx, wsID, activity.InboundTurn{
+			Chat:     activity.ChatOf(connWeb, webContactID).WithChannel("whatsapp"),
+			UID:      "wamid.web.exp.1",
+			SenderID: webPhone,
+			Body:     "Web chat",
+			Channel:  "whatsapp",
+			At:       baseNow.Add(-23*time.Hour - 30*time.Minute),
+		})
+		if err != nil {
+			t.Fatalf("Inbound on web chat: %v", err)
+		}
+
+		claimed, err := rec.ClaimExpiring(ctx, baseNow, 1*time.Hour, 50)
+		if err != nil {
+			t.Fatalf("ClaimExpiring 1 failed: %v", err)
+		}
+		var found *activity.ExpiringChat
+		for i := range claimed {
+			if claimed[i].WorkspaceID == wsID {
+				if claimed[i].ChatID == inRes.Chat.ID {
+					found = &claimed[i]
+				} else {
+					t.Fatalf("unexpected chat claimed in workspace: %+v", claimed[i])
+				}
+			}
+		}
+		if found == nil {
+			t.Fatalf("expected chat %s to be claimed, got %+v", inRes.Chat.ID, claimed)
+		}
+		if found.ContactID != expContactID || found.ConnectionID != connA || found.RecipientPhone != expPhone || found.Channel != "whatsapp_cloud" {
+			t.Fatalf("unexpected ExpiringChat fields: %+v", *found)
+		}
+
+		// Second ClaimExpiring call in same window must NOT re-claim
+		claimed2, err := rec.ClaimExpiring(ctx, baseNow.Add(time.Minute), 1*time.Hour, 50)
+		if err != nil {
+			t.Fatalf("ClaimExpiring 2 failed: %v", err)
+		}
+		for _, c := range claimed2 {
+			if c.ChatID == inRes.Chat.ID {
+				t.Fatalf("expected chat %s not to be claimed a second time in same window", inRes.Chat.ID)
+			}
+		}
+
+		// New Inbound turn extends window and resets notified_expiring_at = NULL
+		newInAt := baseNow.Add(10 * time.Minute)
+		_, err = rec.Inbound(ctx, wsID, activity.InboundTurn{
+			Chat:     activity.ChatID(inRes.Chat.ID),
+			UID:      "wamid.exp.2",
+			SenderID: expPhone,
+			Body:     "Renewing window",
+			Channel:  "whatsapp_cloud",
+			At:       newInAt,
+		})
+		if err != nil {
+			t.Fatalf("Inbound renewal failed: %v", err)
+		}
+
+		// 23h30m after newInAt, ClaimExpiring claims the renewed window again
+		futureNow := newInAt.Add(23*time.Hour + 30*time.Minute)
+		claimed3, err := rec.ClaimExpiring(ctx, futureNow, 1*time.Hour, 50)
+		if err != nil {
+			t.Fatalf("ClaimExpiring 3 failed: %v", err)
+		}
+		renewedFound := false
+		for _, c := range claimed3 {
+			if c.ChatID == inRes.Chat.ID {
+				renewedFound = true
+			}
+		}
+		if !renewedFound {
+			t.Fatalf("expected renewed window for chat %s to be claimed again", inRes.Chat.ID)
+		}
+	})
 }
 
 func TestStatusPredicate_ParityWithDomainEffectiveStatus(t *testing.T) {

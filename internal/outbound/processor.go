@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/repository"
-	"github.com/pablojhp.pergo/internal/session"
 )
 
 // OutboundProcessor defines the port for outbound message ingestion.
@@ -50,7 +50,6 @@ type Processor struct {
 	resolver         RouteResolver
 	publisher        Publisher
 	mediaEngine      media.Engine
-	windowChecker    *session.WindowChecker
 	templateRepo     *repository.WABATemplateRepository
 	chatRepo         *repository.ChatRepository
 	contactRepo      *repository.ContactRepository
@@ -66,12 +65,14 @@ func NewProcessor(
 	resolver RouteResolver,
 	publisher Publisher,
 ) *Processor {
-	return &Processor{
+	p := &Processor{
 		tracker:     tracker,
 		mediaEngine: mediaEngine,
 		resolver:    resolver,
 		publisher:   publisher,
 	}
+	p.rebuildDefaultActivity()
+	return p
 }
 
 // SetActivity configures the Chat Activity recorder used to record outbound turns.
@@ -87,13 +88,18 @@ func (p *Processor) rebuildDefaultActivity() {
 	}
 	if p.chatRepo != nil && p.chatRepo.Pool() != nil {
 		p.activity = activity.New(p.chatRepo.Pool(), p.publisher, p.debouncer, nil)
+		return
 	}
-}
-
-// SetWindowChecker attaches a WindowChecker for session window verification.
-func (p *Processor) SetWindowChecker(w *session.WindowChecker) *Processor {
-	p.windowChecker = w
-	return p
+	if p.contactRepo != nil && p.contactRepo.Pool() != nil {
+		p.activity = activity.New(p.contactRepo.Pool(), p.publisher, p.debouncer, nil)
+		return
+	}
+	if p.resolver != nil {
+		if pooler, ok := p.resolver.(interface{ Pool() *pgxpool.Pool }); ok && pooler != nil && pooler.Pool() != nil {
+			p.activity = activity.New(pooler.Pool(), p.publisher, p.debouncer, nil)
+			return
+		}
+	}
 }
 
 // SetTemplateRepository attaches a WABATemplateRepository for template validation.
@@ -112,6 +118,7 @@ func (p *Processor) SetChatRepository(r *repository.ChatRepository) *Processor {
 // SetContactRepository configures the ContactRepository for recipient profile resolution.
 func (p *Processor) SetContactRepository(r *repository.ContactRepository) *Processor {
 	p.contactRepo = r
+	p.rebuildDefaultActivity()
 	return p
 }
 
@@ -227,69 +234,6 @@ func (p *Processor) Ingest(
 				return nil, &RouteError{
 					Message: "failed to resolve connection route by slug",
 					Err:     err,
-				}
-			}
-		}
-	}
-
-	// 4.4 Smart Session Window Fallback & Strict Service Window Enforcement (WABA freeform messages only)
-	var windowStatus *session.WindowStatus
-	if req.TemplateName == "" && conn.Channel == "whatsapp_cloud" && p.windowChecker != nil {
-		sessKey := domain.SessionKey{
-			WorkspaceID:       workspaceID,
-			RecipientPhone:    req.To,
-			Channel:           "whatsapp_cloud",
-			RecipientIdentity: conn.SenderIdentity,
-		}
-		s, wErr := p.windowChecker.IsWindowOpen(ctx, sessKey, 0)
-		if wErr != nil {
-			slog.Warn("outbound processor: window checker error", "error", wErr, "trace_id", traceID)
-		} else {
-			windowStatus = s
-		}
-	}
-
-	if req.TemplateName == "" && conn.Channel == "whatsapp_cloud" && windowStatus != nil && !windowStatus.Open {
-		if req.StrictServiceWindow && p.activity == nil {
-			return nil, &ValidationError{
-				Response: &domain.ErrorResponse{
-					Code:    "SESSION_WINDOW_EXPIRED",
-					Message: "free-form message blocked: 24h customer service window is closed; use an approved WABA template",
-				},
-				Err: &session.SessionWindowError{
-					Status: windowStatus,
-					Source: "ingestion",
-				},
-			}
-		} else if !req.StrictServiceWindow {
-			var config struct {
-				DefaultTemplateName     string `json:"default_template_name"`
-				DefaultTemplateLanguage string `json:"default_template_language"`
-			}
-			_ = json.Unmarshal(conn.Credentials, &config)
-
-			if config.DefaultTemplateName != "" {
-				req.TemplateName = config.DefaultTemplateName
-				req.Language = config.DefaultTemplateLanguage
-				if req.Language == "" {
-					req.Language = "en_US"
-				}
-				req.Components = []domain.TemplateComponent{
-					{
-						Type: "body",
-						Parameters: []domain.TemplateParameter{
-							{
-								Type: "text",
-								Text: req.Body,
-							},
-						},
-					},
-				}
-				req.Body = ""
-			} else {
-				return nil, &session.SessionWindowError{
-					Status: windowStatus,
-					Source: "ingestion",
 				}
 			}
 		}
@@ -412,7 +356,7 @@ func (p *Processor) Ingest(
 	}
 
 	if p.activity != nil && conn != nil {
-		if err := p.recordOutboundTurn(ctx, workspaceID, traceID, req, conn, qMsg, windowStatus); err != nil {
+		if err := p.recordOutboundTurn(ctx, workspaceID, traceID, req, conn, qMsg); err != nil {
 			return nil, err
 		}
 	}
@@ -451,7 +395,6 @@ func (p *Processor) recordOutboundTurn(
 	req *domain.CreateMessageRequest,
 	conn *repository.Connection,
 	qMsg *domain.QueueMessage,
-	windowStatus *session.WindowStatus,
 ) error {
 	senderName := strings.TrimSpace(req.SenderName)
 	if senderName == "" && req.Metadata != nil {
@@ -478,60 +421,70 @@ func (p *Processor) recordOutboundTurn(
 		}
 	}
 
-	var windowOpen *bool
-	if windowStatus != nil && (!windowStatus.ExpiresAt.IsZero() || windowStatus.Open) {
-		open := windowStatus.Open
-		windowOpen = &open
-	}
+	isTemplate := strings.TrimSpace(qMsg.TemplateName) != "" || strings.EqualFold(strings.TrimSpace(qMsg.Type), "template")
 
 	var ref activity.ChatRef
 	if req.ChatID != nil && *req.ChatID != uuid.Nil {
 		ref = activity.ChatID(*req.ChatID).WithChannel(conn.Channel)
+	} else if conn.Channel == "whatsapp_cloud" && !isTemplate {
+		// Read-only ChatAt: never creates a Contact or Chat when none exists.
+		ref = activity.ChatAt(conn.ID, qMsg.To).WithChannel(conn.Channel)
+	} else if p.contactRepo != nil && qMsg.To != "" {
+		contact, cErr := p.contactRepo.ResolveContact(ctx, workspaceID, conn.Channel, qMsg.To, "", "", qMsg.To)
+		if cErr == nil && contact != nil && contact.ID != uuid.Nil {
+			ref = activity.ChatOf(conn.ID, contact.ID).WithChannel(conn.Channel)
+		} else {
+			ref = activity.ChatAt(conn.ID, qMsg.To).WithChannel(conn.Channel)
+		}
 	} else {
 		ref = activity.ChatAt(conn.ID, qMsg.To).WithChannel(conn.Channel)
 	}
 
+	uid := traceID
+	if uid == "" {
+		uid = uuid.NewString()
+	}
 	turn := activity.OutboundTurn{
-		Chat:                ref,
-		UID:                 traceID,
-		SenderType:          senderType,
-		SenderName:          senderName,
-		SenderID:            conn.SenderIdentity,
-		ReplyToUID:          replyToUID,
-		Body:                qMsg.Body,
-		Media:               qMsg.Media,
-		Product:             qMsg.Product,
-		TemplateName:        qMsg.TemplateName,
-		Language:            qMsg.Language,
-		MessageType:         qMsg.Type,
-		Channel:             conn.Channel,
-		To:                  qMsg.To,
-		Metadata:            req.Metadata,
-		StrictServiceWindow: req.StrictServiceWindow,
-		WindowOpen:          windowOpen,
-		At:                  qMsg.QueuedAt,
+		Chat:         ref,
+		UID:          uid,
+		SenderType:   senderType,
+		SenderName:   senderName,
+		SenderID:     conn.SenderIdentity,
+		ReplyToUID:   replyToUID,
+		Body:         qMsg.Body,
+		Media:        qMsg.Media,
+		Product:      qMsg.Product,
+		TemplateName: qMsg.TemplateName,
+		Language:     qMsg.Language,
+		MessageType:  qMsg.Type,
+		Channel:      conn.Channel,
+		To:           qMsg.To,
+		Metadata:     req.Metadata,
+		At:           qMsg.QueuedAt,
 	}
 
 	_, err := p.activity.Outbound(ctx, workspaceID, turn)
 	if errors.Is(err, activity.ErrChatNotFound) && req.ChatID != nil && qMsg.To != "" {
-		turn.Chat = activity.ChatAt(conn.ID, qMsg.To).WithChannel(conn.Channel)
+		if conn.Channel == "whatsapp_cloud" && !isTemplate {
+			turn.Chat = activity.ChatAt(conn.ID, qMsg.To).WithChannel(conn.Channel)
+		} else if p.contactRepo != nil {
+			if contact, cErr := p.contactRepo.ResolveContact(ctx, workspaceID, conn.Channel, qMsg.To, "", "", qMsg.To); cErr == nil && contact != nil && contact.ID != uuid.Nil {
+				turn.Chat = activity.ChatOf(conn.ID, contact.ID).WithChannel(conn.Channel)
+			} else {
+				turn.Chat = activity.ChatAt(conn.ID, qMsg.To).WithChannel(conn.Channel)
+			}
+		} else {
+			turn.Chat = activity.ChatAt(conn.ID, qMsg.To).WithChannel(conn.Channel)
+		}
 		_, err = p.activity.Outbound(ctx, workspaceID, turn)
 	}
 	if err != nil {
-		if errors.Is(err, activity.ErrServiceWindowClosed) {
-			return &ValidationError{
-				Response: &domain.ErrorResponse{
-					Code:    "SESSION_WINDOW_EXPIRED",
-					Message: "free-form message blocked: 24h customer service window is closed; use an approved WABA template",
-				},
-				Err: &session.SessionWindowError{
-					Status: windowStatus,
-					Source: "ingestion",
-				},
-			}
+		var tmplErr *domain.TemplateRequiredError
+		if errors.As(err, &tmplErr) {
+			return tmplErr
 		}
-		if req.StrictServiceWindow {
-			return err
+		if errors.Is(err, activity.ErrChatNotFound) && p.contactRepo == nil {
+			return nil
 		}
 		slog.Error("outbound processor: failed to record chat activity", "error", err, "trace_id", traceID)
 	}

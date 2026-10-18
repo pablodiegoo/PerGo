@@ -187,9 +187,10 @@ func TestInboundProcessor_Process(t *testing.T) {
 	ctx := context.Background()
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
 
 	// Create test workspace
 	wsName := "inbound_proc_test_" + uuid.New().String()
@@ -206,7 +207,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -243,13 +244,13 @@ func TestInboundProcessor_Process(t *testing.T) {
 			t.Errorf("got payload channel %q, want %q", payload.Channel, "telegram")
 		}
 
-		// Verify Recipient Session
-		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, "user-chat-99", "telegram", "@test_bot"))
-		if err != nil {
-			t.Fatalf("failed to get recipient session: %v", err)
+		// Verify Chat Service Window was opened on chats
+		snap, exists, err := act.Snapshot(ctx, ws.ID, activity.ChatAt(uuid.Nil, "user-chat-99").WithChannel("telegram"))
+		if err != nil || !exists {
+			t.Fatalf("failed to snapshot chat: exists=%v err=%v", exists, err)
 		}
-		if sess.RecipientPhone != "user-chat-99" {
-			t.Errorf("got session recipient %q, want %q", sess.RecipientPhone, "user-chat-99")
+		if snap.ServiceWindowExpiresAt == nil {
+			t.Errorf("expected ServiceWindowExpiresAt to be populated on chat")
 		}
 	})
 
@@ -258,7 +259,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -297,7 +298,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -353,7 +354,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
 		// Create a synthetic WAV or Ogg audio byte payload
 		sine := make([]int16, 16000) // 1 second at 16kHz
@@ -428,22 +429,34 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 	})
 
+	seedPriorOutbound := func(t *testing.T, recipient string, outboundTime time.Time) {
+		t.Helper()
+		contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", recipient, "", "", recipient)
+		if err != nil {
+			t.Fatalf("failed to resolve contact: %v", err)
+		}
+		chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, nil, contact.ID)
+		if err != nil {
+			t.Fatalf("failed to create chat: %v", err)
+		}
+		if err := act.TouchOutbound(ctx, ws.ID, activity.ChatID(chat.ID), outboundTime); err != nil {
+			t.Fatalf("failed to seed outbound timestamp on chat: %v", err)
+		}
+	}
+
 	t.Run("Response latency and timing telemetry extracted from prior outbound message", func(t *testing.T) {
 		pub := &fakePublisher{}
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
 		recipient := "+5511999991111"
 		senderIdentity := "+5511888882222"
 		outboundTime := time.Now().UTC().Add(-2500 * time.Millisecond)
 
-		// Seed prior outbound message
-		err := sessRepo.RecordOutbound(ctx, domain.NewSessionKey(ws.ID, recipient, "whatsapp_cloud", senderIdentity), outboundTime)
-		if err != nil {
-			t.Fatalf("failed to seed outbound session: %v", err)
-		}
+		// Seed prior outbound message on Chat
+		seedPriorOutbound(t, recipient, outboundTime)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -488,17 +501,14 @@ func TestInboundProcessor_Process(t *testing.T) {
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
 		recipient := "+5511999992222"
 		senderIdentity := "+5511888883333"
 		outboundTime := time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC)
 		occurredAt := time.Date(2026, 8, 28, 10, 0, 3, 500000000, time.UTC) // exactly 3500ms later
 
-		err := sessRepo.RecordOutbound(ctx, domain.NewSessionKey(ws.ID, recipient, "whatsapp_cloud", senderIdentity), outboundTime)
-		if err != nil {
-			t.Fatalf("failed to seed outbound session: %v", err)
-		}
+		seedPriorOutbound(t, recipient, outboundTime)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -544,17 +554,14 @@ func TestInboundProcessor_Process(t *testing.T) {
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
 		recipient := "+5511999992223"
 		senderIdentity := "+5511888883334"
 		outboundTime := time.Date(2026, 8, 28, 10, 0, 0, 500000000, time.UTC)
 		occurredAt := time.Date(2026, 8, 28, 10, 0, 0, 0, time.UTC) // 500ms before outboundTime due to provider clock skew
 
-		err := sessRepo.RecordOutbound(ctx, domain.NewSessionKey(ws.ID, recipient, "whatsapp_cloud", senderIdentity), outboundTime)
-		if err != nil {
-			t.Fatalf("failed to seed outbound session: %v", err)
-		}
+		seedPriorOutbound(t, recipient, outboundTime)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -597,7 +604,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -647,7 +654,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		me := &fakeMediaEngine{}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -689,7 +696,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 
 		pub2 := &fakePublisher{}
-		proc2 := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub2, aud, sessRepo, contactRepo, dispatchRepo, nil)
+		proc2 := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub2, aud, contactRepo, dispatchRepo, nil)
 		event.MessageID = "test-pii-opt-in" // fresh message ID to bypass dedup
 
 		err = proc2.Process(ctx, event)
@@ -721,7 +728,7 @@ func TestInboundProcessor_Process(t *testing.T) {
 		}
 		aud := &fakeAuditWriter{}
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
 		event := &inbound.InboundEvent{
 			WorkspaceID: ws.ID,
@@ -766,7 +773,6 @@ func TestProcess_StatusUpdate(t *testing.T) {
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 
 	ws, err := wsRepo.Create(ctx, "status_update_test_ws_"+uuid.New().String())
@@ -806,7 +812,7 @@ func TestProcess_StatusUpdate(t *testing.T) {
 	me := &fakeMediaEngine{}
 	aud := &fakeAuditWriter{}
 
-	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
 	event := &inbound.InboundEvent{
 		WorkspaceID: ws.ID,
@@ -889,7 +895,6 @@ func TestInboundProcessor_ChatwootSyncer(t *testing.T) {
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 
@@ -907,7 +912,7 @@ func TestInboundProcessor_ChatwootSyncer(t *testing.T) {
 		called: make(chan struct{}),
 	}
 	router := inbound.NewDefaultRouter(syncer, nil)
-	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, router)
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, router)
 
 	event := &inbound.InboundEvent{
 		WorkspaceID:  ws.ID,
@@ -950,7 +955,6 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 	ctx := context.Background()
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
@@ -981,7 +985,7 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 		)
 		defer deb.Close()
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, router)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, router)
 		proc.SetChatRepository(chatRepo)
 		proc.SetDebouncer(deb)
 
@@ -1072,7 +1076,7 @@ func TestInboundProcessor_BotCooldown(t *testing.T) {
 		)
 		defer deb.Close()
 
-		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, router)
+		proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, router)
 		proc.SetChatRepository(chatRepo)
 		proc.SetDebouncer(deb)
 
@@ -1123,9 +1127,9 @@ func TestInboundProcessor_WhatsAppCloudSessionTracking(t *testing.T) {
 	ctx := context.Background()
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
 
 	ws, err := wsRepo.Create(ctx, "waba_session_test_ws_"+uuid.New().String())
 	if err != nil {
@@ -1136,16 +1140,18 @@ func TestInboundProcessor_WhatsAppCloudSessionTracking(t *testing.T) {
 	pub := &fakePublisher{}
 	me := &fakeMediaEngine{}
 	aud := &fakeAuditWriter{}
-	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
-	t.Run("records standard 24h recipient session", func(t *testing.T) {
+	t.Run("records standard 24h service window on chat", func(t *testing.T) {
+		before := time.Now().UTC()
 		event := &inbound.InboundEvent{
-			WorkspaceID: ws.ID,
-			MessageID:   "wamid.standard_sess_1",
-			Channel:     "whatsapp_cloud",
-			From:        "5511999990001",
-			To:          "+5511888880001",
-			Body:        "Hi there",
+			WorkspaceID:    ws.ID,
+			MessageID:      "wamid.standard_sess_1",
+			Channel:        "whatsapp_cloud",
+			From:           "5511999990001",
+			To:             "+5511888880001",
+			Body:           "Hi there",
+			EntryPointType: domain.EntryPointStandard,
 			Metadata: map[string]string{
 				"entry_point_type": "standard",
 			},
@@ -1156,32 +1162,31 @@ func TestInboundProcessor_WhatsAppCloudSessionTracking(t *testing.T) {
 			t.Fatalf("Process failed: %v", err)
 		}
 
-		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, "5511999990001", "whatsapp_cloud", "+5511888880001"))
-		if err != nil {
-			t.Fatalf("failed to retrieve recipient session: %v", err)
+		snap, exists, err := act.Snapshot(ctx, ws.ID, activity.ChatAt(uuid.Nil, "5511999990001").WithChannel("whatsapp_cloud"))
+		if err != nil || !exists {
+			t.Fatalf("failed to snapshot chat: exists=%v err=%v", exists, err)
 		}
-		if sess.RecipientPhone != "5511999990001" {
-			t.Errorf("expected RecipientPhone 5511999990001, got %s", sess.RecipientPhone)
+		if snap.EntryPointType != domain.EntryPointStandard {
+			t.Errorf("expected EntryPointType standard, got %s", snap.EntryPointType)
 		}
-		if sess.RecipientIdentity != "+5511888880001" {
-			t.Errorf("expected RecipientIdentity +5511888880001, got %s", sess.RecipientIdentity)
+		if snap.ServiceWindowExpiresAt == nil {
+			t.Fatalf("expected ServiceWindowExpiresAt to be populated")
 		}
-		if sess.EntryPointType != "standard" {
-			t.Errorf("expected EntryPointType standard, got %s", sess.EntryPointType)
-		}
-		if sess.LastInboundAt.IsZero() || time.Since(sess.LastInboundAt) > 10*time.Second {
-			t.Errorf("expected LastInboundAt to be recent, got %v", sess.LastInboundAt)
+		if snap.ServiceWindowExpiresAt.Before(before.Add(23*time.Hour)) || snap.ServiceWindowExpiresAt.After(before.Add(25*time.Hour)) {
+			t.Errorf("expected ~24h window expiration, got %v", snap.ServiceWindowExpiresAt)
 		}
 	})
 
-	t.Run("records ctwa 72h recipient session", func(t *testing.T) {
+	t.Run("records ctwa 72h service window on chat", func(t *testing.T) {
+		before := time.Now().UTC()
 		event := &inbound.InboundEvent{
-			WorkspaceID: ws.ID,
-			MessageID:   "wamid.ctwa_sess_1",
-			Channel:     "whatsapp_cloud",
-			From:        "5511999990002",
-			To:          "+5511888880001",
-			Body:        "Clicked ad",
+			WorkspaceID:    ws.ID,
+			MessageID:      "wamid.ctwa_sess_1",
+			Channel:        "whatsapp_cloud",
+			From:           "5511999990002",
+			To:             "+5511888880001",
+			Body:           "Clicked ad",
+			EntryPointType: domain.EntryPointCTWA,
 			Metadata: map[string]string{
 				"entry_point_type": "ctwa",
 			},
@@ -1192,12 +1197,18 @@ func TestInboundProcessor_WhatsAppCloudSessionTracking(t *testing.T) {
 			t.Fatalf("Process failed: %v", err)
 		}
 
-		sess, err := sessRepo.Get(ctx, domain.NewSessionKey(ws.ID, "5511999990002", "whatsapp_cloud", "+5511888880001"))
-		if err != nil {
-			t.Fatalf("failed to retrieve recipient session: %v", err)
+		snap, exists, err := act.Snapshot(ctx, ws.ID, activity.ChatAt(uuid.Nil, "5511999990002").WithChannel("whatsapp_cloud"))
+		if err != nil || !exists {
+			t.Fatalf("failed to snapshot chat: exists=%v err=%v", exists, err)
 		}
-		if sess.EntryPointType != "ctwa" {
-			t.Errorf("expected EntryPointType ctwa, got %s", sess.EntryPointType)
+		if snap.EntryPointType != domain.EntryPointCTWA {
+			t.Errorf("expected EntryPointType ctwa, got %s", snap.EntryPointType)
+		}
+		if snap.ServiceWindowExpiresAt == nil {
+			t.Fatalf("expected ServiceWindowExpiresAt to be populated")
+		}
+		if snap.ServiceWindowExpiresAt.Before(before.Add(71*time.Hour)) || snap.ServiceWindowExpiresAt.After(before.Add(73*time.Hour)) {
+			t.Errorf("expected ~72h window expiration, got %v", snap.ServiceWindowExpiresAt)
 		}
 	})
 }
@@ -1209,7 +1220,6 @@ func TestInboundProcessor_GroupMessageProcessing(t *testing.T) {
 	ctx := context.Background()
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 
@@ -1227,7 +1237,7 @@ func TestInboundProcessor_GroupMessageProcessing(t *testing.T) {
 	}
 	aud := &fakeAuditWriter{}
 
-	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
 	groupJID := "120363024823904@g.us"
 	participantJID := "5511999991234@s.whatsapp.net"
@@ -1337,7 +1347,6 @@ func TestInboundProcessor_GroupContactResolution_DistinctGroupsAndIdempotent(t *
 	ctx := context.Background()
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 
@@ -1348,7 +1357,7 @@ func TestInboundProcessor_GroupContactResolution_DistinctGroupsAndIdempotent(t *
 	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
 
 	pub := &fakePublisher{}
-	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, pub, nil, sessRepo, contactRepo, dispatchRepo, nil)
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, pub, nil, contactRepo, dispatchRepo, nil)
 
 	group1JID := "120363024823901@g.us"
 	group2JID := "120363024823902@g.us"
@@ -1469,7 +1478,6 @@ func TestInboundProcessor_GroupMessage_BypassesTypebot_RoutesToChatwoot(t *testi
 	ctx := context.Background()
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 
@@ -1484,7 +1492,7 @@ func TestInboundProcessor_GroupMessage_BypassesTypebot_RoutesToChatwoot(t *testi
 	tbForwarder := &spyTypebotForwarder{invoked: make(chan struct{})}
 
 	router := inbound.NewDefaultRouter(cwSyncer, tbForwarder)
-	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, pub, nil, sessRepo, contactRepo, dispatchRepo, router)
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, pub, nil, contactRepo, dispatchRepo, router)
 
 	groupJID := "120363024823904@g.us"
 	connID := uuid.New()
@@ -1546,7 +1554,7 @@ func TestInboundProcessor_GroupMessage_BypassesTypebot_RoutesToChatwoot(t *testi
 	cwSyncer2 := &fakeChatwootSyncer{called: make(chan struct{})}
 	tbForwarder2 := &spyTypebotForwarder{invoked: make(chan struct{})}
 	router2 := inbound.NewDefaultRouter(cwSyncer2, tbForwarder2)
-	proc2 := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, pub, nil, sessRepo, contactRepo, dispatchRepo, router2)
+	proc2 := inbound.NewInboundProcessor(dedupRepo, wsRepo, nil, pub, nil, contactRepo, dispatchRepo, router2)
 
 	directEv := &inbound.InboundEvent{
 		WorkspaceID:  ws.ID,
@@ -1591,7 +1599,6 @@ func TestInboundProcessor_InteractivePayloads_DomainEvents(t *testing.T) {
 	ctx := context.Background()
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	dedupRepo := repository.NewInboundDedupRepository(pool)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	dispatchRepo := repository.NewMessageDispatchRepository(pool)
 
@@ -1604,7 +1611,7 @@ func TestInboundProcessor_InteractivePayloads_DomainEvents(t *testing.T) {
 	pub := &fakePublisher{}
 	me := &fakeMediaEngine{}
 	aud := &fakeAuditWriter{}
-	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, sessRepo, contactRepo, dispatchRepo, nil)
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, aud, contactRepo, dispatchRepo, nil)
 
 	t.Run("flow completion publishes flow.completed event and inbound_message", func(t *testing.T) {
 		pub.published = nil
@@ -1818,7 +1825,7 @@ func TestInboundProcessor_Close_StopsDebounceTimers(t *testing.T) {
 		}),
 	)
 
-	proc := inbound.NewInboundProcessor(nil, wsRepo, nil, pub, nil, nil, contactRepo, nil, nil)
+	proc := inbound.NewInboundProcessor(nil, wsRepo, nil, pub, nil, contactRepo, nil, nil)
 	proc.SetChatRepository(chatRepo)
 	proc.SetDebouncer(deb)
 
@@ -1847,7 +1854,7 @@ func TestInboundProcessor_Close_StopsDebounceTimers(t *testing.T) {
 	}
 
 	// Also verify Close() on a processor without a debouncer is a safe no-op
-	procNoDeb := inbound.NewInboundProcessor(nil, wsRepo, nil, nil, nil, nil, nil, nil, nil)
+	procNoDeb := inbound.NewInboundProcessor(nil, wsRepo, nil, nil, nil, nil, nil, nil)
 	procNoDeb.Close()
 }
 

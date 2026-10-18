@@ -15,7 +15,6 @@ import (
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
-	"github.com/pablojhp.pergo/internal/session"
 )
 
 type mockCompliancePublisher struct {
@@ -42,14 +41,12 @@ func TestWABAComplianceIntegration(t *testing.T) {
 	_, _ = pool.Exec(ctx, "DELETE FROM contacts")
 	_, _ = pool.Exec(ctx, "DELETE FROM waba_templates")
 	_, _ = pool.Exec(ctx, "DELETE FROM connections")
-	_, _ = pool.Exec(ctx, "DELETE FROM recipient_sessions")
 	_, _ = pool.Exec(ctx, "DELETE FROM workspaces")
 
 	wsRepo := repository.NewWorkspaceRepository(pool)
 	contactRepo := repository.NewContactRepository(pool)
 	chatRepo := repository.NewChatRepository(pool)
 	tmplRepo := repository.NewWABATemplateRepository(pool)
-	sessRepo := repository.NewRecipientSessionRepository(pool)
 
 	kek := make([]byte, 32)
 	copy(kek, []byte("dev-development-key-32-bytes-kek"))
@@ -114,15 +111,13 @@ func TestWABAComplianceIntegration(t *testing.T) {
 
 	// 4. Wire Processors & MCP Server
 	mockPub := &mockCompliancePublisher{}
-	windowChecker := session.NewWindowChecker(sessRepo)
 
 	outboundProc := outbound.NewProcessor(nil, nil, connRepo, mockPub)
-	outboundProc.SetWindowChecker(windowChecker)
 	outboundProc.SetTemplateRepository(tmplRepo)
 	outboundProc.SetChatRepository(chatRepo)
 	outboundProc.SetContactRepository(contactRepo)
 
-	inboundProc := inbound.NewInboundProcessor(nil, wsRepo, nil, mockPub, nil, sessRepo, contactRepo, nil, nil)
+	inboundProc := inbound.NewInboundProcessor(nil, wsRepo, nil, mockPub, nil, contactRepo, nil, nil)
 	inboundProc.SetChatRepository(chatRepo)
 
 	mcpServer := mcppkg.NewServer(
@@ -158,10 +153,6 @@ func TestWABAComplianceIntegration(t *testing.T) {
 	if err := chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &expiredAt); err != nil {
 		t.Fatalf("failed to update service window: %v", err)
 	}
-
-	// Also record expired session in sessRepo
-	sessKey := domain.NewSessionKey(ws.ID, customerPhone, "whatsapp_cloud", wabaSender)
-	_ = sessRepo.Upsert(ctx, sessKey, expiredAt.Add(-24*time.Hour), "standard")
 
 	// Verify initial state: Window is closed
 	chatCheck, err := chatRepo.GetChat(ctx, ws.ID, chat.ID)

@@ -188,28 +188,6 @@ func TestRepository_StrictTenantIsolation_RejectsNilUUID(t *testing.T) {
 		}
 	})
 
-	t.Run("RecipientSessionRepository", func(t *testing.T) {
-		repo := repository.NewRecipientSessionRepository(nil)
-
-		now := time.Now()
-		key := domain.SessionKey{WorkspaceID: nilID, RecipientPhone: "123", Channel: "whatsapp", RecipientIdentity: "456"}
-		if err := repo.Upsert(ctx, key, now, "standard"); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
-			t.Errorf("Upsert: expected ErrInvalidWorkspaceID, got %v", err)
-		}
-		if err := repo.RecordOutbound(ctx, key, now); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
-			t.Errorf("RecordOutbound: expected ErrInvalidWorkspaceID, got %v", err)
-		}
-		if _, err := repo.Get(ctx, key); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
-			t.Errorf("Get: expected ErrInvalidWorkspaceID, got %v", err)
-		}
-		if err := repo.MarkNotifiedExpiring(ctx, key, now); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
-			t.Errorf("MarkNotifiedExpiring: expected ErrInvalidWorkspaceID, got %v", err)
-		}
-		if err := repo.UpdateLastReadAt(ctx, key, now); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
-			t.Errorf("UpdateLastReadAt: expected ErrInvalidWorkspaceID, got %v", err)
-		}
-	})
-
 	t.Run("APIKeyRepository", func(t *testing.T) {
 		repo := repository.NewAPIKeyRepository(nil)
 

@@ -112,7 +112,7 @@ func TestInboundProcessor_ReactionHandling(t *testing.T) {
 	pub := &mockPublisher{}
 	whDisp := &mockReactionWebhookDispatcher{}
 
-	proc := inbound.NewInboundProcessor(nil, wsRepo, nil, pub, nil, nil, contactRepo, nil, nil)
+	proc := inbound.NewInboundProcessor(nil, wsRepo, nil, pub, nil, contactRepo, nil, nil)
 	proc.SetChatRepository(chatRepo)
 	proc.SetReactionWebhookDispatcher(whDisp)
 

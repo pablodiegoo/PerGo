@@ -34,7 +34,6 @@ type MessagePublisher interface {
 // InboxHandler holds dependencies for the conversational inbox.
 type InboxHandler struct {
 	Repo              *repository.AuditRepository
-	Sessions          *repository.RecipientSessionRepository
 	Workspaces        *repository.WorkspaceRepository
 	Connections       *repository.ConnectionRepository
 	Publisher         MessagePublisher
@@ -527,6 +526,10 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 		})
 	}
 	if err != nil {
+		var tmplErr *domain.TemplateRequiredError
+		if errors.As(err, &tmplErr) || errors.Is(err, chatpkg.ErrServiceWindowExpired) {
+			return c.HTML(http.StatusUnprocessableEntity, `<span class="text-amber-400">Janela de atendimento de 24h expirada. Envie um template aprovado para retomar o contato.</span>`)
+		}
 		return c.HTML(http.StatusInternalServerError, `<span class="text-red-400">Erro ao enviar mensagem: `+escapeHTML(err.Error())+`</span>`)
 	}
 
@@ -688,19 +691,11 @@ func (h *InboxHandler) NewMessageSend(c *echo.Context) error {
 		AuditEventType: "chat.message.sent",
 	})
 	if err != nil {
-		return c.String(http.StatusInternalServerError, "failed to enqueue message: "+err.Error())
-	}
-
-	// Upsert session to make sure it exists and registers sending
-	if h.Sessions != nil {
-		sessKey := domain.SessionKey{
-			WorkspaceID:       workspaceID,
-			RecipientPhone:    to,
-			Channel:           channel,
-			RecipientIdentity: senderIdentity,
+		var tmplErr *domain.TemplateRequiredError
+		if errors.As(err, &tmplErr) || errors.Is(err, chatpkg.ErrServiceWindowExpired) {
+			return c.String(http.StatusUnprocessableEntity, "Customer service window expired. Use a template to reach this contact.")
 		}
-		_ = h.Sessions.Upsert(ctx, sessKey, time.Now().UTC(), "standard")
-		_ = h.Sessions.UpdateLastReadAt(ctx, sessKey, time.Now().UTC())
+		return c.String(http.StatusInternalServerError, "failed to enqueue message: "+err.Error())
 	}
 
 	c.Response().Header().Set("HX-Trigger", `{"showToast":{"text":"Nova mensagem/template enviada com sucesso!"}}`)

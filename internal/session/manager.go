@@ -429,7 +429,7 @@ func (m *Manager) reconnectDevice(ctx context.Context, d *repository.Connection)
 	// Register session atomically
 	m.registry.Add(sess)
 
-	// Register event handler to update recipient_sessions on incoming messages
+	// Register event handler for incoming messages
 	m.registerEventHandler(wc, d, cancel)
 
 	// Start the client goroutine

@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -524,6 +525,219 @@ func TestApply_InboundTurn(t *testing.T) {
 
 		if next.Status != domain.ChatStatusOpen || next.SnoozedUntil != nil {
 			t.Fatalf("expected expired snooze to be normalized to open on AIChangeActivity, got status=%q snoozed=%v", next.Status, next.SnoozedUntil)
+		}
+	})
+
+	t.Run("CTWA inbound sets 72h window and subsequent standard inbound 1h later never shortens it", func(t *testing.T) {
+		state := domain.ChatState{
+			ID:          chatID,
+			WorkspaceID: wsID,
+			ContactID:   contactID,
+			Status:      domain.ChatStatusOpen,
+			AI:          domain.AIEngagement{Mode: domain.AIModeActive},
+		}
+
+		afterCTWA, _, _ := domain.Apply(state, domain.InboundTurn{
+			At:             t0,
+			UID:            "wamid.ctwa.1",
+			Body:           "Clicked your ad",
+			Channel:        "whatsapp_cloud",
+			EntryPointType: domain.EntryPointCTWA,
+		})
+
+		want72 := t0.Add(72 * time.Hour)
+		if afterCTWA.ServiceWindowExpiresAt == nil || !afterCTWA.ServiceWindowExpiresAt.Equal(want72) {
+			t.Fatalf("after CTWA ServiceWindowExpiresAt = %v, want %v", afterCTWA.ServiceWindowExpiresAt, want72)
+		}
+		if afterCTWA.EntryPointType != domain.EntryPointCTWA {
+			t.Fatalf("after CTWA EntryPointType = %q, want %q", afterCTWA.EntryPointType, domain.EntryPointCTWA)
+		}
+
+		// Standard message 1 hour later must not shorten the 72h CTWA window
+		afterStandard, _, _ := domain.Apply(afterCTWA, domain.InboundTurn{
+			At:             t0.Add(1 * time.Hour),
+			UID:            "wamid.std.2",
+			Body:           "Follow up",
+			Channel:        "whatsapp_cloud",
+			EntryPointType: domain.EntryPointStandard,
+		})
+
+		if afterStandard.ServiceWindowExpiresAt == nil || !afterStandard.ServiceWindowExpiresAt.Equal(want72) {
+			t.Fatalf("after standard 1h later ServiceWindowExpiresAt = %v, want preserved %v", afterStandard.ServiceWindowExpiresAt, want72)
+		}
+		if afterStandard.EntryPointType != domain.EntryPointCTWA {
+			t.Fatalf("after standard 1h later EntryPointType = %q, want preserved %q", afterStandard.EntryPointType, domain.EntryPointCTWA)
+		}
+	})
+
+	t.Run("OutboundActivity sets LastOutboundAt without modifying ServiceWindowExpiresAt", func(t *testing.T) {
+		state := domain.ChatState{
+			ID:          chatID,
+			WorkspaceID: wsID,
+			ContactID:   contactID,
+			Status:      domain.ChatStatusOpen,
+			AI:          domain.AIEngagement{Mode: domain.AIModeActive},
+		}
+
+		next, _, _ := domain.Apply(state, domain.OutboundActivity{
+			At:           t0,
+			UID:          "trace-tmpl-1",
+			SenderType:   domain.SenderTypeAIAgent,
+			TemplateName: "welcome",
+			Language:     "pt_BR",
+			MessageType:  "template",
+			Channel:      "whatsapp_cloud",
+		})
+
+		if next.ServiceWindowExpiresAt != nil {
+			t.Fatalf("expected OutboundActivity not to open service window, got %v", next.ServiceWindowExpiresAt)
+		}
+		if next.LastOutboundAt == nil || !next.LastOutboundAt.Equal(t0) {
+			t.Fatalf("expected LastOutboundAt = %v, got %v", t0, next.LastOutboundAt)
+		}
+	})
+}
+
+func TestExtendServiceWindow(t *testing.T) {
+	t0 := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	prev72 := t0.Add(72 * time.Hour)
+	prev10 := t0.Add(10 * time.Hour)
+
+	tests := []struct {
+		name       string
+		prev       *time.Time
+		at         time.Time
+		entryPoint string
+		want       time.Time
+	}{
+		{
+			name:       "standard entry point with no prior window gives 24h",
+			prev:       nil,
+			at:         t0,
+			entryPoint: "standard",
+			want:       t0.Add(24 * time.Hour),
+		},
+		{
+			name:       "empty entry point defaults to 24h",
+			prev:       nil,
+			at:         t0,
+			entryPoint: "",
+			want:       t0.Add(24 * time.Hour),
+		},
+		{
+			name:       "ctwa entry point gives 72h",
+			prev:       nil,
+			at:         t0,
+			entryPoint: "ctwa",
+			want:       t0.Add(72 * time.Hour),
+		},
+		{
+			name:       "standard turn 1h after ctwa never shortens 72h window",
+			prev:       &prev72,
+			at:         t0.Add(1 * time.Hour),
+			entryPoint: "standard",
+			want:       prev72,
+		},
+		{
+			name:       "standard turn extends shorter prior window",
+			prev:       &prev10,
+			at:         t0,
+			entryPoint: "standard",
+			want:       t0.Add(24 * time.Hour),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := domain.ExtendServiceWindow(tc.prev, tc.at, tc.entryPoint)
+			if !got.Equal(tc.want) {
+				t.Fatalf("ExtendServiceWindow(%v, %v, %q) = %v, want %v", tc.prev, tc.at, tc.entryPoint, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWindowAndRequireOpenWindow(t *testing.T) {
+	t0 := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	futureExp := t0.Add(20 * time.Hour)
+	pastExp := t0.Add(-2 * time.Hour)
+
+	t.Run("no chat (exists=false) on whatsapp_cloud is closed and requires template", func(t *testing.T) {
+		w := domain.Window(domain.ChatState{Channel: "whatsapp_cloud"}, false, t0)
+		if w.Open {
+			t.Fatalf("expected closed window when exists=false, got %+v", w)
+		}
+		err := domain.RequireOpenWindow(w, "text")
+		var tmplErr *domain.TemplateRequiredError
+		if !errors.As(err, &tmplErr) {
+			t.Fatalf("expected *domain.TemplateRequiredError, got %T: %v", err, err)
+		}
+		if err := domain.RequireOpenWindow(w, "template"); err != nil {
+			t.Fatalf("expected template message to be exempt, got %v", err)
+		}
+	})
+
+	t.Run("existing chat with nil ServiceWindowExpiresAt is closed and requires template", func(t *testing.T) {
+		w := domain.Window(domain.ChatState{Channel: "whatsapp_cloud"}, true, t0)
+		if w.Open {
+			t.Fatalf("expected closed window when ServiceWindowExpiresAt is nil, got %+v", w)
+		}
+		var tmplErr *domain.TemplateRequiredError
+		if err := domain.RequireOpenWindow(w, "text"); !errors.As(err, &tmplErr) {
+			t.Fatalf("expected *domain.TemplateRequiredError, got %T: %v", err, err)
+		}
+	})
+
+	t.Run("existing chat with future ServiceWindowExpiresAt is open", func(t *testing.T) {
+		w := domain.Window(domain.ChatState{
+			Channel:                "whatsapp_cloud",
+			ServiceWindowExpiresAt: &futureExp,
+			EntryPointType:         domain.EntryPointCTWA,
+		}, true, t0)
+		if !w.Open {
+			t.Fatalf("expected open window, got %+v", w)
+		}
+		if w.WindowDuration != 72*time.Hour {
+			t.Fatalf("expected 72h duration for ctwa, got %v", w.WindowDuration)
+		}
+		if w.Remaining != 20*time.Hour {
+			t.Fatalf("expected 20h remaining, got %v", w.Remaining)
+		}
+		if err := domain.RequireOpenWindow(w, "text"); err != nil {
+			t.Fatalf("expected nil error for open window, got %v", err)
+		}
+	})
+
+	t.Run("existing chat with past ServiceWindowExpiresAt is closed for text and exempt for template", func(t *testing.T) {
+		w := domain.Window(domain.ChatState{
+			Channel:                "whatsapp_cloud",
+			ServiceWindowExpiresAt: &pastExp,
+			EntryPointType:         domain.EntryPointStandard,
+		}, true, t0)
+		if w.Open {
+			t.Fatalf("expected closed window, got %+v", w)
+		}
+		var tmplErr *domain.TemplateRequiredError
+		if err := domain.RequireOpenWindow(w, "text"); !errors.As(err, &tmplErr) {
+			t.Fatalf("expected *domain.TemplateRequiredError, got %T: %v", err, err)
+		}
+		if !tmplErr.Window.ExpiresAt.Equal(pastExp) {
+			t.Fatalf("expected ExpiresAt %v on TemplateRequiredError, got %v", pastExp, tmplErr.Window.ExpiresAt)
+		}
+		if err := domain.RequireOpenWindow(w, "template"); err != nil {
+			t.Fatalf("expected template message to be exempt, got %v", err)
+		}
+	})
+
+	t.Run("non-whatsapp_cloud channels are always exempt", func(t *testing.T) {
+		for _, ch := range []string{"whatsapp", "telegram"} {
+			w := domain.Window(domain.ChatState{Channel: ch}, false, t0)
+			if !w.Open {
+				t.Fatalf("expected channel %q to report open window, got %+v", ch, w)
+			}
+			if err := domain.RequireOpenWindow(w, "text"); err != nil {
+				t.Fatalf("expected channel %q to be exempt, got %v", ch, err)
+			}
 		}
 	})
 }
