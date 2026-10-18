@@ -81,8 +81,12 @@ The consolidated, deep module that orchestrates the entire campaign lifecycle, e
 _Avoid_: Bulk sender, campaign runner, batch pusher
 
 **Customer Service Window**:
-A rolling 24-hour (or 72-hour for Click-to-WhatsApp Ads) timeframe initiated by an inbound message from a contact to a specific WhatsApp Cloud connection. Freeform outbound messages are only permitted while this window is open; outside of it, only pre-approved Meta message templates may be sent unless a default template fallback is configured on the connection.
-_Avoid_: Session timer, 24h rule, chat timeout
+A rolling 24-hour (or 72-hour, per Entry Point Type) timeframe on a WhatsApp Cloud Chat, opened by the contact's latest inbound message; a new inbound message never shortens an already open window. Freeform outbound messages are only permitted while it is open; outside of it, only pre-approved Meta message templates may be sent.
+_Avoid_: Session timer, 24h rule, chat timeout, recipient session
+
+**Entry Point Type**:
+How a contact entered a conversation with a connection: `standard` (the contact wrote first organically) or `ctwa` (the contact arrived via a Click-to-WhatsApp Ad referral). It determines whether the Customer Service Window lasts 24 or 72 hours.
+_Avoid_: Referral flag, is_referral, entry source
 
 **Webhook Signature**:
 An HMAC-SHA256 digest generated using a workspace-scoped secret key and attached to outbound webhooks for cryptographic payload verification.
@@ -155,8 +159,12 @@ An active conversational thread between a Contact and a Connection within a Work
 _Avoid_: Conversation, ticket, thread, session
 
 **Chat Engine**:
-The consolidated module that orchestrates Chat lifecycle, triage, Internal Notes, Message Reactions, Chat Snooze expiration, Human Handoff Trigger, and conversational message dispatch across all transport adapters.
+The consolidated module that orchestrates Chat queries, triage, Internal Notes, Message Reactions, Draft Promotion, and conversational message dispatch across all transport adapters, relying on Chat Activity for every activity-driven state transition.
 _Avoid_: Inbox service, conversation manager, chat helper
+
+**Chat Activity**:
+The authoritative record of activity-driven Chat state transitions: inbound turns, outbound turns, Human Handoff Trigger, AI resume, and reopening on activity or Chat Snooze expiry. It is the only writer of that state.
+_Avoid_: Chat lifecycle, chat state, chat tracker
 
 **Internal Note**:
 A workspace-scoped private commentary attached to a Chat thread, invisible to external contacts, utilized for teammate collaboration and AI agent draft proposals.
@@ -167,12 +175,20 @@ An ephemeral emoji reaction attached to an inbound or outbound message identifie
 _Avoid_: Like, emoji badge, message feedback
 
 **Inbound Debounce Buffer**:
-A temporal sliding-window delay buffering rapid consecutive inbound messages from the same Contact into a single cohesive conversational event.
+A temporal sliding-window delay buffering rapid consecutive inbound messages on the same Chat into a single cohesive conversational event.
 _Avoid_: Message queue, delay timer, spam filter
 
 **Human Handoff Trigger**:
-An event-driven circuit breaker that immediately deactivates automated AI agents for a Chat when an authenticated human teammate sends a message.
+An event-driven circuit breaker that immediately suspends AI Engagement on a Chat whenever a message with Sender Type human agent is sent on it.
 _Avoid_: Bot pause, human override, manual takeover
+
+**AI Engagement**:
+Whether automated AI agents and integrations may act on a specific Chat: active, paused until a given time (after a Human Handoff Trigger or an explicit pause), or off until a teammate turns it back on. It belongs to the Chat, never to the Contact, so two Chats of the same Contact are engaged independently.
+_Avoid_: Bot active, bot state, AI disabled flag
+
+**Sender Type**:
+The kind of author of a Chat message: contact, human agent, AI agent, or system. Operator sessions author as human agents and API keys as AI agents unless they state otherwise.
+_Avoid_: Author role, message source, sender kind
 
 **Chat Snooze**:
 A temporal suspension state where an active Chat is hidden from the primary open inbox until a specified expiration timestamp or until a new Inbound Event arrives from the contact.

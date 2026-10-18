@@ -26,6 +26,8 @@ func (e *Engine) Summarize(ctx context.Context, workspaceID uuid.UUID, ref ChatR
 		return domain.ChatSynopsis{}, err
 	}
 
+	e.reopenIfSnoozeExpired(ctx, c.WorkspaceID, c)
+
 	if maxMessages <= 0 || maxMessages > 500 {
 		maxMessages = 50
 	}

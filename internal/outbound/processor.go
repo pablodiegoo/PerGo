@@ -440,171 +440,7 @@ func (p *Processor) Ingest(
 
 	// 5.5 Shared Team Inbox Tracking: Upsert Chat & Append Outbound ChatMessage
 	if p.chatRepo != nil && conn != nil {
-		var contact *domain.Contact
-		chat := preloadedChat
-
-		if p.contactRepo != nil {
-			if chat != nil && chat.ContactID != uuid.Nil {
-				contact, _ = p.contactRepo.GetByID(ctx, workspaceID, chat.ContactID)
-			}
-			if contact == nil && qMsg.To != "" {
-				contact, _ = p.contactRepo.ResolveContact(ctx, workspaceID, conn.Channel, qMsg.To, "", "", qMsg.To)
-			}
-		}
-
-		if chat == nil && contact != nil {
-			chat, _ = p.chatRepo.FindOrCreateChat(ctx, workspaceID, &conn.ID, contact.ID)
-		}
-
-		if chat != nil {
-			senderName := strings.TrimSpace(req.SenderName)
-			if senderName == "" && req.Metadata != nil {
-				senderName = strings.TrimSpace(req.Metadata["sender_name"])
-			}
-
-			rawSenderType := strings.TrimSpace(req.SenderType)
-			if rawSenderType == "" && req.Metadata != nil {
-				rawSenderType = strings.TrimSpace(req.Metadata["sender_type"])
-			}
-
-			senderType := domain.NormalizeSenderType(rawSenderType)
-			if senderType == "" {
-				if req.DisableAI {
-					senderType = domain.SenderTypeHumanAgent
-				} else if senderName != "" {
-					senderType = domain.SenderTypeAIAgent
-				} else {
-					senderType = domain.SenderTypeHumanAgent
-				}
-			}
-
-			var replyToUID *string
-			if req.ReplyToUID != nil && strings.TrimSpace(*req.ReplyToUID) != "" {
-				trimmed := strings.TrimSpace(*req.ReplyToUID)
-				replyToUID = &trimmed
-			} else if req.Metadata != nil {
-				if rUID := strings.TrimSpace(req.Metadata["reply_to_uid"]); rUID != "" {
-					replyToUID = &rUID
-				}
-			}
-
-			// Reopen snoozed or closed chat on outbound conversational activity
-			if chat.Status == domain.ChatStatusSnoozed || chat.Status == domain.ChatStatusClosed {
-				_ = p.chatRepo.UpdateChatStatus(ctx, workspaceID, chat.ID, string(domain.ChatStatusOpen))
-				chat.Status = domain.ChatStatusOpen
-				chat.SnoozedUntil = nil
-				if p.contactRepo != nil && contact != nil {
-					_ = p.contactRepo.ReopenThread(ctx, workspaceID, contact.ID)
-				}
-			}
-
-			shouldDisableAI := req.DisableAI || (req.Metadata != nil && req.Metadata["disable_ai"] == "true")
-			if shouldDisableAI {
-				_ = p.chatRepo.SetAIDisabled(ctx, workspaceID, chat.ID, true)
-				targetContactID := chat.ContactID
-				if contact != nil && contact.ID != uuid.Nil {
-					targetContactID = contact.ID
-				}
-				if p.contactRepo != nil && targetContactID != uuid.Nil {
-					now := qMsg.QueuedAt
-					_ = p.contactRepo.UpdateBotState(ctx, workspaceID, targetContactID, false, &now)
-				}
-				if p.debouncer != nil && targetContactID != uuid.Nil {
-					_ = p.debouncer.Cancel(ctx, workspaceID, targetContactID)
-				}
-
-				if p.publisher != nil {
-					handoffMap := map[string]interface{}{
-						"event":        "chat.handoff.human_takeover",
-						"workspace_id": workspaceID.String(),
-						"chat_id":      chat.ID.String(),
-						"contact_id":   targetContactID.String(),
-						"trace_id":     traceID,
-						"timestamp":    qMsg.QueuedAt.Format(time.RFC3339),
-					}
-					if senderName != "" {
-						handoffMap["sender_name"] = senderName
-					}
-					handoffPayload, _ := json.Marshal(handoffMap)
-					_ = p.publisher.Publish(ctx, "chat.handoff.human_takeover", handoffPayload, traceID)
-					_ = p.publisher.Publish(ctx, fmt.Sprintf("chat.handoff.%s", workspaceID.String()), handoffPayload, traceID)
-				}
-			}
-
-			_ = p.chatRepo.TouchLastMessageAt(ctx, workspaceID, chat.ID, qMsg.QueuedAt)
-
-			bodyText := qMsg.Body
-			if bodyText == "" && qMsg.TemplateName != "" {
-				if qMsg.Language != "" {
-					bodyText = fmt.Sprintf("[Template: %s (%s)]", qMsg.TemplateName, qMsg.Language)
-				} else {
-					bodyText = fmt.Sprintf("[Template: %s]", qMsg.TemplateName)
-				}
-			}
-
-			var mediaURL, mediaType *string
-			if qMsg.Media != nil {
-				if qMsg.Media.MediaURL != "" {
-					mediaURL = &qMsg.Media.MediaURL
-				}
-				if qMsg.Media.MediaType != "" {
-					mediaType = &qMsg.Media.MediaType
-				}
-			}
-
-			msgMetadata := make(map[string]interface{})
-			for k, v := range req.Metadata {
-				msgMetadata[k] = v
-			}
-			if conn.Channel != "" {
-				if _, ok := msgMetadata["channel"]; !ok {
-					msgMetadata["channel"] = conn.Channel
-				}
-			}
-			if conn.SenderIdentity != "" {
-				if _, ok := msgMetadata["sender_identity"]; !ok {
-					msgMetadata["sender_identity"] = conn.SenderIdentity
-				}
-			}
-			if qMsg.To != "" {
-				if _, ok := msgMetadata["to"]; !ok {
-					msgMetadata["to"] = qMsg.To
-				}
-			}
-			if qMsg.TemplateName != "" {
-				msgMetadata["template_name"] = qMsg.TemplateName
-				msgMetadata["language"] = qMsg.Language
-				msgMetadata["type"] = "template"
-			} else if qMsg.Type != "" {
-				if _, ok := msgMetadata["type"]; !ok {
-					msgMetadata["type"] = qMsg.Type
-				}
-			}
-			if qMsg.Product != nil {
-				if prodBytes, pErr := json.Marshal(qMsg.Product); pErr == nil {
-					msgMetadata["product_json"] = string(prodBytes)
-				}
-			}
-
-			chatMsg := &domain.ChatMessage{
-				ChatID:      chat.ID,
-				WorkspaceID: workspaceID,
-				UID:         traceID,
-				Direction:   domain.DirectionOutbound,
-				SenderType:  senderType,
-				SenderName:  senderName,
-				SenderID:    conn.SenderIdentity,
-				Body:        bodyText,
-				MediaURL:    mediaURL,
-				MediaType:   mediaType,
-				IsPrivate:   false,
-				Reactions:   []domain.Reaction{},
-				ReplyToUID:  replyToUID,
-				Metadata:    msgMetadata,
-				CreatedAt:   qMsg.QueuedAt,
-			}
-			_ = p.chatRepo.AddChatMessage(ctx, chatMsg)
-		}
+		p.recordOutboundChatActivity(ctx, workspaceID, traceID, req, conn, qMsg, preloadedChat)
 	}
 
 	// 6. Increment queue depth counter
@@ -614,3 +450,130 @@ func (p *Processor) Ingest(
 
 	return qMsg, nil
 }
+
+func (p *Processor) recordOutboundChatActivity(
+	ctx context.Context,
+	workspaceID uuid.UUID,
+	traceID string,
+	req *domain.CreateMessageRequest,
+	conn *repository.Connection,
+	qMsg *domain.QueueMessage,
+	preloadedChat *domain.Chat,
+) {
+	var contact *domain.Contact
+	chat := preloadedChat
+
+	if p.contactRepo != nil {
+		if chat != nil && chat.ContactID != uuid.Nil {
+			contact, _ = p.contactRepo.GetByID(ctx, workspaceID, chat.ContactID)
+		}
+		if contact == nil && qMsg.To != "" {
+			contact, _ = p.contactRepo.ResolveContact(ctx, workspaceID, conn.Channel, qMsg.To, "", "", qMsg.To)
+		}
+	}
+
+	if chat == nil && contact != nil {
+		chat, _ = p.chatRepo.FindOrCreateChat(ctx, workspaceID, &conn.ID, contact.ID)
+	}
+	if chat == nil {
+		return
+	}
+
+	senderName := strings.TrimSpace(req.SenderName)
+	if senderName == "" && req.Metadata != nil {
+		senderName = strings.TrimSpace(req.Metadata["sender_name"])
+	}
+
+	rawSenderType := strings.TrimSpace(req.SenderType)
+	if rawSenderType == "" && req.Metadata != nil {
+		rawSenderType = strings.TrimSpace(req.Metadata["sender_type"])
+	}
+
+	senderType := domain.NormalizeSenderType(rawSenderType)
+	if senderType == "" {
+		if req.DisableAI {
+			senderType = domain.SenderTypeHumanAgent
+		} else if senderName != "" {
+			senderType = domain.SenderTypeAIAgent
+		} else {
+			senderType = domain.SenderTypeHumanAgent
+		}
+	}
+
+	var replyToUID *string
+	if req.ReplyToUID != nil && strings.TrimSpace(*req.ReplyToUID) != "" {
+		trimmed := strings.TrimSpace(*req.ReplyToUID)
+		replyToUID = &trimmed
+	} else if req.Metadata != nil {
+		if rUID := strings.TrimSpace(req.Metadata["reply_to_uid"]); rUID != "" {
+			replyToUID = &rUID
+		}
+	}
+
+	// Reopen snoozed or closed chat on outbound conversational activity
+	if chat.Status == domain.ChatStatusSnoozed || chat.Status == domain.ChatStatusClosed {
+		_ = p.chatRepo.UpdateChatStatus(ctx, workspaceID, chat.ID, string(domain.ChatStatusOpen))
+		chat.Status = domain.ChatStatusOpen
+		chat.SnoozedUntil = nil
+		if p.contactRepo != nil && contact != nil {
+			_ = p.contactRepo.ReopenThread(ctx, workspaceID, contact.ID)
+		}
+	}
+
+	shouldDisableAI := req.DisableAI || (req.Metadata != nil && req.Metadata["disable_ai"] == "true")
+	if shouldDisableAI {
+		_ = p.chatRepo.SetAIDisabled(ctx, workspaceID, chat.ID, true)
+		targetContactID := chat.ContactID
+		if contact != nil && contact.ID != uuid.Nil {
+			targetContactID = contact.ID
+		}
+		if p.contactRepo != nil && targetContactID != uuid.Nil {
+			now := qMsg.QueuedAt
+			_ = p.contactRepo.UpdateBotState(ctx, workspaceID, targetContactID, false, &now)
+		}
+		if p.debouncer != nil && targetContactID != uuid.Nil {
+			_ = p.debouncer.Cancel(ctx, workspaceID, targetContactID)
+		}
+
+		if p.publisher != nil {
+			handoffMap := map[string]interface{}{
+				"event":        "chat.handoff.human_takeover",
+				"workspace_id": workspaceID.String(),
+				"chat_id":      chat.ID.String(),
+				"contact_id":   targetContactID.String(),
+				"trace_id":     traceID,
+				"timestamp":    qMsg.QueuedAt.Format(time.RFC3339),
+			}
+			if senderName != "" {
+				handoffMap["sender_name"] = senderName
+			}
+			handoffPayload, _ := json.Marshal(handoffMap)
+			_ = p.publisher.Publish(ctx, "chat.handoff.human_takeover", handoffPayload, traceID)
+			_ = p.publisher.Publish(ctx, fmt.Sprintf("chat.handoff.%s", workspaceID.String()), handoffPayload, traceID)
+		}
+	}
+
+	_ = p.chatRepo.TouchLastMessageAt(ctx, workspaceID, chat.ID, qMsg.QueuedAt)
+
+	chatMsg := domain.BuildOutboundChatMessage(domain.OutboundChatMessageParams{
+		ChatID:         chat.ID,
+		WorkspaceID:    workspaceID,
+		UID:            traceID,
+		SenderType:     senderType,
+		SenderName:     senderName,
+		SenderIdentity: conn.SenderIdentity,
+		To:             qMsg.To,
+		Channel:        conn.Channel,
+		Body:           qMsg.Body,
+		TemplateName:   qMsg.TemplateName,
+		Language:       qMsg.Language,
+		Type:           qMsg.Type,
+		Media:          qMsg.Media,
+		Product:        qMsg.Product,
+		ReplyToUID:     replyToUID,
+		Metadata:       req.Metadata,
+		CreatedAt:      qMsg.QueuedAt,
+	})
+	_ = p.chatRepo.AddChatMessage(ctx, chatMsg)
+}
+

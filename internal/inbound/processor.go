@@ -233,6 +233,13 @@ type Publisher interface {
 	Publish(ctx context.Context, subject string, data []byte, traceID string) error
 }
 
+// ContactStore defines the contact repository operations used by InboundProcessor.
+type ContactStore interface {
+	ResolveContact(ctx context.Context, workspaceID uuid.UUID, channel, senderIdentity, name, username, phone string) (*domain.Contact, error)
+	UpdateBotState(ctx context.Context, workspaceID, contactID uuid.UUID, botActive bool, pausedAt *time.Time) error
+	ReopenThread(ctx context.Context, workspaceID, contactID uuid.UUID) error
+}
+
 // InboundProcessor handles workspace verification, deduplication, PII checking,
 // S3 uploading, NATS publishing, and audit logging for all messaging channels.
 type InboundProcessor struct {
@@ -242,7 +249,7 @@ type InboundProcessor struct {
 	publisher                 Publisher
 	auditWriter               audit.Writer
 	recipientSessionRepo      *repository.RecipientSessionRepository
-	contactRepo               *repository.ContactRepository
+	contactRepo               ContactStore
 	dispatchRepo              *repository.MessageDispatchRepository
 	router                    InboundRouter
 	chatRepo                  *repository.ChatRepository
@@ -267,6 +274,10 @@ func NewInboundProcessor(
 	dispatchRepo *repository.MessageDispatchRepository,
 	router InboundRouter,
 ) *InboundProcessor {
+	var cs ContactStore
+	if contactRepo != nil {
+		cs = contactRepo
+	}
 	return &InboundProcessor{
 		dedupRepo:            dedupRepo,
 		wsRepo:               wsRepo,
@@ -274,10 +285,16 @@ func NewInboundProcessor(
 		publisher:            publisher,
 		auditWriter:          auditWriter,
 		recipientSessionRepo: recipientSessionRepo,
-		contactRepo:          contactRepo,
+		contactRepo:          cs,
 		dispatchRepo:         dispatchRepo,
 		router:               router,
 	}
+}
+
+// SetContactStore configures a custom ContactStore implementation.
+func (p *InboundProcessor) SetContactStore(store ContactStore) *InboundProcessor {
+	p.contactRepo = store
+	return p
 }
 
 // SetChatRepository configures the ChatRepository for conversational inbox tracking.
@@ -671,6 +688,12 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 
 			if chat.Status == domain.ChatStatusSnoozed || chat.Status == domain.ChatStatusClosed {
 				_ = p.chatRepo.UpdateChatStatus(ctx, ev.WorkspaceID, chat.ID, string(domain.ChatStatusOpen))
+				chat.Status = domain.ChatStatusOpen
+				chat.SnoozedUntil = nil
+				if p.contactRepo != nil {
+					_ = p.contactRepo.ReopenThread(ctx, ev.WorkspaceID, contact.ID)
+					contact.ClosedAt = nil
+				}
 			}
 			_ = p.chatRepo.IncrementUnreadCount(ctx, ev.WorkspaceID, chat.ID)
 			_ = p.chatRepo.TouchLastMessageAt(ctx, ev.WorkspaceID, chat.ID, occurredAt)

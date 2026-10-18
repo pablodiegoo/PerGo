@@ -1663,3 +1663,109 @@ func TestInboxHandler_ViewAndChatPanel_UnreadSyncViaChatEngine(t *testing.T) {
 		t.Errorf("expected chats.unread_count to be reset to 0 after ChatPanel, got %d", updatedChat.UnreadCount)
 	}
 }
+
+func TestInboxHandler_SendMessage_PromoteDraftUpdatesNoteMetadata(t *testing.T) {
+	pool := getTestPool(t)
+	if pool == nil {
+		t.Skip("skipping: PostgreSQL not available")
+	}
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "inbox-promote-draft-"+uuid.New().String()[:8])
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	contactRepo := repository.NewContactRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	auditRepo := repository.NewAuditRepository(pool)
+
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "WA Cloud Draft",
+		Slug:           "wa-cloud-draft-" + uuid.New().String()[:8],
+		Channel:        "whatsapp_cloud",
+		SenderIdentity: "+551140009999",
+		Status:         "connected",
+		IsDefault:      true,
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("create connection: %v", err)
+	}
+
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511966665555", "Draft Customer", "", "+5511966665555")
+	if err != nil {
+		t.Fatalf("resolve contact: %v", err)
+	}
+	chat, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &conn.ID, contact.ID)
+	if err != nil {
+		t.Fatalf("find or create chat: %v", err)
+	}
+	exp := time.Now().UTC().Add(24 * time.Hour)
+	_ = chatRepo.UpdateServiceWindow(ctx, ws.ID, chat.ID, &exp)
+
+	noteUID := "note-draft-" + uuid.New().String()
+	if err := chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
+		ChatID:      chat.ID,
+		WorkspaceID: ws.ID,
+		UID:         noteUID,
+		Direction:   domain.DirectionInternalNote,
+		SenderType:  domain.SenderTypeAIAgent,
+		SenderName:  "AI Drafter",
+		Body:        "Original AI Draft",
+		IsPrivate:   true,
+		Metadata:    map[string]any{"author_name": "AI Drafter"},
+	}); err != nil {
+		t.Fatalf("add note: %v", err)
+	}
+
+	pub := &testMessagePublisher{}
+	h := &admin.InboxHandler{
+		Repo:        auditRepo,
+		ChatRepo:    chatRepo,
+		ContactRepo: contactRepo,
+		Connections: connRepo,
+		Workspaces:  wsRepo,
+		Publisher:   pub,
+	}
+
+	fv := url.Values{}
+	fv.Set("contact", "+5511966665555")
+	fv.Set("channel", "whatsapp_cloud")
+	fv.Set("recipient_identity", "+551140009999")
+	fv.Set("body", "Edited & Approved Reply")
+	fv.Set("draft_uid", noteUID)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/admin/inbox/send", strings.NewReader(fv.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = withWorkspaceContext(req, ws.ID)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage error: %v", err)
+	}
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 No Content, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if pub.lastMessage.Body != "Edited & Approved Reply" {
+		t.Errorf("expected published body 'Edited & Approved Reply', got %q", pub.lastMessage.Body)
+	}
+
+	updatedNote, err := chatRepo.GetChatMessageByUID(ctx, ws.ID, noteUID)
+	if err != nil {
+		t.Fatalf("get updated note: %v", err)
+	}
+	if updatedNote.Metadata["draft_promoted"] != true {
+		t.Errorf("expected draft_promoted=true on note metadata, got %+v", updatedNote.Metadata)
+	}
+	if updatedNote.Metadata["draft_status"] != "promoted" {
+		t.Errorf("expected draft_status='promoted' on note metadata, got %+v", updatedNote.Metadata)
+	}
+}
+

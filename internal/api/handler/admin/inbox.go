@@ -48,41 +48,27 @@ type InboxHandler struct {
 	Debouncer         chatpkg.DebounceCanceller
 }
 
-// engine returns the configured ChatEngine or lazily builds one from the handler's repositories.
+// NewInboxHandler creates an InboxHandler backed by a pre-configured ChatEngine.
+func NewInboxHandler(eng *chatpkg.Engine) *InboxHandler {
+	return &InboxHandler{ChatEngine: eng}
+}
+
+// engine returns the configured ChatEngine or constructs one from the handler's dependencies.
 func (h *InboxHandler) engine() *chatpkg.Engine {
 	if h.ChatEngine != nil {
 		return h.ChatEngine
 	}
-	var opts []chatpkg.Option
-	if h.ContactRepo != nil {
-		opts = append(opts, chatpkg.WithContactRepo(h.ContactRepo))
-	}
-	if h.Connections != nil {
-		opts = append(opts, chatpkg.WithConnectionRepo(h.Connections))
-	}
-	if h.Workspaces != nil {
-		opts = append(opts, chatpkg.WithWorkspaceRepo(h.Workspaces))
-	}
-	if h.Repo != nil {
-		opts = append(opts, chatpkg.WithAuditRepo(h.Repo))
-	}
-	if h.Publisher != nil {
-		opts = append(opts, chatpkg.WithMessagePublisher(h.Publisher))
-	}
-	if h.Ingestor != nil {
-		opts = append(opts, chatpkg.WithMessageIngestor(h.Ingestor))
-	}
-	if h.Debouncer != nil {
-		opts = append(opts, chatpkg.WithDebounceCanceller(h.Debouncer))
-	}
-	if h.WebhookDispatcher != nil {
-		opts = append(opts, chatpkg.WithReactionWebhookDispatcher(h.WebhookDispatcher))
-	}
-	var chatRepo chatpkg.ChatRepository
-	if h.ChatRepo != nil {
-		chatRepo = h.ChatRepo
-	}
-	return chatpkg.NewEngine(chatRepo, opts...)
+	return chatpkg.NewEngineFromConfig(chatpkg.Config{
+		ChatRepo:          h.ChatRepo,
+		ContactRepo:       h.ContactRepo,
+		ConnRepo:          h.Connections,
+		WorkspaceRepo:     h.Workspaces,
+		AuditRepo:         h.Repo,
+		Publisher:         h.Publisher,
+		WebhookDispatcher: h.WebhookDispatcher,
+		Ingestor:          h.Ingestor,
+		Debouncer:         h.Debouncer,
+	})
 }
 
 // resolveCurrentOperatorEmail resolves the authenticated operator's email from context,

@@ -241,6 +241,8 @@ func TestMessageBubble_StandardMessages(t *testing.T) {
 func TestMessageBubble_InternalNote(t *testing.T) {
 	noteMsg := repository.ThreadMessage{
 		ID:        uuid.New(),
+		UID:       "note_draft_uid_123",
+		TraceID:   "note_draft_uid_123",
 		Direction: "internal_note",
 		Body:      "Proposta de resposta gerada pela IA aguardando aprovação humana.",
 		CreatedAt: time.Now().UTC(),
@@ -264,7 +266,10 @@ func TestMessageBubble_InternalNote(t *testing.T) {
 		"Proposta de resposta gerada pela IA aguardando aprovação humana.",
 		"Approve &amp; Send",
 		"btn-approve-send",
+		"btn-use-reply",
 		"data-draft=\"Proposta de resposta gerada pela IA aguardando aprovação humana.\"",
+		"data-draft-uid=\"note_draft_uid_123\"",
+		"chat-draft-uid",
 	}
 
 	for _, expected := range expectedSubstrings {
@@ -272,5 +277,20 @@ func TestMessageBubble_InternalNote(t *testing.T) {
 			t.Errorf("expected HTML to contain %q, but got:\n%s", expected, html)
 		}
 	}
+
+	// Verify ChatPanel includes the hidden draft_uid input inside #chat-send-form
+	contact := &domain.Contact{
+		ID:   uuid.New(),
+		Name: "Test Contact",
+	}
+	var panelBuf bytes.Buffer
+	if err := components.ChatPanel(contact, nil, nil, []repository.ThreadMessage{noteMsg}, false).Render(context.Background(), &panelBuf); err != nil {
+		t.Fatalf("failed to render ChatPanel: %v", err)
+	}
+	panelHTML := panelBuf.String()
+	if !strings.Contains(panelHTML, `id="chat-draft-uid"`) || !strings.Contains(panelHTML, `name="draft_uid"`) {
+		t.Errorf("expected ChatPanel #chat-send-form to contain hidden input id=\"chat-draft-uid\" name=\"draft_uid\", got:\n%s", panelHTML)
+	}
 }
+
 
