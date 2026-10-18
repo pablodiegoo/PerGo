@@ -740,18 +740,20 @@ func TestDefaultDispatcher_VerbsIntegration(t *testing.T) {
 	// Poll/wait for asynchronous verbs execution to complete (background goroutine)
 	deadline := time.Now().Add(500 * time.Millisecond)
 	var contactTags []string
-	var contactClosedAt *time.Time
+	var chatStatus string
 	var logsCount int
 	var actionLogs []repository.UserActionLog
 
 	for time.Now().Before(deadline) {
-		// Check tags and closed_at
+		// Check tags and chat status
 		var tempTags []string
-		var tempClosedAt *time.Time
-		err = pool.QueryRow(ctx, "SELECT tags, closed_at FROM contacts WHERE id = $1", c.ID).Scan(&tempTags, &tempClosedAt)
+		err = pool.QueryRow(ctx, "SELECT tags FROM contacts WHERE id = $1", c.ID).Scan(&tempTags)
 		if err == nil {
 			contactTags = tempTags
-			contactClosedAt = tempClosedAt
+		}
+		var tempStatus string
+		if err := pool.QueryRow(ctx, "SELECT status FROM chats WHERE workspace_id = $1 AND contact_id = $2", ws.ID, c.ID).Scan(&tempStatus); err == nil {
+			chatStatus = tempStatus
 		}
 
 		// Check logs
@@ -770,18 +772,18 @@ func TestDefaultDispatcher_VerbsIntegration(t *testing.T) {
 		}
 
 		// Break early if everything succeeded
-		if len(contactTags) >= 2 && contactClosedAt != nil && logsCount >= 1 && len(mPublisher.published) >= 1 {
+		if len(contactTags) >= 2 && chatStatus == "closed" && logsCount >= 1 && len(mPublisher.published) >= 1 {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	// 1. Verify contact updates (tag and close verbs succeeded using unredacted "from")
+	// 1. Verify contact and chat updates (tag and close verbs succeeded using unredacted "from")
 	if len(contactTags) != 2 {
 		t.Errorf("expected 2 contact tags (vip, verified), got: %v", contactTags)
 	}
-	if contactClosedAt == nil {
-		t.Errorf("expected contact to be closed (closed_at non-nil)")
+	if chatStatus != "closed" {
+		t.Errorf("expected chat status to be 'closed', got %q", chatStatus)
 	}
 
 	// 2. Verify NATS publishing (reply verb published to messages.outbound)

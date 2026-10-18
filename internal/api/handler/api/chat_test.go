@@ -643,13 +643,10 @@ func TestChatAPIHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("Lazy snooze reopen on GET /api/v1/chats/:id syncs contact ReopenThread", func(t *testing.T) {
+	t.Run("Derived snooze reopen on GET /api/v1/chats/:id", func(t *testing.T) {
 		past := time.Now().UTC().Add(-5 * time.Minute)
 		if err := chatRepo.SnoozeChat(ctx, wsID, chatID, &past); err != nil {
 			t.Fatalf("SnoozeChat failed: %v", err)
-		}
-		if err := contactRepo.CloseThread(ctx, wsID, contactID); err != nil {
-			t.Fatalf("CloseThread failed: %v", err)
 		}
 
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/chats/"+chatID.String(), nil)
@@ -664,14 +661,7 @@ func TestChatAPIHandler(t *testing.T) {
 			t.Fatalf("GetChat failed: %v", err)
 		}
 		if updatedChat.Status != domain.ChatStatusOpen || updatedChat.SnoozedUntil != nil {
-			t.Fatalf("expected chat to be lazily reopened, got status=%s", updatedChat.Status)
-		}
-		updatedContact, err := contactRepo.GetByID(ctx, wsID, contactID)
-		if err != nil {
-			t.Fatalf("GetByID failed: %v", err)
-		}
-		if updatedContact.ClosedAt != nil {
-			t.Fatalf("expected contact ClosedAt to be cleared via ReopenThread")
+			t.Fatalf("expected chat to report open status, got status=%s", updatedChat.Status)
 		}
 	})
 }

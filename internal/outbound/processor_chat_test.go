@@ -349,7 +349,6 @@ func TestProcessor_ChatOutboundTracking(t *testing.T) {
 
 		// Close the chat and send a WABA template message -> verify closed chat reopens and template metadata is saved
 		_ = chatRepo.UpdateChatStatus(ctx, ws.ID, chat.ID, string(domain.ChatStatusClosed))
-		_ = contactRepo.CloseThread(ctx, ws.ID, contact.ID)
 
 		tmplTraceID := "outbound-tmpl-trace-300"
 		tmplReq := &domain.CreateMessageRequest{

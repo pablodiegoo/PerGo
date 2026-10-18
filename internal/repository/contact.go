@@ -38,9 +38,9 @@ func (r *ContactRepository) GetByID(ctx context.Context, workspaceID, contactID 
 	var c domain.Contact
 	var attrsRaw []byte
 	err := r.pool.QueryRow(ctx, `
-		SELECT id, workspace_id, name, email, attributes, tags, closed_at, created_at, updated_at
+		SELECT id, workspace_id, name, email, attributes, tags, created_at, updated_at
 		FROM contacts WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, contactID).Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt)
+	`, workspaceID, contactID).Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrContactNotFound
@@ -88,7 +88,7 @@ func (r *ContactRepository) GetByIDs(ctx context.Context, workspaceID uuid.UUID,
 	}
 
 	rows, err := r.pool.Query(ctx, `
-		SELECT id, workspace_id, name, email, attributes, tags, closed_at, created_at, updated_at
+		SELECT id, workspace_id, name, email, attributes, tags, created_at, updated_at
 		FROM contacts
 		WHERE workspace_id = $1 AND id = ANY($2)
 	`, workspaceID, ids)
@@ -100,7 +100,7 @@ func (r *ContactRepository) GetByIDs(ctx context.Context, workspaceID uuid.UUID,
 	for rows.Next() {
 		var c domain.Contact
 		var attrsRaw []byte
-		if err := rows.Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.WorkspaceID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if len(attrsRaw) > 0 {
@@ -157,12 +157,6 @@ func (r *ContactRepository) ResolveContact(
 	`, workspaceID, channel, senderIdentity).Scan(&contactID)
 
 	if err == nil {
-		_, err = r.pool.Exec(ctx, `
-			UPDATE contacts SET closed_at = NULL, updated_at = NOW() WHERE id = $1 AND closed_at IS NOT NULL
-		`, contactID)
-		if err != nil {
-			return nil, err
-		}
 		return r.GetByID(ctx, workspaceID, contactID)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
@@ -183,12 +177,6 @@ func (r *ContactRepository) ResolveContact(
 	`, workspaceID, channel, senderIdentity).Scan(&contactID)
 
 	if err == nil {
-		_, err = tx.Exec(ctx, `
-			UPDATE contacts SET closed_at = NULL, updated_at = NOW() WHERE id = $1 AND closed_at IS NOT NULL
-		`, contactID)
-		if err != nil {
-			return nil, err
-		}
 		_ = tx.Commit(ctx)
 		return r.GetByID(ctx, workspaceID, contactID)
 	}
@@ -223,14 +211,6 @@ func (r *ContactRepository) ResolveContact(
 		`, contactID, workspaceID, displayName)
 		if err != nil {
 			return nil, fmt.Errorf("create contact profile: %w", err)
-		}
-	} else {
-		// Reset closed_at if we matched an existing contact via cross-linking
-		_, err = tx.Exec(ctx, `
-			UPDATE contacts SET closed_at = NULL, updated_at = NOW() WHERE id = $1 AND closed_at IS NOT NULL
-		`, contactID)
-		if err != nil {
-			return nil, err
 		}
 	}
 
@@ -508,7 +488,7 @@ func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid
 	}
 	q := "%" + strings.ToLower(query) + "%"
 	rows, err := r.pool.Query(ctx, `
-		SELECT DISTINCT c.id, c.name, c.email, c.attributes, c.tags, c.closed_at, c.created_at, c.updated_at
+		SELECT DISTINCT c.id, c.name, c.email, c.attributes, c.tags, c.created_at, c.updated_at
 		FROM contacts c
 		LEFT JOIN contact_identities ci ON ci.contact_id = c.id
 		WHERE c.workspace_id = $1
@@ -525,7 +505,7 @@ func (r *ContactRepository) SearchContacts(ctx context.Context, workspaceID uuid
 	for rows.Next() {
 		var c domain.Contact
 		var attrsRaw []byte
-		if err := rows.Scan(&c.ID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.ClosedAt, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.Email, &attrsRaw, &c.Tags, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if len(attrsRaw) > 0 {
@@ -614,31 +594,6 @@ func (r *ContactRepository) AddTags(ctx context.Context, workspaceID, contactID 
 	return err
 }
 
-// CloseThread sets closed_at to the current timestamp.
-func (r *ContactRepository) CloseThread(ctx context.Context, workspaceID, contactID uuid.UUID) error {
-	if workspaceID == uuid.Nil {
-		return ErrInvalidWorkspaceID
-	}
-	_, err := r.pool.Exec(ctx, `
-		UPDATE contacts 
-		SET closed_at = NOW(), updated_at = NOW() 
-		WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, contactID)
-	return err
-}
-
-// ReopenThread resets closed_at to NULL.
-func (r *ContactRepository) ReopenThread(ctx context.Context, workspaceID, contactID uuid.UUID) error {
-	if workspaceID == uuid.Nil {
-		return ErrInvalidWorkspaceID
-	}
-	_, err := r.pool.Exec(ctx, `
-		UPDATE contacts 
-		SET closed_at = NULL, updated_at = NOW() 
-		WHERE workspace_id = $1 AND id = $2
-	`, workspaceID, contactID)
-	return err
-}
 
 // SetTags overwrites the contact's tag list.
 func (r *ContactRepository) SetTags(ctx context.Context, workspaceID, contactID uuid.UUID, tags []string) error {

@@ -405,13 +405,11 @@ func (r *fakeChatRepo) MutateReaction(_ context.Context, workspaceID uuid.UUID, 
 	return uuid.Nil, "", nil, repository.ErrChatMessageNotFound
 }
 
-func (r *fakeChatRepo) ResetUnreadByContact(_ context.Context, workspaceID, contactID uuid.UUID) error {
+func (r *fakeChatRepo) ResetUnread(_ context.Context, workspaceID, chatID uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	for _, c := range r.chats {
-		if c.WorkspaceID == workspaceID && c.ContactID == contactID {
-			c.UnreadCount = 0
-		}
+	if c, ok := r.chats[chatID]; ok && c.WorkspaceID == workspaceID {
+		c.UnreadCount = 0
 	}
 	return nil
 }
@@ -533,25 +531,6 @@ func (r *fakeContactRepo) SetTags(_ context.Context, workspaceID, contactID uuid
 	defer r.mu.Unlock()
 	if c, ok := r.contacts[contactID]; ok && c.WorkspaceID == workspaceID {
 		c.Tags = tags
-	}
-	return nil
-}
-
-func (r *fakeContactRepo) CloseThread(_ context.Context, workspaceID, contactID uuid.UUID) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if c, ok := r.contacts[contactID]; ok && c.WorkspaceID == workspaceID {
-		now := time.Now().UTC()
-		c.ClosedAt = &now
-	}
-	return nil
-}
-
-func (r *fakeContactRepo) ReopenThread(_ context.Context, workspaceID, contactID uuid.UUID) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if c, ok := r.contacts[contactID]; ok && c.WorkspaceID == workspaceID {
-		c.ClosedAt = nil
 	}
 	return nil
 }
@@ -785,30 +764,25 @@ func TestEngine_LazySnoozeReopen_OnListAndGet(t *testing.T) {
 	chatRepo := newFakeChatRepo()
 	contactRepo := newFakeContactRepo()
 
-	closedNow := time.Now().UTC()
 	contact1 := &domain.Contact{
 		ID:          uuid.New(),
 		WorkspaceID: wsID,
 		Name:        "Snoozed Contact 1",
-		ClosedAt:    &closedNow,
 	}
 	contact2 := &domain.Contact{
 		ID:          uuid.New(),
 		WorkspaceID: wsID,
 		Name:        "Snoozed Contact 2",
-		ClosedAt:    &closedNow,
 	}
 	contact3 := &domain.Contact{
 		ID:          uuid.New(),
 		WorkspaceID: wsID,
 		Name:        "Snoozed Contact 3",
-		ClosedAt:    &closedNow,
 	}
 	contact4 := &domain.Contact{
 		ID:          uuid.New(),
 		WorkspaceID: wsID,
 		Name:        "Snoozed Contact 4",
-		ClosedAt:    &closedNow,
 	}
 	contactRepo.contacts[contact1.ID] = contact1
 	contactRepo.contacts[contact2.ID] = contact2
@@ -850,22 +824,22 @@ func TestEngine_LazySnoozeReopen_OnListAndGet(t *testing.T) {
 
 	eng := chat.NewEngine(chatRepo, chat.WithContactRepo(contactRepo))
 
-	// Get with markRead=true lazily reopens expired snooze AND resets unread count
+	// Get with markRead=true derives open status on read without mutating stored status, AND resets unread count
 	res, err := eng.Get(ctx, wsID, chat.ChatRef{ChatID: chat1.ID}, 50, true)
 	if err != nil {
 		t.Fatalf("Get failed: %v", err)
 	}
 	if res.Chat.Status != domain.ChatStatusOpen || res.Chat.SnoozedUntil != nil {
-		t.Fatalf("expected chat1 to be reopened with nil SnoozedUntil, got status=%s snoozedUntil=%v", res.Chat.Status, res.Chat.SnoozedUntil)
+		t.Fatalf("expected chat1 derived status open with nil SnoozedUntil, got status=%s snoozedUntil=%v", res.Chat.Status, res.Chat.SnoozedUntil)
 	}
 	if res.Chat.UnreadCount != 0 {
 		t.Fatalf("expected unread count 0 after markRead=true, got %d", res.Chat.UnreadCount)
 	}
-	if contactRepo.contacts[contact1.ID].ClosedAt != nil {
-		t.Fatalf("expected contact1 ClosedAt to be nil (reopened), got %v", contactRepo.contacts[contact1.ID].ClosedAt)
+	if chatRepo.chats[chat1.ID].Status != domain.ChatStatusSnoozed {
+		t.Fatalf("expected stored chat1 status to remain snoozed (no read-time write), got %s", chatRepo.chats[chat1.ID].Status)
 	}
 
-	// List lazily reopens expired snooze on chat2 and syncs contact2.ReopenThread
+	// List derives open status for expired snooze on chat2 without mutating stored status
 	items, err := eng.List(ctx, wsID, domain.ChatFilter{}, 20, 0)
 	if err != nil {
 		t.Fatalf("List failed: %v", err)
@@ -881,35 +855,36 @@ func TestEngine_LazySnoozeReopen_OnListAndGet(t *testing.T) {
 		t.Fatalf("expected chat2 in list")
 	}
 	if foundChat2.Status != domain.ChatStatusOpen || foundChat2.SnoozedUntil != nil {
-		t.Fatalf("expected chat2 in list to be reopened with nil SnoozedUntil, got status=%s", foundChat2.Status)
+		t.Fatalf("expected chat2 in list to have derived status open with nil SnoozedUntil, got status=%s", foundChat2.Status)
 	}
-	if contactRepo.contacts[contact2.ID].ClosedAt != nil {
-		t.Fatalf("expected contact2 ClosedAt to be nil (reopened) on List, got %v", contactRepo.contacts[contact2.ID].ClosedAt)
+	if chatRepo.chats[chat2.ID].Status != domain.ChatStatusSnoozed {
+		t.Fatalf("expected stored chat2 status to remain snoozed (no read-time write), got %s", chatRepo.chats[chat2.ID].Status)
 	}
 
-	// ListMessages lazily reopens expired snooze on chat3 and syncs contact3.ReopenThread
+	// ListMessages derives open status for expired snooze on chat3 without mutating stored status
 	chatRepo.chats[chat3.ID] = chat3
 	reopenedChat3, _, err := eng.ListMessages(ctx, wsID, chat.ChatRef{ChatID: chat3.ID}, "", "", 20)
 	if err != nil {
 		t.Fatalf("ListMessages failed: %v", err)
 	}
 	if reopenedChat3.Status != domain.ChatStatusOpen || reopenedChat3.SnoozedUntil != nil {
-		t.Fatalf("expected chat3 on ListMessages to be reopened with nil SnoozedUntil, got status=%s snoozedUntil=%v", reopenedChat3.Status, reopenedChat3.SnoozedUntil)
+		t.Fatalf("expected chat3 on ListMessages to have derived status open with nil SnoozedUntil, got status=%s snoozedUntil=%v", reopenedChat3.Status, reopenedChat3.SnoozedUntil)
 	}
-	if contactRepo.contacts[contact3.ID].ClosedAt != nil {
-		t.Fatalf("expected contact3 ClosedAt to be nil (reopened) on ListMessages, got %v", contactRepo.contacts[contact3.ID].ClosedAt)
+	if chatRepo.chats[chat3.ID].Status != domain.ChatStatusSnoozed {
+		t.Fatalf("expected stored chat3 status to remain snoozed (no read-time write), got %s", chatRepo.chats[chat3.ID].Status)
 	}
 
-	// Summarize lazily reopens expired snooze on chat4 and syncs contact4.ReopenThread
+	// Summarize derives open status for expired snooze on chat4 without mutating stored status
 	chatRepo.chats[chat4.ID] = chat4
-	if _, err := eng.Summarize(ctx, wsID, chat.ChatRef{ChatID: chat4.ID}, 50); err != nil {
+	syn, err := eng.Summarize(ctx, wsID, chat.ChatRef{ChatID: chat4.ID}, 50)
+	if err != nil {
 		t.Fatalf("Summarize failed: %v", err)
 	}
-	if chatRepo.chats[chat4.ID].Status != domain.ChatStatusOpen || chatRepo.chats[chat4.ID].SnoozedUntil != nil {
-		t.Fatalf("expected chat4 on Summarize to be reopened with nil SnoozedUntil, got status=%s snoozedUntil=%v", chatRepo.chats[chat4.ID].Status, chatRepo.chats[chat4.ID].SnoozedUntil)
+	if !strings.HasPrefix(syn.CurrentStatus, "Open chat") {
+		t.Fatalf("expected chat4 synopsis CurrentStatus to start with 'Open chat', got %q", syn.CurrentStatus)
 	}
-	if contactRepo.contacts[contact4.ID].ClosedAt != nil {
-		t.Fatalf("expected contact4 ClosedAt to be nil (reopened) on Summarize, got %v", contactRepo.contacts[contact4.ID].ClosedAt)
+	if chatRepo.chats[chat4.ID].Status != domain.ChatStatusSnoozed {
+		t.Fatalf("expected stored chat4 status to remain snoozed (no read-time write), got %s", chatRepo.chats[chat4.ID].Status)
 	}
 }
 
@@ -949,7 +924,7 @@ func TestEngine_TriageMutations_StatusTagsAssign(t *testing.T) {
 		chat.WithAuditRepo(auditRepo),
 	)
 
-	// 1. UpdateStatus -> closed syncs CloseThread
+	// 1. UpdateStatus -> closed updates chat status
 	updated, _, err := eng.UpdateStatus(ctx, wsID, chat.ChatRef{ChatID: c.ID}, chat.StatusUpdate{Status: "resolved"})
 	if err != nil {
 		t.Fatalf("UpdateStatus closed failed: %v", err)
@@ -957,20 +932,14 @@ func TestEngine_TriageMutations_StatusTagsAssign(t *testing.T) {
 	if updated.Status != domain.ChatStatusClosed {
 		t.Fatalf("expected closed status, got %s", updated.Status)
 	}
-	if contactRepo.contacts[contact.ID].ClosedAt == nil {
-		t.Fatalf("expected contact ClosedAt to be non-nil")
-	}
 
-	// 2. UpdateStatus -> open syncs ReopenThread
+	// 2. UpdateStatus -> open updates chat status
 	updated, _, err = eng.UpdateStatus(ctx, wsID, chat.ChatRef{ChatID: c.ID}, chat.StatusUpdate{Status: "reopen"})
 	if err != nil {
 		t.Fatalf("UpdateStatus open failed: %v", err)
 	}
 	if updated.Status != domain.ChatStatusOpen {
 		t.Fatalf("expected open status, got %s", updated.Status)
-	}
-	if contactRepo.contacts[contact.ID].ClosedAt != nil {
-		t.Fatalf("expected contact ClosedAt to be nil (reopened), got %v", contactRepo.contacts[contact.ID].ClosedAt)
 	}
 
 	// 3. UpdateTags -> Add & Remove syncs chat and contact tags
@@ -1476,26 +1445,41 @@ func TestEngine_MarkAsRead_SynchronizedOnGetAndListThread(t *testing.T) {
 	}
 	contactRepo.contacts[contact.ID] = contact
 
+	conn1 := uuid.New()
+	conn2 := uuid.New()
 	c := &domain.Chat{
-		ID:          uuid.New(),
-		WorkspaceID: wsID,
-		ContactID:   contact.ID,
-		Status:      domain.ChatStatusOpen,
-		UnreadCount: 3,
+		ID:           uuid.New(),
+		WorkspaceID:  wsID,
+		ConnectionID: &conn1,
+		ContactID:    contact.ID,
+		Status:       domain.ChatStatusOpen,
+		UnreadCount:  3,
+	}
+	c2 := &domain.Chat{
+		ID:           uuid.New(),
+		WorkspaceID:  wsID,
+		ConnectionID: &conn2,
+		ContactID:    contact.ID,
+		Status:       domain.ChatStatusOpen,
+		UnreadCount:  5,
 	}
 	chatRepo.chats[c.ID] = c
+	chatRepo.chats[c2.ID] = c2
 
 	eng := chat.NewEngine(
 		chatRepo,
 		chat.WithContactRepo(contactRepo),
 	)
 
-	// 1. Engine.Get(..., markRead=true) resets UnreadCount AND calls contactRepo.MarkAsRead
+	// 1. Engine.Get(..., markRead=true) resets ONLY the targeted chat's UnreadCount AND calls contactRepo.MarkAsRead
 	if _, err := eng.Get(ctx, wsID, chat.ChatRef{ChatID: c.ID}, 50, true); err != nil {
 		t.Fatalf("Engine.Get(markRead=true) failed: %v", err)
 	}
 	if chatRepo.chats[c.ID].UnreadCount != 0 {
-		t.Fatalf("expected UnreadCount=0 after Get(markRead=true), got %d", chatRepo.chats[c.ID].UnreadCount)
+		t.Fatalf("expected UnreadCount=0 on c after Get(markRead=true), got %d", chatRepo.chats[c.ID].UnreadCount)
+	}
+	if chatRepo.chats[c2.ID].UnreadCount != 5 {
+		t.Fatalf("expected sibling chat c2 UnreadCount to remain 5, got %d", chatRepo.chats[c2.ID].UnreadCount)
 	}
 	if len(contactRepo.markedRead) != 1 || contactRepo.markedRead[0] != contact.ID {
 		t.Fatalf("expected contactRepo.MarkAsRead called on Get(markRead=true), got %v", contactRepo.markedRead)

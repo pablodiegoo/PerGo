@@ -412,15 +412,13 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 					}
 				}
 				if !chatMsgExists {
-					_ = chatRepo.AddChatMessage(ctx, &domain.ChatMessage{
-						ChatID:      seededChat.ID,
-						WorkspaceID: ws.ID,
-						UID:         traceID,
-						Direction:   domain.DirectionInbound,
-						SenderType:  domain.SenderTypeContact,
-						SenderName:  contact.Name,
-						SenderID:    contactPhone,
-						Body:        msg.Body,
+					_, _ = activityRec.Inbound(ctx, ws.ID, activity.InboundTurn{
+						Chat:       activity.ChatID(seededChat.ID),
+						UID:        traceID,
+						SenderName: contact.Name,
+						SenderID:   contactPhone,
+						Body:       msg.Body,
+						Channel:    conv.Channel,
 						Metadata: map[string]interface{}{
 							"channel":         conv.Channel,
 							"from":            contactPhone,
@@ -428,7 +426,7 @@ func Seed(ctx context.Context, pool *pgxpool.Pool, encryptor *crypto.Encryptor, 
 							"sender_identity": conv.RecipientIdentity,
 							"message_id":      messageID,
 						},
-						CreatedAt: msgTime,
+						At: msgTime,
 					})
 				}
 			} else {

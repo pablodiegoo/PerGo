@@ -426,3 +426,219 @@ func TestRecorder_SetAI_And_DispatchFailed(t *testing.T) {
 		t.Fatalf("expected ErrServiceWindowClosed, got %v", err)
 	}
 }
+
+func TestRecorder_Inbound(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+	ctx := context.Background()
+
+	wsID, connID := seedWorkspaceAndConn(t, ctx, pool, "whatsapp_cloud", "+551100009001")
+	pub := activity.NewMemoryPublisher()
+	deb := activity.NewMemoryDebounceCanceller()
+	rec := activity.New(pool, pub, deb, nil)
+
+	contactID := uuid.New()
+	_, err := pool.Exec(ctx, `INSERT INTO contacts (id, workspace_id, name) VALUES ($1, $2, 'Alice')`, contactID, wsID)
+	if err != nil {
+		t.Fatalf("insert contact: %v", err)
+	}
+
+	// Create a second connection so the same Contact has two independent Chats
+	conn2ID := uuid.New()
+	_, err = pool.Exec(ctx, `
+		INSERT INTO connections (id, workspace_id, name, slug, channel, sender_identity, status, credentials, is_default)
+		VALUES ($1, $2, 'Test WABA 2', $3, 'whatsapp_cloud', '+551100009002', 'active', '{}', false)
+	`, conn2ID, wsID, "conn-"+conn2ID.String()[:8])
+	if err != nil {
+		t.Fatalf("insert second connection: %v", err)
+	}
+
+	t0 := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+
+	// Seed Chat 1 (closed) on connID and Chat 2 (closed) on conn2ID for the same contact
+	var chat1ID, chat2ID uuid.UUID
+	err = pool.QueryRow(ctx, `
+		INSERT INTO chats (workspace_id, connection_id, contact_id, status, unread_count, ai_mode, last_message_at)
+		VALUES ($1, $2, $3, 'closed', 0, 'active', $4)
+		RETURNING id
+	`, wsID, connID, contactID, t0.Add(-2*time.Hour)).Scan(&chat1ID)
+	if err != nil {
+		t.Fatalf("insert chat1: %v", err)
+	}
+	err = pool.QueryRow(ctx, `
+		INSERT INTO chats (workspace_id, connection_id, contact_id, status, unread_count, ai_mode, last_message_at)
+		VALUES ($1, $2, $3, 'closed', 0, 'active', $4)
+		RETURNING id
+	`, wsID, conn2ID, contactID, t0.Add(-2*time.Hour)).Scan(&chat2ID)
+	if err != nil {
+		t.Fatalf("insert chat2: %v", err)
+	}
+
+	// 1. Inbound on connID reopens Chat 1, increments unread to 1, extends service window, leaves Chat 2 closed
+	r1, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+		Chat:       activity.ChatOf(connID, contactID).WithChannel("whatsapp_cloud"),
+		UID:        "wamid.in.1",
+		SenderName: "Alice",
+		SenderID:   "+5511999990001",
+		Body:       "Hello on conn 1",
+		Channel:    "whatsapp_cloud",
+		At:         t0,
+	})
+	if err != nil {
+		t.Fatalf("Inbound 1 failed: %v", err)
+	}
+	if r1.Duplicate {
+		t.Fatal("expected Duplicate=false on first inbound")
+	}
+	if !r1.AIMayAct() {
+		t.Fatal("expected AIMayAct()=true when AI is active")
+	}
+	if r1.Chat.ID != chat1ID {
+		t.Fatalf("expected chat1ID %v, got %v", chat1ID, r1.Chat.ID)
+	}
+	if r1.Chat.Status != domain.ChatStatusOpen || r1.Chat.UnreadCount != 1 {
+		t.Fatalf("expected Chat 1 open with unread=1, got status=%q unread=%d", r1.Chat.Status, r1.Chat.UnreadCount)
+	}
+	wantWindow := t0.Add(24 * time.Hour)
+	if r1.Chat.ServiceWindowExpiresAt == nil || !r1.Chat.ServiceWindowExpiresAt.Equal(wantWindow) {
+		t.Fatalf("expected ServiceWindowExpiresAt=%v, got %v", wantWindow, r1.Chat.ServiceWindowExpiresAt)
+	}
+
+	// Verify Chat 2 of the same Contact is STILL closed with unread=0
+	snap2, exists, err := rec.Snapshot(ctx, wsID, activity.ChatID(chat2ID))
+	if err != nil || !exists {
+		t.Fatalf("Snapshot chat2: exists=%v err=%v", exists, err)
+	}
+	if snap2.Status != domain.ChatStatusClosed || snap2.UnreadCount != 0 {
+		t.Fatalf("expected Chat 2 to remain closed with unread=0, got status=%q unread=%d", snap2.Status, snap2.UnreadCount)
+	}
+
+	// 2. Duplicate UID on Inbound is idempotent (does not increment unread twice)
+	rDup, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+		Chat:       activity.ChatOf(connID, contactID).WithChannel("whatsapp_cloud"),
+		UID:        "wamid.in.1",
+		SenderName: "Alice",
+		SenderID:   "+5511999990001",
+		Body:       "Hello on conn 1",
+		Channel:    "whatsapp_cloud",
+		At:         t0.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("duplicate Inbound failed: %v", err)
+	}
+	if !rDup.Duplicate {
+		t.Fatal("expected Duplicate=true on replay of wamid.in.1")
+	}
+	if rDup.AIMayAct() {
+		t.Fatal("expected AIMayAct()=false on duplicate inbound")
+	}
+	if rDup.Chat.UnreadCount != 1 {
+		t.Fatalf("expected unread_count to stay 1 on duplicate, got %d", rDup.Chat.UnreadCount)
+	}
+
+	// 3. Human takeover pauses AI for 12h; inbound during pause has AIMayAct()=false; inbound after 13h has AIMayAct()=true without reset write
+	_, err = rec.Outbound(ctx, wsID, activity.OutboundTurn{
+		Chat:       activity.ChatID(chat1ID),
+		UID:        "wamid.out.human.1",
+		SenderType: domain.SenderTypeHumanAgent,
+		SenderName: "Agent Bob",
+		Body:       "I am taking over",
+		At:         t0.Add(10 * time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("human Outbound failed: %v", err)
+	}
+
+	rDuringPause, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+		Chat:       activity.ChatID(chat1ID),
+		UID:        "wamid.in.during-pause",
+		SenderName: "Alice",
+		SenderID:   "+5511999990001",
+		Body:       "Are you there?",
+		At:         t0.Add(2 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("Inbound during pause failed: %v", err)
+	}
+	if rDuringPause.AIMayAct() {
+		t.Fatal("expected AIMayAct()=false while human pause is active")
+	}
+	if rDuringPause.Chat.UnreadCount != 2 {
+		t.Fatalf("expected unread_count=2, got %d", rDuringPause.Chat.UnreadCount)
+	}
+
+	// Snooze Chat 1 until t0+4h, then send inbound at t0+13h (after both snooze and 12h AI pause expired)
+	snoozeUntil := t0.Add(4 * time.Hour)
+	_, err = pool.Exec(ctx, `UPDATE chats SET status = 'snoozed', snoozed_until = $3 WHERE workspace_id = $1 AND id = $2`, wsID, chat1ID, snoozeUntil)
+	if err != nil {
+		t.Fatalf("snooze chat1: %v", err)
+	}
+
+	rAfterExpiry, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+		Chat:       activity.ChatID(chat1ID),
+		UID:        "wamid.in.after-expiry",
+		SenderName: "Alice",
+		SenderID:   "+5511999990001",
+		Body:       "Back after 13h",
+		At:         t0.Add(13 * time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("Inbound after expiry failed: %v", err)
+	}
+	if !rAfterExpiry.AIMayAct() {
+		t.Fatal("expected AIMayAct()=true after 12h pause expired")
+	}
+	if rAfterExpiry.Chat.Status != domain.ChatStatusOpen || rAfterExpiry.Chat.SnoozedUntil != nil {
+		t.Fatalf("expected snoozed chat to reopen and clear snoozed_until, got status=%q snoozed=%v", rAfterExpiry.Chat.Status, rAfterExpiry.Chat.SnoozedUntil)
+	}
+}
+
+func TestStatusPredicate_ParityWithDomainEffectiveStatus(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+	ctx := context.Background()
+
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	past := now.Add(-30 * time.Minute)
+	exact := now
+	future := now.Add(30 * time.Minute)
+
+	statuses := []domain.ChatStatus{
+		domain.ChatStatusOpen,
+		domain.ChatStatusClosed,
+		domain.ChatStatusSnoozed,
+	}
+	snoozeTimes := []*time.Time{nil, &past, &exact, &future}
+	targetFilters := []domain.ChatStatus{
+		domain.ChatStatusOpen,
+		domain.ChatStatusClosed,
+		domain.ChatStatusSnoozed,
+	}
+
+	effExpr := activity.EffectiveStatusSQL("$1::text", "$2::timestamptz", "$3::timestamptz")
+	predExpr := activity.StatusPredicate("$1::text", "$2::timestamptz", "$4::text", "$3::timestamptz")
+	query := "SELECT " + effExpr + ", " + predExpr
+
+	for _, st := range statuses {
+		for _, sn := range snoozeTimes {
+			wantEff := domain.EffectiveStatus(st, sn, now)
+			for _, target := range targetFilters {
+				var gotEff string
+				var gotMatch bool
+				err := pool.QueryRow(ctx, query, string(st), sn, now, string(target)).Scan(&gotEff, &gotMatch)
+				if err != nil {
+					t.Fatalf("query parity for status=%q snoozed=%v target=%q: %v", st, sn, target, err)
+				}
+				if domain.ChatStatus(gotEff) != wantEff {
+					t.Fatalf("EffectiveStatusSQL(%q, %v) = %q, want %q", st, sn, gotEff, wantEff)
+				}
+				wantMatch := wantEff == target
+				if gotMatch != wantMatch {
+					t.Fatalf("StatusPredicate(%q, %v, target=%q) = %v, want %v (effective=%q)", st, sn, target, gotMatch, wantMatch, wantEff)
+				}
+			}
+		}
+	}
+}
+
+

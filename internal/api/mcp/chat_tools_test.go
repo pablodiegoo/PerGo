@@ -619,13 +619,6 @@ func TestMCPChatTools(t *testing.T) {
 		if chatClosed.Status != "closed" {
 			t.Errorf("expected closed status, got %s", chatClosed.Status)
 		}
-		contactClosed, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
-		if err != nil {
-			t.Fatalf("contactRepo.GetByID failed: %v", err)
-		}
-		if contactClosed.ClosedAt == nil {
-			t.Errorf("expected contact.ClosedAt to be set after chat_close")
-		}
 
 		// Reopen
 		reqOpen := mcp.CallToolRequest{}
@@ -642,13 +635,6 @@ func TestMCPChatTools(t *testing.T) {
 		chatOpened, _ := chatRepo.GetChat(ctx, ws.ID, chat.ID)
 		if chatOpened.Status != "open" {
 			t.Errorf("expected open status, got %s", chatOpened.Status)
-		}
-		contactOpened, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
-		if err != nil {
-			t.Fatalf("contactRepo.GetByID failed: %v", err)
-		}
-		if contactOpened.ClosedAt != nil {
-			t.Errorf("expected contact.ClosedAt to be nil after chat_open, got %v", contactOpened.ClosedAt)
 		}
 	})
 
@@ -1104,11 +1090,8 @@ func TestMCPChatTools(t *testing.T) {
 		if err := chatRepo.SnoozeChat(ctx, ws.ID, chat.ID, &past); err != nil {
 			t.Fatalf("SnoozeChat failed: %v", err)
 		}
-		if err := contactRepo.CloseThread(ctx, ws.ID, contact.ID); err != nil {
-			t.Fatalf("CloseThread failed: %v", err)
-		}
 
-		// 1. chat_details should lazily reopen the expired snooze and contact thread
+		// 1. chat_details should report open status for the expired snooze
 		resDetails, err := srv.CallTool(ctx, "chat_details", map[string]any{
 			"workspace_id": ws.ID.String(),
 			"chat_id":      chat.ID.String(),
@@ -1124,20 +1107,10 @@ func TestMCPChatTools(t *testing.T) {
 		if reopenedChat.Status != "open" || reopenedChat.SnoozedUntil != nil {
 			t.Errorf("expected chat status=open and snoozed_until=nil after expired snooze, got status=%q snoozed_until=%v", reopenedChat.Status, reopenedChat.SnoozedUntil)
 		}
-		reopenedContact, err := contactRepo.GetByID(ctx, ws.ID, contact.ID)
-		if err != nil {
-			t.Fatalf("contactRepo.GetByID failed: %v", err)
-		}
-		if reopenedContact.ClosedAt != nil {
-			t.Errorf("expected contact.ClosedAt to be nil after lazy snooze reopen, got %v", reopenedContact.ClosedAt)
-		}
 
-		// 2. Snooze again in the past and verify list_chats lazily reopens
+		// 2. Snooze again in the past and verify list_chats reports open status
 		if err := chatRepo.SnoozeChat(ctx, ws.ID, chat.ID, &past); err != nil {
 			t.Fatalf("SnoozeChat 2 failed: %v", err)
-		}
-		if err := contactRepo.CloseThread(ctx, ws.ID, contact.ID); err != nil {
-			t.Fatalf("CloseThread 2 failed: %v", err)
 		}
 
 		resList, err := srv.CallTool(ctx, "list_chats", map[string]any{
@@ -1148,11 +1121,7 @@ func TestMCPChatTools(t *testing.T) {
 		}
 		reopenedChat2, _ := chatRepo.GetChat(ctx, ws.ID, chat.ID)
 		if reopenedChat2.Status != "open" || reopenedChat2.SnoozedUntil != nil {
-			t.Errorf("expected list_chats to lazily reopen expired snooze, got status=%q snoozed_until=%v", reopenedChat2.Status, reopenedChat2.SnoozedUntil)
-		}
-		reopenedContact2, _ := contactRepo.GetByID(ctx, ws.ID, contact.ID)
-		if reopenedContact2.ClosedAt != nil {
-			t.Errorf("expected contact.ClosedAt to be nil after list_chats lazy snooze reopen, got %v", reopenedContact2.ClosedAt)
+			t.Errorf("expected list_chats to report open status for expired snooze, got status=%q snoozed_until=%v", reopenedChat2.Status, reopenedChat2.SnoozedUntil)
 		}
 
 		// 3. Verify chat_enable_ai(false) cancels debounce and publishes handoff events

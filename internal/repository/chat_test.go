@@ -650,16 +650,36 @@ func TestChatRepository_ConversationsAndThread(t *testing.T) {
 			t.Errorf("expected contact1 unread=true (3), got unread=%v count=%d", conversations[1].Unread, conversations[1].UnreadCount)
 		}
 
-		// Reset unread by contact and verify
-		if err := chatRepo.ResetUnreadByContact(ctx, ws.ID, c1.ID); err != nil {
-			t.Fatalf("ResetUnreadByContact failed: %v", err)
+		// Reset unread by chat and verify
+		if err := chatRepo.ResetUnread(ctx, ws.ID, chat1.ID); err != nil {
+			t.Fatalf("ResetUnread failed: %v", err)
 		}
 		conversationsAfter, err := chatRepo.ListConversations(ctx, ws.ID, "")
 		if err != nil {
 			t.Fatalf("ListConversations failed: %v", err)
 		}
 		if conversationsAfter[1].Unread || conversationsAfter[1].UnreadCount != 0 {
-			t.Errorf("expected contact1 unread=false after ResetUnreadByContact, got unread=%v count=%d", conversationsAfter[1].Unread, conversationsAfter[1].UnreadCount)
+			t.Errorf("expected contact1 unread=false after ResetUnread, got unread=%v count=%d", conversationsAfter[1].Unread, conversationsAfter[1].UnreadCount)
+		}
+
+		// Derived snooze on read: expired snooze returns open on GetChat, ListChats, and ListConversations without mutating DB row
+		past := time.Now().UTC().Add(-10 * time.Minute)
+		if err := chatRepo.SnoozeChat(ctx, ws.ID, chat1.ID, &past); err != nil {
+			t.Fatalf("SnoozeChat failed: %v", err)
+		}
+		gotChat1, err := chatRepo.GetChat(ctx, ws.ID, chat1.ID)
+		if err != nil {
+			t.Fatalf("GetChat failed: %v", err)
+		}
+		if gotChat1.Status != domain.ChatStatusOpen || gotChat1.SnoozedUntil != nil {
+			t.Errorf("expected derived open status and nil SnoozedUntil from GetChat, got status=%s snoozedUntil=%v", gotChat1.Status, gotChat1.SnoozedUntil)
+		}
+		var rawStatus string
+		if err := pool.QueryRow(ctx, "SELECT status FROM chats WHERE id = $1", chat1.ID).Scan(&rawStatus); err != nil {
+			t.Fatalf("query raw chat status failed: %v", err)
+		}
+		if rawStatus != "snoozed" {
+			t.Errorf("expected stored DB status to remain 'snoozed' (no read-time write), got %q", rawStatus)
 		}
 	})
 

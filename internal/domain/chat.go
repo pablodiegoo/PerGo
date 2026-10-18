@@ -58,6 +58,18 @@ const (
 	ChatStatusSnoozed ChatStatus = "snoozed"
 )
 
+// EffectiveStatus evaluates the effective ChatStatus at timestamp now without mutating storage.
+// When status is snoozed and snoozedUntil is at or before now, it returns ChatStatusOpen.
+func EffectiveStatus(status ChatStatus, snoozedUntil *time.Time, now time.Time) ChatStatus {
+	if status == "" {
+		return ChatStatusOpen
+	}
+	if status == ChatStatusSnoozed && snoozedUntil != nil && !snoozedUntil.After(now) {
+		return ChatStatusOpen
+	}
+	return status
+}
+
 // Reaction represents an emoji reaction attached to a message.
 type Reaction struct {
 	Emoji     string    `json:"emoji"`
@@ -135,6 +147,18 @@ type Chat struct {
 	Metadata               map[string]interface{} `json:"metadata"`
 	CreatedAt              time.Time              `json:"created_at"`
 	UpdatedAt              time.Time              `json:"updated_at"`
+}
+
+// EffectiveStatus returns the effective ChatStatus for this Chat at the given time (defaults to time.Now().UTC()).
+func (c *Chat) EffectiveStatus(now ...time.Time) ChatStatus {
+	if c == nil {
+		return ChatStatusOpen
+	}
+	t := time.Now().UTC()
+	if len(now) > 0 && !now[0].IsZero() {
+		t = now[0].UTC()
+	}
+	return EffectiveStatus(c.Status, c.SnoozedUntil, t)
 }
 
 // EffectiveAI returns the effective AIEngagement for this Chat at the given time (defaults to time.Now().UTC()).
@@ -280,7 +304,7 @@ func SummarizeMessages(messages []ChatMessage, chat *Chat) ChatSynopsis {
 
 	// 3. Current Status
 	currentStatus := "Open chat with no recent messages."
-	if chat != nil && chat.Status == ChatStatusClosed {
+	if chat != nil && chat.EffectiveStatus() == ChatStatusClosed {
 		currentStatus = "Chat resolved and closed."
 	} else if len(messages) > 0 {
 		lastMsg := messages[len(messages)-1]
@@ -426,12 +450,33 @@ type ChatState struct {
 	ServiceWindowExpiresAt *time.Time
 	UnreadCount            int
 	LastMessageAt          time.Time
+	LastInboundAt          *time.Time
 }
 
 // Activity is a domain event applied to a ChatState via Apply.
 type Activity interface {
 	isActivity()
 }
+
+// InboundTurn represents an inbound customer message turn on a Chat.
+type InboundTurn struct {
+	ID         uuid.UUID
+	At         time.Time
+	UID        string
+	SenderName string
+	SenderID   string
+	ReplyToUID *string
+	Body       string
+	MediaURL   *string
+	MediaType  *string
+	Channel    string
+	Metadata   map[string]interface{}
+}
+
+func (InboundTurn) isActivity() {}
+
+// InboundActivity is an alias for InboundTurn.
+type InboundActivity = InboundTurn
 
 // OutboundActivity represents an outbound message turn on a Chat.
 type OutboundActivity struct {
@@ -494,6 +539,67 @@ func Apply(s ChatState, a Activity) (ChatState, *ChatMessage, []Intent) {
 	}
 
 	switch act := a.(type) {
+	case InboundTurn:
+		at := act.At.UTC()
+		if at.IsZero() {
+			at = time.Now().UTC()
+		}
+
+		if next.Status == ChatStatusSnoozed || next.Status == ChatStatusClosed || next.Status == "" {
+			next.Status = ChatStatusOpen
+			next.SnoozedUntil = nil
+		}
+		next.UnreadCount++
+		if at.After(next.LastMessageAt) {
+			next.LastMessageAt = at
+		}
+		if next.LastInboundAt == nil || at.After(*next.LastInboundAt) {
+			inAt := at
+			next.LastInboundAt = &inAt
+		}
+		duration := 24 * time.Hour
+		if act.Metadata != nil && (act.Metadata["entry_point_type"] == "ctwa" || act.Metadata["is_referral"] == "true") {
+			duration = 72 * time.Hour
+		}
+		windowEnd := at.Add(duration)
+		if next.ServiceWindowExpiresAt == nil || windowEnd.After(*next.ServiceWindowExpiresAt) {
+			next.ServiceWindowExpiresAt = &windowEnd
+		}
+
+		msgID := act.ID
+		if msgID == uuid.Nil {
+			msgID = uuid.New()
+		}
+		msgMeta := make(map[string]interface{})
+		for k, v := range act.Metadata {
+			msgMeta[k] = v
+		}
+		if act.Channel != "" {
+			if _, ok := msgMeta["channel"]; !ok {
+				msgMeta["channel"] = act.Channel
+			}
+		}
+
+		msg := &ChatMessage{
+			ID:          msgID,
+			ChatID:      s.ID,
+			WorkspaceID: s.WorkspaceID,
+			UID:         act.UID,
+			Direction:   DirectionInbound,
+			SenderType:  SenderTypeContact,
+			SenderName:  act.SenderName,
+			SenderID:    act.SenderID,
+			Body:        act.Body,
+			MediaURL:    act.MediaURL,
+			MediaType:   act.MediaType,
+			IsPrivate:   false,
+			Reactions:   []Reaction{},
+			ReplyToUID:  act.ReplyToUID,
+			Metadata:    msgMeta,
+			CreatedAt:   at,
+		}
+		return next, msg, nil
+
 	case OutboundActivity:
 		at := act.At.UTC()
 		if at.IsZero() {
@@ -585,6 +691,11 @@ func Apply(s ChatState, a Activity) (ChatState, *ChatMessage, []Intent) {
 			at = time.Now().UTC()
 		}
 
+		if EffectiveStatus(next.Status, next.SnoozedUntil, at) == ChatStatusOpen {
+			next.Status = ChatStatusOpen
+			next.SnoozedUntil = nil
+		}
+
 		eff := s.AI.Effective(at)
 		wasEngaged := eff.IsEngaged()
 
@@ -633,5 +744,6 @@ func Apply(s ChatState, a Activity) (ChatState, *ChatMessage, []Intent) {
 		return next, nil, nil
 	}
 }
+
 
 

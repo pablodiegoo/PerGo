@@ -1158,12 +1158,6 @@ func (h *InboxHandler) UpdateChatStatus(c *echo.Context) error {
 			}
 			return c.String(http.StatusInternalServerError, "failed to update chat status: "+err.Error())
 		}
-	} else if h.ContactRepo != nil {
-		if status == "closed" {
-			_ = h.ContactRepo.CloseThread(ctx, workspaceID, contactID)
-		} else {
-			_ = h.ContactRepo.ReopenThread(ctx, workspaceID, contactID)
-		}
 	}
 
 	c.Response().Header().Set("HX-Trigger", "refreshChats")

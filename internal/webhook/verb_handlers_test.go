@@ -280,7 +280,7 @@ func TestCloseHandler(t *testing.T) {
 
 	handler := webhook.NewCloseHandler(contactRepo)
 
-	t.Run("closes thread", func(t *testing.T) {
+	t.Run("closes chat", func(t *testing.T) {
 		vc := webhook.VerbContext{
 			WorkspaceID: ws.ID,
 			ContactID:   c.ID,
@@ -291,14 +291,14 @@ func TestCloseHandler(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		var closedAt *time.Time
-		err = pool.QueryRow(ctx, "SELECT closed_at FROM contacts WHERE id = $1", c.ID).Scan(&closedAt)
+		var status string
+		err = pool.QueryRow(ctx, "SELECT status FROM chats WHERE workspace_id = $1 AND contact_id = $2", ws.ID, c.ID).Scan(&status)
 		if err != nil {
-			t.Fatalf("failed to query closed_at: %v", err)
+			t.Fatalf("failed to query chat status: %v", err)
 		}
 
-		if closedAt == nil {
-			t.Error("expected closed_at to be set, got nil")
+		if status != "closed" {
+			t.Errorf("expected chat status 'closed', got %q", status)
 		}
 	})
 

@@ -179,6 +179,60 @@ func AIPauseUntil(t time.Time) AIChange {
 	return AIChange{mode: domain.AIModePaused, until: &u}
 }
 
+// EffectiveStatusSQL returns a SQL expression evaluating the effective Chat status at nowExpr.
+// When statusCol is 'snoozed' and snoozedUntilCol is at or before nowExpr, it evaluates to 'open'.
+func EffectiveStatusSQL(statusCol, snoozedUntilCol, nowExpr string) string {
+	return fmt.Sprintf(
+		`(CASE WHEN %s = 'snoozed' AND %s IS NOT NULL AND %s <= %s THEN 'open' WHEN %s = '' OR %s IS NULL THEN 'open' ELSE %s END)`,
+		statusCol, snoozedUntilCol, snoozedUntilCol, nowExpr, statusCol, statusCol, statusCol,
+	)
+}
+
+// StatusPredicate returns a SQL boolean predicate matching rows whose effective status equals targetStatusExpr at nowExpr.
+func StatusPredicate(statusCol, snoozedUntilCol, targetStatusExpr, nowExpr string) string {
+	return fmt.Sprintf(
+		`(CASE WHEN %s = 'open' THEN (%s = 'open' OR (%s = 'snoozed' AND %s IS NOT NULL AND %s <= %s)) WHEN %s = 'snoozed' THEN (%s = 'snoozed' AND (%s IS NULL OR %s > %s)) ELSE %s = %s END)`,
+		targetStatusExpr, statusCol, statusCol, snoozedUntilCol, snoozedUntilCol, nowExpr,
+		targetStatusExpr, statusCol, snoozedUntilCol, snoozedUntilCol, nowExpr,
+		statusCol, targetStatusExpr,
+	)
+}
+
+// InboundTurn holds the inputs for recording an inbound customer turn via Recorder.Inbound.
+type InboundTurn struct {
+	Chat       ChatRef
+	UID        string
+	SenderName string
+	SenderID   string
+	ReplyToUID *string
+	Body       string
+	MediaURL   *string
+	MediaType  *string
+	Channel    string
+	Metadata   map[string]interface{}
+	At         time.Time
+}
+
+// InboundReceipt is returned by Recorder.Inbound.
+type InboundReceipt struct {
+	Chat      domain.ChatState
+	Message   *domain.ChatMessage
+	Duplicate bool
+	At        time.Time
+}
+
+// AIMayAct reports whether AI automation (debounce and auto-reply routing) may run for this turn.
+func (r InboundReceipt) AIMayAct() bool {
+	if r.Duplicate {
+		return false
+	}
+	at := r.At.UTC()
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	return r.Chat.AI.Effective(at).IsEngaged()
+}
+
 // OutboundTurn holds the inputs for recording an outbound turn via Recorder.Outbound.
 type OutboundTurn struct {
 	Chat                ChatRef
@@ -208,7 +262,7 @@ type OutboundReceipt struct {
 	Duplicate bool
 }
 
-// Recorder is the single writer for activity-driven Chat state and outbound ChatMessages.
+// Recorder is the single writer for activity-driven Chat state and ChatMessages.
 type Recorder struct {
 	pool *pgxpool.Pool
 	pub  Publisher
@@ -274,6 +328,98 @@ func (r *Recorder) SetDebounceCanceller(deb DebounceCanceller) {
 		}
 		r.deb = deb
 	}
+}
+
+// Inbound locks the target Chat, enforces idempotency on turn.UID, applies domain.Apply(state, domain.InboundTurn),
+// inserts the inbound ChatMessage, and updates the Chat state in one transaction.
+func (r *Recorder) Inbound(ctx context.Context, ws uuid.UUID, turn InboundTurn) (InboundReceipt, error) {
+	if r == nil || r.pool == nil {
+		return InboundReceipt{}, errors.New("activity recorder pool is not configured")
+	}
+	uid := strings.TrimSpace(turn.UID)
+	if uid == "" {
+		return InboundReceipt{}, ErrInvalidUID
+	}
+
+	at := turn.At.UTC()
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return InboundReceipt{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	ref := turn.Chat
+	if ref.channel == "" && turn.Channel != "" {
+		ref.channel = turn.Channel
+	}
+	state, err := r.resolveAndLockChat(ctx, tx, ws, ref, true)
+	if err != nil {
+		return InboundReceipt{}, err
+	}
+	ws = state.WorkspaceID
+
+	// Idempotency check on (workspace_id, uid)
+	existingMsg, err := loadMessageByUID(ctx, tx, ws, uid)
+	if err == nil && existingMsg != nil {
+		if err := tx.Commit(ctx); err != nil {
+			return InboundReceipt{}, fmt.Errorf("commit duplicate inbound tx: %w", err)
+		}
+		return InboundReceipt{
+			Chat:      state,
+			Message:   existingMsg,
+			Duplicate: true,
+			At:        at,
+		}, nil
+	}
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return InboundReceipt{}, fmt.Errorf("check duplicate inbound message uid: %w", err)
+	}
+
+	channel := strings.TrimSpace(turn.Channel)
+	if channel == "" {
+		channel = ref.channel
+	}
+	if channel == "" && state.ConnectionID != nil && *state.ConnectionID != uuid.Nil {
+		_ = tx.QueryRow(ctx, `SELECT channel FROM connections WHERE id = $1`, *state.ConnectionID).Scan(&channel)
+	}
+
+	nextState, msg, intents := domain.Apply(state, domain.InboundTurn{
+		At:         at,
+		UID:        uid,
+		SenderName: turn.SenderName,
+		SenderID:   turn.SenderID,
+		ReplyToUID: turn.ReplyToUID,
+		Body:       turn.Body,
+		MediaURL:   turn.MediaURL,
+		MediaType:  turn.MediaType,
+		Channel:    channel,
+		Metadata:   turn.Metadata,
+	})
+
+	if err := insertChatMessage(ctx, tx, msg); err != nil {
+		return InboundReceipt{}, err
+	}
+
+	if err := updateChatState(ctx, tx, nextState, at); err != nil {
+		return InboundReceipt{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return InboundReceipt{}, fmt.Errorf("commit inbound tx: %w", err)
+	}
+
+	r.executeIntents(ctx, intents)
+
+	return InboundReceipt{
+		Chat:      nextState,
+		Message:   msg,
+		Duplicate: false,
+		At:        at,
+	}, nil
 }
 
 // Outbound locks the target Chat, enforces idempotency on turn.UID and the WABA service window gate,
@@ -352,8 +498,6 @@ func (r *Recorder) Outbound(ctx context.Context, ws uuid.UUID, turn OutboundTurn
 		}
 	}
 
-	wasClosedOrSnoozed := state.Status == domain.ChatStatusClosed || state.Status == domain.ChatStatusSnoozed
-
 	nextState, msg, intents := domain.Apply(state, domain.OutboundActivity{
 		At:           at,
 		UID:          uid,
@@ -378,13 +522,6 @@ func (r *Recorder) Outbound(ctx context.Context, ws uuid.UUID, turn OutboundTurn
 
 	if err := updateChatState(ctx, tx, nextState, at); err != nil {
 		return OutboundReceipt{}, err
-	}
-
-	if wasClosedOrSnoozed && nextState.ContactID != uuid.Nil {
-		_, _ = tx.Exec(ctx, `
-			UPDATE contacts SET closed_at = NULL, updated_at = $2
-			WHERE workspace_id = $1 AND id = $3 AND closed_at IS NOT NULL
-		`, ws, at, nextState.ContactID)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -436,13 +573,19 @@ func (r *Recorder) SetAI(ctx context.Context, ws uuid.UUID, ref ChatRef, change 
 	if modeStr == "" {
 		modeStr = string(domain.AIModeActive)
 	}
+	statusStr := string(nextState.Status)
+	if statusStr == "" {
+		statusStr = string(domain.ChatStatusOpen)
+	}
 	_, err = tx.Exec(ctx, `
 		UPDATE chats
 		SET ai_mode = $3,
 		    ai_paused_until = $4,
-		    updated_at = $5
+		    status = $5,
+		    snoozed_until = $6,
+		    updated_at = $7
 		WHERE workspace_id = $1 AND id = $2
-	`, state.WorkspaceID, state.ID, modeStr, nextState.AI.PausedUntil, now)
+	`, state.WorkspaceID, state.ID, modeStr, nextState.AI.PausedUntil, statusStr, nextState.SnoozedUntil, now)
 	if err != nil {
 		return domain.AIEngagement{}, fmt.Errorf("update chat ai state: %w", err)
 	}
@@ -618,8 +761,12 @@ func (r *Recorder) resolveAndLockChat(ctx context.Context, tx pgx.Tx, ws uuid.UU
 
 	var connPtr *uuid.UUID
 	if ref.connID != uuid.Nil {
-		c := ref.connID
-		connPtr = &c
+		var connExists bool
+		_ = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM connections WHERE id = $1)`, ref.connID).Scan(&connExists)
+		if connExists {
+			c := ref.connID
+			connPtr = &c
+		}
 	}
 
 	contactID := ref.contactID
@@ -698,7 +845,6 @@ func resolveOrCreateContactInTx(ctx context.Context, tx pgx.Tx, ws uuid.UUID, ch
 		WHERE workspace_id = $1 AND channel = $2 AND sender_identity = $3
 	`, ws, channel, address).Scan(&contactID)
 	if err == nil && contactID != uuid.Nil {
-		_, _ = tx.Exec(ctx, `UPDATE contacts SET closed_at = NULL, updated_at = NOW() WHERE id = $1 AND closed_at IS NOT NULL`, contactID)
 		return contactID, nil
 	}
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -722,8 +868,6 @@ func resolveOrCreateContactInTx(ctx context.Context, tx pgx.Tx, ws uuid.UUID, ch
 		if err != nil {
 			return uuid.Nil, fmt.Errorf("create contact in tx: %w", err)
 		}
-	} else {
-		_, _ = tx.Exec(ctx, `UPDATE contacts SET closed_at = NULL, updated_at = NOW() WHERE id = $1 AND closed_at IS NOT NULL`, contactID)
 	}
 
 	_, err = tx.Exec(ctx, `
@@ -864,15 +1008,18 @@ func updateChatState(ctx context.Context, tx pgx.Tx, state domain.ChatState, now
 		    snoozed_until = $4,
 		    ai_mode = $5,
 		    ai_paused_until = $6,
-		    last_message_at = $7,
-		    updated_at = $8
+		    unread_count = $7,
+		    service_window_expires_at = $8,
+		    last_message_at = $9,
+		    updated_at = $10
 		WHERE workspace_id = $1 AND id = $2
-	`, state.WorkspaceID, state.ID, string(state.Status), state.SnoozedUntil, modeStr, state.AI.PausedUntil, lastMsgAt, now)
+	`, state.WorkspaceID, state.ID, string(state.Status), state.SnoozedUntil, modeStr, state.AI.PausedUntil, state.UnreadCount, state.ServiceWindowExpiresAt, lastMsgAt, now)
 	if err != nil {
 		return fmt.Errorf("update chat state: %w", err)
 	}
 	return nil
 }
+
 
 func (r *Recorder) executeIntents(ctx context.Context, intents []domain.Intent) {
 	for _, in := range intents {

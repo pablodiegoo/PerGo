@@ -3,10 +3,12 @@ package webhook
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/chat"
 	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/outbound"
@@ -144,18 +146,44 @@ func (h *tagHandler) Execute(ctx context.Context, vc VerbContext, params json.Ra
 }
 
 type closeHandler struct {
-	contactRepo *repository.ContactRepository
+	chatEngine *chat.Engine
 }
 
 func NewCloseHandler(contactRepo *repository.ContactRepository) VerbHandler {
-	return &closeHandler{contactRepo: contactRepo}
+	var eng *chat.Engine
+	if contactRepo != nil && contactRepo.Pool() != nil {
+		chatRepo := repository.NewChatRepository(contactRepo.Pool())
+		eng = chat.NewEngine(chatRepo, chat.WithContactRepo(contactRepo))
+	}
+	return &closeHandler{chatEngine: eng}
+}
+
+func NewCloseHandlerWithEngine(eng *chat.Engine) VerbHandler {
+	return &closeHandler{chatEngine: eng}
 }
 
 func (h *closeHandler) Execute(ctx context.Context, vc VerbContext, params json.RawMessage) error {
 	if vc.ContactID == uuid.Nil {
 		return fmt.Errorf("contact not resolved")
 	}
-	if err := h.contactRepo.CloseThread(ctx, vc.WorkspaceID, vc.ContactID); err != nil {
+	if h.chatEngine == nil {
+		return fmt.Errorf("chat engine not configured")
+	}
+	ref := chat.ChatRef{ContactID: vc.ContactID}
+	if vc.ConnectionID != uuid.Nil {
+		connID := vc.ConnectionID
+		ref.ConnectionID = &connID
+	}
+	if _, _, err := h.chatEngine.UpdateStatus(ctx, vc.WorkspaceID, ref, chat.StatusUpdate{Status: "closed"}); err != nil {
+		if errors.Is(err, chat.ErrChatNotFound) {
+			if _, ensureErr := h.chatEngine.EnsureChatForContact(ctx, vc.WorkspaceID, vc.ContactID, false); ensureErr != nil {
+				return fmt.Errorf("db update failed: %w", ensureErr)
+			}
+			if _, _, retryErr := h.chatEngine.UpdateStatus(ctx, vc.WorkspaceID, chat.ChatRef{ContactID: vc.ContactID}, chat.StatusUpdate{Status: "closed"}); retryErr != nil {
+				return fmt.Errorf("db update failed: %w", retryErr)
+			}
+			return nil
+		}
 		return fmt.Errorf("db update failed: %w", err)
 	}
 	return nil

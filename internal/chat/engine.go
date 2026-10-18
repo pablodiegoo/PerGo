@@ -87,8 +87,8 @@ type threadLister interface {
 	ListThreadByContact(ctx context.Context, workspaceID, contactID uuid.UUID, afterID *uuid.UUID) ([]repository.ThreadMessage, error)
 }
 
-type contactUnreadResetter interface {
-	ResetUnreadByContact(ctx context.Context, workspaceID, contactID uuid.UUID) error
+type chatUnreadResetter interface {
+	ResetUnread(ctx context.Context, workspaceID, chatID uuid.UUID) error
 }
 
 type messageMetadataUpdater interface {
@@ -103,8 +103,6 @@ type poolProvider interface {
 type ContactRepository interface {
 	GetByID(ctx context.Context, workspaceID, contactID uuid.UUID) (*domain.Contact, error)
 	SetTags(ctx context.Context, workspaceID, contactID uuid.UUID, tags []string) error
-	CloseThread(ctx context.Context, workspaceID, contactID uuid.UUID) error
-	ReopenThread(ctx context.Context, workspaceID, contactID uuid.UUID) error
 	MarkAsRead(ctx context.Context, workspaceID, contactID uuid.UUID) error
 }
 
@@ -481,6 +479,22 @@ func EnforceWorkspaceScope(ctx context.Context, workspaceID uuid.UUID) (uuid.UUI
 	return workspaceID, nil
 }
 
+func deriveEffectiveStatus(c *domain.Chat) *domain.Chat {
+	if c == nil {
+		return nil
+	}
+	cp := *c
+	now := time.Now().UTC()
+	eff := domain.EffectiveStatus(cp.Status, cp.SnoozedUntil, now)
+	if eff == domain.ChatStatusOpen && cp.Status == domain.ChatStatusSnoozed {
+		cp.Status = domain.ChatStatusOpen
+		cp.SnoozedUntil = nil
+	} else {
+		cp.Status = eff
+	}
+	return &cp
+}
+
 // ResolveChat resolves a ChatRef (by ChatID, ContactID, MessageUID, or Channel+Phone)
 // strictly scoped to workspaceID.
 func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref ChatRef) (*domain.Chat, error) {
@@ -504,7 +518,7 @@ func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref Cha
 				if _, sErr := EnforceWorkspaceScope(ctx, c.WorkspaceID); sErr != nil {
 					return nil, ErrChatNotFound
 				}
-				return c, nil
+				return deriveEffectiveStatus(c), nil
 			}
 			return nil, ErrChatNotFound
 		}
@@ -512,7 +526,7 @@ func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref Cha
 		if gErr != nil || c == nil || c.WorkspaceID != wsID {
 			return nil, ErrChatNotFound
 		}
-		return c, nil
+		return deriveEffectiveStatus(c), nil
 	}
 
 	// 2. Resolve by ContactID
@@ -521,7 +535,7 @@ func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref Cha
 		if !wantConn {
 			if byContact, ok := e.chatRepo.(chatByContactGetter); ok {
 				if c, gErr := byContact.GetChatByContact(ctx, wsID, ref.ContactID); gErr == nil && c != nil && c.WorkspaceID == wsID {
-					return c, nil
+					return deriveEffectiveStatus(c), nil
 				}
 			}
 		}
@@ -538,15 +552,14 @@ func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref Cha
 				if wantConn && (chats[i].ConnectionID == nil || *chats[i].ConnectionID != *ref.ConnectionID) {
 					continue
 				}
-				cp := chats[i]
-				return &cp, nil
+				return deriveEffectiveStatus(&chats[i]), nil
 			}
 		}
 		if wantConn {
 			if byContact, ok := e.chatRepo.(chatByContactGetter); ok {
 				if c, gErr := byContact.GetChatByContact(ctx, wsID, ref.ContactID); gErr == nil && c != nil && c.WorkspaceID == wsID {
 					if c.ConnectionID != nil && *c.ConnectionID == *ref.ConnectionID {
-						return c, nil
+						return deriveEffectiveStatus(c), nil
 					}
 				}
 			}
@@ -575,7 +588,7 @@ func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref Cha
 		if gErr != nil || c == nil {
 			return nil, ErrChatNotFound
 		}
-		return c, nil
+		return deriveEffectiveStatus(c), nil
 	}
 
 	// 4. Resolve by Channel + Phone
@@ -600,12 +613,12 @@ func (e *Engine) ResolveChat(ctx context.Context, workspaceID uuid.UUID, ref Cha
 					continue
 				}
 				if e.contactRepo == nil {
-					return &c, nil
+					return deriveEffectiveStatus(&c), nil
 				}
 				contact, cErr := e.contactRepo.GetByID(ctx, wsID, c.ContactID)
 				if cErr == nil && contact != nil {
 					if matchesContactPhone(contact, channel, phone) {
-						return &c, nil
+						return deriveEffectiveStatus(&c), nil
 					}
 				}
 			}
@@ -669,11 +682,11 @@ func (e *Engine) findOrCreateChatByPhone(ctx context.Context, workspaceID uuid.U
 	if chErr != nil || c == nil {
 		return nil, ErrChatNotFound
 	}
-	return c, nil
+	return deriveEffectiveStatus(c), nil
 }
 
 // EnsureChatForContact resolves or creates the chat thread for a contact within workspaceID,
-// lazily reopens expired snoozes, and optionally resets unread count.
+// derives effective snooze status, and optionally resets unread count on that chat.
 func (e *Engine) EnsureChatForContact(ctx context.Context, workspaceID, contactID uuid.UUID, markRead bool) (*domain.Chat, error) {
 	if contactID == uuid.Nil {
 		return nil, ErrChatNotFound
@@ -710,22 +723,20 @@ func (e *Engine) EnsureChatForContact(ctx context.Context, workspaceID, contactI
 		if err != nil || c == nil {
 			return nil, ErrChatNotFound
 		}
+		c = deriveEffectiveStatus(c)
 	}
 
-	e.reopenIfSnoozeExpired(ctx, c.WorkspaceID, c)
-
 	if markRead {
-		_ = e.ResetUnreadByContact(ctx, c.WorkspaceID, contactID)
+		_ = e.resetChatUnread(ctx, c.WorkspaceID, c.ID, c.ContactID)
 		c.UnreadCount = 0
 	}
 
 	return c, nil
 }
 
-// ResetUnreadByContact resets unread_count = 0 across all chat threads for a contact in a workspace
-// and synchronizes the contact's last_read_at timestamp via MarkAsRead.
-func (e *Engine) ResetUnreadByContact(ctx context.Context, workspaceID, contactID uuid.UUID) error {
-	if contactID == uuid.Nil {
+// resetChatUnread resets unread_count = 0 on the specified chatID and updates the contact's last_read_at timestamp.
+func (e *Engine) resetChatUnread(ctx context.Context, workspaceID, chatID, contactID uuid.UUID) error {
+	if chatID == uuid.Nil {
 		return nil
 	}
 	wsID, err := EnforceWorkspaceScope(ctx, workspaceID)
@@ -734,15 +745,13 @@ func (e *Engine) ResetUnreadByContact(ctx context.Context, workspaceID, contactI
 	}
 	var resetErr error
 	if e.chatRepo != nil {
-		if resetter, ok := e.chatRepo.(contactUnreadResetter); ok {
-			resetErr = resetter.ResetUnreadByContact(ctx, wsID, contactID)
-		} else if c, rErr := e.ResolveChat(ctx, wsID, ChatRef{ContactID: contactID}); rErr == nil && c != nil && c.UnreadCount > 0 {
-			if updater, ok := e.chatRepo.(chatUnreadUpdater); ok {
-				resetErr = updater.UpdateChatUnreadCount(ctx, wsID, c.ID, 0)
-			}
+		if resetter, ok := e.chatRepo.(chatUnreadResetter); ok {
+			resetErr = resetter.ResetUnread(ctx, wsID, chatID)
+		} else if updater, ok := e.chatRepo.(chatUnreadUpdater); ok {
+			resetErr = updater.UpdateChatUnreadCount(ctx, wsID, chatID, 0)
 		}
 	}
-	if e.contactRepo != nil {
+	if e.contactRepo != nil && contactID != uuid.Nil {
 		if mErr := e.contactRepo.MarkAsRead(ctx, wsID, contactID); mErr != nil && resetErr == nil {
 			resetErr = mErr
 		}
@@ -751,7 +760,7 @@ func (e *Engine) ResetUnreadByContact(ctx context.Context, workspaceID, contactI
 }
 
 // ListConversations returns all active conversation summaries for a workspace in a single SQL query
-// against chats and chat_messages, lazily reopening any expired snoozed chats.
+// against chats and chat_messages, deriving effective status for expired snoozes without mutating storage.
 func (e *Engine) ListConversations(ctx context.Context, workspaceID uuid.UUID, channelFilter string) ([]repository.ConversationSummary, error) {
 	if e.chatRepo == nil {
 		return nil, nil
@@ -773,22 +782,19 @@ func (e *Engine) ListConversations(ctx context.Context, workspaceID uuid.UUID, c
 	}
 	now := time.Now().UTC()
 	for i := range convs {
-		if convs[i].Status == string(domain.ChatStatusSnoozed) && convs[i].SnoozedUntil != nil && !convs[i].SnoozedUntil.After(now) {
-			if convs[i].ChatID != uuid.Nil {
-				_ = e.chatRepo.UpdateChatStatus(ctx, wsID, convs[i].ChatID, string(domain.ChatStatusOpen))
-			}
+		eff := domain.EffectiveStatus(domain.ChatStatus(convs[i].Status), convs[i].SnoozedUntil, now)
+		if eff == domain.ChatStatusOpen && domain.ChatStatus(convs[i].Status) == domain.ChatStatusSnoozed {
 			convs[i].Status = string(domain.ChatStatusOpen)
 			convs[i].SnoozedUntil = nil
-			if e.contactRepo != nil && convs[i].ContactID != uuid.Nil {
-				_ = e.contactRepo.ReopenThread(ctx, wsID, convs[i].ContactID)
-			}
+		} else {
+			convs[i].Status = string(eff)
 		}
 	}
 	return convs, nil
 }
 
 // ListThread returns chronological ThreadMessage rows for a contact in a workspace,
-// optionally resetting unread_count = 0 when markRead is true.
+// optionally resetting unread_count = 0 on the resolved chat when markRead is true.
 func (e *Engine) ListThread(ctx context.Context, workspaceID, contactID uuid.UUID, afterID *uuid.UUID, markRead bool) ([]repository.ThreadMessage, error) {
 	if e.chatRepo == nil || contactID == uuid.Nil {
 		return nil, nil
@@ -800,9 +806,7 @@ func (e *Engine) ListThread(ctx context.Context, workspaceID, contactID uuid.UUI
 	if wsID == uuid.Nil {
 		return nil, nil
 	}
-	if c, cErr := e.ResolveChat(ctx, wsID, ChatRef{ContactID: contactID}); cErr == nil && c != nil {
-		e.reopenIfSnoozeExpired(ctx, wsID, c)
-	}
+	resolvedChat, _ := e.ResolveChat(ctx, wsID, ChatRef{ContactID: contactID})
 	lister, ok := e.chatRepo.(threadLister)
 	if !ok {
 		return nil, nil
@@ -811,47 +815,17 @@ func (e *Engine) ListThread(ctx context.Context, workspaceID, contactID uuid.UUI
 	if err != nil {
 		return nil, err
 	}
-	if markRead {
-		_ = e.ResetUnreadByContact(ctx, wsID, contactID)
+	if markRead && resolvedChat != nil {
+		_ = e.resetChatUnread(ctx, wsID, resolvedChat.ID, contactID)
 	}
 	return msgs, nil
 }
 
-// reopenIfSnoozeExpired lazily reopens a snoozed chat whose snooze timer has elapsed
-// and synchronizes the contact's thread status via ReopenThread.
-func (e *Engine) reopenIfSnoozeExpired(ctx context.Context, workspaceID uuid.UUID, c *domain.Chat) {
-	if c == nil {
-		return
-	}
-	now := time.Now().UTC()
-	if c.Status == domain.ChatStatusSnoozed && c.SnoozedUntil != nil && !c.SnoozedUntil.After(now) {
-		if err := e.chatRepo.UpdateChatStatus(ctx, workspaceID, c.ID, string(domain.ChatStatusOpen)); err != nil {
-			slog.WarnContext(ctx, "failed to lazily reopen expired snoozed chat", "error", err, "chat_id", c.ID)
-		}
-		c.Status = domain.ChatStatusOpen
-		c.SnoozedUntil = nil
-		if e.contactRepo != nil && c.ContactID != uuid.Nil {
-			if err := e.contactRepo.ReopenThread(ctx, workspaceID, c.ContactID); err != nil {
-				slog.WarnContext(ctx, "failed to reopen contact thread on snooze expiry", "error", err, "contact_id", c.ContactID)
-			}
-		}
-	}
-}
-
-// List retrieves chats for a workspace with filtering, pagination, contact enrichment,
-// and lazy reopening of expired snoozes.
+// List retrieves chats for a workspace with filtering, pagination, and contact enrichment.
+// Effective status for expired snoozes is derived on read without writing to storage.
 func (e *Engine) List(ctx context.Context, workspaceID uuid.UUID, filter domain.ChatFilter, limit, offset int) ([]ChatSummary, error) {
 	if e.chatRepo == nil {
 		return nil, errors.New("chat repository not configured")
-	}
-
-	if filter.Status == string(domain.ChatStatusOpen) || filter.Status == string(domain.ChatStatusSnoozed) {
-		if snoozedChats, sErr := e.chatRepo.ListChats(ctx, workspaceID, domain.ChatFilter{Status: string(domain.ChatStatusSnoozed)}, 100, 0); sErr == nil {
-			for i := range snoozedChats {
-				sc := snoozedChats[i]
-				e.reopenIfSnoozeExpired(ctx, workspaceID, &sc)
-			}
-		}
 	}
 
 	chats, err := e.chatRepo.ListChats(ctx, workspaceID, filter, limit, offset)
@@ -881,8 +855,7 @@ func (e *Engine) List(ctx context.Context, workspaceID uuid.UUID, filter domain.
 
 	results := make([]ChatSummary, 0, len(chats))
 	for i := range chats {
-		chatItem := chats[i]
-		e.reopenIfSnoozeExpired(ctx, workspaceID, &chatItem)
+		chatItem := *deriveEffectiveStatus(&chats[i])
 		if filter.Status != "" && !strings.EqualFold(string(chatItem.Status), filter.Status) {
 			continue
 		}
@@ -912,7 +885,7 @@ func (e *Engine) List(ctx context.Context, workspaceID uuid.UUID, filter domain.
 	return results, nil
 }
 
-// Get resolves a chat thread, lazily reopens expired snoozes, optionally marks it as read,
+// Get resolves a chat thread, derives effective snooze status, optionally marks it as read,
 // and returns the chat along with its contact, connection, and optional message history.
 func (e *Engine) Get(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, messageLimit int, markRead bool) (*GetChatResult, error) {
 	c, err := e.ResolveChat(ctx, workspaceID, ref)
@@ -923,18 +896,9 @@ func (e *Engine) Get(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, me
 		return nil, err
 	}
 
-	e.reopenIfSnoozeExpired(ctx, c.WorkspaceID, c)
-
-	if markRead && c.UnreadCount > 0 {
-		if updater, ok := e.chatRepo.(chatUnreadUpdater); ok {
-			_ = updater.UpdateChatUnreadCount(ctx, c.WorkspaceID, c.ID, 0)
-		}
-		if c.ContactID != uuid.Nil {
-			_ = e.ResetUnreadByContact(ctx, c.WorkspaceID, c.ContactID)
-		}
+	if markRead {
+		_ = e.resetChatUnread(ctx, c.WorkspaceID, c.ID, c.ContactID)
 		c.UnreadCount = 0
-	} else if markRead && c.ContactID != uuid.Nil {
-		_ = e.ResetUnreadByContact(ctx, c.WorkspaceID, c.ContactID)
 	}
 
 	res := &GetChatResult{
@@ -963,7 +927,7 @@ func (e *Engine) Get(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, me
 }
 
 // GetMessage resolves a single message by UID within a workspace, returning the message,
-// its parent chat (lazily reopened if an active snooze has expired), and the associated contact.
+// its parent chat (with derived effective snooze status), and the associated contact.
 func (e *Engine) GetMessage(ctx context.Context, workspaceID uuid.UUID, messageUID string) (*domain.ChatMessage, *domain.Chat, *domain.Contact, error) {
 	if e.chatRepo == nil {
 		return nil, nil, nil, errors.New("chat repository not configured")
@@ -1006,8 +970,7 @@ func (e *Engine) GetMessage(ctx context.Context, workspaceID uuid.UUID, messageU
 	var c *domain.Chat
 	if msg.ChatID != uuid.Nil {
 		if ch, chErr := e.chatRepo.GetChat(ctx, msg.WorkspaceID, msg.ChatID); chErr == nil && ch != nil {
-			c = ch
-			e.reopenIfSnoozeExpired(ctx, c.WorkspaceID, c)
+			c = deriveEffectiveStatus(ch)
 		}
 	}
 
@@ -1028,8 +991,6 @@ func (e *Engine) ListMessages(ctx context.Context, workspaceID uuid.UUID, ref Ch
 		return nil, nil, err
 	}
 
-	e.reopenIfSnoozeExpired(ctx, c.WorkspaceID, c)
-
 	if limit <= 0 {
 		limit = 50
 	}
@@ -1045,7 +1006,7 @@ func (e *Engine) ListMessages(ctx context.Context, workspaceID uuid.UUID, ref Ch
 }
 
 // UpdateStatus transitions a chat between open, pending, snoozed, and closed,
-// synchronizing the contact's thread status and writing an audit log.
+// writing an audit log.
 func (e *Engine) UpdateStatus(ctx context.Context, workspaceID uuid.UUID, ref ChatRef, upd StatusUpdate) (*domain.Chat, *time.Time, error) {
 	c, err := e.ResolveChat(ctx, workspaceID, ref)
 	if errors.Is(err, ErrChatNotFound) && ref.ContactID != uuid.Nil {
@@ -1089,17 +1050,6 @@ func (e *Engine) UpdateStatus(ctx context.Context, workspaceID uuid.UUID, ref Ch
 		c.SnoozedUntil = nil
 	}
 
-	if e.contactRepo != nil && c.ContactID != uuid.Nil {
-		if status == string(domain.ChatStatusClosed) {
-			if cErr := e.contactRepo.CloseThread(ctx, c.WorkspaceID, c.ContactID); cErr != nil {
-				slog.WarnContext(ctx, "failed to close thread for contact", "error", cErr, "contact_id", c.ContactID)
-			}
-		} else {
-			if rErr := e.contactRepo.ReopenThread(ctx, c.WorkspaceID, c.ContactID); rErr != nil {
-				slog.WarnContext(ctx, "failed to reopen thread for contact", "error", rErr, "contact_id", c.ContactID)
-			}
-		}
-	}
 
 	if e.auditRepo != nil {
 		auditPayload, _ := json.Marshal(map[string]interface{}{
@@ -1776,14 +1726,8 @@ func (e *Engine) SendMessage(ctx context.Context, workspaceID uuid.UUID, req Sen
 	}
 
 	if c.Status == domain.ChatStatusSnoozed || c.Status == domain.ChatStatusClosed {
-		if e.chatRepo != nil {
-			_ = e.chatRepo.UpdateChatStatus(ctx, wsID, c.ID, string(domain.ChatStatusOpen))
-		}
 		c.Status = domain.ChatStatusOpen
 		c.SnoozedUntil = nil
-		if e.contactRepo != nil && c.ContactID != uuid.Nil {
-			_ = e.contactRepo.ReopenThread(ctx, wsID, c.ContactID)
-		}
 	}
 
 	var persistedMsg *domain.ChatMessage

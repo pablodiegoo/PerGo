@@ -237,7 +237,6 @@ type Publisher interface {
 // ContactStore defines the contact repository operations used by InboundProcessor.
 type ContactStore interface {
 	ResolveContact(ctx context.Context, workspaceID uuid.UUID, channel, senderIdentity, name, username, phone string) (*domain.Contact, error)
-	ReopenThread(ctx context.Context, workspaceID, contactID uuid.UUID) error
 }
 
 // InboundProcessor handles workspace verification, deduplication, PII checking,
@@ -276,8 +275,12 @@ func NewInboundProcessor(
 	router InboundRouter,
 ) *InboundProcessor {
 	var cs ContactStore
+	var act *activity.Recorder
 	if contactRepo != nil {
 		cs = contactRepo
+		if contactRepo.Pool() != nil {
+			act = activity.New(contactRepo.Pool(), publisher, nil, nil)
+		}
 	}
 	return &InboundProcessor{
 		dedupRepo:            dedupRepo,
@@ -289,6 +292,7 @@ func NewInboundProcessor(
 		contactRepo:          cs,
 		dispatchRepo:         dispatchRepo,
 		router:               router,
+		activity:             act,
 	}
 }
 
@@ -298,7 +302,7 @@ func (p *InboundProcessor) SetContactStore(store ContactStore) *InboundProcessor
 	return p
 }
 
-// SetActivity configures the Chat Activity recorder used for AI engagement checks.
+// SetActivity configures the Chat Activity recorder used for inbound turns and AI engagement checks.
 func (p *InboundProcessor) SetActivity(rec *activity.Recorder) *InboundProcessor {
 	p.activity = rec
 	if p.debouncer != nil && rec != nil {
@@ -336,6 +340,9 @@ func (p *InboundProcessor) SetDebouncer(d *Debouncer) *InboundProcessor {
 		if !hasPub {
 			d.SetPublisher(p.publisher)
 		}
+	}
+	if p.activity != nil && d != nil {
+		p.activity.SetDebounceCanceller(d)
 	}
 	if d != nil && p.activity != nil {
 		d.mu.Lock()
@@ -496,12 +503,86 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		}
 	}
 
-	// 1. Recipient Session Tracking & Timing Telemetry
 	occurredAt := ev.OccurredAt
 	if occurredAt.IsZero() {
 		occurredAt = time.Now().UTC()
 	}
 
+	msgUID := ev.MessageID
+	if msgUID == "" {
+		msgUID = traceID
+	}
+
+	msgBody := ev.Body
+	if msgBody == "" && ev.Interactive != nil {
+		if ev.Interactive.ButtonReply != nil {
+			msgBody = ev.Interactive.ButtonReply.Title
+		} else if ev.Interactive.ListReply != nil {
+			msgBody = ev.Interactive.ListReply.Title
+		} else if ev.Interactive.NFMReply != nil {
+			if ev.Interactive.NFMReply.Body != "" {
+				msgBody = ev.Interactive.NFMReply.Body
+			} else {
+				msgBody = fmt.Sprintf("[Flow Submission: %s]", ev.Interactive.NFMReply.Name)
+			}
+		}
+	}
+
+	// 0.5 Chat Activity: atomically record inbound turn and advance Chat state
+	var receipt activity.InboundReceipt
+	hasReceipt := false
+	if p.activity != nil && contact != nil {
+		var mediaURL, mediaType *string
+		if ev.Media != nil {
+			if ev.Media.MediaURL != "" {
+				u := ev.Media.MediaURL
+				mediaURL = &u
+			}
+			if ev.Media.MediaType != "" {
+				mt := ev.Media.MediaType
+				mediaType = &mt
+			}
+		}
+		msgMetadata := make(map[string]interface{}, len(ev.Metadata)+2)
+		for k, v := range ev.Metadata {
+			msgMetadata[k] = v
+		}
+		if ev.Channel != "" {
+			if _, ok := msgMetadata["channel"]; !ok {
+				msgMetadata["channel"] = ev.Channel
+			}
+		}
+		if ev.To != "" {
+			if _, ok := msgMetadata["to"]; !ok {
+				msgMetadata["to"] = ev.To
+			}
+		}
+
+		var aErr error
+		receipt, aErr = p.activity.Inbound(ctx, ev.WorkspaceID, activity.InboundTurn{
+			Chat:       activity.ChatOf(ev.ConnectionID, contact.ID),
+			UID:        msgUID,
+			SenderName: ev.SenderDisplayName(),
+			SenderID:   ev.From,
+			Body:       msgBody,
+			MediaURL:   mediaURL,
+			MediaType:  mediaType,
+			Channel:    ev.Channel,
+			Metadata:   msgMetadata,
+			At:         occurredAt,
+		})
+		if aErr != nil {
+			slog.Error("inbound processor: failed to record chat inbound activity", "error", aErr, "contact_id", contact.ID, "trace_id", traceID)
+		} else {
+			hasReceipt = true
+			if receipt.Duplicate {
+				slog.Info("inbound processor: duplicate message ignored via chat activity", "message_id", ev.MessageID, "channel", ev.Channel, "trace_id", traceID)
+				return nil
+			}
+		}
+	}
+
+	// 1. Recipient Session Tracking & Timing Telemetry
 	var timing *EventTiming
 	if p.recipientSessionRepo != nil {
 		sessKey := domain.SessionKey{
@@ -679,153 +760,45 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 		}
 	}
 
-	// 8.5 Shared Team Inbox Tracking: Upsert Chat & Append Inbound ChatMessage
-	var chat *domain.Chat
-	if p.chatRepo != nil && contact != nil {
-		var connID *uuid.UUID
-		if ev.ConnectionID != uuid.Nil {
-			connID = &ev.ConnectionID
-		}
-
-		var cErr error
-		chat, cErr = p.chatRepo.FindOrCreateChat(ctx, ev.WorkspaceID, connID, contact.ID)
-		if cErr != nil {
-			slog.Error("inbound processor: failed to find or create chat", "error", cErr, "contact_id", contact.ID, "trace_id", traceID)
-		} else if chat != nil {
-			if chat.Status == domain.ChatStatusSnoozed || chat.Status == domain.ChatStatusClosed {
-				_ = p.chatRepo.UpdateChatStatus(ctx, ev.WorkspaceID, chat.ID, string(domain.ChatStatusOpen))
-				chat.Status = domain.ChatStatusOpen
-				chat.SnoozedUntil = nil
-				if p.contactRepo != nil {
-					_ = p.contactRepo.ReopenThread(ctx, ev.WorkspaceID, contact.ID)
-					contact.ClosedAt = nil
-				}
+	// 8.5 Inbound Debounce Buffer & AI Handoff Gate
+	if p.debouncer != nil && contact != nil && hasReceipt {
+		if !receipt.AIMayAct() {
+			slog.Info("inbound processor: chat AI disabled by human takeover, bypassing automated AI dispatch",
+				"workspace_id", ev.WorkspaceID,
+				"chat_id", receipt.Chat.ID,
+				"contact_id", contact.ID,
+				"trace_id", traceID,
+			)
+		} else {
+			var connID *uuid.UUID
+			if ev.ConnectionID != uuid.Nil {
+				connID = &ev.ConnectionID
 			}
-			_ = p.chatRepo.IncrementUnreadCount(ctx, ev.WorkspaceID, chat.ID)
-			_ = p.chatRepo.TouchLastMessageAt(ctx, ev.WorkspaceID, chat.ID, occurredAt)
-
-			if ev.Channel == "whatsapp_cloud" {
-				duration := 24 * time.Hour
-				if ev.Metadata != nil && (ev.Metadata["entry_point_type"] == "ctwa" || ev.Metadata["is_referral"] == "true") {
-					duration = 72 * time.Hour
-				}
-				exp := occurredAt.Add(duration)
-				_ = p.chatRepo.UpdateServiceWindow(ctx, ev.WorkspaceID, chat.ID, &exp)
+			debouncedMsg := &DebouncedMessage{
+				MessageID:    msgUID,
+				TraceID:      traceID,
+				WorkspaceID:  ev.WorkspaceID,
+				ConnectionID: connID,
+				ChatID:       receipt.Chat.ID,
+				ContactID:    contact.ID,
+				Channel:      ev.Channel,
+				From:         ev.From,
+				To:           ev.To,
+				SenderName:   ev.SenderDisplayName(),
+				Body:         msgBody,
+				OccurredAt:   occurredAt,
+				Metadata:     map[string]interface{}{},
 			}
-
-			msgUID := ev.MessageID
-			if msgUID == "" {
-				msgUID = traceID
-			}
-
-			msgBody := ev.Body
-			if msgBody == "" && ev.Interactive != nil {
-				if ev.Interactive.ButtonReply != nil {
-					msgBody = ev.Interactive.ButtonReply.Title
-				} else if ev.Interactive.ListReply != nil {
-					msgBody = ev.Interactive.ListReply.Title
-				} else if ev.Interactive.NFMReply != nil {
-					if ev.Interactive.NFMReply.Body != "" {
-						msgBody = ev.Interactive.NFMReply.Body
-					} else {
-						msgBody = fmt.Sprintf("[Flow Submission: %s]", ev.Interactive.NFMReply.Name)
-					}
-				}
-			}
-
-			var mediaURL, mediaType *string
-			if payload.Media != nil {
-				if payload.Media.MediaURL != "" {
-					mediaURL = &payload.Media.MediaURL
-				}
-				if payload.Media.MediaType != "" {
-					mediaType = &payload.Media.MediaType
-				}
-			}
-
-			msgMetadata := make(map[string]interface{})
-			for k, v := range ev.Metadata {
-				msgMetadata[k] = v
-			}
-			if ev.Channel != "" {
-				if _, ok := msgMetadata["channel"]; !ok {
-					msgMetadata["channel"] = ev.Channel
-				}
-			}
-			if ev.To != "" {
-				if _, ok := msgMetadata["to"]; !ok {
-					msgMetadata["to"] = ev.To
-				}
-			}
-
-			chatMsg := &domain.ChatMessage{
-				ChatID:      chat.ID,
-				WorkspaceID: ev.WorkspaceID,
-				UID:         msgUID,
-				Direction:   domain.DirectionInbound,
-				SenderType:  domain.SenderTypeContact,
-				SenderName:  ev.SenderDisplayName(),
-				SenderID:    ev.From,
-				Body:        msgBody,
-				MediaURL:    mediaURL,
-				MediaType:   mediaType,
-				IsPrivate:   false,
-				Reactions:   []domain.Reaction{},
-				Metadata:    msgMetadata,
-				CreatedAt:   occurredAt,
-			}
-			if err := p.chatRepo.AddChatMessage(ctx, chatMsg); err != nil {
-				slog.Error("inbound processor: failed to add chat message", "error", err, "uid", msgUID, "trace_id", traceID)
-			}
-
-			// 8.6 Inbound Debounce Buffer & AI Handoff Gate
-			if p.debouncer != nil {
-				aiActive := chat.EffectiveAI().IsEngaged()
-				if !aiActive {
-					slog.Info("inbound processor: chat AI disabled by human takeover, bypassing automated AI dispatch",
-						"workspace_id", ev.WorkspaceID,
-						"chat_id", chat.ID,
-						"contact_id", contact.ID,
-						"trace_id", traceID,
-					)
-				} else {
-					debouncedMsg := &DebouncedMessage{
-						MessageID:    msgUID,
-						TraceID:      traceID,
-						WorkspaceID:  ev.WorkspaceID,
-						ConnectionID: connID,
-						ChatID:       chat.ID,
-						ContactID:    contact.ID,
-						Channel:      ev.Channel,
-						From:         ev.From,
-						To:           ev.To,
-						SenderName:   ev.SenderDisplayName(),
-						Body:         msgBody,
-						OccurredAt:   occurredAt,
-						Metadata:     map[string]interface{}{},
-					}
-					if err := p.debouncer.Enqueue(ctx, debouncedMsg); err != nil {
-						slog.Error("inbound processor: failed to enqueue message to debounce buffer", "error", err, "chat_id", chat.ID, "trace_id", traceID)
-					}
-				}
+			if err := p.debouncer.Enqueue(ctx, debouncedMsg); err != nil {
+				slog.Error("inbound processor: failed to enqueue message to debounce buffer", "error", err, "chat_id", receipt.Chat.ID, "trace_id", traceID)
 			}
 		}
 	}
 
 	// 9. Route inbound event via InboundRouter
 	if p.router != nil && contact != nil {
-		aiActive := chat == nil || chat.EffectiveAI().IsEngaged()
-		if chat == nil && p.activity != nil {
-			if state, ok, sErr := p.activity.Snapshot(ctx, ev.WorkspaceID, activity.ChatOf(ev.ConnectionID, contact.ID)); sErr == nil && ok {
-				aiActive = state.AI.Effective(time.Now().UTC()).IsEngaged()
-			}
-		}
-		if !aiActive {
-			var chatID uuid.UUID
-			if chat != nil {
-				chatID = chat.ID
-			}
-			slog.Info("inbound processor: chat AI is disabled (human takeover), bypassing InboundRouter dispatch", "chat_id", chatID, "contact_id", contact.ID)
+		if hasReceipt && !receipt.AIMayAct() {
+			slog.Info("inbound processor: chat AI is disabled (human takeover), bypassing InboundRouter dispatch", "chat_id", receipt.Chat.ID, "contact_id", contact.ID)
 		} else {
 			if err := p.router.Route(ctx, contact, ev); err != nil {
 				slog.Error("inbound processor: router failed to route event", "error", err, "contact_id", contact.ID, "trace_id", traceID)

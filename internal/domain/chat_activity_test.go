@@ -331,3 +331,200 @@ func hasIntent(intents []domain.Intent, kind domain.IntentKind) bool {
 	}
 	return false
 }
+
+func TestEffectiveStatus(t *testing.T) {
+	t0 := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	future := t0.Add(2 * time.Hour)
+	past := t0.Add(-1 * time.Minute)
+
+	tests := []struct {
+		name         string
+		status       domain.ChatStatus
+		snoozedUntil *time.Time
+		now          time.Time
+		want         domain.ChatStatus
+	}{
+		{
+			name:         "empty status defaults to open",
+			status:       "",
+			snoozedUntil: nil,
+			now:          t0,
+			want:         domain.ChatStatusOpen,
+		},
+		{
+			name:         "open stays open",
+			status:       domain.ChatStatusOpen,
+			snoozedUntil: nil,
+			now:          t0,
+			want:         domain.ChatStatusOpen,
+		},
+		{
+			name:         "closed stays closed regardless of snoozed_until",
+			status:       domain.ChatStatusClosed,
+			snoozedUntil: &past,
+			now:          t0,
+			want:         domain.ChatStatusClosed,
+		},
+		{
+			name:         "snoozed in future remains snoozed",
+			status:       domain.ChatStatusSnoozed,
+			snoozedUntil: &future,
+			now:          t0,
+			want:         domain.ChatStatusSnoozed,
+		},
+		{
+			name:         "snoozed at exact expiry is open",
+			status:       domain.ChatStatusSnoozed,
+			snoozedUntil: &t0,
+			now:          t0,
+			want:         domain.ChatStatusOpen,
+		},
+		{
+			name:         "snoozed in past is open",
+			status:       domain.ChatStatusSnoozed,
+			snoozedUntil: &past,
+			now:          t0,
+			want:         domain.ChatStatusOpen,
+		},
+		{
+			name:         "snoozed with nil snoozed_until remains snoozed",
+			status:       domain.ChatStatusSnoozed,
+			snoozedUntil: nil,
+			now:          t0,
+			want:         domain.ChatStatusSnoozed,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := domain.EffectiveStatus(tc.status, tc.snoozedUntil, tc.now)
+			if got != tc.want {
+				t.Fatalf("EffectiveStatus(%q, %v, %v) = %q, want %q", tc.status, tc.snoozedUntil, tc.now, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestApply_InboundTurn(t *testing.T) {
+	wsID := uuid.New()
+	chatID := uuid.New()
+	contactID := uuid.New()
+	t0 := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+
+	t.Run("reopens closed chat, increments unread by 1, advances timestamps and service window, preserves AI", func(t *testing.T) {
+		pauseUntil := t0.Add(-1 * time.Hour) // expired pause
+		state := domain.ChatState{
+			ID:            chatID,
+			WorkspaceID:   wsID,
+			ContactID:     contactID,
+			Status:        domain.ChatStatusClosed,
+			UnreadCount:   2,
+			LastMessageAt: t0.Add(-2 * time.Hour),
+			AI:            domain.AIEngagement{Mode: domain.AIModePaused, PausedUntil: &pauseUntil},
+		}
+
+		replyTo := "msg-prev-1"
+		next, msg, intents := domain.Apply(state, domain.InboundTurn{
+			At:         t0,
+			UID:        "wamid.inbound.1",
+			SenderName: "Alice",
+			SenderID:   "+5511999990000",
+			ReplyToUID: &replyTo,
+			Body:       "Need help!",
+			Channel:    "whatsapp_cloud",
+		})
+
+		if next.Status != domain.ChatStatusOpen {
+			t.Fatalf("next.Status = %q, want %q", next.Status, domain.ChatStatusOpen)
+		}
+		if next.SnoozedUntil != nil {
+			t.Fatalf("next.SnoozedUntil = %v, want nil", next.SnoozedUntil)
+		}
+		if next.UnreadCount != 3 {
+			t.Fatalf("next.UnreadCount = %d, want 3", next.UnreadCount)
+		}
+		if !next.LastMessageAt.Equal(t0) {
+			t.Fatalf("next.LastMessageAt = %v, want %v", next.LastMessageAt, t0)
+		}
+		if next.LastInboundAt == nil || !next.LastInboundAt.Equal(t0) {
+			t.Fatalf("next.LastInboundAt = %v, want %v", next.LastInboundAt, t0)
+		}
+		wantWindow := t0.Add(24 * time.Hour)
+		if next.ServiceWindowExpiresAt == nil || !next.ServiceWindowExpiresAt.Equal(wantWindow) {
+			t.Fatalf("next.ServiceWindowExpiresAt = %v, want %v", next.ServiceWindowExpiresAt, wantWindow)
+		}
+		// AI state must be preserved as-is (no reset write on inbound; resume is derived from time)
+		if next.AI.Mode != domain.AIModePaused || next.AI.PausedUntil == nil || !next.AI.PausedUntil.Equal(pauseUntil) {
+			t.Fatalf("expected stored AI to be preserved without reset write, got %+v", next.AI)
+		}
+		if !next.AI.Effective(t0).IsEngaged() {
+			t.Fatalf("expected Effective(t0) on expired pause to be engaged")
+		}
+		if len(intents) != 0 {
+			t.Fatalf("expected 0 intents for InboundTurn, got %+v", intents)
+		}
+		if msg == nil {
+			t.Fatal("expected non-nil ChatMessage")
+		}
+		if msg.Direction != domain.DirectionInbound || msg.SenderType != domain.SenderTypeContact {
+			t.Fatalf("msg direction/sender = %q/%q, want inbound/contact", msg.Direction, msg.SenderType)
+		}
+		if msg.UID != "wamid.inbound.1" || msg.Body != "Need help!" || msg.SenderName != "Alice" || msg.SenderID != "+5511999990000" {
+			t.Fatalf("unexpected msg fields: %+v", msg)
+		}
+		if msg.ReplyToUID == nil || *msg.ReplyToUID != replyTo {
+			t.Fatalf("msg.ReplyToUID = %v, want %q", msg.ReplyToUID, replyTo)
+		}
+	})
+
+	t.Run("reopens snoozed chat and clears snoozed_until", func(t *testing.T) {
+		snoozeFuture := t0.Add(6 * time.Hour)
+		state := domain.ChatState{
+			ID:           chatID,
+			WorkspaceID:  wsID,
+			ContactID:    contactID,
+			Status:       domain.ChatStatusSnoozed,
+			SnoozedUntil: &snoozeFuture,
+			UnreadCount:  0,
+			AI:           domain.AIEngagement{Mode: domain.AIModeOff},
+		}
+
+		next, _, _ := domain.Apply(state, domain.InboundTurn{
+			At:   t0,
+			UID:  "wamid.inbound.2",
+			Body: "Wake up",
+		})
+
+		if next.Status != domain.ChatStatusOpen || next.SnoozedUntil != nil {
+			t.Fatalf("expected snoozed chat to reopen with nil SnoozedUntil, got status=%q snoozed=%v", next.Status, next.SnoozedUntil)
+		}
+		if next.UnreadCount != 1 {
+			t.Fatalf("next.UnreadCount = %d, want 1", next.UnreadCount)
+		}
+		if next.AI.Mode != domain.AIModeOff {
+			t.Fatalf("expected AI off to be preserved, got %+v", next.AI)
+		}
+	})
+
+	t.Run("AIChangeActivity normalizes expired snooze on transition", func(t *testing.T) {
+		expiredSnooze := t0.Add(-10 * time.Minute)
+		state := domain.ChatState{
+			ID:           chatID,
+			WorkspaceID:  wsID,
+			ContactID:    contactID,
+			Status:       domain.ChatStatusSnoozed,
+			SnoozedUntil: &expiredSnooze,
+			AI:           domain.AIEngagement{Mode: domain.AIModeActive},
+		}
+
+		next, _, _ := domain.Apply(state, domain.AIChangeActivity{
+			At:   t0,
+			Mode: domain.AIModeOff,
+		})
+
+		if next.Status != domain.ChatStatusOpen || next.SnoozedUntil != nil {
+			t.Fatalf("expected expired snooze to be normalized to open on AIChangeActivity, got status=%q snoozed=%v", next.Status, next.SnoozedUntil)
+		}
+	})
+}
+

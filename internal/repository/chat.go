@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 )
 
@@ -32,6 +33,19 @@ func (r *ChatRepository) Pool() *pgxpool.Pool {
 		return nil
 	}
 	return r.pool
+}
+
+func applyEffectiveChatStatus(chat *domain.Chat, now time.Time) {
+	if chat == nil {
+		return
+	}
+	eff := domain.EffectiveStatus(chat.Status, chat.SnoozedUntil, now)
+	if eff == domain.ChatStatusOpen && chat.Status == domain.ChatStatusSnoozed {
+		chat.Status = domain.ChatStatusOpen
+		chat.SnoozedUntil = nil
+	} else {
+		chat.Status = eff
+	}
 }
 
 // FindOrCreateChat retrieves an existing chat for the given (workspaceID, connectionID, contactID) or creates one.
@@ -67,9 +81,11 @@ func (r *ChatRepository) FindOrCreateChat(
 		&chat.ServiceWindowExpiresAt, &chat.LastMessageAt, &metaBytes, &chat.CreatedAt, &chat.UpdatedAt,
 	)
 
+	now := time.Now().UTC()
 	if err == nil {
+		applyEffectiveChatStatus(&chat, now)
 		chat.AI.Mode = domain.AIMode(aiModeStr)
-		chat.AIDisabled = !chat.EffectiveAI().IsEngaged()
+		chat.AIDisabled = !chat.EffectiveAI(now).IsEngaged()
 		if connectionID != nil && *connectionID != uuid.Nil && chat.ConnectionID == nil {
 			_, _ = r.pool.Exec(ctx, `
 				UPDATE chats SET connection_id = $3, updated_at = NOW()
@@ -86,7 +102,7 @@ func (r *ChatRepository) FindOrCreateChat(
 		if chat.Metadata == nil {
 			chat.Metadata = make(map[string]interface{})
 		}
-		chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen()
+		chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen(now)
 		return &chat, nil
 	}
 
@@ -113,15 +129,16 @@ func (r *ChatRepository) FindOrCreateChat(
 		return nil, fmt.Errorf("create chat: %w", err)
 	}
 
+	applyEffectiveChatStatus(&chat, now)
 	chat.AI.Mode = domain.AIMode(aiModeStr)
-	chat.AIDisabled = !chat.EffectiveAI().IsEngaged()
+	chat.AIDisabled = !chat.EffectiveAI(now).IsEngaged()
 	if len(metaBytes) > 0 {
 		_ = json.Unmarshal(metaBytes, &chat.Metadata)
 	}
 	if chat.Metadata == nil {
 		chat.Metadata = make(map[string]interface{})
 	}
-	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen()
+	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen(now)
 
 	return &chat, nil
 }
@@ -154,15 +171,17 @@ func (r *ChatRepository) GetChat(ctx context.Context, workspaceID, chatID uuid.U
 		return nil, fmt.Errorf("get chat: %w", err)
 	}
 
+	now := time.Now().UTC()
+	applyEffectiveChatStatus(&chat, now)
 	chat.AI.Mode = domain.AIMode(aiModeStr)
-	chat.AIDisabled = !chat.EffectiveAI().IsEngaged()
+	chat.AIDisabled = !chat.EffectiveAI(now).IsEngaged()
 	if len(metaBytes) > 0 {
 		_ = json.Unmarshal(metaBytes, &chat.Metadata)
 	}
 	if chat.Metadata == nil {
 		chat.Metadata = make(map[string]interface{})
 	}
-	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen()
+	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen(now)
 
 	return &chat, nil
 }
@@ -201,15 +220,17 @@ func (r *ChatRepository) GetChatByContact(ctx context.Context, workspaceID, cont
 		return nil, fmt.Errorf("get chat by contact: %w", err)
 	}
 
+	now := time.Now().UTC()
+	applyEffectiveChatStatus(&chat, now)
 	chat.AI.Mode = domain.AIMode(aiModeStr)
-	chat.AIDisabled = !chat.EffectiveAI().IsEngaged()
+	chat.AIDisabled = !chat.EffectiveAI(now).IsEngaged()
 	if len(metaBytes) > 0 {
 		_ = json.Unmarshal(metaBytes, &chat.Metadata)
 	}
 	if chat.Metadata == nil {
 		chat.Metadata = make(map[string]interface{})
 	}
-	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen()
+	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen(now)
 
 	return &chat, nil
 }
@@ -243,15 +264,17 @@ func (r *ChatRepository) GetChatByID(ctx context.Context, chatID uuid.UUID) (*do
 		return nil, fmt.Errorf("get chat by id: %w", err)
 	}
 
+	now := time.Now().UTC()
+	applyEffectiveChatStatus(&chat, now)
 	chat.AI.Mode = domain.AIMode(aiModeStr)
-	chat.AIDisabled = !chat.EffectiveAI().IsEngaged()
+	chat.AIDisabled = !chat.EffectiveAI(now).IsEngaged()
 	if len(metaBytes) > 0 {
 		_ = json.Unmarshal(metaBytes, &chat.Metadata)
 	}
 	if chat.Metadata == nil {
 		chat.Metadata = make(map[string]interface{})
 	}
-	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen()
+	chat.ServiceWindowIsOpen = chat.IsServiceWindowOpen(now)
 
 	return &chat, nil
 }
@@ -288,7 +311,7 @@ func (r *ChatRepository) ListChats(
 	argIdx := 2
 
 	if filter.Status != "" {
-		query += fmt.Sprintf(" AND status = $%d", argIdx)
+		query += " AND " + activity.StatusPredicate("status", "snoozed_until", fmt.Sprintf("$%d", argIdx), "NOW()")
 		args = append(args, filter.Status)
 		argIdx++
 	}
@@ -356,6 +379,7 @@ func (r *ChatRepository) ListChats(
 	}
 	defer rows.Close()
 
+	now := time.Now().UTC()
 	var chats []domain.Chat
 	for rows.Next() {
 		var c domain.Chat
@@ -368,15 +392,16 @@ func (r *ChatRepository) ListChats(
 		); err != nil {
 			return nil, fmt.Errorf("scan chat: %w", err)
 		}
+		applyEffectiveChatStatus(&c, now)
 		c.AI.Mode = domain.AIMode(aiModeStr)
-		c.AIDisabled = !c.EffectiveAI().IsEngaged()
+		c.AIDisabled = !c.EffectiveAI(now).IsEngaged()
 		if len(metaBytes) > 0 {
 			_ = json.Unmarshal(metaBytes, &c.Metadata)
 		}
 		if c.Metadata == nil {
 			c.Metadata = make(map[string]interface{})
 		}
-		c.ServiceWindowIsOpen = c.IsServiceWindowOpen()
+		c.ServiceWindowIsOpen = c.IsServiceWindowOpen(now)
 		chats = append(chats, c)
 	}
 
@@ -1058,19 +1083,19 @@ func (r *ChatRepository) RemoveReaction(ctx context.Context, workspaceID uuid.UU
 	return reactions, err
 }
 
-// ResetUnreadByContact resets unread_count = 0 across all chats belonging to a contact in a workspace.
-func (r *ChatRepository) ResetUnreadByContact(ctx context.Context, workspaceID, contactID uuid.UUID) error {
+// ResetUnread resets unread_count = 0 for a single chat in a workspace.
+func (r *ChatRepository) ResetUnread(ctx context.Context, workspaceID, chatID uuid.UUID) error {
 	if workspaceID == uuid.Nil {
 		return ErrInvalidWorkspaceID
 	}
-	if contactID == uuid.Nil {
-		return errors.New("contact_id is required")
+	if chatID == uuid.Nil {
+		return errors.New("chat_id is required")
 	}
 	_, err := r.pool.Exec(ctx, `
 		UPDATE chats
 		SET unread_count = 0, updated_at = NOW()
-		WHERE workspace_id = $1 AND contact_id = $2 AND unread_count > 0
-	`, workspaceID, contactID)
+		WHERE workspace_id = $1 AND id = $2 AND unread_count > 0
+	`, workspaceID, chatID)
 	return err
 }
 
@@ -1209,6 +1234,7 @@ func (r *ChatRepository) ListConversations(ctx context.Context, workspaceID uuid
 	}
 	defer rows.Close()
 
+	now := time.Now().UTC()
 	var summaries []ConversationSummary
 	for rows.Next() {
 		var s ConversationSummary
@@ -1228,6 +1254,13 @@ func (r *ChatRepository) ListConversations(ctx context.Context, workspaceID uuid
 			&s.UnreadCount,
 		); err != nil {
 			return nil, fmt.Errorf("scan conversation summary: %w", err)
+		}
+		eff := domain.EffectiveStatus(domain.ChatStatus(s.Status), s.SnoozedUntil, now)
+		if eff == domain.ChatStatusOpen && domain.ChatStatus(s.Status) == domain.ChatStatusSnoozed {
+			s.Status = string(domain.ChatStatusOpen)
+			s.SnoozedUntil = nil
+		} else {
+			s.Status = string(eff)
 		}
 		s.Unread = s.UnreadCount > 0
 		summaries = append(summaries, s)

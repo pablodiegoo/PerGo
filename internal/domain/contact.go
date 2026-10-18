@@ -18,7 +18,6 @@ type Contact struct {
 	Email       *string           `json:"email,omitempty"`
 	Attributes  map[string]string `json:"attributes"`
 	Tags        []string          `json:"tags"`
-	ClosedAt    *time.Time        `json:"closed_at,omitempty"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
 	Identities  []ContactIdentity `json:"identities,omitempty"`

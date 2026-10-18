@@ -108,7 +108,6 @@ func TestVerbsEngine(t *testing.T) {
 	engine := webhook.NewVerbsEngine(nil, contactRepo, nil, nil)
 
 	t.Run("Normal sequential flow with tag and close", func(t *testing.T) {
-		// Resolve contact first so we have the ID to query later without resetting closed_at
 		c, err := contactRepo.ResolveContact(ctx, ws.ID, "telegram", "sender-1", "", "", "")
 		if err != nil {
 			t.Fatalf("ResolveContact failed: %v", err)
@@ -157,8 +156,7 @@ func TestVerbsEngine(t *testing.T) {
 
 		// Query the database directly using the pool
 		var tags []string
-		var closedAt *time.Time
-		err = pool.QueryRow(ctx, "SELECT tags, closed_at FROM contacts WHERE id = $1", c.ID).Scan(&tags, &closedAt)
+		err = pool.QueryRow(ctx, "SELECT tags FROM contacts WHERE id = $1", c.ID).Scan(&tags)
 		if err != nil {
 			t.Fatalf("failed to query contact: %v", err)
 		}
@@ -166,8 +164,14 @@ func TestVerbsEngine(t *testing.T) {
 		if len(tags) != 2 {
 			t.Errorf("expected 2 tags, got %v", tags)
 		}
-		if closedAt == nil {
-			t.Errorf("expected closedAt to be non-nil")
+
+		var chatStatus string
+		err = pool.QueryRow(ctx, "SELECT status FROM chats WHERE workspace_id = $1 AND contact_id = $2", ws.ID, c.ID).Scan(&chatStatus)
+		if err != nil {
+			t.Fatalf("failed to query chat status: %v", err)
+		}
+		if chatStatus != "closed" {
+			t.Errorf("expected chat status 'closed', got %q", chatStatus)
 		}
 	})
 

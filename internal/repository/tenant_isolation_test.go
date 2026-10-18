@@ -143,9 +143,6 @@ func TestRepository_StrictTenantIsolation_RejectsNilUUID(t *testing.T) {
 		if err := repo.AddTags(ctx, nilID, uuid.New(), []string{"tag"}); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("AddTags: expected ErrInvalidWorkspaceID, got %v", err)
 		}
-		if err := repo.CloseThread(ctx, nilID, uuid.New()); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
-			t.Errorf("CloseThread: expected ErrInvalidWorkspaceID, got %v", err)
-		}
 		if _, _, err := repo.FindIdentityForChannel(ctx, nilID, "test@example.com", "email"); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("FindIdentityForChannel: expected ErrInvalidWorkspaceID, got %v", err)
 		}
@@ -247,8 +244,8 @@ func TestRepository_StrictTenantIsolation_RejectsNilUUID(t *testing.T) {
 		if _, err := repo.ListThreadByContact(ctx, nilID, uuid.New(), nil); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
 			t.Errorf("ListThreadByContact: expected ErrInvalidWorkspaceID, got %v", err)
 		}
-		if err := repo.ResetUnreadByContact(ctx, nilID, uuid.New()); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
-			t.Errorf("ResetUnreadByContact: expected ErrInvalidWorkspaceID, got %v", err)
+		if err := repo.ResetUnread(ctx, nilID, uuid.New()); !errors.Is(err, repository.ErrInvalidWorkspaceID) {
+			t.Errorf("ResetUnread: expected ErrInvalidWorkspaceID, got %v", err)
 		}
 	})
 

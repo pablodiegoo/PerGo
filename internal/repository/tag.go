@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -211,7 +210,7 @@ func (r *TagRepository) ListContactsByTag(ctx context.Context, workspaceID, tagI
 		return nil, ErrInvalidWorkspaceID
 	}
 	rows, err := r.pool.Query(ctx, `
-		SELECT c.id, c.workspace_id, c.name, c.email, c.attributes, c.tags, c.closed_at, c.created_at, c.updated_at
+		SELECT c.id, c.workspace_id, c.name, c.email, c.attributes, c.tags, c.created_at, c.updated_at
 		FROM contacts c
 		JOIN contact_tags ct ON ct.contact_id = c.id
 		WHERE c.workspace_id = $1 AND ct.tag_id = $2
@@ -229,8 +228,7 @@ func (r *TagRepository) ListContactsByTag(ctx context.Context, workspaceID, tagI
 		var email *string
 		var attrsRaw []byte
 		var tags []string
-		var closedAt *time.Time
-		if err := rows.Scan(&c.ID, &c.WorkspaceID, &c.Name, &email, &attrsRaw, &tags, &closedAt, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.WorkspaceID, &c.Name, &email, &attrsRaw, &tags, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, err
 		}
 		c.Email = email
@@ -241,7 +239,6 @@ func (r *TagRepository) ListContactsByTag(ctx context.Context, workspaceID, tagI
 			c.Attributes = make(map[string]string)
 		}
 		c.Tags = tags
-		c.ClosedAt = closedAt
 		contacts = append(contacts, c)
 		contactIDs = append(contactIDs, c.ID)
 	}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pablojhp.pergo/internal/chat"
 	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/outbound"
@@ -71,6 +72,7 @@ type VerbsEngine struct {
 	logsRepo    *repository.UserActionLogRepository
 	resolver    outbound.RouteResolver
 	activity    *activity.Recorder
+	chatEngine  *chat.Engine
 }
 
 func NewVerbsEngine(
@@ -80,15 +82,18 @@ func NewVerbsEngine(
 	resolver outbound.RouteResolver,
 ) *VerbsEngine {
 	var rec *activity.Recorder
+	var chatEng *chat.Engine
 	if contactRepo != nil && contactRepo.Pool() != nil {
 		rec = activity.New(contactRepo.Pool(), nil, nil, nil)
+		chatRepo := repository.NewChatRepository(contactRepo.Pool())
+		chatEng = chat.NewEngine(chatRepo, chat.WithContactRepo(contactRepo), chat.WithActivity(rec))
 	}
 	handlers := map[string]VerbHandler{
 		"reply":     NewReplyHandler(publisher, resolver),
 		"wait":      NewWaitHandler(),
 		"forward":   NewForwardHandler(publisher, resolver),
 		"tag":       NewTagHandler(contactRepo),
-		"close":     NewCloseHandler(contactRepo),
+		"close":     NewCloseHandlerWithEngine(chatEng),
 		"pause_bot": NewPauseBotHandlerWithActivity(rec),
 	}
 	return &VerbsEngine{
@@ -97,6 +102,7 @@ func NewVerbsEngine(
 		logsRepo:    logsRepo,
 		resolver:    resolver,
 		activity:    rec,
+		chatEngine:  chatEng,
 	}
 }
 
@@ -107,6 +113,16 @@ func (e *VerbsEngine) WithActivity(rec *activity.Recorder) *VerbsEngine {
 	}
 	e.activity = rec
 	e.handlers["pause_bot"] = NewPauseBotHandlerWithActivity(rec)
+	return e
+}
+
+// WithChatEngine wires the shared Chat Engine into the VerbsEngine.
+func (e *VerbsEngine) WithChatEngine(eng *chat.Engine) *VerbsEngine {
+	if e == nil {
+		return nil
+	}
+	e.chatEngine = eng
+	e.handlers["close"] = NewCloseHandlerWithEngine(eng)
 	return e
 }
 
