@@ -122,7 +122,7 @@ func TestSessionTicker_CheckExpiringSessions(t *testing.T) {
 		t.Fatalf("Inbound std failed: %v", err)
 	}
 
-	// 2. CTWA session inbound 71h5m ago -> expires in 55m (within 1h horizon)
+	// 2. CTWA session inbound 23h5m ago -> expires in 55m (within 1h horizon)
 	phoneCTWA := "+5511999990002"
 	cCTWA, err := contactRepo.ResolveContact(ctx, wsID, "whatsapp_cloud", phoneCTWA, "CTWA User", "", phoneCTWA)
 	if err != nil {
@@ -136,7 +136,7 @@ func TestSessionTicker_CheckExpiringSessions(t *testing.T) {
 		Body:           "hi ctwa",
 		Channel:        "whatsapp_cloud",
 		EntryPointType: domain.EntryPointCTWA,
-		At:             now.Add(-71*time.Hour - 5*time.Minute),
+		At:             now.Add(-23*time.Hour - 5*time.Minute),
 	})
 	if err != nil {
 		t.Fatalf("Inbound ctwa failed: %v", err)

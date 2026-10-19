@@ -915,13 +915,13 @@ func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
 		}
 	})
 
-	t.Run("WABA freeform within 72h CTWA session returns 202", func(t *testing.T) {
+	t.Run("WABA freeform within 24h CTWA session returns 202 and after 24h returns 422 SESSION_WINDOW_EXPIRED", func(t *testing.T) {
 		_, _ = pool.Exec(ctx, "DELETE FROM chats WHERE workspace_id = $1", wsID)
 		_, err := actRec.Inbound(ctx, wsID, activity.InboundTurn{
 			Chat:           activity.ChatOf(wabaConn.ID, contact.ID).WithChannel("whatsapp_cloud"),
 			UID:            uuid.NewString(),
 			Channel:        "whatsapp_cloud",
-			At:             time.Now().UTC().Add(-48 * time.Hour),
+			At:             time.Now().UTC().Add(-12 * time.Hour),
 			EntryPointType: domain.EntryPointCTWA,
 		})
 		if err != nil {
@@ -935,7 +935,7 @@ func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
 		}
 		h.RegisterRoutes(e)
 
-		body := `{"to":"` + contactPhone + `","channel":"whatsapp_cloud","body":"Valid CTWA reply within 72h"}`
+		body := `{"to":"` + contactPhone + `","channel":"whatsapp_cloud","body":"Valid CTWA reply within 24h"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req = req.WithContext(testContext(traceID, wsID))
@@ -944,7 +944,37 @@ func TestCreateMessage_CustomerServiceWindow(t *testing.T) {
 		e.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusAccepted {
-			t.Fatalf("expected 202, got %d: %s", rec.Code, rec.Body.String())
+			t.Fatalf("expected 202 within 24h CTWA window, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		// Seed CTWA at -48h: should be expired (422 SESSION_WINDOW_EXPIRED)
+		_, _ = pool.Exec(ctx, "DELETE FROM chats WHERE workspace_id = $1", wsID)
+		rExp, err := actRec.Inbound(ctx, wsID, activity.InboundTurn{
+			Chat:           activity.ChatOf(wabaConn.ID, contact.ID).WithChannel("whatsapp_cloud"),
+			UID:            uuid.NewString(),
+			Channel:        "whatsapp_cloud",
+			At:             time.Now().UTC().Add(-48 * time.Hour),
+			EntryPointType: domain.EntryPointCTWA,
+		})
+		if err != nil {
+			t.Fatalf("failed to seed expired CTWA inbound window: %v", err)
+		}
+		if rExp.Chat.EntryPointType != domain.EntryPointCTWA {
+			t.Fatalf("expected EntryPointType ctwa, got %q", rExp.Chat.EntryPointType)
+		}
+
+		reqExp := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
+		reqExp.Header.Set("Content-Type", "application/json")
+		reqExp = reqExp.WithContext(testContext(traceID, wsID))
+		recExp := httptest.NewRecorder()
+
+		e.ServeHTTP(recExp, reqExp)
+
+		if recExp.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("expected 422 at 48h for CTWA session, got %d: %s", recExp.Code, recExp.Body.String())
+		}
+		if !strings.Contains(recExp.Body.String(), "SESSION_WINDOW_EXPIRED") {
+			t.Fatalf("expected SESSION_WINDOW_EXPIRED in response body, got %s", recExp.Body.String())
 		}
 	})
 

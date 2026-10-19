@@ -640,23 +640,39 @@ func TestProcessor_WhatsAppCloudWindowIngestion(t *testing.T) {
 		}
 	})
 
-	t.Run("freeform message passes within 72h CTWA session at 40h", func(t *testing.T) {
+	t.Run("freeform message passes within 24h CTWA session and fails at 40h", func(t *testing.T) {
 		contactPhone := "+5511999990002"
-		seedInbound(t, contactPhone, "in-ctwa-1", domain.EntryPointCTWA, time.Now().UTC().Add(-40*time.Hour))
+		seedInbound(t, contactPhone, "in-ctwa-1", domain.EntryPointCTWA, time.Now().UTC().Add(-12*time.Hour))
 
 		p := outbound.NewProcessor(nil, nil, resolver, publisher).SetActivity(act)
 		req := &domain.CreateMessageRequest{
 			To:      contactPhone,
 			Channel: "whatsapp_cloud",
-			Body:    "Freeform reply within 72h CTWA window",
+			Body:    "Freeform reply within 24h CTWA window",
 		}
 
 		qMsg, err := p.Ingest(ctx, wsID, "trace-window-2", req)
 		if err != nil {
-			t.Fatalf("expected freeform message to pass ingestion within 72h CTWA, got: %v", err)
+			t.Fatalf("expected freeform message to pass ingestion within 24h CTWA, got: %v", err)
 		}
-		if qMsg.Body != "Freeform reply within 72h CTWA window" {
+		if qMsg.Body != "Freeform reply within 24h CTWA window" {
 			t.Errorf("expected Body to be preserved, got %q", qMsg.Body)
+		}
+
+		expiredCTWAPhone := "+5511999990022"
+		seedInbound(t, expiredCTWAPhone, "in-ctwa-exp-1", domain.EntryPointCTWA, time.Now().UTC().Add(-40*time.Hour))
+
+		_, err = p.Ingest(ctx, wsID, "trace-window-2-exp", &domain.CreateMessageRequest{
+			To:      expiredCTWAPhone,
+			Channel: "whatsapp_cloud",
+			Body:    "Freeform reply at 40h after CTWA",
+		})
+		var tmplErr *domain.TemplateRequiredError
+		if !errors.As(err, &tmplErr) {
+			t.Fatalf("expected *domain.TemplateRequiredError at 40h for CTWA session, got %T: %v", err, err)
+		}
+		if tmplErr.Window.EntryPointType != domain.EntryPointCTWA {
+			t.Errorf("expected EntryPointType ctwa on expired window, got %q", tmplErr.Window.EntryPointType)
 		}
 	})
 

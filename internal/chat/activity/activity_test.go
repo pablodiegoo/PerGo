@@ -735,7 +735,7 @@ func TestRecorder_S3_ServiceWindow_IndependentConnections_CTWA_TouchOutbound_And
 		}
 	})
 
-	t.Run("CTWA inbound (72h) then standard inbound 1h later keeps 72h window", func(t *testing.T) {
+	t.Run("CTWA inbound opens 24h window, standard follow-up within window extends 24h and preserves ctwa, standard after expiry resets to standard", func(t *testing.T) {
 		phone := "+5511922223333"
 		contactID := seedContactWithIdentity(t, ctx, pool, wsID, "whatsapp_cloud", phone)
 
@@ -751,12 +751,16 @@ func TestRecorder_S3_ServiceWindow_IndependentConnections_CTWA_TouchOutbound_And
 		if err != nil {
 			t.Fatalf("CTWA Inbound: %v", err)
 		}
-		want72 := t0.Add(72 * time.Hour)
-		if rCTWA.Chat.ServiceWindowExpiresAt == nil || !rCTWA.Chat.ServiceWindowExpiresAt.Equal(want72) {
-			t.Fatalf("expected 72h expiry %v, got %v", want72, rCTWA.Chat.ServiceWindowExpiresAt)
+		wantFirstExp := t0.Add(24 * time.Hour)
+		if rCTWA.Chat.ServiceWindowExpiresAt == nil || !rCTWA.Chat.ServiceWindowExpiresAt.Equal(wantFirstExp) {
+			t.Fatalf("expected 24h expiry %v, got %v", wantFirstExp, rCTWA.Chat.ServiceWindowExpiresAt)
+		}
+		if rCTWA.Chat.EntryPointType != domain.EntryPointCTWA {
+			t.Fatalf("expected entry_point_type 'ctwa', got %q", rCTWA.Chat.EntryPointType)
 		}
 
-		// Standard inbound 1h later
+		// Standard inbound 1h later (while 24h window is still open) extends to t1 + 24h and preserves ctwa
+		t1 := t0.Add(1 * time.Hour)
 		rStd, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
 			Chat:           activity.ChatOf(connA, contactID).WithChannel("whatsapp_cloud"),
 			UID:            "wamid.std.101",
@@ -764,28 +768,61 @@ func TestRecorder_S3_ServiceWindow_IndependentConnections_CTWA_TouchOutbound_And
 			Body:           "Follow-up",
 			Channel:        "whatsapp_cloud",
 			EntryPointType: domain.EntryPointStandard,
-			At:             t0.Add(1 * time.Hour),
+			At:             t1,
 		})
 		if err != nil {
 			t.Fatalf("Standard Inbound: %v", err)
 		}
-		if rStd.Chat.ServiceWindowExpiresAt == nil || !rStd.Chat.ServiceWindowExpiresAt.Equal(want72) {
-			t.Fatalf("expected 72h expiry %v preserved after standard turn, got %v", want72, rStd.Chat.ServiceWindowExpiresAt)
+		wantSecondExp := t1.Add(24 * time.Hour)
+		if rStd.Chat.ServiceWindowExpiresAt == nil || !rStd.Chat.ServiceWindowExpiresAt.Equal(wantSecondExp) {
+			t.Fatalf("expected 24h expiry %v extended after standard turn, got %v", wantSecondExp, rStd.Chat.ServiceWindowExpiresAt)
 		}
 		if rStd.Chat.EntryPointType != domain.EntryPointCTWA {
 			t.Fatalf("expected entry_point_type 'ctwa' preserved, got %q", rStd.Chat.EntryPointType)
 		}
 
-		// Outbound freeform at t0 + 48h succeeds because 72h window is still open
+		// Outbound freeform within 24h window (at t0 + 20h) succeeds
 		if _, err := rec.Outbound(ctx, wsID, activity.OutboundTurn{
+			Chat:       activity.ChatID(rCTWA.Chat.ID),
+			UID:        "uid-ctwa-20h-reply",
+			SenderType: domain.SenderTypeAIAgent,
+			Channel:    "whatsapp_cloud",
+			Body:       "Open within 24h",
+			At:         t0.Add(20 * time.Hour),
+		}); err != nil {
+			t.Fatalf("expected freeform reply at 20h to succeed in 24h CTWA window, got %v", err)
+		}
+
+		// Outbound freeform at t0 + 48h fails with TemplateRequiredError because CSW is strictly 24h
+		_, err = rec.Outbound(ctx, wsID, activity.OutboundTurn{
 			Chat:       activity.ChatID(rCTWA.Chat.ID),
 			UID:        "uid-ctwa-48h-reply",
 			SenderType: domain.SenderTypeAIAgent,
 			Channel:    "whatsapp_cloud",
-			Body:       "Still open at 48h",
+			Body:       "Expired at 48h",
 			At:         t0.Add(48 * time.Hour),
-		}); err != nil {
-			t.Fatalf("expected freeform reply at 48h to succeed in CTWA window, got %v", err)
+		})
+		var tmplErr *domain.TemplateRequiredError
+		if !errors.As(err, &tmplErr) {
+			t.Fatalf("expected *domain.TemplateRequiredError at 48h for CTWA chat, got %T: %v", err, err)
+		}
+
+		// Standard inbound after 24h window expired resets entry_point_type to standard
+		tAfterExpiry := t0.Add(49 * time.Hour)
+		rStdAfter, err := rec.Inbound(ctx, wsID, activity.InboundTurn{
+			Chat:           activity.ChatOf(connA, contactID).WithChannel("whatsapp_cloud"),
+			UID:            "wamid.std.102",
+			SenderID:       phone,
+			Body:           "Message after window expired",
+			Channel:        "whatsapp_cloud",
+			EntryPointType: domain.EntryPointStandard,
+			At:             tAfterExpiry,
+		})
+		if err != nil {
+			t.Fatalf("Standard Inbound after expiry: %v", err)
+		}
+		if rStdAfter.Chat.EntryPointType != domain.EntryPointStandard {
+			t.Fatalf("expected entry_point_type reset to 'standard' after expiry, got %q", rStdAfter.Chat.EntryPointType)
 		}
 	})
 

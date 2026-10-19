@@ -322,9 +322,9 @@ func TestWABAComplianceIntegration(t *testing.T) {
 	})
 
 	// =========================================================================
-	// SCENARIO 5: CTWA Referral Extends Window to 72 Hours
+	// SCENARIO 5: CTWA Referral Sets 24-Hour Window and CTWA Attribution
 	// =========================================================================
-	t.Run("Inbound CTWA referral sets 72h service window", func(t *testing.T) {
+	t.Run("Inbound CTWA referral sets 24h service window and ctwa entry point", func(t *testing.T) {
 		ctwaNow := time.Now().UTC()
 		ctwaEv := &inbound.InboundEvent{
 			WorkspaceID:  ws.ID,
@@ -352,8 +352,11 @@ func TestWABAComplianceIntegration(t *testing.T) {
 		}
 
 		diff := chatCTWA.ServiceWindowExpiresAt.Sub(ctwaNow)
-		if diff < 71*time.Hour || diff > 73*time.Hour {
-			t.Errorf("expected ~72h window for CTWA, got %v", diff)
+		if diff < 23*time.Hour || diff > 25*time.Hour {
+			t.Errorf("expected ~24h window for CTWA, got %v", diff)
+		}
+		if chatCTWA.EntryPointType != domain.EntryPointCTWA {
+			t.Errorf("expected EntryPointType ctwa, got %s", chatCTWA.EntryPointType)
 		}
 		if !chatCTWA.IsServiceWindowOpen() {
 			t.Errorf("expected IsServiceWindowOpen() to be true for CTWA")

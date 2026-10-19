@@ -81,11 +81,11 @@ The consolidated, deep module that orchestrates the entire campaign lifecycle, e
 _Avoid_: Bulk sender, campaign runner, batch pusher
 
 **Customer Service Window**:
-A rolling 24-hour (or 72-hour, per Entry Point Type) timeframe on a WhatsApp Cloud Chat, opened by the contact's latest inbound message; a new inbound message never shortens an already open window. Freeform outbound messages are only permitted while it is open; outside of it, only pre-approved Meta message templates may be sent.
+A rolling 24-hour timeframe on a WhatsApp Cloud Chat, opened by the contact's latest inbound message regardless of Entry Point Type; a new inbound message never shortens an already open window. Freeform outbound messages are only permitted while it is open; outside of it, only pre-approved Meta message templates may be sent.
 _Avoid_: Session timer, 24h rule, chat timeout, recipient session
 
 **Entry Point Type**:
-How a contact entered a conversation with a connection: `standard` (the contact wrote first organically) or `ctwa` (the contact arrived via a Click-to-WhatsApp Ad referral). It determines whether the Customer Service Window lasts 24 or 72 hours.
+How a contact entered the current conversation with a connection: `standard` (the contact wrote first organically) or `ctwa` (the contact arrived via a Click-to-WhatsApp Ad referral), recorded as attribution metadata and preserved across follow-up messages while the 24-hour Customer Service Window remains open.
 _Avoid_: Referral flag, is_referral, entry source
 
 **Webhook Signature**:

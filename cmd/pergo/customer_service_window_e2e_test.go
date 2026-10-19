@@ -307,9 +307,9 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 	})
 
 	// =========================================================================
-	// Scenario 4: CTWA (Click-to-WhatsApp Ads) 72h window lifecycle
+	// Scenario 4: CTWA (Click-to-WhatsApp Ads) sets ctwa attribution with 24h CSW
 	// =========================================================================
-	t.Run("CTWA entry point grants 72h window", func(t *testing.T) {
+	t.Run("CTWA entry point sets ctwa attribution with 24h window (open within 24h, closed after 24h)", func(t *testing.T) {
 		ctwaPayload := `{
 			"object": "whatsapp_business_account",
 			"entry": [{
@@ -329,7 +329,7 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 						"messages": [{
 							"from": "5511999992222",
 							"id": "wamid.inbound_ctwa_002",
-							"timestamp": "` + fmt.Sprintf("%d", time.Now().UTC().Add(-48*time.Hour).Unix()) + `",
+							"timestamp": "` + fmt.Sprintf("%d", time.Now().UTC().Add(-12*time.Hour).Unix()) + `",
 							"type": "text",
 							"text": {"body": "Saw your ad"},
 							"referral": {
@@ -355,21 +355,24 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 			t.Fatalf("failed to process CTWA event: %v", err)
 		}
 
-		// Window should still be open at 48 hours because CTWA is 72h (24h remaining)
+		// Window is open at 12 hours with 24h duration and ctwa attribution
 		ctwaState, exists, err := actRec.Snapshot(ctx, ws.ID, activity.ChatAt(wabaConn.ID, "5511999992222").WithChannel("whatsapp_cloud"))
 		if err != nil || !exists {
 			t.Fatalf("failed to check CTWA window: %v (exists=%v)", err, exists)
 		}
 		status := domain.Window(ctwaState, exists, time.Now().UTC())
 		if !status.Open {
-			t.Fatalf("expected CTWA window to be open at 48 hours")
+			t.Fatalf("expected CTWA window to be open at 12 hours")
 		}
-		if status.WindowDuration != 72*time.Hour {
-			t.Errorf("expected 72h duration, got %v", status.WindowDuration)
+		if status.EntryPointType != domain.EntryPointCTWA {
+			t.Errorf("expected entry_point_type ctwa, got %q", status.EntryPointType)
+		}
+		if status.WindowDuration != 24*time.Hour {
+			t.Errorf("expected 24h duration, got %v", status.WindowDuration)
 		}
 
-		// Outbound freeform message succeeds at 48h
-		body := `{"to":"5511999992222","channel":"whatsapp_cloud","body":"Reply within 72h CTWA window"}`
+		// Outbound freeform message succeeds within 24h
+		body := `{"to":"5511999992222","channel":"whatsapp_cloud","body":"Reply within 24h CTWA window"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req = req.WithContext(tenant.WithWorkspaceID(mw.WithContext(ctx, "trc-ctwa-reply"), ws.ID))
@@ -378,7 +381,62 @@ func TestCustomerServiceWindow_MultiChannel_E2E(t *testing.T) {
 		e.ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusAccepted {
-			t.Fatalf("expected 202 Accepted for CTWA reply at 48h, got %d: %s", rec.Code, rec.Body.String())
+			t.Fatalf("expected 202 Accepted for CTWA reply at 12h, got %d: %s", rec.Code, rec.Body.String())
+		}
+
+		// At +48h after a CTWA message, the 24h CSW is closed and HTTP dispatch returns 422 SESSION_WINDOW_EXPIRED
+		expiredCTWAPayload := `{
+			"object": "whatsapp_business_account",
+			"entry": [{
+				"id": "waba_acc_1",
+				"changes": [{
+					"field": "messages",
+					"value": {
+						"messaging_product": "whatsapp",
+						"metadata": {
+							"display_phone_number": "` + wabaSenderIdentity + `",
+							"phone_number_id": "123456789"
+						},
+						"contacts": [{
+							"profile": {"name": "Expired CTWA User"},
+							"wa_id": "5511999992223"
+						}],
+						"messages": [{
+							"from": "5511999992223",
+							"id": "wamid.inbound_ctwa_003",
+							"timestamp": "` + fmt.Sprintf("%d", time.Now().UTC().Add(-48*time.Hour).Unix()) + `",
+							"type": "text",
+							"text": {"body": "Old ad click"},
+							"referral": {
+								"source_type": "ad",
+								"source_id": "ad_12345"
+							}
+						}]
+					}
+				}]
+			}]
+		}`
+		expEvents, err := wabaAdapter.Parse(ctx, []byte(expiredCTWAPayload), nil, wabaConn)
+		if err != nil || len(expEvents) != 1 {
+			t.Fatalf("failed to parse expired CTWA webhook: %v", err)
+		}
+		if err := inboundProc.Process(ctx, expEvents[0]); err != nil {
+			t.Fatalf("failed to process expired CTWA event: %v", err)
+		}
+
+		expBody := `{"to":"5511999992223","channel":"whatsapp_cloud","body":"Reply after 48h CTWA"}`
+		expReq := httptest.NewRequest(http.MethodPost, "/api/v1/messages", strings.NewReader(expBody))
+		expReq.Header.Set("Content-Type", "application/json")
+		expReq = expReq.WithContext(tenant.WithWorkspaceID(mw.WithContext(ctx, "trc-ctwa-exp-reply"), ws.ID))
+		expRec := httptest.NewRecorder()
+
+		e.ServeHTTP(expRec, expReq)
+
+		if expRec.Code != http.StatusUnprocessableEntity {
+			t.Fatalf("expected 422 for CTWA reply at 48h, got %d: %s", expRec.Code, expRec.Body.String())
+		}
+		if !strings.Contains(expRec.Body.String(), "SESSION_WINDOW_EXPIRED") {
+			t.Fatalf("expected SESSION_WINDOW_EXPIRED in response body, got %s", expRec.Body.String())
 		}
 	})
 

@@ -456,7 +456,7 @@ func BuildOutboundChatMessage(p OutboundChatMessageParams) *ChatMessage {
 	}
 }
 
-// EntryPointType constants and service window durations.
+// EntryPointType constants and service window duration.
 type EntryPointType string
 
 const (
@@ -464,7 +464,6 @@ const (
 	EntryPointCTWA     EntryPointType = "ctwa"
 
 	StandardWindowDuration = 24 * time.Hour
-	CTWAWindowDuration     = 72 * time.Hour
 )
 
 // NormalizeEntryPointType normalizes raw entry point values to "ctwa" or "standard".
@@ -475,19 +474,10 @@ func NormalizeEntryPointType[T ~string](entryPoint T) EntryPointType {
 	return EntryPointStandard
 }
 
-// WindowDurationFor returns 72h for "ctwa" and 24h for "standard" (or any other value).
-func WindowDurationFor[T ~string](entryPoint T) time.Duration {
-	if NormalizeEntryPointType(entryPoint) == EntryPointCTWA {
-		return CTWAWindowDuration
-	}
-	return StandardWindowDuration
-}
-
-// ExtendServiceWindow computes the new customer service window expiration from an inbound turn.
-// Standard entry points grant 24h; CTWA entry points grant 72h. The window never shortens:
-// if prev is already further in the future than at + duration, prev is returned.
-func ExtendServiceWindow[T ~string](prev *time.Time, at time.Time, entryPoint T) time.Time {
-	candidate := at.UTC().Add(WindowDurationFor(entryPoint))
+// ExtendServiceWindow computes the new 24-hour customer service window expiration from an inbound turn.
+// The window never shortens: if prev is already further in the future than at + 24h, prev is returned.
+func ExtendServiceWindow(prev *time.Time, at time.Time) time.Time {
+	candidate := at.UTC().Add(StandardWindowDuration)
 	if prev != nil && prev.UTC().After(candidate) {
 		return prev.UTC()
 	}
@@ -520,7 +510,7 @@ func (e *TemplateRequiredError) Error() string {
 // Non-whatsapp_cloud channels are always treated as open.
 func Window(state ChatState, exists bool, now time.Time) ServiceWindow {
 	ep := NormalizeEntryPointType(state.EntryPointType)
-	dur := WindowDurationFor(ep)
+	dur := StandardWindowDuration
 	ch := strings.ToLower(strings.TrimSpace(state.Channel))
 
 	if ch != "" && ch != "whatsapp_cloud" {
@@ -714,11 +704,13 @@ func Apply(s ChatState, a Activity) (ChatState, *ChatMessage, []Intent) {
 			}
 			normalizedEP := NormalizeEntryPointType(ep)
 			prevExp := next.ServiceWindowExpiresAt
-			newExp := ExtendServiceWindow(prevExp, at, normalizedEP)
-			if prevExp != nil && newExp.Equal(prevExp.UTC()) && next.EntryPointType == EntryPointCTWA {
-				// Prior CTWA window was further in the future and preserved; keep EntryPointType as ctwa.
+			newExp := ExtendServiceWindow(prevExp, at)
+			if normalizedEP == EntryPointCTWA {
+				next.EntryPointType = EntryPointCTWA
+			} else if prevExp != nil && prevExp.UTC().After(at) && next.EntryPointType == EntryPointCTWA {
+				next.EntryPointType = EntryPointCTWA
 			} else {
-				next.EntryPointType = normalizedEP
+				next.EntryPointType = EntryPointStandard
 			}
 			next.ServiceWindowExpiresAt = &newExp
 		}

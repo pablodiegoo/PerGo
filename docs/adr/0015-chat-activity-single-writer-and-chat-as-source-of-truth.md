@@ -15,7 +15,7 @@ The second kind is double state. The same facts are kept both per Contact and pe
 
 - **AI Engagement** is split between `chats.ai_disabled` and `contacts.bot_active` / `bot_paused_at`. A Contact has one Chat per Connection, so silencing AI on one Chat also silenced every other Chat of that Contact. The Inbound Debounce Buffer was keyed by Contact, so a handoff on one Chat also cancelled pending turns on another.
 - Open/closed state is split between `chats.status` and `contacts.closed_at`. Nothing reads `closed_at` for business logic, and campaigns or verbs reopened the Contact without reopening the Chat.
-- The window lives both in `recipient_sessions` and in `chats.service_window_expires_at`, and the 24/72h rule is copied three times. `recipient_sessions` also opened windows on *outbound* dispatch and on Inbox-initiated chats. It matched without the connection identity, so two WABA numbers could share one window.
+- The window lives both in `recipient_sessions` and in `chats.service_window_expires_at`, and the window rule is copied three times. `recipient_sessions` also opened windows on *outbound* dispatch and on Inbox-initiated chats. It matched without the connection identity, so two WABA numbers could share one window.
 - The window was enforced in 8+ places, selected per adapter through a `StrictServiceWindow` bool, and detected by matching error strings. `chat.Engine` re-checked the window after the message was already queued. The "default template fallback" had no writer at all.
 
 ## Decisions
@@ -33,7 +33,7 @@ The second kind is double state. The same facts are kept both per Contact and pe
    - Chat Snooze expiry is derived on read and normalized on the next transition. Reads never write.
    - `contacts.bot_active`, `bot_paused_at` and `closed_at` are dropped. The Inbound Debounce Buffer is keyed by Chat.
 3. **Retire `recipient_sessions`.**
-   - The window is materialized on the Chat as `window_expires_at`. Only the inbound turn writes it, via `domain.ExtendServiceWindow`. Its length follows the **Entry Point Type**, and a new inbound message never shortens an open window.
+   - The window is materialized on the Chat as `window_expires_at` (`service_window_expires_at`). Only the inbound turn writes it, via `domain.ExtendServiceWindow(prev, at)`, which always grants a 24-hour **Customer Service Window** and never shortens an already open window. **Entry Point Type** (`standard` or `ctwa`) is recorded on the Chat as attribution metadata and preserved across follow-up messages while the 24-hour window remains open (see `docs/research/meta-ctwa-free-entry-point-window.md`).
    - No Chat means the window is closed.
    - The expiring-window ticker reads Chats, only for `whatsapp_cloud`.
 4. **The Outbound Processor is the only window enforcer at ingest; the WABA adapter enforces at dispatch only for paths that bypass ingest.**

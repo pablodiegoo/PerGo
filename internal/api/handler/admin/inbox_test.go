@@ -1086,7 +1086,7 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 		}
 	})
 
-	t.Run("hides banner when active 72h CTWA session exists for contact and connection sender", func(t *testing.T) {
+	t.Run("shows banner when CTWA session is expired (>24h, e.g. at 30h)", func(t *testing.T) {
 		ctwaContact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp_cloud", "+5511977776667", "CTWA Customer", "", "+5511977776667")
 		if err != nil {
 			t.Fatalf("failed to resolve ctwaContact: %v", err)
@@ -1127,8 +1127,8 @@ func TestInboxHandler_ChatPanel_WABAWindowBannerNormalization(t *testing.T) {
 		}
 
 		body := rec.Body.String()
-		if strings.Contains(body, bannerText) {
-			t.Errorf("expected banner to be hidden for active 72h CTWA session at 30h, but it was present in HTML: %s", body)
+		if !strings.Contains(body, bannerText) {
+			t.Errorf("expected banner to be shown for expired 24h CTWA session at 30h, but was not found in HTML: %s", body)
 		}
 	})
 

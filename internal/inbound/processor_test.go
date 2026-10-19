@@ -1203,7 +1203,7 @@ func TestInboundProcessor_WhatsAppCloudSessionTracking(t *testing.T) {
 		}
 	})
 
-	t.Run("records ctwa 72h service window on chat", func(t *testing.T) {
+	t.Run("records ctwa entry_point_type and 24h service window on chat", func(t *testing.T) {
 		before := time.Now().UTC()
 		event := &inbound.InboundEvent{
 			WorkspaceID:    ws.ID,
@@ -1233,8 +1233,8 @@ func TestInboundProcessor_WhatsAppCloudSessionTracking(t *testing.T) {
 		if snap.ServiceWindowExpiresAt == nil {
 			t.Fatalf("expected ServiceWindowExpiresAt to be populated")
 		}
-		if snap.ServiceWindowExpiresAt.Before(before.Add(71*time.Hour)) || snap.ServiceWindowExpiresAt.After(before.Add(73*time.Hour)) {
-			t.Errorf("expected ~72h window expiration, got %v", snap.ServiceWindowExpiresAt)
+		if snap.ServiceWindowExpiresAt.Before(before.Add(23*time.Hour)) || snap.ServiceWindowExpiresAt.After(before.Add(25*time.Hour)) {
+			t.Errorf("expected ~24h window expiration, got %v", snap.ServiceWindowExpiresAt)
 		}
 	})
 }

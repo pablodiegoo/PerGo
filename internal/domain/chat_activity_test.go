@@ -617,7 +617,7 @@ func TestApply_InboundTurn(t *testing.T) {
 		}
 	})
 
-	t.Run("CTWA inbound sets 72h window and subsequent standard inbound 1h later never shortens it", func(t *testing.T) {
+	t.Run("CTWA inbound opens 24h window, standard follow-up within open window extends 24h and preserves CTWA, standard after expiry resets to standard", func(t *testing.T) {
 		state := domain.ChatState{
 			ID:          chatID,
 			WorkspaceID: wsID,
@@ -634,28 +634,48 @@ func TestApply_InboundTurn(t *testing.T) {
 			EntryPointType: domain.EntryPointCTWA,
 		})
 
-		want72 := t0.Add(72 * time.Hour)
-		if afterCTWA.ServiceWindowExpiresAt == nil || !afterCTWA.ServiceWindowExpiresAt.Equal(want72) {
-			t.Fatalf("after CTWA ServiceWindowExpiresAt = %v, want %v", afterCTWA.ServiceWindowExpiresAt, want72)
+		wantFirstExp := t0.Add(24 * time.Hour)
+		if afterCTWA.ServiceWindowExpiresAt == nil || !afterCTWA.ServiceWindowExpiresAt.Equal(wantFirstExp) {
+			t.Fatalf("after CTWA ServiceWindowExpiresAt = %v, want %v", afterCTWA.ServiceWindowExpiresAt, wantFirstExp)
 		}
 		if afterCTWA.EntryPointType != domain.EntryPointCTWA {
 			t.Fatalf("after CTWA EntryPointType = %q, want %q", afterCTWA.EntryPointType, domain.EntryPointCTWA)
 		}
 
-		// Standard message 1 hour later must not shorten the 72h CTWA window
-		afterStandard, _, _ := domain.Apply(afterCTWA, domain.InboundTurn{
-			At:             t0.Add(1 * time.Hour),
+		// Standard follow-up 1 hour later (while 24h CSW is still open) extends expiration to t1 + 24h and preserves EntryPointCTWA
+		t1 := t0.Add(1 * time.Hour)
+		afterStandardInWindow, _, _ := domain.Apply(afterCTWA, domain.InboundTurn{
+			At:             t1,
 			UID:            "wamid.std.2",
-			Body:           "Follow up",
+			Body:           "Follow up within open window",
 			Channel:        "whatsapp_cloud",
 			EntryPointType: domain.EntryPointStandard,
 		})
 
-		if afterStandard.ServiceWindowExpiresAt == nil || !afterStandard.ServiceWindowExpiresAt.Equal(want72) {
-			t.Fatalf("after standard 1h later ServiceWindowExpiresAt = %v, want preserved %v", afterStandard.ServiceWindowExpiresAt, want72)
+		wantSecondExp := t1.Add(24 * time.Hour)
+		if afterStandardInWindow.ServiceWindowExpiresAt == nil || !afterStandardInWindow.ServiceWindowExpiresAt.Equal(wantSecondExp) {
+			t.Fatalf("after standard 1h later ServiceWindowExpiresAt = %v, want %v", afterStandardInWindow.ServiceWindowExpiresAt, wantSecondExp)
 		}
-		if afterStandard.EntryPointType != domain.EntryPointCTWA {
-			t.Fatalf("after standard 1h later EntryPointType = %q, want preserved %q", afterStandard.EntryPointType, domain.EntryPointCTWA)
+		if afterStandardInWindow.EntryPointType != domain.EntryPointCTWA {
+			t.Fatalf("after standard 1h later EntryPointType = %q, want preserved %q", afterStandardInWindow.EntryPointType, domain.EntryPointCTWA)
+		}
+
+		// Standard message arriving after the 24h window has expired resets EntryPointType to standard
+		tAfterExpiry := wantSecondExp.Add(1 * time.Minute)
+		afterExpiredStandard, _, _ := domain.Apply(afterStandardInWindow, domain.InboundTurn{
+			At:             tAfterExpiry,
+			UID:            "wamid.std.3",
+			Body:           "New message after window expired",
+			Channel:        "whatsapp_cloud",
+			EntryPointType: domain.EntryPointStandard,
+		})
+
+		wantThirdExp := tAfterExpiry.Add(24 * time.Hour)
+		if afterExpiredStandard.ServiceWindowExpiresAt == nil || !afterExpiredStandard.ServiceWindowExpiresAt.Equal(wantThirdExp) {
+			t.Fatalf("after expired standard ServiceWindowExpiresAt = %v, want %v", afterExpiredStandard.ServiceWindowExpiresAt, wantThirdExp)
+		}
+		if afterExpiredStandard.EntryPointType != domain.EntryPointStandard {
+			t.Fatalf("after expired standard EntryPointType = %q, want %q", afterExpiredStandard.EntryPointType, domain.EntryPointStandard)
 		}
 	})
 
@@ -714,58 +734,40 @@ func TestApply_InboundTurn(t *testing.T) {
 
 func TestExtendServiceWindow(t *testing.T) {
 	t0 := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
-	prev72 := t0.Add(72 * time.Hour)
-	prev10 := t0.Add(10 * time.Hour)
+	prevFurther := t0.Add(30 * time.Hour)
+	prevShorter := t0.Add(10 * time.Hour)
 
 	tests := []struct {
-		name       string
-		prev       *time.Time
-		at         time.Time
-		entryPoint string
-		want       time.Time
+		name string
+		prev *time.Time
+		at   time.Time
+		want time.Time
 	}{
 		{
-			name:       "standard entry point with no prior window gives 24h",
-			prev:       nil,
-			at:         t0,
-			entryPoint: "standard",
-			want:       t0.Add(24 * time.Hour),
+			name: "no prior window grants 24h from at",
+			prev: nil,
+			at:   t0,
+			want: t0.Add(24 * time.Hour),
 		},
 		{
-			name:       "empty entry point defaults to 24h",
-			prev:       nil,
-			at:         t0,
-			entryPoint: "",
-			want:       t0.Add(24 * time.Hour),
+			name: "prior window further than at + 24h is never shortened",
+			prev: &prevFurther,
+			at:   t0,
+			want: prevFurther,
 		},
 		{
-			name:       "ctwa entry point gives 72h",
-			prev:       nil,
-			at:         t0,
-			entryPoint: "ctwa",
-			want:       t0.Add(72 * time.Hour),
-		},
-		{
-			name:       "standard turn 1h after ctwa never shortens 72h window",
-			prev:       &prev72,
-			at:         t0.Add(1 * time.Hour),
-			entryPoint: "standard",
-			want:       prev72,
-		},
-		{
-			name:       "standard turn extends shorter prior window",
-			prev:       &prev10,
-			at:         t0,
-			entryPoint: "standard",
-			want:       t0.Add(24 * time.Hour),
+			name: "prior window shorter than at + 24h is extended to at + 24h",
+			prev: &prevShorter,
+			at:   t0,
+			want: t0.Add(24 * time.Hour),
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := domain.ExtendServiceWindow(tc.prev, tc.at, tc.entryPoint)
+			got := domain.ExtendServiceWindow(tc.prev, tc.at)
 			if !got.Equal(tc.want) {
-				t.Fatalf("ExtendServiceWindow(%v, %v, %q) = %v, want %v", tc.prev, tc.at, tc.entryPoint, got, tc.want)
+				t.Fatalf("ExtendServiceWindow(%v, %v) = %v, want %v", tc.prev, tc.at, got, tc.want)
 			}
 		})
 	}
@@ -802,7 +804,7 @@ func TestWindowAndRequireOpenWindow(t *testing.T) {
 		}
 	})
 
-	t.Run("existing chat with future ServiceWindowExpiresAt is open", func(t *testing.T) {
+	t.Run("existing chat with future ServiceWindowExpiresAt is open with 24h WindowDuration", func(t *testing.T) {
 		w := domain.Window(domain.ChatState{
 			Channel:                "whatsapp_cloud",
 			ServiceWindowExpiresAt: &futureExp,
@@ -811,8 +813,11 @@ func TestWindowAndRequireOpenWindow(t *testing.T) {
 		if !w.Open {
 			t.Fatalf("expected open window, got %+v", w)
 		}
-		if w.WindowDuration != 72*time.Hour {
-			t.Fatalf("expected 72h duration for ctwa, got %v", w.WindowDuration)
+		if w.WindowDuration != 24*time.Hour {
+			t.Fatalf("expected 24h duration for ctwa, got %v", w.WindowDuration)
+		}
+		if w.EntryPointType != domain.EntryPointCTWA {
+			t.Fatalf("expected EntryPointType ctwa, got %q", w.EntryPointType)
 		}
 		if w.Remaining != 20*time.Hour {
 			t.Fatalf("expected 20h remaining, got %v", w.Remaining)
