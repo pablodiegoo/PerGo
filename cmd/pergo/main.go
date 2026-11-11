@@ -1591,17 +1591,18 @@ func buildLLMSummarizer(llmClient *llm.Client) chat.SummarizerFunc {
 		}
 		for _, m := range messages[start:] {
 			body := strings.TrimSpace(m.Body)
-			if body == "" && m.MediaType != "" {
-				body = "[" + m.MediaType + "]"
+			if body == "" && m.MediaType != nil && strings.TrimSpace(*m.MediaType) != "" {
+				body = "[" + strings.TrimSpace(*m.MediaType) + "]"
 			}
 			if body == "" {
 				continue
 			}
 			role := "Customer"
-			if m.IsInternal {
+			switch m.Direction {
+			case domain.DirectionInternalNote:
 				role = "Internal Note"
-			} else if m.Direction == domain.ChatDirectionOutbound {
-				if m.SenderType == domain.ChatSenderBot {
+			case domain.DirectionOutbound:
+				if m.SenderType == domain.SenderTypeAIAgent {
 					role = "AI Bot"
 				} else {
 					role = "Operator"
