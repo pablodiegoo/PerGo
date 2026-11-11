@@ -1694,3 +1694,84 @@ func TestEngine_List_BatchContactLoading(t *testing.T) {
 	}
 }
 
+func TestEngine_Summarize_LLMWithVoiceTranscriptAndFallback(t *testing.T) {
+	ctx := context.Background()
+	wsID := uuid.New()
+
+	chatRepo := newFakeChatRepo()
+	contactID := uuid.New()
+	c := &domain.Chat{
+		ID:          uuid.New(),
+		WorkspaceID: wsID,
+		ContactID:   contactID,
+		Status:      domain.ChatStatusOpen,
+	}
+	chatRepo.chats[c.ID] = c
+
+	voiceType := "voice"
+	chatRepo.messages[c.ID] = []domain.ChatMessage{
+		{
+			ID:        uuid.New(),
+			ChatID:    c.ID,
+			Direction: domain.DirectionInbound,
+			MediaType: &voiceType,
+			Body:      "",
+			Metadata: map[string]any{
+				"transcript": "Cliente pediu desconto de 15% no plano anual via áudio.",
+			},
+			CreatedAt: time.Now().UTC().Add(-2 * time.Minute),
+		},
+		{
+			ID:         uuid.New(),
+			ChatID:     c.ID,
+			Direction:  domain.DirectionOutbound,
+			SenderType: domain.SenderTypeHumanAgent,
+			Body:       "Vou enviar a proposta com desconto ainda hoje.",
+			CreatedAt:  time.Now().UTC().Add(-1 * time.Minute),
+		},
+	}
+
+	var capturedMessages []domain.ChatMessage
+	eng := chat.NewEngine(
+		chatRepo,
+		chat.WithSummarizer(func(ctx context.Context, messages []domain.ChatMessage, ch *domain.Chat) (*domain.ChatSynopsis, error) {
+			capturedMessages = messages
+			return &domain.ChatSynopsis{
+				CustomerIssues: "Pedido de 15% de desconto no plano anual (via nota de voz).",
+				PromisesMade:   "Envio da proposta comercial ainda hoje.",
+				CurrentStatus:  "Aguardando envio da proposta.",
+			}, nil
+		}),
+	)
+
+	res, err := eng.Summarize(ctx, wsID, chat.ChatRef{ChatID: c.ID})
+	if err != nil {
+		t.Fatalf("Engine.Summarize with LLM failed: %v", err)
+	}
+	if len(capturedMessages) != 2 {
+		t.Fatalf("expected 2 messages passed to SummarizerFunc, got %d", len(capturedMessages))
+	}
+	if !strings.Contains(capturedMessages[0].Body, "Cliente pediu desconto de 15%") {
+		t.Errorf("expected voice note body to be enriched with metadata['transcript'], got %q", capturedMessages[0].Body)
+	}
+	if res.Synopsis.CustomerIssues != "Pedido de 15% de desconto no plano anual (via nota de voz)." {
+		t.Errorf("unexpected LLM synopsis CustomerIssues: %q", res.Synopsis.CustomerIssues)
+	}
+
+	// Verify deterministic fallback when LLM returns an error
+	engFallback := chat.NewEngine(
+		chatRepo,
+		chat.WithSummarizer(func(ctx context.Context, messages []domain.ChatMessage, ch *domain.Chat) (*domain.ChatSynopsis, error) {
+			return nil, errors.New("provider timeout")
+		}),
+	)
+	fbRes, err := engFallback.Summarize(ctx, wsID, chat.ChatRef{ChatID: c.ID})
+	if err != nil {
+		t.Fatalf("expected deterministic fallback on LLM error, got error: %v", err)
+	}
+	if !strings.Contains(fbRes.Synopsis.CustomerIssues, "Cliente pediu desconto de 15%") {
+		t.Errorf("expected deterministic fallback to include enriched voice transcript, got: %+v", fbRes.Synopsis)
+	}
+}
+
+
