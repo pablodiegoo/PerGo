@@ -87,6 +87,7 @@ type telegramMessage struct {
 	Photo           []telegramPhoto   `json:"photo,omitempty"`
 	Document        *telegramDocument `json:"document,omitempty"`
 	Audio           *telegramAudio    `json:"audio,omitempty"`
+	Voice           *telegramAudio    `json:"voice,omitempty"`
 	Video           *telegramVideo    `json:"video,omitempty"`
 	Location        *telegramLocation `json:"location,omitempty"`
 	Contact         *telegramContact  `json:"contact,omitempty"`
@@ -178,6 +179,7 @@ func (a *TelegramInboundAdapter) Parse(
 	var photo []telegramPhoto
 	var document *telegramDocument
 	var audio *telegramAudio
+	var voice *telegramAudio
 	var video *telegramVideo
 	var location *telegramLocation
 	var contact *telegramContact
@@ -235,6 +237,7 @@ func (a *TelegramInboundAdapter) Parse(
 		photo = update.Message.Photo
 		document = update.Message.Document
 		audio = update.Message.Audio
+		voice = update.Message.Voice
 		video = update.Message.Video
 		location = update.Message.Location
 		contact = update.Message.Contact
@@ -318,6 +321,9 @@ func (a *TelegramInboundAdapter) Parse(
 	} else if audio != nil {
 		fileID = audio.FileID
 		mediaType = "audio"
+	} else if voice != nil {
+		fileID = voice.FileID
+		mediaType = "voice"
 	} else if video != nil {
 		fileID = video.FileID
 		mediaType = "video"

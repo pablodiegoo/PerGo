@@ -1,8 +1,24 @@
 package pages
 
-import "github.com/pablojhp.pergo/internal/i18n"
+import (
+	"strings"
 
-templ Login(errorMsg string) {
+	"github.com/pablojhp.pergo/internal/i18n"
+)
+
+func safeNextParam(next []string) string {
+	if len(next) == 0 {
+		return ""
+	}
+	n := strings.TrimSpace(next[0])
+	if strings.HasPrefix(n, "/") && !strings.HasPrefix(n, "//") && !strings.HasPrefix(n, "/\\") {
+		return n
+	}
+	return ""
+}
+
+templ Login(errorMsg string, next ...string) {
+	{{ nextURL := safeNextParam(next) }}
 	<div class="login-container">
 		<div class="login-card">
 			<h1>{ i18n.T(ctx, "login.title") }</h1>
@@ -13,6 +29,9 @@ templ Login(errorMsg string) {
 				</div>
 			}
 			<form method="POST" action="/admin/login">
+				if nextURL != "" {
+					<input type="hidden" name="next" value={ nextURL }/>
+				}
 				<div class="form-group">
 					<label for="password">{ i18n.T(ctx, "login.password") }</label>
 					<input type="password" id="password" name="password" required autocomplete="current-password"/>

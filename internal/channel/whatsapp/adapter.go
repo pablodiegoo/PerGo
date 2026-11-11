@@ -41,15 +41,26 @@ type WhatsAppAdapter struct {
 	client        *WhatsAppClient
 	sessionFinder SessionFinder
 	log           *slog.Logger
-	s3Client      *storage.S3Client
+	mediaStore    storage.MediaStorage
 }
 
 // NewWhatsAppAdapter creates a dispatcher backed by the given WhatsApp client.
 func NewWhatsAppAdapter(client *WhatsAppClient, s3Client *storage.S3Client) *WhatsAppAdapter {
+	var store storage.MediaStorage
+	if s3Client != nil {
+		store = s3Client
+	}
 	return &WhatsAppAdapter{
-		client:   client,
-		log:      slog.With("component", "whatsapp-adapter"),
-		s3Client: s3Client,
+		client:     client,
+		log:        slog.With("component", "whatsapp-adapter"),
+		mediaStore: store,
+	}
+}
+
+// SetMediaStorage overrides the backing MediaStorage (e.g. LocalDiskStorage in solo mode).
+func (a *WhatsAppAdapter) SetMediaStorage(store storage.MediaStorage) {
+	if a != nil {
+		a.mediaStore = store
 	}
 }
 
@@ -113,7 +124,7 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 	if interMsg != nil {
 		msg = interMsg
 	} else if m.Media != nil {
-		if a.s3Client == nil {
+		if a.mediaStore == nil {
 			return "", channel.NewTerminalError(fmt.Errorf("whatsapp: media storage client not configured"))
 		}
 
@@ -127,7 +138,7 @@ func (a *WhatsAppAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 		hashWithExt := parts[len(parts)-1]
 		key := workspaceIDStr + "/" + hashWithExt
 
-		bodyRC, contentType, err := a.s3Client.Download(ctx, key)
+		bodyRC, contentType, err := a.mediaStore.Download(ctx, key)
 		if err != nil {
 			return "", fmt.Errorf("whatsapp media download from S3 failed: %w", err)
 		}

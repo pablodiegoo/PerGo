@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -12,8 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
+// ErrObjectNotFound is returned when a requested media object does not exist in storage.
+var ErrObjectNotFound = errors.New("object not found")
+
 // MediaStorage defines the interface for object storage operations.
 type MediaStorage interface {
+	Upload(ctx context.Context, key string, data []byte, contentType string) error
 	Download(ctx context.Context, key string) (io.ReadCloser, string, error)
 	Delete(ctx context.Context, key string) error
 }

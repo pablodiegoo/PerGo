@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v5"
+	natsserver "github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"github.com/redis/go-redis/v9"
@@ -39,9 +41,11 @@ import (
 	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/client"
 	"github.com/pablojhp.pergo/internal/config"
+	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/inbound"
 	"github.com/pablojhp.pergo/internal/integration/chatwoot"
 	"github.com/pablojhp.pergo/internal/integration/typebot"
+	"github.com/pablojhp.pergo/internal/llm"
 	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/audit"
@@ -77,7 +81,9 @@ type CoreDeps struct {
 	KEK                  []byte
 	Encryptor            *crypto.Encryptor
 	S3Client             *storage.S3Client
+	MediaStorage         storage.MediaStorage
 	MediaEngine          media.Engine
+	LLMClient            *llm.Client
 	RateLimiter          *middleware.RateLimiter
 	QueueDepth           *middleware.QueueDepthTracker
 	AuditWriter         audit.Writer
@@ -161,6 +167,20 @@ func WithCoreJetStream(js jetstream.JetStream) CoreOption {
 func WithCoreMediaEngine(me media.Engine) CoreOption {
 	return func(d *CoreDeps) {
 		d.MediaEngine = me
+	}
+}
+
+// WithCoreMediaStorage overrides the backing media storage in CoreDeps.
+func WithCoreMediaStorage(ms storage.MediaStorage) CoreOption {
+	return func(d *CoreDeps) {
+		d.MediaStorage = ms
+	}
+}
+
+// WithCoreLLMClient overrides the multi-provider LLM/STT client in CoreDeps.
+func WithCoreLLMClient(lc *llm.Client) CoreOption {
+	return func(d *CoreDeps) {
+		d.LLMClient = lc
 	}
 }
 
@@ -258,8 +278,28 @@ func BootstrapCore(
 		return nil, fmt.Errorf("initialize S3 client: %w", err)
 	}
 	deps.S3Client = s3Client
+
+	if deps.MediaStorage == nil {
+		if strings.TrimSpace(cfg.S3Endpoint) == "" {
+			localDir := strings.TrimSpace(cfg.LocalMediaDir)
+			if localDir == "" {
+				localDir = "./data/media"
+			}
+			localStore, err := storage.NewLocalDiskStorage(localDir)
+			if err != nil {
+				return nil, fmt.Errorf("initialize local media storage: %w", err)
+			}
+			deps.MediaStorage = localStore
+			slog.Info("media storage initialized on local disk", "dir", localStore.BaseDir())
+		} else {
+			deps.MediaStorage = s3Client
+		}
+	}
 	if deps.MediaEngine == nil {
-		deps.MediaEngine = media.NewDefaultEngine(s3Client)
+		deps.MediaEngine = media.NewEngineWithStorage(deps.MediaStorage)
+	}
+	if deps.LLMClient == nil {
+		deps.LLMClient = llm.NewClientFromConfig(cfg)
 	}
 
 	if deps.RateLimiter == nil {
@@ -331,6 +371,10 @@ func BootstrapCore(
 	wabaAdapter := whatsapp.NewWABAAdapter(deps.ConnectionRepo, nil, cfg.ExternalURL)
 	telegramAdapter := telegram.NewTelegramAdapter(deps.ConnectionRepo, nil, s3Client)
 	whatsAppAdapter := whatsapp.NewWhatsAppAdapter(nil, s3Client)
+	if deps.MediaStorage != nil {
+		telegramAdapter.SetMediaStorage(deps.MediaStorage)
+		whatsAppAdapter.SetMediaStorage(deps.MediaStorage)
+	}
 	instagramAdapter := instagram.NewAdapter(deps.ConnectionRepo, nil, cfg.ExternalURL)
 	emailProvider := email.NewSMTPProvider(email.SMTPConfig{
 		Host:        "localhost",
@@ -368,6 +412,9 @@ func BootstrapCore(
 	)
 	deps.InboundProcessor.SetChatRepository(deps.ChatRepo)
 	deps.InboundProcessor.SetReactionWebhookDispatcher(deps.WebhookDispatcher)
+	if deps.LLMClient != nil && deps.LLMClient.Configured() {
+		deps.InboundProcessor.SetAudioTranscriber(deps.LLMClient.TranscribeAudio)
+	}
 
 	if deps.Debouncer == nil && cfg.RedisURL != "" {
 		redisOpts, err := redis.ParseURL(cfg.RedisURL)
@@ -432,6 +479,9 @@ func BootstrapCore(
 	if deps.Debouncer != nil {
 		chatEngineOpts = append(chatEngineOpts, chat.WithDebounceCanceller(deps.Debouncer))
 	}
+	if deps.LLMClient != nil && deps.LLMClient.Configured() {
+		chatEngineOpts = append(chatEngineOpts, chat.WithSummarizer(buildLLMSummarizer(deps.LLMClient)))
+	}
 	deps.ChatEngine = chat.NewEngine(deps.ChatRepo, chatEngineOpts...)
 
 	// --- CampaignEngine ---
@@ -446,6 +496,7 @@ func BootstrapCore(
 	deps.CampaignEngine.SetIngestor(deps.OutboundProcessor)
 
 	// --- MCPServer ---
+	isSolo := strings.EqualFold(strings.TrimSpace(cfg.Mode), "solo")
 	mcpOpts := []mcp.ServerOption{
 		mcp.WithWebhookDLQRepo(deps.WebhookDLQRepo),
 		mcp.WithChatRepo(deps.ChatRepo),
@@ -454,6 +505,7 @@ func BootstrapCore(
 		mcp.WithPublisher(deps.Publisher),
 		mcp.WithJetStream(deps.JS),
 		mcp.WithNATSConn(nc),
+		mcp.WithSoloMode(isSolo),
 	}
 	if deps.Activity != nil {
 		mcpOpts = append(mcpOpts, mcp.WithActivity(deps.Activity))
@@ -475,6 +527,7 @@ func BootstrapCore(
 		cfg.ExternalURL,
 		mcpOpts...,
 	)
+	deps.MCPServer.SetSoloMode(isSolo)
 
 	return deps, nil
 }
@@ -533,10 +586,16 @@ func BuildHTTPRouter(core *CoreDeps) *echo.Echo {
 
 		// --- Universal Agnostic MCP Gateway & Auto-Discovery Endpoints ---
 		universalGateway := mcp.NewUniversalGateway(core.MCPServer, cfg.ExternalURL)
+		sessionSecret := middleware.GetSessionSecret()
+		if cfg.SessionSecret != "" {
+			sessionSecret = []byte(cfg.SessionSecret)
+		}
+		universalGateway.SetSessionSecret(sessionSecret)
 		e.Any("/mcp", echo.WrapHandler(universalGateway))
 		e.Any("/mcp/*", echo.WrapHandler(universalGateway))
 		e.POST("/oauth/register", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthRegister)))
 		e.GET("/oauth/authorize", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthAuthorize)))
+		e.POST("/oauth/authorize", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthAuthorize)))
 		e.POST("/oauth/token", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleOAuthToken)))
 		e.GET("/.well-known/mcp", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownMCP)))
 		e.GET("/.well-known/mcp.json", echo.WrapHandler(http.HandlerFunc(universalGateway.HandleWellKnownMCP)))
@@ -547,7 +606,11 @@ func BuildHTTPRouter(core *CoreDeps) *echo.Echo {
 	}
 
 	// --- Media proxy handler (GET /media/:workspace_id/:hash) ---
-	mediaHandler := handler.NewMediaHandler(core.S3Client)
+	mediaStore := core.MediaStorage
+	if mediaStore == nil && core.S3Client != nil {
+		mediaStore = core.S3Client
+	}
+	mediaHandler := handler.NewMediaHandler(mediaStore)
 	e.GET("/media/:workspace_id/:hash", mediaHandler.Handle)
 
 	// --- Telegram Inbound Webhook handler ---
@@ -738,6 +801,7 @@ func BuildHTTPRouter(core *CoreDeps) *echo.Echo {
 	adminGroup.GET("/logs/outbound/export", auditHandler.ExportOutboundCSV)
 
 	// Inbox routes (backed by ChatEngine & OutboundProcessor)
+	adminGroup.GET("/media/:workspace_id/:hash", mediaHandler.Handle)
 	presenceTracker := presence.NewTracker(15 * time.Second)
 	inboxHandler := &admin.InboxHandler{
 		Repo:              core.AuditRepo,
@@ -754,6 +818,11 @@ func BuildHTTPRouter(core *CoreDeps) *echo.Echo {
 		Ingestor:          core.OutboundProcessor,
 		Debouncer:         core.Debouncer,
 		Activity:          core.Activity,
+		MediaEngine:       core.MediaEngine,
+		MediaStorage:      mediaStore,
+	}
+	if core.LLMClient != nil && core.LLMClient.Configured() {
+		inboxHandler.AudioTranscriber = core.LLMClient.TranscribeAudio
 	}
 	adminGroup.GET("/inbox", inboxHandler.View)
 	adminGroup.GET("/inbox/conversations/poll", inboxHandler.PollConversations)
@@ -765,17 +834,22 @@ func BuildHTTPRouter(core *CoreDeps) *echo.Echo {
 	adminGroup.POST("/inbox/tags/remove", inboxHandler.RemoveChatTag)
 	adminGroup.POST("/inbox/status", inboxHandler.UpdateChatStatus)
 	adminGroup.GET("/inbox/messages", inboxHandler.PollMessages)
+	adminGroup.POST("/inbox/messages/:uid/transcribe", inboxHandler.TranscribeMessage)
 	adminGroup.POST("/inbox/send", inboxHandler.SendMessage)
 	adminGroup.POST("/inbox/notes", inboxHandler.CreateNote)
 	adminGroup.POST("/inbox/reactions", inboxHandler.ToggleReaction)
 	adminGroup.GET("/inbox/new-message-modal", inboxHandler.NewMessageModal)
 	adminGroup.POST("/inbox/new-message-send", inboxHandler.NewMessageSend)
+	adminGroup.GET("/contacts", inboxHandler.ContactsPage)
+	adminGroup.GET("/inbox/contacts", inboxHandler.ContactsPage)
 	adminGroup.GET("/contacts/search", inboxHandler.SearchContacts)
 	adminGroup.GET("/inbox/contacts/search", inboxHandler.SearchContacts)
 	adminGroup.POST("/contacts/merge", inboxHandler.MergeContacts)
 	adminGroup.POST("/inbox/contacts/merge", inboxHandler.MergeContacts)
 	adminGroup.POST("/contacts/:id/toggle-bot", inboxHandler.ToggleBot)
 	adminGroup.POST("/inbox/contacts/:id/toggle-bot", inboxHandler.ToggleBot)
+	adminGroup.POST("/inbox/contacts/:id/update", inboxHandler.UpdateContactProfile)
+	adminGroup.POST("/inbox/contacts/:id/attributes", inboxHandler.UpdateContactAttributes)
 	adminGroup.POST("/inbox/chats/:id/enable-ai", inboxHandler.EnableChatAI)
 	adminGroup.POST("/inbox/chat_enable_ai", inboxHandler.EnableChatAI)
 	adminGroup.POST("/inbox/summarize", inboxHandler.SummarizeChat)
@@ -1099,9 +1173,15 @@ func runMCPStdio(ctx context.Context, cfg *config.Config, args []string, stdin i
 	}
 	defer db.Close()
 
-	nc, err := nats.Connect(cfg.NATSUrl)
+	nc, embeddedNS, err := connectOrStartNATS(cfg, true)
 	if err != nil {
 		return fmt.Errorf("connect to NATS: %w", err)
+	}
+	if embeddedNS != nil {
+		defer func() {
+			embeddedNS.Shutdown()
+			embeddedNS.WaitForShutdown()
+		}()
 	}
 	defer nc.Close()
 
@@ -1181,13 +1261,17 @@ func main() {
 	slog.Info("migrations applied successfully")
 
 	// --- NATS ---
-	nc, err := nats.Connect(cfg.NATSUrl)
+	nc, embeddedNS, err := connectOrStartNATS(cfg, false)
 	if err != nil {
-		slog.Error("failed to connect to NATS", "error", err, "url", cfg.NATSUrl)
+		slog.Error("failed to connect or start NATS", "error", err, "url", cfg.NATSUrl)
 		os.Exit(1)
 	}
 	defer nc.Close()
-	slog.Info("connected to NATS", "url", cfg.NATSUrl)
+	if embeddedNS != nil {
+		slog.Info("started embedded NATS server with JetStream", "url", nc.ConnectedUrl(), "store_dir", cfg.NATSDir)
+	} else {
+		slog.Info("connected to NATS", "url", nc.ConnectedUrl())
+	}
 
 	stream, err := queue.EnsureStream(ctx, nc)
 	if err != nil {
@@ -1270,6 +1354,19 @@ func main() {
 	go retentionDaemon.Run(ctx)
 	slog.Info("data retention daemon started", "interval", "1h")
 
+	// --- Telegram Long-Polling Manager (when ExternalURL is not https://) ---
+	var tgPoller *telegram.PollerManager
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(cfg.ExternalURL)), "https://") {
+		tgPoller = telegram.NewPollerManager(
+			core.ConnectionRepo,
+			client.NewTelegramBotClient(nil, ""),
+			core.InboundProcessor,
+			core.MediaEngine,
+		)
+		tgPoller.Start(ctx)
+		slog.Info("telegram long-polling manager started", "external_url", cfg.ExternalURL)
+	}
+
 	slog.Info("rate limiter configured", "rps", 10, "burst", 10)
 	slog.Info("queue depth limit", "max", 1000)
 	if cfg.AdminPassword == "pergo-dev-2026" {
@@ -1301,6 +1398,14 @@ func main() {
 		pool.Close()
 		return nil
 	})
+	if embeddedNS != nil {
+		orch.Register(func() error {
+			slog.Info("shutting down embedded NATS server")
+			embeddedNS.Shutdown()
+			embeddedNS.WaitForShutdown()
+			return nil
+		})
+	}
 	orch.Register(func() error {
 		slog.Info("closing NATS connection")
 		nc.Close()
@@ -1321,6 +1426,13 @@ func main() {
 		worker.Stop()
 		return nil
 	})
+	if tgPoller != nil {
+		orch.Register(func() error {
+			slog.Info("stopping telegram long-polling manager")
+			tgPoller.Stop()
+			return nil
+		})
+	}
 	orch.Register(func() error {
 		slog.Info("stopping data retention daemon")
 		retentionDaemon.Stop()
@@ -1386,6 +1498,144 @@ func main() {
 }
 
 // --- helpers ---
+
+// connectOrStartNATS connects to an external NATS server or boots an in-process
+// embedded JetStream NATS server when NATSUrl is "" / "embedded" (or in solo mode
+// when external NATS is not explicitly set). In stdio MCP mode, it first attempts
+// to attach to a locally running PerGo NATS listener on 127.0.0.1:4222 before
+// falling back to an ephemeral embedded server.
+func connectOrStartNATS(cfg *config.Config, stdioMode bool) (*nats.Conn, *natsserver.Server, error) {
+	if cfg == nil {
+		cfg = config.Load()
+	}
+	rawURL := strings.TrimSpace(cfg.NATSUrl)
+	isSolo := strings.EqualFold(strings.TrimSpace(cfg.Mode), "solo")
+	explicitNATS := strings.TrimSpace(os.Getenv("PERGO_NATS_URL")) != ""
+	wantEmbedded := rawURL == "" || strings.EqualFold(rawURL, "embedded")
+
+	if stdioMode {
+		// In stdio mode, if an explicit external URL is configured, try it first;
+		// otherwise try attaching to a locally running PerGo NATS on 127.0.0.1:4222.
+		candidateURL := rawURL
+		if wantEmbedded {
+			candidateURL = "nats://127.0.0.1:4222"
+		}
+		if nc, err := nats.Connect(candidateURL, nats.Timeout(1500*time.Millisecond)); err == nil {
+			return nc, nil, nil
+		} else if !wantEmbedded && !(isSolo && !explicitNATS) {
+			return nil, nil, err
+		}
+
+		storeDir := strings.TrimSpace(cfg.NATSDir)
+		if storeDir == "" {
+			storeDir = "./data/nats"
+		}
+		ns, clientURL, err := queue.StartEmbeddedNATS(storeDir+"-stdio", -1)
+		if err != nil {
+			return nil, nil, err
+		}
+		nc, err := nats.Connect(clientURL)
+		if err != nil {
+			ns.Shutdown()
+			return nil, nil, err
+		}
+		return nc, ns, nil
+	}
+
+	if !wantEmbedded {
+		nc, err := nats.Connect(rawURL)
+		if err == nil {
+			return nc, nil, nil
+		}
+		if !(isSolo && !explicitNATS) {
+			return nil, nil, err
+		}
+		slog.Warn("external NATS unavailable in solo mode; falling back to embedded NATS", "url", rawURL, "error", err)
+	}
+
+	storeDir := strings.TrimSpace(cfg.NATSDir)
+	if storeDir == "" {
+		storeDir = "./data/nats"
+	}
+	ns, clientURL, err := queue.StartEmbeddedNATS(storeDir, 4222)
+	if err != nil {
+		// Port 4222 may already be bound on the host; fall back to an ephemeral port.
+		ns, clientURL, err = queue.StartEmbeddedNATS(storeDir, -1)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	nc, err := nats.Connect(clientURL)
+	if err != nil {
+		ns.Shutdown()
+		return nil, nil, err
+	}
+	return nc, ns, nil
+}
+
+// buildLLMSummarizer adapts *llm.Client.SummarizeChat into a chat.SummarizerFunc.
+func buildLLMSummarizer(llmClient *llm.Client) chat.SummarizerFunc {
+	return func(ctx context.Context, messages []domain.ChatMessage, c *domain.Chat) (*domain.ChatSynopsis, error) {
+		if llmClient == nil || !llmClient.Configured() {
+			return nil, llm.ErrProviderNotConfigured
+		}
+
+		start := 0
+		if len(messages) > 60 {
+			start = len(messages) - 60
+		}
+
+		var sb strings.Builder
+		if c != nil {
+			fmt.Fprintf(&sb, "Chat Status: %s\n", c.Status)
+		}
+		for _, m := range messages[start:] {
+			body := strings.TrimSpace(m.Body)
+			if body == "" && m.MediaType != "" {
+				body = "[" + m.MediaType + "]"
+			}
+			if body == "" {
+				continue
+			}
+			role := "Customer"
+			if m.IsInternal {
+				role = "Internal Note"
+			} else if m.Direction == domain.ChatDirectionOutbound {
+				if m.SenderType == domain.ChatSenderBot {
+					role = "AI Bot"
+				} else {
+					role = "Operator"
+				}
+			}
+			sender := strings.TrimSpace(m.SenderName)
+			if sender != "" {
+				fmt.Fprintf(&sb, "[%s - %s]: %s\n", role, sender, body)
+			} else {
+				fmt.Fprintf(&sb, "[%s]: %s\n", role, body)
+			}
+		}
+
+		res, err := llmClient.SummarizeChat(ctx, sb.String())
+		if err != nil {
+			return nil, err
+		}
+
+		currentStatus := strings.TrimSpace(res.NextSteps)
+		if summary := strings.TrimSpace(res.Summary); summary != "" {
+			if currentStatus != "" {
+				currentStatus = summary + " — " + currentStatus
+			} else {
+				currentStatus = summary
+			}
+		}
+
+		return &domain.ChatSynopsis{
+			CustomerIssues: strings.TrimSpace(res.CustomerIssues),
+			PromisesMade:   strings.TrimSpace(res.PromisesMade),
+			CurrentStatus:  currentStatus,
+		}, nil
+	}
+}
 
 // runServer boots the shared CoreDeps and HTTP router on an ephemeral listener
 // and blocks until ctx is cancelled, performing graceful shutdown on exit.

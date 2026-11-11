@@ -58,16 +58,24 @@ type Engine interface {
 
 // DefaultEngine implements the Engine interface.
 type DefaultEngine struct {
-	s3Client *storage.S3Client
-	client   *http.Client
+	store  storage.MediaStorage
+	client *http.Client
+}
+
+// NewEngineWithStorage creates a new DefaultEngine backed by any MediaStorage implementation.
+func NewEngineWithStorage(store storage.MediaStorage) *DefaultEngine {
+	return &DefaultEngine{
+		store:  store,
+		client: &http.Client{Timeout: 30 * time.Second},
+	}
 }
 
 // NewDefaultEngine creates a new DefaultEngine instance.
 func NewDefaultEngine(s3Client *storage.S3Client) *DefaultEngine {
-	return &DefaultEngine{
-		s3Client: s3Client,
-		client:   &http.Client{Timeout: 30 * time.Second},
+	if s3Client == nil {
+		return NewEngineWithStorage(nil)
 	}
+	return NewEngineWithStorage(s3Client)
 }
 
 // ExtractAudioTelemetry extracts duration and normalized RMS energy from audio payload bytes.
@@ -152,20 +160,20 @@ func (e *DefaultEngine) Download(
 	}, nil
 }
 
-// Upload stores media bytes in S3.
+// Upload stores media bytes in configured storage.
 func (e *DefaultEngine) Upload(ctx context.Context, key string, data []byte, contentType string) error {
-	if e.s3Client == nil {
-		return errors.New("s3 client is not configured")
+	if e.store == nil {
+		return errors.New("media storage is not configured")
 	}
-	return e.s3Client.Upload(ctx, key, data, contentType)
+	return e.store.Upload(ctx, key, data, contentType)
 }
 
-// Delete removes a media object from S3 by key.
+// Delete removes a media object from configured storage by key.
 func (e *DefaultEngine) Delete(ctx context.Context, key string) error {
-	if e.s3Client == nil {
-		return errors.New("s3 client is not configured")
+	if e.store == nil {
+		return errors.New("media storage is not configured")
 	}
-	return e.s3Client.Delete(ctx, key)
+	return e.store.Delete(ctx, key)
 }
 
 // DeleteMedia deletes media given a media URL or proxy path (e.g. "/media/<workspace_id>/<file>").

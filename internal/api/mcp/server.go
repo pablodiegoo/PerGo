@@ -125,6 +125,22 @@ type Server struct {
 	debouncer         chat.DebounceCanceller
 	activity          *activity.Recorder
 	chatEngine        *chat.Engine
+	soloMode          bool
+}
+
+// WithSoloMode configures whether omitted workspace_id parameters default to the primary workspace.
+func WithSoloMode(solo bool) ServerOption {
+	return func(s *Server) {
+		s.soloMode = solo
+	}
+}
+
+// SetSoloMode toggles solo workspace resolution fallback on the MCP Server.
+func (s *Server) SetSoloMode(solo bool) {
+	if s == nil {
+		return
+	}
+	s.soloMode = solo
 }
 
 // WithChatEngine configures a shared chat.Engine instance on the MCP Server.
@@ -1938,6 +1954,13 @@ func (s *Server) resolveWorkspaceID(ctx context.Context, request mcp.CallToolReq
 		wsID = parsed
 	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
 		wsID = id
+	} else if s.soloMode && s.wsRepo != nil {
+		workspaces, err := s.wsRepo.List(ctx, 1)
+		if err == nil && len(workspaces) > 0 {
+			wsID = workspaces[0].ID
+		} else {
+			return uuid.Nil, mcp.NewToolResultError("missing workspace_id parameter")
+		}
 	} else {
 		return uuid.Nil, mcp.NewToolResultError("missing workspace_id parameter")
 	}

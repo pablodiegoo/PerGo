@@ -2,6 +2,8 @@ package pages
 
 import (
 	"fmt"
+	"net/url"
+
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/templates/components"
 	"github.com/pablojhp.pergo/templates/layout"
@@ -103,7 +105,7 @@ templ ConnectionRow(conn *repository.Connection) {
 		<td class="px-6 py-4 text-right">
 			<div class="inline-flex gap-2">
 				<a
-					href={ templ.URL("/admin/inbox?channel=" + conn.Channel) }
+					href={ templ.URL("/admin/inbox?connection=" + url.QueryEscape(conn.SenderIdentity)) }
 					class="btn btn-ghost hover:bg-zinc-100 text-zinc-700 btn-xs font-semibold"
 				>
 					Inbox

@@ -34,7 +34,6 @@ func AuthMiddleware(repo *repository.APIKeyRepository, masterKeys ...string) ech
 				path == "/mcp" ||
 				strings.HasPrefix(path, "/oauth") ||
 				strings.HasPrefix(path, "/.well-known") ||
-				strings.HasPrefix(path, "/api/mcp") ||
 				path == "/openapi.yaml" ||
 				path == "/openapi.json" ||
 				path == "/llms.txt" ||

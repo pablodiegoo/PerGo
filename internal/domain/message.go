@@ -368,10 +368,10 @@ func ValidateMessage(req *CreateMessageRequest) *ErrorResponse {
 			req.Media.PTT = true
 		}
 
-		// MediaURL validation: check empty and scheme
+		// MediaURL validation: check empty and scheme (or internal /media/ proxy path)
 		hasValidPrefix := false
 		lowerURL := strings.ToLower(req.Media.MediaURL)
-		if strings.HasPrefix(lowerURL, "http://") || strings.HasPrefix(lowerURL, "https://") {
+		if strings.HasPrefix(lowerURL, "http://") || strings.HasPrefix(lowerURL, "https://") || (strings.HasPrefix(lowerURL, "/media/") && !strings.Contains(lowerURL, "..")) {
 			hasValidPrefix = true
 		}
 		if req.Media.MediaURL == "" {

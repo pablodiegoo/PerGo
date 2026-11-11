@@ -29,7 +29,7 @@ type TelegramAdapter struct {
 	connectionsRepo *repository.ConnectionRepository
 	client          *http.Client
 	baseURL         string
-	s3Client        *storage.S3Client
+	mediaStore      storage.MediaStorage
 }
 
 // TelegramConfig represents the Telegram credentials JSON structure.
@@ -65,11 +65,22 @@ func NewTelegramAdapter(connectionsRepo *repository.ConnectionRepository, client
 	if client == nil {
 		client = netpolicy.NewPublicHTTPClient()
 	}
+	var store storage.MediaStorage
+	if s3Client != nil {
+		store = s3Client
+	}
 	return &TelegramAdapter{
 		connectionsRepo: connectionsRepo,
 		client:          client,
 		baseURL:         "https://api.telegram.org",
-		s3Client:        s3Client,
+		mediaStore:      store,
+	}
+}
+
+// SetMediaStorage overrides the backing MediaStorage (e.g. LocalDiskStorage in solo mode).
+func (a *TelegramAdapter) SetMediaStorage(store storage.MediaStorage) {
+	if a != nil {
+		a.mediaStore = store
 	}
 }
 
@@ -107,7 +118,7 @@ func (a *TelegramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 	}
 
 	if m.Media != nil {
-		if a.s3Client == nil {
+		if a.mediaStore == nil {
 			return "", channel.NewTerminalError(fmt.Errorf("telegram: media storage client not configured"))
 		}
 
@@ -119,7 +130,7 @@ func (a *TelegramAdapter) Dispatch(ctx context.Context, m *channel.MessagePayloa
 		hashWithExt := parts[len(parts)-1]
 		key := workspaceIDStr + "/" + hashWithExt
 
-		bodyRC, _, err := a.s3Client.Download(ctx, key)
+		bodyRC, _, err := a.mediaStore.Download(ctx, key)
 		if err != nil {
 			return "", fmt.Errorf("%w: telegram media download from S3 failed: %v", ErrTelegramMediaRetryable, err)
 		}

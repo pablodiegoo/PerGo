@@ -307,33 +307,54 @@ func InboxContent(conversations []repository.ConversationSummary, unreadMap map[
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 4v16m8-8H4\"></path></svg></button></div></div><!-- Search bar --><div class=\"inbox-search px-3 py-2 border-b border-[#e9e9e7] dark:border-[#2f2f2f]\"><div class=\"relative\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 absolute left-2.5 top-2.5 text-[#787774] dark:text-[#9b9b9b]\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z\"></path></svg> <input type=\"search\" name=\"search\" placeholder=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M12 4v16m8-8H4\"></path></svg></button></div></div><!-- Search bar -->")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		initialSearch := ""
+		if len(filters) > 2 {
+			initialSearch = filters[2]
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<div class=\"inbox-search px-3 py-2 border-b border-[#e9e9e7] dark:border-[#2f2f2f]\"><div class=\"relative\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-4 w-4 absolute left-2.5 top-2.5 text-[#787774] dark:text-[#9b9b9b]\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\" d=\"M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z\"></path></svg> <input type=\"search\" name=\"search\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var19 string
-		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(i18n.T(ctx, "inbox.search_placeholder"))
+		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.ResolveAttributeValue(initialSearch)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/inbox.templ`, Line: 105, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/inbox.templ`, Line: 111, Col: 27}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var19)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" class=\"w-full pl-8 pr-3 py-1.5 text-sm border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] placeholder-[#787774] dark:placeholder-[#9b9b9b] focus:outline-none focus:ring-1 focus:ring-[#0284c7] focus:border-transparent\" hx-get=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" placeholder=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var20 string
-		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s", activeChannel))
+		templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue(i18n.T(ctx, "inbox.search_placeholder"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/inbox.templ`, Line: 107, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/inbox.templ`, Line: 112, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\" hx-trigger=\"keyup changed delay:300ms, search\" hx-target=\"#conv-list\" hx-swap=\"outerHTML\"></div></div><!-- Conversation list with polling -->")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" class=\"w-full pl-8 pr-3 py-1.5 text-sm border border-[#e9e9e7] dark:border-[#2f2f2f] rounded-lg bg-[#fbfbfa] dark:bg-[#191919] text-[#37352f] dark:text-[#e3e3e3] placeholder-[#787774] dark:placeholder-[#9b9b9b] focus:outline-none focus:ring-1 focus:ring-[#0284c7] focus:border-transparent\" hx-get=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var21 string
+		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s", activeChannel))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/inbox.templ`, Line: 114, Col: 90}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var21)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\" hx-trigger=\"keyup changed delay:300ms, search\" hx-target=\"#conv-list\" hx-swap=\"outerHTML\"></div></div><!-- Conversation list with polling -->")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -341,7 +362,7 @@ func InboxContent(conversations []repository.ConversationSummary, unreadMap map[
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</div><!-- Right panel: chat view (middle conversation + right CRM panel) --><div id=\"chat-panel\" class=\"chat-panel flex-1 flex bg-[#fbfbfa] dark:bg-[#191919] h-full overflow-hidden\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</div><!-- Right panel: chat view (middle conversation + right CRM panel) --><div id=\"chat-panel\" class=\"chat-panel flex-1 flex bg-[#fbfbfa] dark:bg-[#191919] h-full overflow-hidden\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -351,38 +372,38 @@ func InboxContent(conversations []repository.ConversationSummary, unreadMap map[
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<!-- Placeholder when no chat is selected --> <div class=\"chat-placeholder flex flex-col items-center justify-center gap-4 text-[#787774] dark:text-[#9b9b9b] select-none h-full w-full\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-16 w-16 text-[#e9e9e7] dark:text-[#2f2f2f]\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1\" d=\"M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z\"></path></svg><div class=\"text-center\"><p class=\"font-semibold text-[#37352f] dark:text-[#e3e3e3] font-['Outfit',sans-serif]\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var21 string
-			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "inbox.select_conversation"))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/inbox.templ`, Line: 128, Col: 135}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</p><p class=\"text-sm mt-1 text-[#787774] dark:text-[#9b9b9b]\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<!-- Placeholder when no chat is selected --> <div class=\"chat-placeholder flex flex-col items-center justify-center gap-4 text-[#787774] dark:text-[#9b9b9b] select-none h-full w-full\"><svg xmlns=\"http://www.w3.org/2000/svg\" class=\"h-16 w-16 text-[#e9e9e7] dark:text-[#2f2f2f]\" fill=\"none\" viewBox=\"0 0 24 24\" stroke=\"currentColor\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"1\" d=\"M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z\"></path></svg><div class=\"text-center\"><p class=\"font-semibold text-[#37352f] dark:text-[#e3e3e3] font-['Outfit',sans-serif]\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var22 string
-			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "inbox.select_conversation_desc"))
+			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "inbox.select_conversation"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/inbox.templ`, Line: 129, Col: 112}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/inbox.templ`, Line: 135, Col: 135}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</p></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</p><p class=\"text-sm mt-1 text-[#787774] dark:text-[#9b9b9b]\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var23 string
+			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(i18n.T(ctx, "inbox.select_conversation_desc"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `templates/pages/inbox.templ`, Line: 136, Col: 112}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</p></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</div></div><script>\n\t\tfunction toggleFilterDropdown() {\n\t\t\tvar dropdown = document.getElementById('inbox-filter-dropdown');\n\t\t\tif (dropdown) {\n\t\t\t\tdropdown.classList.toggle('hidden');\n\t\t\t}\n\t\t}\n\t\t// Close dropdown when clicking outside\n\t\twindow.addEventListener('click', function(e) {\n\t\t\tvar dropdown = document.getElementById('inbox-filter-dropdown');\n\t\t\tvar container = document.getElementById('inbox-filter-dropdown-container');\n\t\t\tif (dropdown && container && !dropdown.classList.contains('hidden')) {\n\t\t\t\tif (!container.contains(e.target)) {\n\t\t\t\t\tdropdown.classList.add('hidden');\n\t\t\t\t}\n\t\t\t}\n\t\t});\n\n\t\t// Focus guard\n\t\tfunction isInputActive() {\n\t\t\tvar el = document.activeElement;\n\t\t\tif (!el) return false;\n\t\t\tvar tag = el.tagName ? el.tagName.toLowerCase() : '';\n\t\t\treturn tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;\n\t\t}\n\n\t\tfunction getActiveContactId() {\n\t\t\tvar panel = document.getElementById('chat-panel-inner');\n\t\t\tif (panel && panel.dataset && panel.dataset.contactId) {\n\t\t\t\treturn panel.dataset.contactId;\n\t\t\t}\n\t\t\tvar params = new URLSearchParams(window.location.search);\n\t\t\treturn params.get('contact_id') || '';\n\t\t}\n\n\t\t// Global Keyboard Navigation & Triage Shortcuts\n\t\twindow.addEventListener('keydown', function(e) {\n\t\t\tif (isInputActive()) {\n\t\t\t\tif (e.key === 'Escape') {\n\t\t\t\t\tdocument.activeElement.blur();\n\t\t\t\t}\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tif (e.metaKey || e.ctrlKey || e.altKey) return;\n\n\t\t\tvar key = e.key.toUpperCase();\n\t\t\tif (key === 'J') { // Next chat\n\t\t\t\te.preventDefault();\n\t\t\t\tvar items = document.querySelectorAll('.conv-item');\n\t\t\t\tif (!items || items.length === 0) return;\n\t\t\t\tvar activeContactId = getActiveContactId();\n\t\t\t\tvar activeIndex = -1;\n\t\t\t\tif (activeContactId) {\n\t\t\t\t\tfor (var i = 0; i < items.length; i++) {\n\t\t\t\t\t\tif (items[i].dataset.contactId === activeContactId || items[i].id === 'conv-' + activeContactId) {\n\t\t\t\t\t\t\tactiveIndex = i;\n\t\t\t\t\t\t\tbreak;\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tvar nextIndex = activeIndex + 1 < items.length ? activeIndex + 1 : 0;\n\t\t\t\titems[nextIndex].click();\n\t\t\t\titems[nextIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });\n\t\t\t} else if (key === 'K') { // Previous chat\n\t\t\t\te.preventDefault();\n\t\t\t\tvar items = document.querySelectorAll('.conv-item');\n\t\t\t\tif (!items || items.length === 0) return;\n\t\t\t\tvar activeContactId = getActiveContactId();\n\t\t\t\tvar activeIndex = -1;\n\t\t\t\tif (activeContactId) {\n\t\t\t\t\tfor (var i = 0; i < items.length; i++) {\n\t\t\t\t\t\tif (items[i].dataset.contactId === activeContactId || items[i].id === 'conv-' + activeContactId) {\n\t\t\t\t\t\t\tactiveIndex = i;\n\t\t\t\t\t\t\tbreak;\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tvar prevIndex = activeIndex - 1 >= 0 ? activeIndex - 1 : items.length - 1;\n\t\t\t\titems[prevIndex].click();\n\t\t\t\titems[prevIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });\n\t\t\t} else if (key === 'E') { // Resolve / Reopen chat\n\t\t\t\te.preventDefault();\n\t\t\t\tvar btnResolve = document.getElementById('btn-resolve-chat');\n\t\t\t\tif (btnResolve) {\n\t\t\t\t\tbtnResolve.click();\n\t\t\t\t}\n\t\t\t} else if (key === 'S') { // Snooze or Un-snooze chat\n\t\t\t\te.preventDefault();\n\t\t\t\tvar btnSnooze = document.getElementById('btn-snooze-chat');\n\t\t\t\tif (btnSnooze) {\n\t\t\t\t\tbtnSnooze.click();\n\t\t\t\t} else {\n\t\t\t\t\tvar btnUnsnooze = document.getElementById('btn-unsnooze-chat');\n\t\t\t\t\tif (btnUnsnooze) {\n\t\t\t\t\t\tbtnUnsnooze.click();\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t} else if (key === 'A') { // Assign chat\n\t\t\t\te.preventDefault();\n\t\t\t\tvar assignSelect = document.getElementById('chat-assign-select');\n\t\t\t\tif (assignSelect) {\n\t\t\t\t\tassignSelect.focus();\n\t\t\t\t\tassignSelect.scrollIntoView({ behavior: 'smooth' });\n\t\t\t\t}\n\t\t\t} else if (key === 'L') { // Label / Tag chat\n\t\t\t\te.preventDefault();\n\t\t\t\tvar tagForm = document.getElementById('tag-input-form');\n\t\t\t\tvar tagInput = document.getElementById('chat-tag-input');\n\t\t\t\tif (tagForm && tagInput) {\n\t\t\t\t\ttagForm.classList.remove('hidden');\n\t\t\t\t\ttagInput.focus();\n\t\t\t\t\ttagInput.scrollIntoView({ behavior: 'smooth' });\n\t\t\t\t}\n\t\t\t} else if (e.key === '/') { // Quick search chats\n\t\t\t\te.preventDefault();\n\t\t\t\tvar searchInput = document.querySelector('.inbox-search input[type=\"search\"]');\n\t\t\t\tif (searchInput) {\n\t\t\t\t\tsearchInput.focus();\n\t\t\t\t\tsearchInput.select();\n\t\t\t\t}\n\t\t\t}\n\t\t});\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</div></div><script>\n\t\tfunction toggleFilterDropdown() {\n\t\t\tvar dropdown = document.getElementById('inbox-filter-dropdown');\n\t\t\tif (dropdown) {\n\t\t\t\tdropdown.classList.toggle('hidden');\n\t\t\t}\n\t\t}\n\t\t// Close dropdown when clicking outside\n\t\twindow.addEventListener('click', function(e) {\n\t\t\tvar dropdown = document.getElementById('inbox-filter-dropdown');\n\t\t\tvar container = document.getElementById('inbox-filter-dropdown-container');\n\t\t\tif (dropdown && container && !dropdown.classList.contains('hidden')) {\n\t\t\t\tif (!container.contains(e.target)) {\n\t\t\t\t\tdropdown.classList.add('hidden');\n\t\t\t\t}\n\t\t\t}\n\t\t});\n\n\t\t// Focus guard\n\t\tfunction isInputActive() {\n\t\t\tvar el = document.activeElement;\n\t\t\tif (!el) return false;\n\t\t\tvar tag = el.tagName ? el.tagName.toLowerCase() : '';\n\t\t\treturn tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;\n\t\t}\n\n\t\tfunction getActiveContactId() {\n\t\t\tvar panel = document.getElementById('chat-panel-inner');\n\t\t\tif (panel && panel.dataset && panel.dataset.contactId) {\n\t\t\t\treturn panel.dataset.contactId;\n\t\t\t}\n\t\t\tvar params = new URLSearchParams(window.location.search);\n\t\t\treturn params.get('contact_id') || '';\n\t\t}\n\n\t\t// Global Keyboard Navigation & Triage Shortcuts\n\t\twindow.addEventListener('keydown', function(e) {\n\t\t\tif (isInputActive()) {\n\t\t\t\tif (e.key === 'Escape') {\n\t\t\t\t\tdocument.activeElement.blur();\n\t\t\t\t}\n\t\t\t\treturn;\n\t\t\t}\n\n\t\t\tif (e.metaKey || e.ctrlKey || e.altKey) return;\n\n\t\t\tvar key = e.key.toUpperCase();\n\t\t\tif (key === 'J') { // Next chat\n\t\t\t\te.preventDefault();\n\t\t\t\tvar items = document.querySelectorAll('.conv-item');\n\t\t\t\tif (!items || items.length === 0) return;\n\t\t\t\tvar activeContactId = getActiveContactId();\n\t\t\t\tvar activeIndex = -1;\n\t\t\t\tif (activeContactId) {\n\t\t\t\t\tfor (var i = 0; i < items.length; i++) {\n\t\t\t\t\t\tif (items[i].dataset.contactId === activeContactId || items[i].id === 'conv-' + activeContactId) {\n\t\t\t\t\t\t\tactiveIndex = i;\n\t\t\t\t\t\t\tbreak;\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tvar nextIndex = activeIndex + 1 < items.length ? activeIndex + 1 : 0;\n\t\t\t\titems[nextIndex].click();\n\t\t\t\titems[nextIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });\n\t\t\t} else if (key === 'K') { // Previous chat\n\t\t\t\te.preventDefault();\n\t\t\t\tvar items = document.querySelectorAll('.conv-item');\n\t\t\t\tif (!items || items.length === 0) return;\n\t\t\t\tvar activeContactId = getActiveContactId();\n\t\t\t\tvar activeIndex = -1;\n\t\t\t\tif (activeContactId) {\n\t\t\t\t\tfor (var i = 0; i < items.length; i++) {\n\t\t\t\t\t\tif (items[i].dataset.contactId === activeContactId || items[i].id === 'conv-' + activeContactId) {\n\t\t\t\t\t\t\tactiveIndex = i;\n\t\t\t\t\t\t\tbreak;\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tvar prevIndex = activeIndex - 1 >= 0 ? activeIndex - 1 : items.length - 1;\n\t\t\t\titems[prevIndex].click();\n\t\t\t\titems[prevIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });\n\t\t\t} else if (key === 'E') { // Resolve / Reopen chat\n\t\t\t\te.preventDefault();\n\t\t\t\tvar btnResolve = document.getElementById('btn-resolve-chat');\n\t\t\t\tif (btnResolve) {\n\t\t\t\t\tbtnResolve.click();\n\t\t\t\t}\n\t\t\t} else if (key === 'S') { // Snooze or Un-snooze chat\n\t\t\t\te.preventDefault();\n\t\t\t\tvar btnSnooze = document.getElementById('btn-snooze-chat');\n\t\t\t\tif (btnSnooze) {\n\t\t\t\t\tbtnSnooze.click();\n\t\t\t\t} else {\n\t\t\t\t\tvar btnUnsnooze = document.getElementById('btn-unsnooze-chat');\n\t\t\t\t\tif (btnUnsnooze) {\n\t\t\t\t\t\tbtnUnsnooze.click();\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t} else if (key === 'A') { // Assign chat\n\t\t\t\te.preventDefault();\n\t\t\t\tvar assignSelect = document.getElementById('chat-assign-select');\n\t\t\t\tif (assignSelect) {\n\t\t\t\t\tassignSelect.focus();\n\t\t\t\t\tassignSelect.scrollIntoView({ behavior: 'smooth' });\n\t\t\t\t}\n\t\t\t} else if (key === 'L') { // Label / Tag chat\n\t\t\t\te.preventDefault();\n\t\t\t\tvar tagForm = document.getElementById('tag-input-form');\n\t\t\t\tvar tagInput = document.getElementById('chat-tag-input');\n\t\t\t\tif (tagForm && tagInput) {\n\t\t\t\t\ttagForm.classList.remove('hidden');\n\t\t\t\t\ttagInput.focus();\n\t\t\t\t\ttagInput.scrollIntoView({ behavior: 'smooth' });\n\t\t\t\t}\n\t\t\t} else if (e.key === '/') { // Quick search chats\n\t\t\t\te.preventDefault();\n\t\t\t\tvar searchInput = document.querySelector('.inbox-search input[type=\"search\"]');\n\t\t\t\tif (searchInput) {\n\t\t\t\t\tsearchInput.focus();\n\t\t\t\t\tsearchInput.select();\n\t\t\t\t}\n\t\t\t}\n\t\t});\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

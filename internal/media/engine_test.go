@@ -305,3 +305,37 @@ func TestDefaultEngine_Process(t *testing.T) {
 		}
 	})
 }
+
+func TestDefaultEngine_WithLocalDiskStorage(t *testing.T) {
+	localStore, err := storage.NewLocalDiskStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("failed to create LocalDiskStorage: %v", err)
+	}
+
+	engine := media.NewEngineWithStorage(localStore)
+	ctx := context.Background()
+	wsID := uuid.New()
+
+	payload := []byte("OggS-solo-inbound-audio")
+	proxyURL, err := engine.ProcessInbound(ctx, wsID, "voice", payload)
+	if err != nil {
+		t.Fatalf("ProcessInbound with LocalDiskStorage failed: %v", err)
+	}
+
+	key := media.ExtractS3KeyFromURL(proxyURL)
+	rc, ct, err := localStore.Download(ctx, key)
+	if err != nil {
+		t.Fatalf("LocalDiskStorage.Download failed: %v", err)
+	}
+	rc.Close()
+	if ct != "audio/ogg; codecs=opus" {
+		t.Fatalf("expected content-type 'audio/ogg; codecs=opus', got %q", ct)
+	}
+
+	if err := engine.DeleteMedia(ctx, proxyURL); err != nil {
+		t.Fatalf("DeleteMedia with LocalDiskStorage failed: %v", err)
+	}
+	if _, _, err := localStore.Download(ctx, key); !errors.Is(err, storage.ErrObjectNotFound) {
+		t.Fatalf("expected ErrObjectNotFound after DeleteMedia, got %v", err)
+	}
+}

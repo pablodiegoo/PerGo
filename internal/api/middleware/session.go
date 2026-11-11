@@ -68,7 +68,7 @@ func redirectOrHTMX(c *echo.Context, target string) error {
 
 // SetSessionCookie sets a signed session cookie on the response.
 func SetSessionCookie(c *echo.Context, secret []byte) {
-	value := signSessionCookie("authenticated=true", secret)
+	value := SignSessionCookieValue(secret)
 	cookie := &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    value,
@@ -77,6 +77,11 @@ func SetSessionCookie(c *echo.Context, secret []byte) {
 		SameSite: http.SameSiteLaxMode,
 	}
 	c.SetCookie(cookie)
+}
+
+// SignSessionCookieValue creates a signed session cookie value ("authenticated=true") using secret.
+func SignSessionCookieValue(secret []byte) string {
+	return signSessionCookie("authenticated=true", secret)
 }
 
 // ClearSessionCookie removes the session cookie.

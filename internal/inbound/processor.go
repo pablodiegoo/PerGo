@@ -240,6 +240,9 @@ type ContactStore interface {
 	ResolveContact(ctx context.Context, workspaceID uuid.UUID, channel, senderIdentity, name, username, phone string) (*domain.Contact, error)
 }
 
+// AudioTranscriberFunc transcribes audio bytes into text and returns (transcript, providerName, error).
+type AudioTranscriberFunc func(ctx context.Context, data []byte, mimeType string) (string, string, error)
+
 // InboundProcessor handles workspace verification, deduplication, PII checking,
 // S3 uploading, NATS publishing, and audit logging for all messaging channels.
 type InboundProcessor struct {
@@ -255,6 +258,7 @@ type InboundProcessor struct {
 	debouncer                 *Debouncer
 	activity                  *activity.Recorder
 	reactionWebhookDispatcher ReactionWebhookDispatcher
+	audioTranscriber          AudioTranscriberFunc
 }
 
 // ReactionWebhookDispatcher defines the interface for dispatching signed reaction webhooks.
@@ -357,6 +361,39 @@ func (p *InboundProcessor) SetDebouncer(d *Debouncer) *InboundProcessor {
 func (p *InboundProcessor) SetReactionWebhookDispatcher(d ReactionWebhookDispatcher) *InboundProcessor {
 	p.reactionWebhookDispatcher = d
 	return p
+}
+
+// SetAudioTranscriber configures asynchronous voice/audio transcription for inbound media.
+func (p *InboundProcessor) SetAudioTranscriber(fn AudioTranscriberFunc) *InboundProcessor {
+	p.audioTranscriber = fn
+	return p
+}
+
+func resolveAudioMimeType(ev *InboundEvent) string {
+	if ev != nil && ev.Metadata != nil {
+		if mt := strings.TrimSpace(ev.Metadata["mime_type"]); mt != "" {
+			return mt
+		}
+		if mt := strings.TrimSpace(ev.Metadata["content_type"]); mt != "" {
+			return mt
+		}
+	}
+	if ev != nil && ev.Media != nil {
+		lowerName := strings.ToLower(strings.TrimSpace(ev.Media.Filename))
+		switch {
+		case strings.HasSuffix(lowerName, ".mp3"):
+			return "audio/mpeg"
+		case strings.HasSuffix(lowerName, ".wav"):
+			return "audio/wav"
+		case strings.HasSuffix(lowerName, ".m4a"), strings.HasSuffix(lowerName, ".mp4"):
+			return "audio/mp4"
+		case strings.HasSuffix(lowerName, ".webm"):
+			return "audio/webm"
+		case strings.HasSuffix(lowerName, ".ogg"), strings.HasSuffix(lowerName, ".oga"), strings.HasSuffix(lowerName, ".opus"):
+			return "audio/ogg"
+		}
+	}
+	return "audio/ogg"
 }
 
 // Close stops any active in-memory debounce timers owned by the processor.
@@ -596,7 +633,7 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 				mediaType = &mt
 			}
 		}
-		msgMetadata := make(map[string]interface{}, len(ev.Metadata)+2)
+		msgMetadata := make(map[string]interface{}, len(ev.Metadata)+4)
 		for k, v := range ev.Metadata {
 			msgMetadata[k] = v
 		}
@@ -609,6 +646,14 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 			if _, ok := msgMetadata["to"]; !ok {
 				msgMetadata["to"] = ev.To
 			}
+		}
+		if ev.Media != nil && ev.Media.Filename != "" {
+			if _, ok := msgMetadata["filename"]; !ok {
+				msgMetadata["filename"] = ev.Media.Filename
+			}
+		}
+		if uploadedMedia != nil && uploadedMedia.DurationMS > 0 {
+			msgMetadata["duration_ms"] = uploadedMedia.DurationMS
 		}
 
 		entryPointType := ev.EntryPointType
@@ -638,6 +683,41 @@ func (p *InboundProcessor) Process(ctx context.Context, ev *InboundEvent) error 
 				slog.Info("inbound processor: duplicate message ignored via chat activity", "message_id", ev.MessageID, "channel", ev.Channel, "trace_id", traceID)
 				return nil
 			}
+		}
+	}
+
+	// 0.6 Async Audio Transcription: transcribe voice/audio bytes in background and persist metadata
+	if ev.Media != nil && len(ev.Media.Bytes) > 0 && p.audioTranscriber != nil && p.chatRepo != nil && (p.activity == nil || hasReceipt) {
+		if media.IsAudio(ev.Media.MediaType, ev.Media.Filename) || strings.EqualFold(ev.Media.MediaType, "voice") {
+			audioBytes := append([]byte(nil), ev.Media.Bytes...)
+			mimeType := resolveAudioMimeType(ev)
+			wsID := ev.WorkspaceID
+			uid := msgUID
+			transcriber := p.audioTranscriber
+			chatRepo := p.chatRepo
+			go func() {
+				bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 45*time.Second)
+				defer cancel()
+
+				text, prov, err := transcriber(bgCtx, audioBytes, mimeType)
+				if err != nil {
+					slog.Warn("inbound processor: async audio transcription failed", "error", err, "message_uid", uid, "trace_id", traceID)
+					return
+				}
+				text = strings.TrimSpace(text)
+				if text == "" {
+					return
+				}
+				metaPatch := map[string]interface{}{
+					"transcript": text,
+				}
+				if prov != "" {
+					metaPatch["transcript_provider"] = prov
+				}
+				if uErr := chatRepo.UpdateMessageMetadata(bgCtx, wsID, uid, metaPatch); uErr != nil {
+					slog.Warn("inbound processor: failed to persist audio transcript metadata", "error", uErr, "message_uid", uid, "trace_id", traceID)
+				}
+			}()
 		}
 	}
 

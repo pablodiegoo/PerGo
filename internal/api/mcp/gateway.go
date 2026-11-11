@@ -1,8 +1,13 @@
 package mcp
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"os"
@@ -10,9 +15,11 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/repository"
 )
 
 // UniversalGateway provides the unified Streamable HTTP gateway, dual-path authentication
@@ -22,6 +29,7 @@ type UniversalGateway struct {
 	streamableServer *server.StreamableHTTPServer
 	oauthManager     *OAuthManager
 	externalURL      string
+	sessionSecret    []byte
 }
 
 // NewUniversalGateway creates and initializes a new UniversalGateway.
@@ -41,6 +49,34 @@ func NewUniversalGateway(srv *Server, externalURL string) *UniversalGateway {
 		oauthManager:     NewOAuthManager(),
 		externalURL:      strings.TrimRight(externalURL, "/"),
 	}
+}
+
+// SetSessionSecret configures the HMAC secret used to verify admin session cookies and OAuth CSRF tokens.
+func (g *UniversalGateway) SetSessionSecret(secret []byte) {
+	if g == nil {
+		return
+	}
+	if len(secret) == 0 {
+		g.sessionSecret = nil
+		return
+	}
+	cp := make([]byte, len(secret))
+	copy(cp, secret)
+	g.sessionSecret = cp
+}
+
+func (g *UniversalGateway) effectiveSessionSecret() []byte {
+	if len(g.sessionSecret) > 0 {
+		return g.sessionSecret
+	}
+	return middleware.GetSessionSecret()
+}
+
+// ComputeOAuthCSRFToken derives an HMAC-SHA256 CSRF token bound to the active session cookie value.
+func (g *UniversalGateway) ComputeOAuthCSRFToken(sessionCookieValue string) string {
+	mac := hmac.New(sha256.New, g.effectiveSessionSecret())
+	mac.Write([]byte("oauth-csrf:" + sessionCookieValue))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // OAuthManager returns the underlying OAuthManager.
@@ -200,6 +236,7 @@ func (g *UniversalGateway) HandleOAuthRegister(w http.ResponseWriter, r *http.Re
 }
 
 // HandleOAuthAuthorize handles RFC 6749 / RFC 7636 browser authorization requests.
+// Requires an authenticated admin session cookie ("pergo-session") and explicit POST consent with CSRF verification.
 func (g *UniversalGateway) HandleOAuthAuthorize(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -208,14 +245,56 @@ func (g *UniversalGateway) HandleOAuthAuthorize(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	q := r.URL.Query()
-	responseType := q.Get("response_type")
-	clientID := q.Get("client_id")
-	redirectURI := q.Get("redirect_uri")
-	codeChallenge := q.Get("code_challenge")
-	codeChallengeMethod := q.Get("code_challenge_method")
-	state := q.Get("state")
-	wsIDStr := q.Get("workspace_id")
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":             "method_not_allowed",
+			"error_description": "only GET and POST are supported on /oauth/authorize",
+		})
+		return
+	}
+
+	secret := g.effectiveSessionSecret()
+	cookie, cookieErr := r.Cookie("pergo-session")
+	if cookieErr != nil || cookie.Value == "" || !middleware.VerifySessionCookie(cookie.Value, secret) {
+		nextURI := r.URL.RequestURI()
+		if nextURI == "" {
+			nextURI = "/oauth/authorize"
+		}
+		http.Redirect(w, r, "/admin/login?next="+url.QueryEscape(nextURI), http.StatusFound)
+		return
+	}
+
+	var (
+		responseType        string
+		clientID            string
+		redirectURI         string
+		codeChallenge       string
+		codeChallengeMethod string
+		state               string
+		wsIDStr             string
+	)
+
+	if r.Method == http.MethodPost {
+		_ = r.ParseForm()
+		responseType = r.FormValue("response_type")
+		clientID = r.FormValue("client_id")
+		redirectURI = r.FormValue("redirect_uri")
+		codeChallenge = r.FormValue("code_challenge")
+		codeChallengeMethod = r.FormValue("code_challenge_method")
+		state = r.FormValue("state")
+		wsIDStr = r.FormValue("workspace_id")
+	} else {
+		q := r.URL.Query()
+		responseType = q.Get("response_type")
+		clientID = q.Get("client_id")
+		redirectURI = q.Get("redirect_uri")
+		codeChallenge = q.Get("code_challenge")
+		codeChallengeMethod = q.Get("code_challenge_method")
+		state = q.Get("state")
+		wsIDStr = q.Get("workspace_id")
+	}
 
 	if responseType != "code" {
 		w.Header().Set("Content-Type", "application/json")
@@ -241,11 +320,89 @@ func (g *UniversalGateway) HandleOAuthAuthorize(w http.ResponseWriter, r *http.R
 		codeChallengeMethod = "S256"
 	}
 
+	if r.Method == http.MethodGet {
+		csrfToken := g.ComputeOAuthCSRFToken(cookie.Value)
+		var workspaces []repository.Workspace
+		if g.server != nil && g.server.wsRepo != nil && g.server.wsRepo.Pool() != nil {
+			if list, err := g.server.wsRepo.List(r.Context(), 50); err == nil {
+				workspaces = list
+			}
+		}
+
+		clientDisplay := clientID
+		if clientDisplay == "" {
+			clientDisplay = "MCP Client"
+		}
+		if regClient, ok := g.oauthManager.GetClient(clientID); ok && regClient.ClientName != "" {
+			clientDisplay = regClient.ClientName + " (" + clientID + ")"
+		}
+
+		g.renderOAuthConsentHTML(w, oauthConsentView{
+			ClientID:            clientID,
+			ClientDisplay:       clientDisplay,
+			RedirectURI:         redirectURI,
+			ResponseType:        responseType,
+			CodeChallenge:       codeChallenge,
+			CodeChallengeMethod: codeChallengeMethod,
+			State:               state,
+			SelectedWorkspaceID: wsIDStr,
+			Workspaces:          workspaces,
+			CSRFToken:           csrfToken,
+		})
+		return
+	}
+
+	// POST /oauth/authorize — verify CSRF token and explicit operator decision
+	submittedCSRF := r.FormValue("csrf_token")
+	expectedCSRF := g.ComputeOAuthCSRFToken(cookie.Value)
+	if submittedCSRF == "" || subtle.ConstantTimeCompare([]byte(submittedCSRF), []byte(expectedCSRF)) != 1 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":             "invalid_csrf_token",
+			"error_description": "CSRF token validation failed",
+		})
+		return
+	}
+
+	decision := strings.ToLower(strings.TrimSpace(r.FormValue("decision")))
+	if decision == "deny" {
+		if redirectURI != "" {
+			if u, err := url.Parse(redirectURI); err == nil && u.Scheme != "" {
+				targetQ := u.Query()
+				targetQ.Set("error", "access_denied")
+				if state != "" {
+					targetQ.Set("state", state)
+				}
+				u.RawQuery = targetQ.Encode()
+				http.Redirect(w, r, u.String(), http.StatusFound)
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":             "access_denied",
+			"error_description": "The operator denied the authorization request",
+		})
+		return
+	}
+
+	if decision != "approve" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":             "invalid_request",
+			"error_description": "decision must be 'approve' or 'deny'",
+		})
+		return
+	}
+
 	var wsID uuid.UUID
 	if wsIDStr != "" {
 		wsID, _ = uuid.Parse(wsIDStr)
 	}
-	if wsID == uuid.Nil && g.server.wsRepo != nil {
+	if wsID == uuid.Nil && g.server != nil && g.server.wsRepo != nil && g.server.wsRepo.Pool() != nil {
 		if workspaces, err := g.server.wsRepo.List(r.Context(), 1); err == nil && len(workspaces) > 0 {
 			wsID = workspaces[0].ID
 		}
@@ -281,6 +438,226 @@ func (g *UniversalGateway) HandleOAuthAuthorize(w http.ResponseWriter, r *http.R
 		"code":  code,
 		"state": state,
 	})
+}
+
+type oauthConsentView struct {
+	ClientID            string
+	ClientDisplay       string
+	RedirectURI         string
+	ResponseType        string
+	CodeChallenge       string
+	CodeChallengeMethod string
+	State               string
+	SelectedWorkspaceID string
+	Workspaces          []repository.Workspace
+	CSRFToken           string
+}
+
+func (g *UniversalGateway) renderOAuthConsentHTML(w http.ResponseWriter, v oauthConsentView) {
+	var wsOptions strings.Builder
+	hasSelected := false
+	for _, ws := range v.Workspaces {
+		idStr := ws.ID.String()
+		selected := ""
+		if v.SelectedWorkspaceID != "" && idStr == v.SelectedWorkspaceID {
+			selected = " selected"
+			hasSelected = true
+		}
+		fmt.Fprintf(&wsOptions, `<option value="%s"%s>%s (%s)</option>`,
+			html.EscapeString(idStr),
+			selected,
+			html.EscapeString(ws.Name),
+			html.EscapeString(idStr),
+		)
+	}
+	if len(v.Workspaces) == 0 || (v.SelectedWorkspaceID != "" && !hasSelected) {
+		val := v.SelectedWorkspaceID
+		label := "Default Workspace"
+		if val != "" {
+			label = val
+		}
+		fmt.Fprintf(&wsOptions, `<option value="%s" selected>%s</option>`,
+			html.EscapeString(val),
+			html.EscapeString(label),
+		)
+	}
+
+	redirectDisplay := v.RedirectURI
+	if redirectDisplay == "" {
+		redirectDisplay = "(direct token response)"
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.WriteHeader(http.StatusOK)
+	_, _ = fmt.Fprintf(w, `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Authorize MCP Access — PerGo</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: #fbfbfa;
+      color: #37352f;
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .card {
+      width: 100%%;
+      max-width: 460px;
+      background: #ffffff;
+      border: 1px solid #e9e9e7;
+      border-radius: 16px;
+      padding: 24px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .badge-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: #fbfbfa;
+      border: 1px solid #e9e9e7;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #0284c7;
+      flex-shrink: 0;
+    }
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.25px;
+    }
+    .subtitle {
+      margin: 0 0 16px 0;
+      color: #787774;
+      font-size: 13px;
+    }
+    .meta {
+      background: #fbfbfa;
+      border: 1px solid #e9e9e7;
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 16px;
+    }
+    .meta-row {
+      margin-bottom: 8px;
+      font-size: 13px;
+      word-break: break-all;
+    }
+    .meta-row:last-child { margin-bottom: 0; }
+    .label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #787774;
+      margin-bottom: 4px;
+    }
+    select {
+      width: 100%%;
+      height: 38px;
+      padding: 0 12px;
+      border: 1px solid #e9e9e7;
+      border-radius: 12px;
+      background: #ffffff;
+      color: #37352f;
+      font-size: 13px;
+      margin-bottom: 20px;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      justify-content: flex-end;
+    }
+    button {
+      height: 38px;
+      padding: 0 16px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-secondary {
+      background: #fbfbfa;
+      color: #37352f;
+      border: 1px solid #e9e9e7;
+    }
+    .btn-primary {
+      background: #0369a1;
+      color: #ffffff;
+      border: 1px solid #0369a1;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <div class="badge-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        </svg>
+      </div>
+      <div>
+        <h1>Authorize MCP Client</h1>
+      </div>
+    </div>
+    <p class="subtitle">An external MCP agent is requesting scoped access to your PerGo workspace.</p>
+    <div class="meta">
+      <div class="meta-row">
+        <span class="label">Client ID</span>
+        <code>%s</code>
+      </div>
+      <div class="meta-row">
+        <span class="label">Redirect URI</span>
+        <code>%s</code>
+      </div>
+    </div>
+    <form method="POST" action="/oauth/authorize">
+      <input type="hidden" name="csrf_token" value="%s">
+      <input type="hidden" name="response_type" value="%s">
+      <input type="hidden" name="client_id" value="%s">
+      <input type="hidden" name="redirect_uri" value="%s">
+      <input type="hidden" name="code_challenge" value="%s">
+      <input type="hidden" name="code_challenge_method" value="%s">
+      <input type="hidden" name="state" value="%s">
+      <label class="label" for="workspace_id">Workspace</label>
+      <select id="workspace_id" name="workspace_id">%s</select>
+      <div class="actions">
+        <button type="submit" name="decision" value="deny" class="btn-secondary">Deny</button>
+        <button type="submit" name="decision" value="approve" class="btn-primary">Approve</button>
+      </div>
+    </form>
+  </div>
+</body>
+</html>`,
+		html.EscapeString(v.ClientDisplay),
+		html.EscapeString(redirectDisplay),
+		html.EscapeString(v.CSRFToken),
+		html.EscapeString(v.ResponseType),
+		html.EscapeString(v.ClientID),
+		html.EscapeString(v.RedirectURI),
+		html.EscapeString(v.CodeChallenge),
+		html.EscapeString(v.CodeChallengeMethod),
+		html.EscapeString(v.State),
+		wsOptions.String(),
+	)
 }
 
 // HandleOAuthToken handles token exchange for authorization_code and refresh_token grants.

@@ -582,9 +582,15 @@ func TestQueueHealth_ConsumerNamesFallback(t *testing.T) {
 }
 
 func TestQueueHealth_LiveNATSIntegration(t *testing.T) {
-	nc, err := nats.Connect(nats.DefaultURL, nats.Timeout(2*time.Second))
+	ns, clientURL, err := queue.StartEmbeddedNATS(t.TempDir(), -1)
 	if err != nil {
-		t.Skipf("NATS server unavailable at %s: %v", nats.DefaultURL, err)
+		t.Fatalf("failed to start embedded NATS: %v", err)
+	}
+	defer ns.Shutdown()
+
+	nc, err := nats.Connect(clientURL, nats.Timeout(2*time.Second))
+	if err != nil {
+		t.Fatalf("NATS server unavailable at %s: %v", clientURL, err)
 	}
 	defer nc.Close()
 

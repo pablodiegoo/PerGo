@@ -55,7 +55,7 @@ func (h *MediaHandler) Handle(c *echo.Context) error {
 
 	if err != nil {
 		var noSuchKey *types.NoSuchKey
-		if errors.As(err, &noSuchKey) {
+		if errors.Is(err, storage.ErrObjectNotFound) || errors.As(err, &noSuchKey) {
 			return c.String(http.StatusNotFound, "media not found")
 		}
 		return c.String(http.StatusInternalServerError, "failed to download media")

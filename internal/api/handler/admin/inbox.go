@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/a-h/templ"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v5"
 
@@ -17,8 +20,10 @@ import (
 	chatpkg "github.com/pablojhp.pergo/internal/chat"
 	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/platform/storage"
 	"github.com/pablojhp.pergo/internal/presence"
 	"github.com/pablojhp.pergo/internal/repository"
 	"github.com/pablojhp.pergo/internal/webhook"
@@ -47,6 +52,9 @@ type InboxHandler struct {
 	Ingestor          outbound.OutboundProcessor
 	Debouncer         chatpkg.DebounceCanceller
 	Activity          *activity.Recorder
+	MediaEngine       media.Engine
+	MediaStorage      storage.MediaStorage
+	AudioTranscriber  func(ctx context.Context, data []byte, mimeType string) (string, string, error)
 }
 
 // NewInboxHandler creates an InboxHandler backed by a pre-configured ChatEngine.
@@ -81,7 +89,7 @@ func (h *InboxHandler) engine() *chatpkg.Engine {
 	}
 	ingestor := h.Ingestor
 	if ingestor == nil && h.Publisher != nil && rec != nil {
-		ingestor = outbound.NewProcessor(nil, nil, connRepo, h.Publisher).
+		ingestor = outbound.NewProcessor(nil, h.MediaEngine, connRepo, h.Publisher).
 			SetActivity(rec).
 			SetContactRepository(contactRepo).
 			SetChatRepository(chatRepo).
@@ -136,6 +144,10 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 	assignedFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("assigned")))
 	tagFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("tag")))
 	searchFilter := strings.ToLower(strings.TrimSpace(c.QueryParam("search")))
+	if searchFilter == "" {
+		searchFilter = strings.ToLower(strings.TrimSpace(c.QueryParam("q")))
+	}
+	searchDigits := digitsOnly(searchFilter)
 
 	var currentOperatorEmail string
 	if assignedFilter == "me" {
@@ -207,7 +219,8 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 		if searchFilter != "" {
 			match := strings.Contains(strings.ToLower(conv.ContactName), searchFilter) ||
 				strings.Contains(strings.ToLower(conv.RecipientIdentity), searchFilter) ||
-				strings.Contains(strings.ToLower(conv.LastMessageBody), searchFilter)
+				strings.Contains(strings.ToLower(conv.LastMessageBody), searchFilter) ||
+				(len(searchDigits) >= 4 && strings.Contains(digitsOnly(conv.RecipientIdentity), searchDigits))
 			if !match {
 				continue
 			}
@@ -225,16 +238,32 @@ func (h *InboxHandler) loadConversations(c *echo.Context, workspaceID uuid.UUID,
 	return filtered, unreadMap, unreadCount, nil
 }
 
+func digitsOnly(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // View handles GET /admin/inbox — renders the full split-pane inbox page.
 func (h *InboxHandler) View(c *echo.Context) error {
+	ctx := c.Request().Context()
 	var workspaceID uuid.UUID
-	if scope, sErr := domain.Require(c.Request().Context()); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
 		workspaceID = scope.WorkspaceID()
-	} else if id, ok := tenant.WorkspaceIDFrom(c.Request().Context()); ok && id != uuid.Nil {
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
 		workspaceID = id
 	}
 	connectionFilter := c.QueryParam("connection")
 	statusFilter := c.QueryParam("status")
+	assignedFilter := c.QueryParam("assigned")
+	searchFilter := strings.TrimSpace(c.QueryParam("search"))
+	if searchFilter == "" {
+		searchFilter = strings.TrimSpace(c.QueryParam("q"))
+	}
 
 	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, connectionFilter)
 	if err != nil {
@@ -243,17 +272,38 @@ func (h *InboxHandler) View(c *echo.Context) error {
 
 	var connections []*repository.Connection
 	if h.Connections != nil {
-		connections, _ = h.Connections.ListByWorkspace(c.Request().Context(), workspaceID)
+		connections, _ = h.Connections.ListByWorkspace(ctx, workspaceID)
 	}
 
-	assignedFilter := c.QueryParam("assigned")
+	var chatPanelComp templ.Component
+	contactParam := strings.TrimSpace(c.QueryParam("contact"))
+	if contactParam == "" {
+		contactParam = strings.TrimSpace(c.QueryParam("contact_id"))
+	}
+	var targetContactID uuid.UUID
+	if contactParam != "" {
+		if parsed, pErr := uuid.Parse(contactParam); pErr == nil && parsed != uuid.Nil {
+			targetContactID = parsed
+		}
+	} else if searchFilter != "" && len(conversations) == 1 {
+		targetContactID = conversations[0].ContactID
+	}
+	if targetContactID != uuid.Nil && h.ContactRepo != nil {
+		if comp, _, bErr := h.buildChatPanelComponent(ctx, workspaceID, targetContactID, true); bErr == nil {
+			chatPanelComp = comp
+		}
+	}
+
 	isEmbedded := strings.EqualFold(strings.TrimSpace(c.Request().Header.Get("X-PerGo-Embedded")), "true") ||
 		strings.EqualFold(strings.TrimSpace(c.QueryParam("embedded")), "true")
 
-	if mw.IsHTMX(c) || isEmbedded {
-		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter, assignedFilter))
+	if isEmbedded {
+		return mw.Render(c, http.StatusOK, pages.InboxFramelessPage(conversations, unreadMap, connectionFilter, unreadCount, chatPanelComp, connections, statusFilter, assignedFilter, searchFilter))
 	}
-	inboxPage := pages.InboxPage(conversations, unreadMap, connectionFilter, unreadCount, nil, connections, statusFilter, assignedFilter)
+	if mw.IsHTMX(c) {
+		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, connectionFilter, unreadCount, chatPanelComp, connections, statusFilter, assignedFilter, searchFilter))
+	}
+	inboxPage := pages.InboxPage(conversations, unreadMap, connectionFilter, unreadCount, chatPanelComp, connections, statusFilter, assignedFilter, searchFilter)
 	return mw.Render(c, http.StatusOK, inboxPage)
 }
 
@@ -269,44 +319,29 @@ func (h *InboxHandler) PollConversations(c *echo.Context) error {
 	connectionFilter := c.QueryParam("connection")
 	statusFilter := c.QueryParam("status")
 	assignedFilter := c.QueryParam("assigned")
+	searchFilter := strings.TrimSpace(c.QueryParam("search"))
+	if searchFilter == "" {
+		searchFilter = strings.TrimSpace(c.QueryParam("q"))
+	}
 
 	conversations, unreadMap, unreadCount, err := h.loadConversations(c, workspaceID, connectionFilter)
 	if err != nil {
 		return c.String(http.StatusInternalServerError, "failed to load conversations")
 	}
 
-	return mw.Render(c, http.StatusOK, components.ConvList(conversations, unreadMap, connectionFilter, unreadCount, statusFilter, assignedFilter))
+	return mw.Render(c, http.StatusOK, components.ConvList(conversations, unreadMap, connectionFilter, unreadCount, statusFilter, assignedFilter, searchFilter))
 }
 
 // ReplyOption holds reply connection options for picker
 type ReplyOption = components.ReplyOption
 
-// ChatPanel handles GET /admin/inbox/chat — returns the chat history panel for a contact.
-// Query params: contact_id.
-func (h *InboxHandler) ChatPanel(c *echo.Context) error {
-	ctx := c.Request().Context()
-	var workspaceID uuid.UUID
-	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
-		workspaceID = scope.WorkspaceID()
-	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
-		workspaceID = id
+func (h *InboxHandler) buildChatPanelComponent(ctx context.Context, workspaceID, contactID uuid.UUID, markRead bool) (templ.Component, []*repository.Connection, error) {
+	if h.ContactRepo == nil {
+		return nil, nil, errors.New("contact repository not configured")
 	}
-
-	contactIDStr := strings.TrimSpace(c.QueryParam("contact_id"))
-	if contactIDStr == "" {
-		contactIDStr = strings.TrimSpace(c.FormValue("contact_id"))
-	}
-	if contactIDStr == "" {
-		return c.HTML(http.StatusBadRequest, `<div class="p-4 text-red-500">Parâmetro inválido: contact_id é obrigatório.</div>`)
-	}
-	contactID, err := uuid.Parse(contactIDStr)
-	if err != nil {
-		return c.HTML(http.StatusBadRequest, `<div class="p-4 text-red-500">ID de contato inválido.</div>`)
-	}
-
 	contact, err := h.ContactRepo.GetByID(ctx, workspaceID, contactID)
 	if err != nil {
-		return c.HTML(http.StatusNotFound, `<div class="p-4 text-red-500">Contato não encontrado.</div>`)
+		return nil, nil, err
 	}
 
 	eng := h.engine()
@@ -315,13 +350,11 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		currentChat = res.Chat
 	}
 
-	// Load the thread messages (full history — no cursor) from chat_messages and reset unread count
-	messages, err := eng.ListThread(ctx, workspaceID, contactID, nil, true)
+	messages, err := eng.ListThread(ctx, workspaceID, contactID, nil, markRead)
 	if err != nil {
-		return c.HTML(http.StatusInternalServerError, `<div class="p-4 text-red-500">Erro ao carregar chat.</div>`)
+		return nil, nil, err
 	}
 
-	// Resolve connections in workspace to find default/active senders
 	var connections []*repository.Connection
 	if h.Connections != nil {
 		connections, _ = h.Connections.ListByWorkspace(ctx, workspaceID)
@@ -333,10 +366,8 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		}
 	}
 
-	// Build reply options
 	var replyOptions []ReplyOption
 	for _, identity := range contact.Identities {
-		// Filter out non-dispatch channels
 		if identity.Channel == "whatsapp" || identity.Channel == "whatsapp_cloud" || identity.Channel == "telegram" {
 			sender := defaultSenders[identity.Channel]
 			if sender != "" {
@@ -376,8 +407,42 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		windowExpiresAt = currentChat.ServiceWindowExpiresAt
 	}
 
+	return components.ChatPanel(contact, currentChat, replyOptions, messages, isWabaBlocked, members, windowExpiresAt), connections, nil
+}
+
+// ChatPanel handles GET /admin/inbox/chat — returns the chat history panel for a contact.
+// Query params: contact_id.
+func (h *InboxHandler) ChatPanel(c *echo.Context) error {
+	ctx := c.Request().Context()
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+
+	contactIDStr := strings.TrimSpace(c.QueryParam("contact_id"))
+	if contactIDStr == "" {
+		contactIDStr = strings.TrimSpace(c.FormValue("contact_id"))
+	}
+	if contactIDStr == "" {
+		return c.HTML(http.StatusBadRequest, `<div class="p-4 text-red-500">Parâmetro inválido: contact_id é obrigatório.</div>`)
+	}
+	contactID, err := uuid.Parse(contactIDStr)
+	if err != nil {
+		return c.HTML(http.StatusBadRequest, `<div class="p-4 text-red-500">ID de contato inválido.</div>`)
+	}
+
+	chatPanelComp, connections, err := h.buildChatPanelComponent(ctx, workspaceID, contactID, true)
+	if err != nil {
+		if errors.Is(err, repository.ErrContactNotFound) {
+			return c.HTML(http.StatusNotFound, `<div class="p-4 text-red-500">Contato não encontrado.</div>`)
+		}
+		return c.HTML(http.StatusInternalServerError, `<div class="p-4 text-red-500">Erro ao carregar chat.</div>`)
+	}
+
 	if mw.IsHTMX(c) {
-		return mw.Render(c, http.StatusOK, components.ChatPanel(contact, currentChat, replyOptions, messages, isWabaBlocked, members, windowExpiresAt))
+		return mw.Render(c, http.StatusOK, chatPanelComp)
 	}
 
 	// Direct page reload -> render the full page with this chat panel pre-opened
@@ -386,11 +451,10 @@ func (h *InboxHandler) ChatPanel(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "failed to load conversations: "+err.Error())
 	}
 
-	chatPanelComp := components.ChatPanel(contact, currentChat, replyOptions, messages, isWabaBlocked, members, windowExpiresAt)
 	isEmbedded := strings.EqualFold(strings.TrimSpace(c.Request().Header.Get("X-PerGo-Embedded")), "true") ||
 		strings.EqualFold(strings.TrimSpace(c.QueryParam("embedded")), "true")
 	if isEmbedded {
-		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, "", unreadCount, chatPanelComp, connections))
+		return mw.Render(c, http.StatusOK, pages.InboxFramelessPage(conversations, unreadMap, "", unreadCount, chatPanelComp, connections))
 	}
 	return mw.Render(c, http.StatusOK, pages.InboxPage(conversations, unreadMap, "", unreadCount, chatPanelComp, connections))
 }
@@ -478,8 +542,26 @@ func (h *InboxHandler) checkBackgroundMessages(c *echo.Context, ctx context.Cont
 	}
 }
 
-// SendMessage handles POST /admin/inbox/send — enqueues an outbound reply via ChatEngine.
-// Form params: contact (maps to to), channel, recipient_identity (maps to sender_identity), body.
+func detectUploadMediaType(filename, headerMime string, data []byte) string {
+	mime := strings.ToLower(strings.TrimSpace(headerMime))
+	if mime == "" || mime == "application/octet-stream" {
+		mime = strings.ToLower(http.DetectContentType(data))
+	}
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch {
+	case strings.HasPrefix(mime, "image/") || ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".webp" || ext == ".gif":
+		return "image"
+	case strings.HasPrefix(mime, "audio/") || ext == ".ogg" || ext == ".oga" || ext == ".opus" || ext == ".mp3" || ext == ".wav" || ext == ".m4a":
+		return "audio"
+	case strings.HasPrefix(mime, "video/") || ext == ".mp4" || ext == ".mov" || ext == ".webm":
+		return "video"
+	default:
+		return "document"
+	}
+}
+
+// SendMessage handles POST /admin/inbox/send — enqueues an outbound reply (with optional file attachment) via ChatEngine.
+// Form params: contact (maps to to), channel, recipient_identity (maps to sender_identity), body, attachment.
 func (h *InboxHandler) SendMessage(c *echo.Context) error {
 	ctx := c.Request().Context()
 	var workspaceID uuid.UUID
@@ -494,9 +576,17 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 	recipientIdentity := c.FormValue("recipient_identity") // the bot/phone identity (sender_identity)
 	body := strings.TrimSpace(c.FormValue("body"))
 	draftUID := strings.TrimSpace(c.FormValue("draft_uid"))
+	contactIDStr := strings.TrimSpace(c.FormValue("contact_id"))
+	var parsedContactID uuid.UUID
+	if contactIDStr != "" {
+		parsedContactID, _ = uuid.Parse(contactIDStr)
+	}
+
+	fileHeader, fileErr := c.FormFile("attachment")
+	hasAttachment := fileErr == nil && fileHeader != nil && fileHeader.Size > 0
 
 	// Validate
-	if body == "" && draftUID == "" {
+	if body == "" && draftUID == "" && !hasAttachment {
 		return c.HTML(http.StatusBadRequest, `<span class="text-red-400">Mensagem não pode ser vazia.</span>`)
 	}
 	if contact == "" || channel == "" {
@@ -507,23 +597,70 @@ func (h *InboxHandler) SendMessage(c *echo.Context) error {
 		return c.HTML(http.StatusBadRequest, `<span class="text-red-400">Workspace não selecionado.</span>`)
 	}
 
-	if h.Publisher == nil && h.Ingestor == nil {
+	if h.Publisher == nil && h.Ingestor == nil && h.ChatEngine == nil {
 		return c.HTML(http.StatusServiceUnavailable, `<span class="text-red-400">Publisher não disponível.</span>`)
 	}
 
+	var mediaPayload *domain.Media
+	var metadata map[string]string
+	if hasAttachment {
+		const maxAttachmentBytes = 25 * 1024 * 1024
+		if fileHeader.Size > maxAttachmentBytes {
+			return c.HTML(http.StatusRequestEntityTooLarge, `<span class="text-red-400">Anexo excede o limite de 25MB.</span>`)
+		}
+		if h.MediaEngine == nil {
+			return c.HTML(http.StatusServiceUnavailable, `<span class="text-red-400">Armazenamento de mídia não configurado.</span>`)
+		}
+		src, openErr := fileHeader.Open()
+		if openErr != nil {
+			return c.HTML(http.StatusBadRequest, `<span class="text-red-400">Falha ao ler o arquivo anexado.</span>`)
+		}
+		fileBytes, readErr := io.ReadAll(io.LimitReader(src, maxAttachmentBytes+1))
+		_ = src.Close()
+		if readErr != nil {
+			return c.HTML(http.StatusBadRequest, `<span class="text-red-400">Falha ao carregar o arquivo anexado.</span>`)
+		}
+		if len(fileBytes) > maxAttachmentBytes {
+			return c.HTML(http.StatusRequestEntityTooLarge, `<span class="text-red-400">Anexo excede o limite de 25MB.</span>`)
+		}
+
+		filename := strings.TrimSpace(fileHeader.Filename)
+		if filename == "" {
+			filename = "attachment.bin"
+		}
+		mediaType := detectUploadMediaType(filename, fileHeader.Header.Get("Content-Type"), fileBytes)
+		mediaURL, upErr := h.MediaEngine.ProcessInbound(ctx, workspaceID, mediaType, fileBytes)
+		if upErr != nil {
+			return c.HTML(http.StatusInternalServerError, `<span class="text-red-400">Falha ao armazenar anexo: `+escapeHTML(upErr.Error())+`</span>`)
+		}
+		mediaPayload = &domain.Media{
+			MediaURL:  mediaURL,
+			MediaType: mediaType,
+			Filename:  filename,
+			Caption:   body,
+		}
+		metadata = map[string]string{
+			"filename": filename,
+		}
+	}
+
 	var err error
-	if draftUID != "" {
+	if draftUID != "" && mediaPayload == nil {
 		_, err = h.engine().PromoteDraft(ctx, workspaceID, chatpkg.ChatRef{
-			Channel: channel,
-			Phone:   contact,
+			ContactID: parsedContactID,
+			Channel:   channel,
+			Phone:     contact,
 		}, draftUID, body)
 	} else {
 		_, err = h.engine().SendMessage(ctx, workspaceID, chatpkg.SendRequest{
 			Ref: chatpkg.ChatRef{
-				Channel: channel,
-				Phone:   contact,
+				ContactID: parsedContactID,
+				Channel:   channel,
+				Phone:     contact,
 			},
 			Body:           body,
+			Media:          mediaPayload,
+			Metadata:       metadata,
 			SenderName:     "Agent",
 			SenderType:     string(domain.SenderTypeHumanAgent),
 			SenderIdentity: recipientIdentity,
@@ -1347,4 +1484,294 @@ func (h *InboxHandler) SummarizeChat(c *echo.Context) error {
 	}
 
 	return mw.Render(c, http.StatusOK, components.ChatSummaryPopover(synopsis))
+}
+
+func chatMessageToThreadMessage(msg *domain.ChatMessage) repository.ThreadMessage {
+	meta := make(map[string]string)
+	if msg.Metadata != nil {
+		for k, v := range msg.Metadata {
+			switch val := v.(type) {
+			case string:
+				meta[k] = val
+			default:
+				if b, err := json.Marshal(val); err == nil {
+					meta[k] = string(b)
+				}
+			}
+		}
+	}
+	var statusPtr *string
+	if msg.Direction == domain.DirectionOutbound {
+		if st := strings.TrimSpace(meta["status"]); st != "" {
+			statusPtr = &st
+		}
+	}
+	return repository.ThreadMessage{
+		ID:        msg.ID,
+		UID:       msg.UID,
+		TraceID:   msg.UID,
+		Direction: string(msg.Direction),
+		Body:      msg.Body,
+		MediaURL:  msg.MediaURL,
+		MediaType: msg.MediaType,
+		CreatedAt: msg.CreatedAt,
+		Status:    statusPtr,
+		Metadata:  meta,
+		Reactions: msg.Reactions,
+	}
+}
+
+// TranscribeMessage handles POST /admin/inbox/messages/:uid/transcribe — downloads audio from MediaStorage,
+// runs AudioTranscriber, persists transcript metadata, and re-renders the MessageBubble.
+func (h *InboxHandler) TranscribeMessage(c *echo.Context) error {
+	ctx := c.Request().Context()
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+
+	uid := strings.TrimSpace(c.Param("uid"))
+	if uid == "" {
+		return c.String(http.StatusBadRequest, "message uid is required")
+	}
+	if h.ChatRepo == nil {
+		return c.String(http.StatusServiceUnavailable, "chat repository not configured")
+	}
+
+	msg, err := h.ChatRepo.GetChatMessageByUID(ctx, workspaceID, uid)
+	if err != nil || msg == nil {
+		return c.String(http.StatusNotFound, "message not found")
+	}
+
+	threadMsg := chatMessageToThreadMessage(msg)
+
+	rawMediaURL := ""
+	if msg.MediaURL != nil && strings.TrimSpace(*msg.MediaURL) != "" {
+		rawMediaURL = strings.TrimSpace(*msg.MediaURL)
+	} else if threadMsg.Metadata != nil {
+		rawMediaURL = strings.TrimSpace(threadMsg.Metadata["media_url"])
+	}
+	if rawMediaURL == "" {
+		threadMsg.Metadata["transcribe_error"] = "Nenhuma mídia de áudio associada a esta mensagem."
+		return mw.Render(c, http.StatusOK, components.MessageBubble(threadMsg))
+	}
+	if h.MediaStorage == nil {
+		threadMsg.Metadata["transcribe_error"] = "Armazenamento de mídia não configurado."
+		return mw.Render(c, http.StatusOK, components.MessageBubble(threadMsg))
+	}
+	if h.AudioTranscriber == nil {
+		threadMsg.Metadata["transcribe_error"] = "Provedor de transcrição (Gemini/OpenAI) não configurado."
+		return mw.Render(c, http.StatusOK, components.MessageBubble(threadMsg))
+	}
+
+	cleanMediaURL := strings.TrimPrefix(rawMediaURL, "/admin")
+	storageKey := media.ExtractS3KeyFromURL(cleanMediaURL)
+	if storageKey == "" || !strings.HasPrefix(storageKey, workspaceID.String()+"/") {
+		threadMsg.Metadata["transcribe_error"] = "Chave de mídia inválida para este workspace."
+		return mw.Render(c, http.StatusOK, components.MessageBubble(threadMsg))
+	}
+
+	audioStream, contentType, dErr := h.MediaStorage.Download(ctx, storageKey)
+	if dErr != nil {
+		threadMsg.Metadata["transcribe_error"] = "Não foi possível carregar o arquivo de áudio."
+		return mw.Render(c, http.StatusOK, components.MessageBubble(threadMsg))
+	}
+	audioBytes, readErr := io.ReadAll(io.LimitReader(audioStream, 25*1024*1024))
+	_ = audioStream.Close()
+	if readErr != nil || len(audioBytes) == 0 {
+		threadMsg.Metadata["transcribe_error"] = "Não foi possível ler os dados do arquivo de áudio."
+		return mw.Render(c, http.StatusOK, components.MessageBubble(threadMsg))
+	}
+	if strings.TrimSpace(contentType) == "" || contentType == "application/octet-stream" {
+		contentType = "audio/ogg"
+	}
+
+	tCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+
+	transcript, provider, tErr := h.AudioTranscriber(tCtx, audioBytes, contentType)
+	if tErr != nil || strings.TrimSpace(transcript) == "" {
+		threadMsg.Metadata["transcribe_error"] = "Falha ao transcrever áudio. Verifique a chave de API do provedor."
+		return mw.Render(c, http.StatusOK, components.MessageBubble(threadMsg))
+	}
+
+	transcript = strings.TrimSpace(transcript)
+	patch := map[string]interface{}{
+		"transcript": transcript,
+	}
+	if provider != "" {
+		patch["transcript_provider"] = provider
+	}
+	if uErr := h.ChatRepo.UpdateMessageMetadata(ctx, workspaceID, uid, patch); uErr != nil {
+		slog.WarnContext(ctx, "failed to persist on-demand audio transcript", "error", uErr, "uid", uid)
+	}
+
+	delete(threadMsg.Metadata, "transcribe_error")
+	threadMsg.Metadata["transcript"] = transcript
+	if provider != "" {
+		threadMsg.Metadata["transcript_provider"] = provider
+	}
+
+	return mw.Render(c, http.StatusOK, components.MessageBubble(threadMsg))
+}
+
+// UpdateContactProfile handles POST /admin/inbox/contacts/:id/update — updates a contact's name and email.
+func (h *InboxHandler) UpdateContactProfile(c *echo.Context) error {
+	ctx := c.Request().Context()
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+	if h.ContactRepo == nil {
+		return c.String(http.StatusServiceUnavailable, "contact repository not configured")
+	}
+
+	contactID, err := uuid.Parse(strings.TrimSpace(c.Param("id")))
+	if err != nil || contactID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "invalid contact id")
+	}
+
+	name := strings.TrimSpace(c.FormValue("name"))
+	if name == "" {
+		return c.String(http.StatusBadRequest, "contact name is required")
+	}
+	email := strings.TrimSpace(c.FormValue("email"))
+
+	contact, err := h.ContactRepo.GetByID(ctx, workspaceID, contactID)
+	if err != nil {
+		if errors.Is(err, repository.ErrContactNotFound) {
+			return c.String(http.StatusNotFound, "contact not found")
+		}
+		return c.String(http.StatusInternalServerError, "failed to load contact")
+	}
+
+	contact.Name = name
+	if email == "" {
+		contact.Email = nil
+	} else {
+		contact.Email = &email
+	}
+
+	if err := h.ContactRepo.UpdateContact(ctx, workspaceID, contact); err != nil {
+		return c.String(http.StatusInternalServerError, "failed to update contact: "+err.Error())
+	}
+
+	c.Response().Header().Set("HX-Trigger", "refreshChats")
+	comp, _, err := h.buildChatPanelComponent(ctx, workspaceID, contactID, false)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to render chat panel")
+	}
+	return mw.Render(c, http.StatusOK, comp)
+}
+
+// UpdateContactAttributes handles POST /admin/inbox/contacts/:id/attributes — sets or deletes custom CRM attributes.
+func (h *InboxHandler) UpdateContactAttributes(c *echo.Context) error {
+	ctx := c.Request().Context()
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+	if h.ContactRepo == nil {
+		return c.String(http.StatusServiceUnavailable, "contact repository not configured")
+	}
+
+	contactID, err := uuid.Parse(strings.TrimSpace(c.Param("id")))
+	if err != nil || contactID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "invalid contact id")
+	}
+
+	key := strings.TrimSpace(c.FormValue("key"))
+	if key == "" {
+		return c.String(http.StatusBadRequest, "attribute key is required")
+	}
+	action := strings.ToLower(strings.TrimSpace(c.FormValue("action")))
+	value := strings.TrimSpace(c.FormValue("value"))
+
+	contact, err := h.ContactRepo.GetByID(ctx, workspaceID, contactID)
+	if err != nil {
+		if errors.Is(err, repository.ErrContactNotFound) {
+			return c.String(http.StatusNotFound, "contact not found")
+		}
+		return c.String(http.StatusInternalServerError, "failed to load contact")
+	}
+
+	attrs := make(map[string]string, len(contact.Attributes)+1)
+	for k, v := range contact.Attributes {
+		attrs[k] = v
+	}
+	if action == "delete" || action == "remove" {
+		delete(attrs, key)
+	} else {
+		attrs[key] = value
+	}
+
+	if err := h.ContactRepo.UpdateAttributes(ctx, workspaceID, contactID, attrs); err != nil {
+		return c.String(http.StatusInternalServerError, "failed to update contact attributes: "+err.Error())
+	}
+
+	comp, _, err := h.buildChatPanelComponent(ctx, workspaceID, contactID, false)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to render chat panel")
+	}
+	return mw.Render(c, http.StatusOK, comp)
+}
+
+// ContactsPage handles GET /admin/contacts — renders the workspace contacts directory with search and 1-click Inbox links.
+func (h *InboxHandler) ContactsPage(c *echo.Context) error {
+	ctx := c.Request().Context()
+	var workspaceID uuid.UUID
+	if scope, sErr := domain.Require(ctx); sErr == nil && scope.WorkspaceID() != uuid.Nil {
+		workspaceID = scope.WorkspaceID()
+	} else if id, ok := tenant.WorkspaceIDFrom(ctx); ok && id != uuid.Nil {
+		workspaceID = id
+	}
+	if workspaceID == uuid.Nil {
+		return c.String(http.StatusBadRequest, "workspace not selected")
+	}
+	if h.ContactRepo == nil {
+		return c.String(http.StatusServiceUnavailable, "contact repository not configured")
+	}
+
+	q := strings.TrimSpace(c.QueryParam("q"))
+	contacts, err := h.ContactRepo.SearchContacts(ctx, workspaceID, q, uuid.Nil, 200)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "failed to search contacts: "+err.Error())
+	}
+
+	if len(contacts) > 0 {
+		ids := make([]uuid.UUID, len(contacts))
+		for i := range contacts {
+			ids[i] = contacts[i].ID
+		}
+		if enriched, eErr := h.ContactRepo.GetByIDs(ctx, workspaceID, ids); eErr == nil && len(enriched) > 0 {
+			for i := range contacts {
+				if full, ok := enriched[contacts[i].ID]; ok && full != nil {
+					contacts[i].Identities = full.Identities
+				}
+			}
+		}
+	}
+
+	if c.QueryParam("fragment") == "table" {
+		return mw.Render(c, http.StatusOK, pages.ContactsTableFragment(contacts))
+	}
+	if mw.IsHTMX(c) {
+		return mw.Render(c, http.StatusOK, pages.ContactsContent(contacts, q))
+	}
+	return mw.Render(c, http.StatusOK, pages.ContactsPage(contacts, q))
 }

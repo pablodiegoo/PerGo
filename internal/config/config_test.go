@@ -129,3 +129,68 @@ func TestConfig_KEK_Validation(t *testing.T) {
 		}
 	})
 }
+
+func TestConfig_SoloAndLLMDefaults(t *testing.T) {
+	t.Run("solo mode and aligned DB/storage defaults in development", func(t *testing.T) {
+		keys := []string{
+			"PERGO_ENV", "ENV", "PERGO_MODE", "APP_MODE",
+			"PERGO_DATABASE_URL", "PERGO_LOCAL_MEDIA_DIR", "PERGO_NATS_DIR",
+			"PERGO_GEMINI_API_KEY", "GEMINI_API_KEY",
+			"PERGO_OPENAI_API_KEY", "OPENAI_API_KEY",
+			"PERGO_LLM_PROVIDER", "LLM_PROVIDER",
+		}
+		saved := make(map[string]string, len(keys))
+		for _, k := range keys {
+			saved[k] = os.Getenv(k)
+			os.Unsetenv(k)
+		}
+		defer func() {
+			for k, v := range saved {
+				if v == "" {
+					os.Unsetenv(k)
+				} else {
+					os.Setenv(k, v)
+				}
+			}
+		}()
+
+		cfg := Load()
+		if cfg.Mode != "solo" {
+			t.Fatalf("expected Mode 'solo' in development, got %q", cfg.Mode)
+		}
+		if cfg.DatabaseURL != "postgres://admin:admin@localhost:5432/pergo_db?sslmode=disable" {
+			t.Fatalf("unexpected default DatabaseURL: %q", cfg.DatabaseURL)
+		}
+		if cfg.LocalMediaDir != "./data/media" {
+			t.Fatalf("expected LocalMediaDir './data/media', got %q", cfg.LocalMediaDir)
+		}
+		if cfg.NATSDir != "./data/nats" {
+			t.Fatalf("expected NATSDir './data/nats', got %q", cfg.NATSDir)
+		}
+	})
+
+	t.Run("production defaults to saas mode and LLM fallback env vars resolve", func(t *testing.T) {
+		t.Setenv("PERGO_ENV", "production")
+		t.Setenv("PERGO_MODE", "")
+		t.Setenv("APP_MODE", "")
+		t.Setenv("PERGO_GEMINI_API_KEY", "")
+		t.Setenv("GEMINI_API_KEY", "gem-fallback-key")
+		t.Setenv("PERGO_OPENAI_API_KEY", "")
+		t.Setenv("OPENAI_API_KEY", "oai-fallback-key")
+		t.Setenv("PERGO_LLM_PROVIDER", "gemini")
+
+		cfg := Load()
+		if cfg.Mode != "saas" {
+			t.Fatalf("expected Mode 'saas' in production, got %q", cfg.Mode)
+		}
+		if cfg.GeminiAPIKey != "gem-fallback-key" {
+			t.Fatalf("expected GeminiAPIKey fallback 'gem-fallback-key', got %q", cfg.GeminiAPIKey)
+		}
+		if cfg.OpenAIAPIKey != "oai-fallback-key" {
+			t.Fatalf("expected OpenAIAPIKey fallback 'oai-fallback-key', got %q", cfg.OpenAIAPIKey)
+		}
+		if cfg.LLMProvider != "gemini" {
+			t.Fatalf("expected LLMProvider 'gemini', got %q", cfg.LLMProvider)
+		}
+	})
+}

@@ -966,6 +966,8 @@ type ThreadMessage struct {
 	TraceID   string            `json:"trace_id"`
 	Direction string            `json:"direction"` // "inbound", "outbound", or "internal_note"
 	Body      string            `json:"body"`
+	MediaURL  *string           `json:"media_url,omitempty"`
+	MediaType *string           `json:"media_type,omitempty"`
 	CreatedAt time.Time         `json:"created_at"`
 	Status    *string           `json:"status"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
@@ -1121,6 +1123,8 @@ func (r *ChatRepository) ListThreadByContact(ctx context.Context, workspaceID uu
 			cm.uid AS trace_id,
 			cm.direction,
 			COALESCE(cm.body, '') AS body,
+			cm.media_url,
+			cm.media_type,
 			cm.created_at,
 			CASE WHEN cm.direction = 'outbound' THEN COALESCE(md.status, NULLIF(cm.metadata->>'status', '')) ELSE NULL END AS status,
 			jsonb_strip_nulls(
@@ -1169,7 +1173,7 @@ func (r *ChatRepository) ListThreadByContact(ctx context.Context, workspaceID uu
 		var m ThreadMessage
 		var metaBytes []byte
 		var reactionsBytes []byte
-		if err := rows.Scan(&m.ID, &m.TraceID, &m.Direction, &m.Body, &m.CreatedAt, &m.Status, &metaBytes, &m.UID, &reactionsBytes); err != nil {
+		if err := rows.Scan(&m.ID, &m.TraceID, &m.Direction, &m.Body, &m.MediaURL, &m.MediaType, &m.CreatedAt, &m.Status, &metaBytes, &m.UID, &reactionsBytes); err != nil {
 			return nil, fmt.Errorf("scan thread message: %w", err)
 		}
 		if len(reactionsBytes) > 0 {

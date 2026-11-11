@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"net/url"
 
 	"github.com/pablojhp.pergo/internal/i18n"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -13,16 +14,20 @@ templ ConvList(conversations []repository.ConversationSummary, unreadMap map[str
 	{{
 		activeStatus := "open"
 		activeAssigned := ""
+		activeSearch := ""
 		if len(filters) > 0 && filters[0] != "" {
 			activeStatus = filters[0]
 		}
 		if len(filters) > 1 {
 			activeAssigned = filters[1]
 		}
+		if len(filters) > 2 {
+			activeSearch = filters[2]
+		}
 	}}
 	<div
 		id="conv-list"
-		hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=%s&assigned=%s", activeChannel, activeStatus, activeAssigned) }
+		hx-get={ fmt.Sprintf("/admin/inbox/conversations/poll?connection=%s&status=%s&assigned=%s&search=%s", url.QueryEscape(activeChannel), url.QueryEscape(activeStatus), url.QueryEscape(activeAssigned), url.QueryEscape(activeSearch)) }
 		hx-trigger="every 5s, refreshChats from:body"
 		hx-swap="outerHTML"
 		class="conv-list flex flex-col h-full"

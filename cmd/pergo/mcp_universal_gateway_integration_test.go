@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/pablojhp.pergo/internal/api/mcp"
+	"github.com/pablojhp.pergo/internal/api/middleware"
 	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/repository"
@@ -389,8 +390,6 @@ func TestUniversalMCPGateway_OAuthPKCE_Flow(t *testing.T) {
 	authParams.Set("state", "state_abc_123")
 	authParams.Set("workspace_id", ws.ID.String())
 
-	authReq, _ := http.NewRequest(http.MethodGet, ts.URL+"/oauth/authorize?"+authParams.Encode(), nil)
-
 	// Don't follow redirects automatically so we can inspect 302
 	noFollowClient := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -398,9 +397,64 @@ func TestUniversalMCPGateway_OAuthPKCE_Flow(t *testing.T) {
 		},
 	}
 
+	// Step 3a: Unauthenticated GET /oauth/authorize must redirect to /admin/login?next=...
+	unauthAuthReq, _ := http.NewRequest(http.MethodGet, ts.URL+"/oauth/authorize?"+authParams.Encode(), nil)
+	unauthAuthResp, err := noFollowClient.Do(unauthAuthReq)
+	if err != nil {
+		t.Fatalf("unauthenticated GET /oauth/authorize error: %v", err)
+	}
+	_ = unauthAuthResp.Body.Close()
+	if unauthAuthResp.StatusCode != http.StatusFound || !strings.HasPrefix(unauthAuthResp.Header.Get("Location"), "/admin/login?next=") {
+		t.Fatalf("expected 302 redirect to /admin/login?next=..., got %d (%s)", unauthAuthResp.StatusCode, unauthAuthResp.Header.Get("Location"))
+	}
+
+	// Step 3b: Authenticated GET /oauth/authorize renders HTML consent screen
+	sessionCookieVal := middleware.SignSessionCookieValue(middleware.GetSessionSecret())
+	consentGetReq, _ := http.NewRequest(http.MethodGet, ts.URL+"/oauth/authorize?"+authParams.Encode(), nil)
+	consentGetReq.AddCookie(&http.Cookie{Name: "pergo-session", Value: sessionCookieVal})
+	consentGetResp, err := noFollowClient.Do(consentGetReq)
+	if err != nil {
+		t.Fatalf("authenticated GET /oauth/authorize error: %v", err)
+	}
+	consentHTML, _ := io.ReadAll(consentGetResp.Body)
+	_ = consentGetResp.Body.Close()
+	if consentGetResp.StatusCode != http.StatusOK || !strings.Contains(string(consentHTML), "csrf_token") {
+		t.Fatalf("expected 200 OK consent HTML with csrf_token, got %d", consentGetResp.StatusCode)
+	}
+
+	// Step 3c: Authenticated POST /oauth/authorize without CSRF is rejected with 403
+	noCSRFForm := url.Values{}
+	for k, v := range authParams {
+		noCSRFForm[k] = v
+	}
+	noCSRFForm.Set("decision", "approve")
+	noCSRFReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/oauth/authorize", strings.NewReader(noCSRFForm.Encode()))
+	noCSRFReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	noCSRFReq.AddCookie(&http.Cookie{Name: "pergo-session", Value: sessionCookieVal})
+	noCSRFResp, err := noFollowClient.Do(noCSRFReq)
+	if err != nil {
+		t.Fatalf("POST /oauth/authorize without CSRF error: %v", err)
+	}
+	_ = noCSRFResp.Body.Close()
+	if noCSRFResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden without CSRF token, got %d", noCSRFResp.StatusCode)
+	}
+
+	// Step 3d: Authenticated POST /oauth/authorize with valid CSRF + decision=approve issues code
+	approveForm := url.Values{}
+	for k, v := range authParams {
+		approveForm[k] = v
+	}
+	approveForm.Set("csrf_token", gateway.ComputeOAuthCSRFToken(sessionCookieVal))
+	approveForm.Set("decision", "approve")
+
+	authReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/oauth/authorize", strings.NewReader(approveForm.Encode()))
+	authReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	authReq.AddCookie(&http.Cookie{Name: "pergo-session", Value: sessionCookieVal})
+
 	authResp, err := noFollowClient.Do(authReq)
 	if err != nil {
-		t.Fatalf("GET /oauth/authorize error: %v", err)
+		t.Fatalf("POST /oauth/authorize error: %v", err)
 	}
 	defer authResp.Body.Close()
 

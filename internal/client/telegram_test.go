@@ -85,3 +85,46 @@ func TestHTTPTelegramBotClient_RegisterWebhook(t *testing.T) {
 		}
 	})
 }
+
+func TestHTTPTelegramBotClient_DeleteWebhookAndGetUpdates(t *testing.T) {
+	ctx := context.Background()
+
+	var deleted bool
+	var lastOffset string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/bottest_tok/deleteWebhook":
+			deleted = true
+			_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
+		case "/bottest_tok/getUpdates":
+			lastOffset = r.URL.Query().Get("offset")
+			_, _ = w.Write([]byte(`{"ok":true,"result":[{"update_id":101,"message":{"message_id":1,"chat":{"id":99},"text":"hi"}},{"update_id":102,"message":{"message_id":2,"chat":{"id":99},"text":"there"}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+
+	c := client.NewTelegramBotClient(ts.Client(), ts.URL)
+	if err := c.DeleteWebhook(ctx, "test_tok"); err != nil {
+		t.Fatalf("DeleteWebhook failed: %v", err)
+	}
+	if !deleted {
+		t.Fatal("expected deleteWebhook endpoint to be called")
+	}
+
+	updates, nextOffset, err := c.GetUpdates(ctx, "test_tok", 50, 5)
+	if err != nil {
+		t.Fatalf("GetUpdates failed: %v", err)
+	}
+	if lastOffset != "50" {
+		t.Fatalf("expected query offset '50', got %q", lastOffset)
+	}
+	if len(updates) != 2 {
+		t.Fatalf("expected 2 updates, got %d", len(updates))
+	}
+	if nextOffset != 103 {
+		t.Fatalf("expected nextOffset 103, got %d", nextOffset)
+	}
+}

@@ -17,10 +17,15 @@ import (
 
 	"github.com/pablojhp.pergo/internal/api/handler"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
+	"github.com/pablojhp.pergo/internal/platform/storage"
 )
 
 type mockMediaStorage struct {
 	downloadFunc func(ctx context.Context, key string) (io.ReadCloser, string, error)
+}
+
+func (m *mockMediaStorage) Upload(ctx context.Context, key string, data []byte, contentType string) error {
+	return nil
 }
 
 func (m *mockMediaStorage) Download(ctx context.Context, key string) (io.ReadCloser, string, error) {
@@ -121,6 +126,32 @@ func TestMediaHandler_Handle(t *testing.T) {
 		mockStore := &mockMediaStorage{
 			downloadFunc: func(ctx context.Context, key string) (io.ReadCloser, string, error) {
 				return nil, "", &types.NoSuchKey{}
+			},
+		}
+
+		h := handler.NewMediaHandler(mockStore)
+		err := h.Handle(c)
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusNotFound, rec.Code)
+		assert.Contains(t, rec.Body.String(), "media not found")
+	})
+
+	t.Run("LocalDiskStorage ErrObjectNotFound returns 404 Not Found", func(t *testing.T) {
+		e := echo.New()
+		req := httptest.NewRequest(http.MethodGet, "/media/"+wsID.String()+"/"+hash, nil)
+		req = req.WithContext(tenant.WithWorkspaceID(req.Context(), wsID))
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+		c.SetPath("/media/:workspace_id/:hash")
+		c.SetPathValues(echo.PathValues{
+			{Name: "workspace_id", Value: wsID.String()},
+			{Name: "hash", Value: hash},
+		})
+
+		mockStore := &mockMediaStorage{
+			downloadFunc: func(ctx context.Context, key string) (io.ReadCloser, string, error) {
+				return nil, "", storage.ErrObjectNotFound
 			},
 		}
 

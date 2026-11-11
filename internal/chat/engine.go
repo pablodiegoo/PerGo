@@ -359,6 +359,16 @@ func WithTagRepo(r TagRepository) Option {
 	}
 }
 
+// WithSummarizer configures an optional LLM-backed conversation summarizer.
+// When nil or when the summarizer returns an error, Engine.Summarize falls back to deterministic summarization.
+func WithSummarizer(fn SummarizerFunc) Option {
+	return func(e *Engine) {
+		if fn != nil {
+			e.summarizer = fn
+		}
+	}
+}
+
 // Config groups dependencies used to construct a Chat Engine.
 type Config struct {
 	ChatRepo          ChatRepository
@@ -372,6 +382,7 @@ type Config struct {
 	Ingestor          outbound.OutboundProcessor
 	Debouncer         DebounceCanceller
 	Activity          *activity.Recorder
+	Summarizer        SummarizerFunc
 }
 
 // NewEngineFromConfig constructs a Chat Engine from a Config struct, safely ignoring nil or typed-nil fields.
@@ -388,6 +399,7 @@ func NewEngineFromConfig(cfg Config) *Engine {
 		WithMessageIngestor(cfg.Ingestor),
 		WithDebounceCanceller(cfg.Debouncer),
 		WithActivity(cfg.Activity),
+		WithSummarizer(cfg.Summarizer),
 	)
 }
 
@@ -406,6 +418,7 @@ type Engine struct {
 	ingestor          outbound.OutboundProcessor
 	debouncer         DebounceCanceller
 	activity          *activity.Recorder
+	summarizer        SummarizerFunc
 }
 
 // NewEngine creates a new Chat Engine with the given ChatRepository and options.
@@ -872,7 +885,21 @@ func (e *Engine) ListThread(ctx context.Context, workspaceID, contactID uuid.UUI
 		return nil, err
 	}
 	if markRead && resolvedChat != nil {
-		_ = e.resetChatUnread(ctx, wsID, resolvedChat.ID, contactID)
+		resetAny := false
+		if resetter, ok := e.chatRepo.(chatUnreadResetter); ok {
+			if siblingChats, lErr := e.chatRepo.ListChats(ctx, wsID, domain.ChatFilter{ContactID: &contactID}, 50, 0); lErr == nil && len(siblingChats) > 0 {
+				for _, sc := range siblingChats {
+					_ = resetter.ResetUnread(ctx, wsID, sc.ID)
+				}
+				resetAny = true
+			} else {
+				_ = resetter.ResetUnread(ctx, wsID, resolvedChat.ID)
+				resetAny = true
+			}
+		}
+		if e.contactRepo != nil && (resetAny || resolvedChat.ID != uuid.Nil) {
+			_ = e.contactRepo.MarkAsRead(ctx, wsID, contactID)
+		}
 	}
 	return msgs, nil
 }

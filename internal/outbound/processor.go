@@ -205,34 +205,50 @@ func (p *Processor) Ingest(
 
 	// 3. Process Media if present
 	if req.Media != nil {
-		if p.mediaEngine == nil {
-			slog.Error("media engine is not configured for media processing", "trace_id", traceID)
-			return nil, &MediaError{
-				Code:    "internal_error",
-				Message: "media storage configuration error",
+		internalPrefix := "/media/" + workspaceID.String() + "/"
+		if strings.HasPrefix(req.Media.MediaURL, "/media/") {
+			if !strings.HasPrefix(req.Media.MediaURL, internalPrefix) || strings.Contains(req.Media.MediaURL, "..") {
+				return nil, &ValidationError{
+					Response: &domain.ErrorResponse{
+						Code:    "invalid_payload",
+						Message: "media_url does not belong to workspace",
+						Details: []domain.FieldError{
+							{Field: "media.media_url", Message: "must belong to current workspace"},
+						},
+					},
+				}
 			}
-		}
-
-		mediaURL, err := p.mediaEngine.ProcessOutbound(ctx, workspaceID, req.Media.MediaURL)
-		if err != nil {
-			if errors.Is(err, media.ErrMediaSizeExceeded) {
+			// Media is already stored in workspace storage via ProcessInbound; skip external HTTP download.
+		} else {
+			if p.mediaEngine == nil {
+				slog.Error("media engine is not configured for media processing", "trace_id", traceID)
 				return nil, &MediaError{
-					Code:    "media_size_exceeded",
-					Message: "the downloaded file exceeds the maximum size boundary of 25MB",
+					Code:    "internal_error",
+					Message: "media storage configuration error",
+				}
+			}
+
+			mediaURL, err := p.mediaEngine.ProcessOutbound(ctx, workspaceID, req.Media.MediaURL)
+			if err != nil {
+				if errors.Is(err, media.ErrMediaSizeExceeded) {
+					return nil, &MediaError{
+						Code:    "media_size_exceeded",
+						Message: "the downloaded file exceeds the maximum size boundary of 25MB",
+						Field:   "media.media_url",
+						Err:     err,
+					}
+				}
+				return nil, &MediaError{
+					Code:    "media_download_failed",
+					Message: "failed to download media from the specified URL",
 					Field:   "media.media_url",
 					Err:     err,
 				}
 			}
-			return nil, &MediaError{
-				Code:    "media_download_failed",
-				Message: "failed to download media from the specified URL",
-				Field:   "media.media_url",
-				Err:     err,
-			}
-		}
 
-		// Rewire the message payload's MediaURL to the internal proxy URL
-		req.Media.MediaURL = mediaURL
+			// Rewire the message payload's MediaURL to the internal proxy URL
+			req.Media.MediaURL = mediaURL
+		}
 	}
 
 	// 4. Resolve connection routing if not already resolved by ConnectionID

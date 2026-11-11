@@ -9,8 +9,11 @@ import (
 // Config holds all configuration for the PerGo server.
 type Config struct {
 	Env            string
+	Mode           string
 	DatabaseURL    string
 	NATSUrl        string
+	NATSDir        string
+	LocalMediaDir  string
 	ServerPort     string
 	DebugPort      string
 	KEKBase64      string
@@ -28,14 +31,26 @@ type Config struct {
 	ExternalURL    string
 	WAVersion      string
 	RedisURL       string
+	GeminiAPIKey   string
+	OpenAIAPIKey   string
+	LLMProvider    string
 }
 
 // Load reads configuration from environment variables with sensible defaults.
 func Load() *Config {
+	env := envOrDefault("PERGO_ENV", envOrDefault("ENV", "development"))
+	defaultMode := "solo"
+	if env == "production" || env == "prod" {
+		defaultMode = "saas"
+	}
+
 	cfg := &Config{
-		Env:            envOrDefault("PERGO_ENV", envOrDefault("ENV", "development")),
-		DatabaseURL:    envOrDefault("PERGO_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/pergo?sslmode=disable"),
+		Env:            env,
+		Mode:           envOrDefault("PERGO_MODE", envOrDefault("APP_MODE", defaultMode)),
+		DatabaseURL:    envOrDefault("PERGO_DATABASE_URL", "postgres://admin:admin@localhost:5432/pergo_db?sslmode=disable"),
 		NATSUrl:        envOrDefault("PERGO_NATS_URL", "nats://localhost:4222"),
+		NATSDir:        envOrDefault("PERGO_NATS_DIR", "./data/nats"),
+		LocalMediaDir:  envOrDefault("PERGO_LOCAL_MEDIA_DIR", "./data/media"),
 		RedisURL:       envOrDefault("PERGO_REDIS_URL", envOrDefault("REDIS_URL", "localhost:6379")),
 		ServerPort:     envOrDefault("PERGO_SERVER_PORT", "8080"),
 		DebugPort:      envOrDefault("PERGO_DEBUG_PORT", "6060"),
@@ -51,6 +66,9 @@ func Load() *Config {
 		S3UsePathStyle: os.Getenv("PERGO_S3_USE_PATH_STYLE") == "true" || os.Getenv("S3_USE_PATH_STYLE") == "true",
 		ExternalURL:    envOrDefault("PERGO_EXTERNAL_URL", "http://localhost:8080"),
 		WAVersion:      os.Getenv("PERGO_WHATSAPP_VERSION"),
+		GeminiAPIKey:   envOrDefault("PERGO_GEMINI_API_KEY", os.Getenv("GEMINI_API_KEY")),
+		OpenAIAPIKey:   envOrDefault("PERGO_OPENAI_API_KEY", os.Getenv("OPENAI_API_KEY")),
+		LLMProvider:    envOrDefault("PERGO_LLM_PROVIDER", os.Getenv("LLM_PROVIDER")),
 	}
 
 	if cfg.KEKBase64 != "" {
