@@ -272,7 +272,10 @@ func (h *InboxHandler) View(c *echo.Context) error {
 
 	var connections []*repository.Connection
 	if h.Connections != nil {
-		connections, _ = h.Connections.ListByWorkspace(ctx, workspaceID)
+		connections, err = h.Connections.ListByWorkspace(ctx, workspaceID)
+		if err != nil {
+			return c.String(http.StatusInternalServerError, "failed to load connections: "+err.Error())
+		}
 	}
 
 	var chatPanelComp templ.Component
@@ -289,19 +292,21 @@ func (h *InboxHandler) View(c *echo.Context) error {
 		targetContactID = conversations[0].ContactID
 	}
 	if targetContactID != uuid.Nil && h.ContactRepo != nil {
-		if comp, _, bErr := h.buildChatPanelComponent(ctx, workspaceID, targetContactID, true); bErr == nil {
+		comp, _, bErr := h.buildChatPanelComponent(ctx, workspaceID, targetContactID, true)
+		if bErr != nil {
+			if !errors.Is(bErr, repository.ErrContactNotFound) {
+				return c.String(http.StatusInternalServerError, "failed to load chat panel: "+bErr.Error())
+			}
+		} else {
 			chatPanelComp = comp
 		}
 	}
 
-	isEmbedded := strings.EqualFold(strings.TrimSpace(c.Request().Header.Get("X-PerGo-Embedded")), "true") ||
-		strings.EqualFold(strings.TrimSpace(c.QueryParam("embedded")), "true")
-
-	if isEmbedded {
-		return mw.Render(c, http.StatusOK, pages.InboxFramelessPage(conversations, unreadMap, connectionFilter, unreadCount, chatPanelComp, connections, statusFilter, assignedFilter, searchFilter))
-	}
-	if mw.IsHTMX(c) {
+	if mw.IsHTMX(c) || strings.EqualFold(strings.TrimSpace(c.Request().Header.Get("X-PerGo-Embedded")), "true") {
 		return mw.Render(c, http.StatusOK, pages.InboxContent(conversations, unreadMap, connectionFilter, unreadCount, chatPanelComp, connections, statusFilter, assignedFilter, searchFilter))
+	}
+	if strings.EqualFold(strings.TrimSpace(c.QueryParam("embedded")), "true") {
+		return mw.Render(c, http.StatusOK, pages.InboxFramelessPage(conversations, unreadMap, connectionFilter, unreadCount, chatPanelComp, connections, statusFilter, assignedFilter, searchFilter))
 	}
 	inboxPage := pages.InboxPage(conversations, unreadMap, connectionFilter, unreadCount, chatPanelComp, connections, statusFilter, assignedFilter, searchFilter)
 	return mw.Render(c, http.StatusOK, inboxPage)
@@ -357,7 +362,10 @@ func (h *InboxHandler) buildChatPanelComponent(ctx context.Context, workspaceID,
 
 	var connections []*repository.Connection
 	if h.Connections != nil {
-		connections, _ = h.Connections.ListByWorkspace(ctx, workspaceID)
+		connections, err = h.Connections.ListByWorkspace(ctx, workspaceID)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	defaultSenders := make(map[string]string)
 	for _, conn := range connections {
@@ -383,7 +391,10 @@ func (h *InboxHandler) buildChatPanelComponent(ctx context.Context, workspaceID,
 
 	var members []repository.WorkspaceMember
 	if h.Workspaces != nil && workspaceID != uuid.Nil {
-		members, _ = h.Workspaces.ListMembers(ctx, workspaceID)
+		members, err = h.Workspaces.ListMembers(ctx, workspaceID)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	var hasWabaIdentity bool
@@ -1544,7 +1555,13 @@ func (h *InboxHandler) TranscribeMessage(c *echo.Context) error {
 	}
 
 	msg, err := h.ChatRepo.GetChatMessageByUID(ctx, workspaceID, uid)
-	if err != nil || msg == nil {
+	if err != nil {
+		if errors.Is(err, repository.ErrChatMessageNotFound) {
+			return c.String(http.StatusNotFound, "message not found")
+		}
+		return c.String(http.StatusInternalServerError, "failed to load message: "+err.Error())
+	}
+	if msg == nil {
 		return c.String(http.StatusNotFound, "message not found")
 	}
 
@@ -1758,11 +1775,13 @@ func (h *InboxHandler) ContactsPage(c *echo.Context) error {
 		for i := range contacts {
 			ids[i] = contacts[i].ID
 		}
-		if enriched, eErr := h.ContactRepo.GetByIDs(ctx, workspaceID, ids); eErr == nil && len(enriched) > 0 {
-			for i := range contacts {
-				if full, ok := enriched[contacts[i].ID]; ok && full != nil {
-					contacts[i].Identities = full.Identities
-				}
+		enriched, eErr := h.ContactRepo.GetByIDs(ctx, workspaceID, ids)
+		if eErr != nil {
+			return c.String(http.StatusInternalServerError, "failed to load contact identities: "+eErr.Error())
+		}
+		for i := range contacts {
+			if full, ok := enriched[contacts[i].ID]; ok && full != nil {
+				contacts[i].Identities = full.Identities
 			}
 		}
 	}

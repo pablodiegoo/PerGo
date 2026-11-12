@@ -126,6 +126,25 @@ func resolveTranscript(m repository.ThreadMessage) string {
 	return strings.TrimSpace(m.Metadata["transcript"])
 }
 
+func formatAudioDuration(m repository.ThreadMessage) string {
+	if m.Metadata == nil {
+		return ""
+	}
+	raw := strings.TrimSpace(m.Metadata["duration_ms"])
+	if raw == "" {
+		return ""
+	}
+	ms, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || ms <= 0 {
+		return ""
+	}
+	totalSec := ms / 1000
+	if totalSec == 0 {
+		totalSec = 1
+	}
+	return fmt.Sprintf("%d:%02d", totalSec/60, totalSec%60)
+}
+
 type OrderDetails struct {
 	CatalogID    string
 	Items        []domain.OrderProductItem
@@ -690,7 +709,7 @@ templ mediaAttachmentContent(m repository.ThreadMessage, mediaURL string, mediaK
 					<p class="text-[11px] text-red-600">{ m.Metadata["transcribe_error"] }</p>
 				}
 			} else {
-				<div class="flex items-center">
+				<div class="flex items-center justify-between gap-2">
 					if isOutbound {
 						<button
 							type="button"
@@ -705,6 +724,9 @@ templ mediaAttachmentContent(m repository.ThreadMessage, mediaURL string, mediaK
 							</svg>
 							<span>Transcrever áudio</span>
 						</button>
+						if formatAudioDuration(m) != "" {
+							<span class="text-[11px] text-blue-100 tabular-nums">{ formatAudioDuration(m) }</span>
+						}
 					} else {
 						<button
 							type="button"
@@ -719,6 +741,9 @@ templ mediaAttachmentContent(m repository.ThreadMessage, mediaURL string, mediaK
 							</svg>
 							<span>Transcrever áudio</span>
 						</button>
+						if formatAudioDuration(m) != "" {
+							<span class="text-[11px] text-zinc-400 tabular-nums">{ formatAudioDuration(m) }</span>
+						}
 					}
 				</div>
 			}

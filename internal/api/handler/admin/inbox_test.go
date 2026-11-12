@@ -1,12 +1,14 @@
 package admin_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -26,10 +28,12 @@ import (
 	"github.com/pablojhp.pergo/internal/chat/activity"
 	"github.com/pablojhp.pergo/internal/domain"
 	"github.com/pablojhp.pergo/internal/i18n"
+	"github.com/pablojhp.pergo/internal/media"
 	"github.com/pablojhp.pergo/internal/outbound"
 	"github.com/pablojhp.pergo/internal/platform/crypto"
 	"github.com/pablojhp.pergo/internal/platform/postgres/tenant"
 	"github.com/pablojhp.pergo/internal/platform/queue"
+	"github.com/pablojhp.pergo/internal/platform/storage"
 	"github.com/pablojhp.pergo/internal/repository"
 )
 
@@ -1857,4 +1861,200 @@ func TestInboxHandler_SendMessage_PromoteDraftUpdatesNoteMetadata(t *testing.T) 
 		t.Errorf("expected draft_status='promoted' on note metadata, got %+v", updatedNote.Metadata)
 	}
 }
+
+func TestLoginPost_SafeRelativeNextRedirect(t *testing.T) {
+	e := echo.New()
+
+	// 1. Safe relative OAuth redirect is honored
+	form1 := url.Values{
+		"password": {"secret-pass"},
+		"next":     {"/oauth/authorize?client_id=test&response_type=code"},
+	}
+	req1 := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader(form1.Encode()))
+	req1.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec1 := httptest.NewRecorder()
+	if err := admin.LoginPost(e.NewContext(req1, rec1), nil, "secret-pass"); err != nil {
+		t.Fatalf("LoginPost valid next failed: %v", err)
+	}
+	if rec1.Code != http.StatusFound || rec1.Header().Get("Location") != "/oauth/authorize?client_id=test&response_type=code" {
+		t.Fatalf("expected 302 redirect to relative next URL, got %d (%q)", rec1.Code, rec1.Header().Get("Location"))
+	}
+
+	// 2. Open redirects (//evil.com or https://evil.com) are rejected and fall back to /admin/
+	for _, unsafeNext := range []string{"//evil.com/phish", "https://evil.com", "/\\evil.com"} {
+		formUnsafe := url.Values{
+			"password": {"secret-pass"},
+			"next":     {unsafeNext},
+		}
+		reqU := httptest.NewRequest(http.MethodPost, "/admin/login", strings.NewReader(formUnsafe.Encode()))
+		reqU.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		recU := httptest.NewRecorder()
+		if err := admin.LoginPost(e.NewContext(reqU, recU), nil, "secret-pass"); err != nil {
+			t.Fatalf("LoginPost unsafe next failed: %v", err)
+		}
+		if recU.Header().Get("Location") != "/admin/" {
+			t.Errorf("expected unsafe next %q to fall back to /admin/, got %q", unsafeNext, recU.Header().Get("Location"))
+		}
+	}
+}
+
+func TestInboxHandler_Phase2_TranscribeUploadCRMAndContactsPage(t *testing.T) {
+	pool := getTestPool(t)
+	if pool == nil {
+		t.Skip("skipping: PostgreSQL not available")
+	}
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	ws, err := wsRepo.Create(ctx, "inbox-phase2-"+uuid.NewString()[:8])
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	contactRepo := repository.NewContactRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
+	connRepo := repository.NewConnectionRepository(pool, nil)
+	auditRepo := repository.NewAuditRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
+
+	localStore, err := storage.NewLocalDiskStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLocalDiskStorage: %v", err)
+	}
+	mediaEng := media.NewEngineWithStorage(localStore)
+
+	conn := &repository.Connection{
+		ID:             uuid.New(),
+		WorkspaceID:    ws.ID,
+		Name:           "WA Phase2",
+		Slug:           "wa-p2-" + uuid.NewString()[:8],
+		Channel:        "whatsapp",
+		SenderIdentity: "+5511911112222",
+		Status:         "connected",
+		IsDefault:      true,
+	}
+	if err := connRepo.Create(ctx, conn); err != nil {
+		t.Fatalf("create connection: %v", err)
+	}
+
+	contact, err := contactRepo.ResolveContact(ctx, ws.ID, "whatsapp", "+5511933334444", "Roberto Inicial", "", "+5511933334444")
+	if err != nil {
+		t.Fatalf("resolve contact: %v", err)
+	}
+	ch, err := chatRepo.FindOrCreateChat(ctx, ws.ID, &conn.ID, contact.ID)
+	if err != nil {
+		t.Fatalf("find or create chat: %v", err)
+	}
+
+	// 1. Seed voice message on LocalDiskStorage and test on-demand POST /admin/inbox/messages/:uid/transcribe
+	voiceMediaURL, err := mediaEng.ProcessInbound(ctx, ws.ID, "voice", []byte("OggS-test-voice-payload"))
+	if err != nil {
+		t.Fatalf("ProcessInbound voice: %v", err)
+	}
+	voiceType := "voice"
+	voiceUID := "msg-transcribe-" + uuid.NewString()[:8]
+	if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+		Chat:      activity.ChatID(ch.ID).WithChannel("whatsapp"),
+		UID:       voiceUID,
+		Channel:   "whatsapp",
+		SenderID:  "+5511933334444",
+		Body:      "",
+		MediaURL:  &voiceMediaURL,
+		MediaType: &voiceType,
+		At:        time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("seed voice message: %v", err)
+	}
+
+	pub := &testMessagePublisher{}
+	h := &admin.InboxHandler{
+		Repo:         auditRepo,
+		ChatRepo:     chatRepo,
+		ContactRepo:  contactRepo,
+		Connections:  connRepo,
+		Workspaces:   wsRepo,
+		Publisher:    pub,
+		MediaEngine:  mediaEng,
+		MediaStorage: localStore,
+		AudioTranscriber: func(ctx context.Context, data []byte, mimeType string) (string, string, error) {
+			return "Áudio transcrito sob demanda com sucesso.", "gemini", nil
+		},
+	}
+
+	e := echo.New()
+	e.POST("/admin/inbox/messages/:uid/transcribe", h.TranscribeMessage)
+	e.POST("/admin/inbox/contacts/:id/update", h.UpdateContactProfile)
+	e.POST("/admin/inbox/contacts/:id/attributes", h.UpdateContactAttributes)
+	e.GET("/admin/contacts", h.ContactsPage)
+	e.POST("/admin/inbox/send", h.SendMessage)
+
+	tReq := httptest.NewRequest(http.MethodPost, "/admin/inbox/messages/"+voiceUID+"/transcribe", nil)
+	tReq = withWorkspaceContext(tReq, ws.ID)
+	tRec := httptest.NewRecorder()
+	e.ServeHTTP(tRec, tReq)
+	if tRec.Code != http.StatusOK || !strings.Contains(tRec.Body.String(), "Áudio transcrito sob demanda com sucesso.") {
+		t.Fatalf("expected 200 OK with rendered transcript bubble, got %d: %s", tRec.Code, tRec.Body.String())
+	}
+
+	// 2. Test multipart attachment upload on SendMessage
+	var mpBuf bytes.Buffer
+	mw := multipart.NewWriter(&mpBuf)
+	_ = mw.WriteField("contact", "+5511933334444")
+	_ = mw.WriteField("channel", "whatsapp")
+	_ = mw.WriteField("recipient_identity", "+5511911112222")
+	_ = mw.WriteField("body", "Segue comprovante em anexo")
+	fw, _ := mw.CreateFormFile("attachment", "comprovante.pdf")
+	_, _ = fw.Write([]byte("%PDF-1.4 sample content"))
+	_ = mw.Close()
+
+	sReq := httptest.NewRequest(http.MethodPost, "/admin/inbox/send", &mpBuf)
+	sReq.Header.Set("Content-Type", mw.FormDataContentType())
+	sReq = withWorkspaceContext(sReq, ws.ID)
+	sRec := httptest.NewRecorder()
+	e.ServeHTTP(sRec, sReq)
+	if sRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 No Content for multipart SendMessage, got %d: %s", sRec.Code, sRec.Body.String())
+	}
+	if pub.lastMessage.Media == nil || !strings.HasPrefix(pub.lastMessage.Media.MediaURL, "/media/"+ws.ID.String()+"/") {
+		t.Fatalf("expected outbound MediaURL stored via MediaEngine, got %+v", pub.lastMessage.Media)
+	}
+
+	// 3. Test inline CRM contact profile & attributes update + /admin/contacts page
+	upForm := url.Values{
+		"name":  {"Roberto Silva CRM"},
+		"email": {"roberto@exemplo.com.br"},
+	}
+	uReq := httptest.NewRequest(http.MethodPost, "/admin/inbox/contacts/"+contact.ID.String()+"/update", strings.NewReader(upForm.Encode()))
+	uReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	uReq = withWorkspaceContext(uReq, ws.ID)
+	uRec := httptest.NewRecorder()
+	e.ServeHTTP(uRec, uReq)
+	if uRec.Code != http.StatusOK || !strings.Contains(uRec.Body.String(), "Roberto Silva CRM") {
+		t.Fatalf("expected 200 OK with updated CRM panel, got %d: %s", uRec.Code, uRec.Body.String())
+	}
+
+	attrForm := url.Values{
+		"action": {"set"},
+		"key":    {"segmento"},
+		"value":  {"SaaS B2B"},
+	}
+	aReq := httptest.NewRequest(http.MethodPost, "/admin/inbox/contacts/"+contact.ID.String()+"/attributes", strings.NewReader(attrForm.Encode()))
+	aReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	aReq = withWorkspaceContext(aReq, ws.ID)
+	aRec := httptest.NewRecorder()
+	e.ServeHTTP(aRec, aReq)
+	if aRec.Code != http.StatusOK || !strings.Contains(aRec.Body.String(), "SaaS B2B") {
+		t.Fatalf("expected 200 OK with new custom attribute in CRM panel, got %d: %s", aRec.Code, aRec.Body.String())
+	}
+
+	cReq := httptest.NewRequest(http.MethodGet, "/admin/contacts?q=Roberto", nil)
+	cReq = withWorkspaceContext(cReq, ws.ID)
+	cRec := httptest.NewRecorder()
+	e.ServeHTTP(cRec, cReq)
+	if cRec.Code != http.StatusOK || !strings.Contains(cRec.Body.String(), "Roberto Silva CRM") || !strings.Contains(cRec.Body.String(), "/admin/inbox?contact="+contact.ID.String()) {
+		t.Fatalf("expected 200 OK on /admin/contacts with contact row and 1-click inbox link, got %d", cRec.Code)
+	}
+}
+
 

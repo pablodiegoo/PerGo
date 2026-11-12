@@ -1884,3 +1884,72 @@ func TestInboundProcessor_Close_StopsDebounceTimers(t *testing.T) {
 	procNoDeb.Close()
 }
 
+func TestInboundProcessor_AsyncAudioTranscriptionPersistsMetadata(t *testing.T) {
+	pool := getTestPool(t)
+	defer pool.Close()
+
+	ctx := context.Background()
+	wsRepo := repository.NewWorkspaceRepository(pool)
+	dedupRepo := repository.NewInboundDedupRepository(pool)
+	contactRepo := repository.NewContactRepository(pool)
+	chatRepo := repository.NewChatRepository(pool)
+	dispatchRepo := repository.NewMessageDispatchRepository(pool)
+	act := activity.New(pool, nil, nil, nil)
+
+	ws, err := wsRepo.Create(ctx, "audio_stt_ws_"+uuid.NewString()[:8])
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	defer func() { _ = wsRepo.Delete(ctx, ws.ID) }()
+
+	pub := &fakePublisher{}
+	me := &fakeMediaEngine{}
+	proc := inbound.NewInboundProcessor(dedupRepo, wsRepo, me, pub, nil, contactRepo, dispatchRepo, nil)
+	proc.SetChatRepository(chatRepo)
+	proc.SetActivity(act)
+
+	transcribedCh := make(chan struct{}, 1)
+	proc.SetAudioTranscriber(func(ctx context.Context, data []byte, mimeType string) (string, string, error) {
+		transcribedCh <- struct{}{}
+		return "Olá, preciso da segunda via da nota fiscal.", "gemini", nil
+	})
+
+	msgUID := "wamid.voice_" + uuid.NewString()[:8]
+	ev := &inbound.InboundEvent{
+		WorkspaceID: ws.ID,
+		MessageID:   msgUID,
+		Channel:     "whatsapp",
+		From:        "+5511977770000",
+		To:          "+5511988880000",
+		OccurredAt:  time.Now().UTC(),
+		Media: &inbound.InboundMedia{
+			MediaType: "voice",
+			Bytes:     []byte("OggS-fake-opus-voice-note"),
+		},
+	}
+
+	if err := proc.Process(ctx, ev); err != nil {
+		t.Fatalf("Process audio event failed: %v", err)
+	}
+
+	select {
+	case <-transcribedCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for async AudioTranscriber invocation")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		msg, gErr := chatRepo.GetChatMessageByUID(ctx, ws.ID, msgUID)
+		if gErr == nil && msg != nil && msg.Metadata["transcript"] == "Olá, preciso da segunda via da nota fiscal." {
+			if msg.Metadata["transcript_provider"] != "gemini" {
+				t.Errorf("expected transcript_provider='gemini', got %v", msg.Metadata["transcript_provider"])
+			}
+			return
+		}
+		time.Sleep(30 * time.Millisecond)
+	}
+	t.Fatal("expected async transcript metadata to be persisted on chat_messages")
+}
+
+

@@ -969,6 +969,46 @@ func TestChatRepository_OutboundMessagesInConversationsList(t *testing.T) {
 			t.Errorf("expected Contact B, got %s", convsSender2[0].ContactID)
 		}
 	})
+
+	t.Run("ListThreadByContact scans MediaURL and MediaType", func(t *testing.T) {
+		mediaURL := "/media/" + ws.ID.String() + "/voice_sample.ogg"
+		mediaType := "voice"
+		uid := "msg-media-" + uuid.NewString()[:8]
+		if _, err := act.Inbound(ctx, ws.ID, activity.InboundTurn{
+			Chat:      activity.ChatID(chatB.ID).WithChannel("telegram"),
+			UID:       uid,
+			Channel:   "telegram",
+			SenderID:  "user_b_tg",
+			Body:      "",
+			MediaURL:  &mediaURL,
+			MediaType: &mediaType,
+			At:        now.Add(-1 * time.Minute),
+		}); err != nil {
+			t.Fatalf("insert media chat message: %v", err)
+		}
+
+		thread, err := chatRepo.ListThreadByContact(ctx, ws.ID, contactB.ID, nil)
+		if err != nil {
+			t.Fatalf("ListThreadByContact failed: %v", err)
+		}
+		var found *repository.ThreadMessage
+		for i := range thread {
+			if thread[i].UID == uid {
+				found = &thread[i]
+				break
+			}
+		}
+		if found == nil {
+			t.Fatalf("expected media message %s in thread", uid)
+		}
+		if found.MediaURL == nil || *found.MediaURL != mediaURL {
+			t.Errorf("expected MediaURL %q, got %v", mediaURL, found.MediaURL)
+		}
+		if found.MediaType == nil || *found.MediaType != mediaType {
+			t.Errorf("expected MediaType %q, got %v", mediaType, found.MediaType)
+		}
+	})
 }
+
 
 

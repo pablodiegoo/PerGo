@@ -397,11 +397,10 @@ func TestMessageBubble_MediaAttachmentsAndTranscript(t *testing.T) {
 
 func TestChatPanel_ComposerToggleAttachmentAndEditableCRM(t *testing.T) {
 	contact := &domain.Contact{
-		ID:          uuid.New(),
-		Name:        "Ana Carolina",
-		Attributes:  map[string]string{"plan": "solo"},
-		CreatedAt:   time.Now().UTC(),
-		LastMessage: time.Now().UTC(),
+		ID:         uuid.New(),
+		Name:       "Ana Carolina",
+		Attributes: map[string]string{"plan": "solo"},
+		CreatedAt:  time.Now().UTC(),
 	}
 	var buf bytes.Buffer
 	if err := components.ChatPanel(contact, nil, nil, nil, false).Render(context.Background(), &buf); err != nil {
